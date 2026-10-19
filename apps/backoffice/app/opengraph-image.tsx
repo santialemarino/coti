@@ -39,8 +39,6 @@ export default async function OpengraphImage() {
           borderRadius: 32,
         }}
       >
-        {/* ImageResponse renders native image elements outside the Next.js image pipeline. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={lockupSrc} width={198} height={240} alt="" />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 24, color: '#FFFFFF' }}>
