@@ -11,6 +11,9 @@ Enable the Gmail API in a Google Cloud project, configure its OAuth consent scre
 application OAuth client. Register the public API callback URL exactly as
 `GMAIL_OAUTH_REDIRECT_URL`, for example `https://api.example.com/v1/public/gmail/callback`.
 For local testing Google supports `http://localhost:8000/v1/public/gmail/callback`.
+For the DigitalOcean App Platform ingress in this repository, the public callback is
+`https://<primary-domain>/api/v1/public/gmail/callback`: ingress removes `/api` before forwarding
+the request to the API.
 Set `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REDIRECT_URL` and the
 32-byte base64 `CHANNEL_CONFIG_ENCRYPTION_KEY` on the API. With all Gmail OAuth settings empty,
 the connector is disabled. Keep the client secret and encryption key outside source control.
@@ -20,6 +23,9 @@ Google's verification requirements and, where applicable, security assessment mu
 before allowing external users to connect. See [Gmail API scope requirements](https://developers.google.com/workspace/gmail/api/auth/scopes)
 and [Google OAuth for web applications](https://developers.google.com/identity/protocols/oauth2/web-server).
 During testing, access depends on the consent screen's publishing status and authorized test users.
+An external application in Google's Testing state receives refresh tokens that expire after seven
+days for this scope; reconnect the mailbox from branch settings to continue the test. See Google's
+[refresh token expiration rules](https://developers.google.com/identity/protocols/oauth2#expiration).
 
 ## Operation
 
@@ -36,6 +42,11 @@ response. Each provider message is idempotent within its channel. A cursor is ad
 the whole page sequence is durable. When history expires, the connector lists inbox messages since
 the connection and then resumes from a cursor captured before that listing, so concurrent arrivals
 are not skipped. The same initial listing covers messages received during authorization.
+
+Monitor the API log for `gmail mailbox synchronization failed`; a successful connection message
+confirms the authorization completed, not that later synchronization is healthy. If authorization
+expires or is revoked, reconnect the same branch mailbox. Its last durable cursor is retained so
+synchronization can resume without reprocessing already recorded messages.
 
 Every new inbox message is treated as a separate request, including unrelated mail and replies to
 an existing conversation. Threading and request classification are not implemented; use a
