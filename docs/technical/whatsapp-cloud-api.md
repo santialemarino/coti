@@ -79,7 +79,10 @@ instead of accepting an unsigned message.
 
 The callback is public but not tenant-authenticated. It resolves `metadata.phone_number_id` on the
 owner pool, then opens the tenant transaction for the exact account, branch, and channel. An
-unconfigured destination is acknowledged without creating tenant data.
+unconfigured destination is acknowledged without creating tenant data. A known active channel on an
+inactive account or branch makes the delivery return `500` so Meta can retry it. Messages for other
+active destinations in the same delivery are processed first and deduplicated on retry; recovery for
+the unavailable destination still depends on Meta's retry window.
 
 Only inbound text messages are materialized in this release. Their Meta message ID is retained in
 `inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, the original

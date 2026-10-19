@@ -163,6 +163,84 @@ func TestChannelRepository_GetActiveByTypeAndIdentifiersCrossAccount_RoutesExter
 	}
 }
 
+func TestChannelRepository_GetActiveByTypeAndIdentifiersCrossAccount_ExcludesClosedDestinations(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	activeAccount := seedAccount(t, db, "Active inbound account")
+	activeBranch := branchOf(t, db, activeAccount)
+	closedBranch := seedExtraBranch(t, db, activeAccount, "Closed inbound branch")
+	closedAccount := seedAccount(t, db, "Closed inbound account")
+	closedAccountBranch := branchOf(t, db, closedAccount)
+	if _, err := db.CrossAccount().Exec(ctx, `UPDATE branch SET is_active = FALSE WHERE id = $1`, closedBranch); err != nil {
+		t.Fatalf("close branch: %v", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx, `UPDATE account SET is_active = FALSE WHERE id = $1`, closedAccount); err != nil {
+		t.Fatalf("close account: %v", err)
+	}
+
+	for _, channelType := range []domain.ChannelType{domain.ChannelTypeWhatsApp, domain.ChannelTypeEmail} {
+		t.Run(string(channelType), func(t *testing.T) {
+			var identifiers []string
+			var channelIDs []uuid.UUID
+			for _, target := range []struct {
+				accountID uuid.UUID
+				branchID  uuid.UUID
+			}{
+				{activeAccount, activeBranch}, {activeAccount, closedBranch}, {closedAccount, closedAccountBranch},
+			} {
+				identifier := uuid.NewString()
+				var config []byte
+				if channelType == domain.ChannelTypeEmail {
+					identifier += "@corralon.test"
+				} else {
+					config, _ = json.Marshal(map[string]string{"phone_number_id": identifier})
+				}
+				channelIDs = append(channelIDs, seedInboundChannel(t, db, target.accountID,
+					target.branchID, channelType, &identifier, config, true))
+				identifiers = append(identifiers, identifier)
+			}
+			routes, err := NewChannelRepository().GetActiveByTypeAndIdentifiersCrossAccount(
+				ctx, db.CrossAccount(), channelType, identifiers[:1])
+			if err != nil {
+				t.Fatalf("resolve routes: %v", err)
+			}
+			if len(routes) != 1 || routes[identifiers[0]].BranchID != activeBranch {
+				t.Errorf("routes = %#v, want only the active account and branch", routes)
+			}
+			for _, identifier := range identifiers[1:] {
+				if _, err := NewChannelRepository().GetActiveByTypeAndIdentifiersCrossAccount(
+					ctx, db.CrossAccount(), channelType, []string{identifier}); !errors.Is(err, domain.ErrInboundDestinationInactive) {
+					t.Errorf("closed destination = %v, want an inactive destination error", err)
+				}
+			}
+			routes, err = NewChannelRepository().GetActiveByTypeAndIdentifiersCrossAccount(
+				ctx, db.CrossAccount(), channelType, identifiers)
+			if !errors.Is(err, domain.ErrInboundDestinationInactive) {
+				t.Errorf("mixed destinations = %v, want an inactive destination error", err)
+			}
+			if len(routes) != 1 || routes[identifiers[0]].ID != channelIDs[0] {
+				t.Errorf("mixed destinations routes = %#v, want only the active destination", routes)
+			}
+			for _, target := range []struct {
+				accountID, branchID, channelID uuid.UUID
+			}{
+				{activeAccount, closedBranch, channelIDs[1]},
+				{closedAccount, closedAccountBranch, channelIDs[2]},
+			} {
+				err := db.InTenantTx(ctx, domain.Tenant{AccountID: target.accountID, BranchID: target.branchID},
+					func(q Querier) error {
+						_, err := NewChannelRepository().GetActiveByID(ctx, q, target.accountID,
+							target.branchID, target.channelID)
+						return err
+					})
+				if !errors.Is(err, domain.ErrNotFound) {
+					t.Errorf("closed account/branch channel lookup = %v, want not found", err)
+				}
+			}
+		})
+	}
+}
+
 func TestChannelRepository_CreateRejectsDuplicateActiveExternalDestination(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

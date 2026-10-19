@@ -189,6 +189,13 @@ uses that route for RFQ persistence and catalog matching. WhatsApp resolves Meta
 `phone_number_id` from its readable channel configuration, while email resolves the lower-cased
 mailbox in `channel.identifier`.
 
+An inbound destination is eligible only while the channel, its branch, and its account are active.
+The RFQ creation path checks those states again inside the tenant transaction before creating an RFQ.
+A batch naming an active channel on an inactive account or branch returns the available routes with
+`ErrInboundDestinationInactive`. The connector processes those routes idempotently and signals a
+retryable failure for the delivery. The provider's retry policy limits how long an unavailable
+destination can recover the delivery.
+
 Two partial global indexes make active external destinations unambiguous. They do not reduce the
 existing cardinality: a branch may still configure multiple WhatsApp numbers or mailboxes, provided
 each has a distinct external destination. `WEBAPP` uses its opaque delivery token and is resolved by
@@ -207,7 +214,9 @@ calls:
    `Reply-To`.
 2. Use `domain.NormalizeInboundChannelIdentifier` when retrieving the returned route: email keys
    are trimmed and lower-cased; WhatsApp provider identifiers are trimmed but otherwise unchanged.
-   A missing route means no tenant work must be created.
+   A missing route means no tenant work must be created for that destination. If the resolver
+   reports an inactive destination, process the returned routes and signal a retryable failure to
+   the provider rather than acknowledging the unavailable destination as an unknown address.
 3. Pass the returned `InboundChannelRoute` unchanged to
    `RFQService.CreateInboundTextDraft` with an `InboundTextRFQDraftInput`. The input deliberately
    has no channel, branch or account field: an adapter must not accept, infer or construct any of

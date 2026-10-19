@@ -52,6 +52,9 @@ var (
 	// because nothing about the request can be changed to make it succeed.
 	ErrNotConfigured = errors.New("capability not configured")
 
+	// ErrInboundDestinationInactive signals that a known inbox cannot accept a delivery yet.
+	ErrInboundDestinationInactive = errors.New("inbound destination inactive")
+
 	// ErrDeliveryUnavailable is returned when every selected client delivery failed.
 	ErrDeliveryUnavailable = errors.New("delivery unavailable")
 

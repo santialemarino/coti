@@ -16,6 +16,13 @@ import (
 const channelColumns = `id, account_id, branch_id, type, is_active, identifier,
 	config IS NOT NULL AS is_configured, created_at, updated_at`
 
+const activeChannelOwner = `EXISTS (
+	SELECT 1 FROM account a
+	JOIN branch b ON b.account_id = a.id
+	WHERE a.id = channel.account_id AND b.id = channel.branch_id
+	  AND a.is_active = TRUE AND b.is_active = TRUE
+)`
+
 const (
 	channelIdentifierIndex            = "uq_channel_branch_type_identifier"
 	channelNoIdentifierIndex          = "uq_channel_branch_type_no_identifier"
@@ -80,7 +87,7 @@ func (r *ChannelRepository) ListActiveByType(
 	return scanChannels(rows)
 }
 
-// GetActiveByTypeAndIdentifiersCrossAccount resolves active external inboxes before a tenant is known.
+// GetActiveByTypeAndIdentifiersCrossAccount returns available inboxes and signals inactive owners.
 func (r *ChannelRepository) GetActiveByTypeAndIdentifiersCrossAccount(
 	ctx context.Context, q Querier, channelType domain.ChannelType, identifiers []string,
 ) (map[string]domain.Channel, error) {
@@ -91,14 +98,14 @@ func (r *ChannelRepository) GetActiveByTypeAndIdentifiersCrossAccount(
 	switch channelType {
 	case domain.ChannelTypeWhatsApp:
 		return r.getActiveInboundChannels(ctx, q,
-			`SELECT `+channelColumns+`, config ->> 'phone_number_id'
+			`SELECT `+channelColumns+`, config ->> 'phone_number_id', `+activeChannelOwner+`
 			 FROM channel
 			 WHERE type = 'WHATSAPP' AND is_active = TRUE
 			   AND config ->> 'phone_number_id' = ANY($1)`,
 			identifiers)
 	case domain.ChannelTypeEmail:
 		return r.getActiveInboundChannels(ctx, q,
-			`SELECT `+channelColumns+`, lower(identifier)
+			`SELECT `+channelColumns+`, lower(identifier), `+activeChannelOwner+`
 			 FROM channel
 			 WHERE type = 'EMAIL' AND is_active = TRUE
 			   AND lower(identifier) = ANY($1)`,
@@ -165,14 +172,15 @@ func (r *ChannelRepository) GetActiveConfigurationsByIDs(
 	return configs, rows.Err()
 }
 
-// GetActiveByID returns an active channel in the requested branch.
+// GetActiveByID returns an active channel in an active account and branch.
 func (r *ChannelRepository) GetActiveByID(
 	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
 ) (*domain.Channel, error) {
 	return r.getByID(ctx, q,
 		`SELECT `+channelColumns+`
 		 FROM channel
-		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE`,
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE
+		   AND `+activeChannelOwner,
 		accountID, branchID, channelID)
 }
 
@@ -334,10 +342,15 @@ func scanInboundChannels(rows pgx.Rows) (map[string]domain.Channel, error) {
 	defer rows.Close()
 
 	channels := make(map[string]domain.Channel)
+	unavailable := false
 	for rows.Next() {
-		channel, identifier, err := scanInboundChannel(rows)
+		channel, identifier, ownerActive, err := scanInboundChannel(rows)
 		if err != nil {
 			return nil, err
+		}
+		if !ownerActive {
+			unavailable = true
+			continue
 		}
 		if _, exists := channels[identifier]; exists {
 			return nil, domain.ErrConflict
@@ -346,6 +359,9 @@ func scanInboundChannels(rows pgx.Rows) (map[string]domain.Channel, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if unavailable {
+		return channels, domain.ErrInboundDestinationInactive
 	}
 	return channels, nil
 }
@@ -358,11 +374,12 @@ func scanChannel(row channelScanner) (domain.Channel, error) {
 	return channel, err
 }
 
-func scanInboundChannel(row channelScanner) (domain.Channel, string, error) {
+func scanInboundChannel(row channelScanner) (domain.Channel, string, bool, error) {
 	var channel domain.Channel
 	var identifier string
+	var ownerActive bool
 	err := row.Scan(&channel.ID, &channel.AccountID, &channel.BranchID, &channel.Type,
 		&channel.IsActive, &channel.Identifier, &channel.IsConfigured,
-		&channel.CreatedAt, &channel.UpdatedAt, &identifier)
-	return channel, identifier, err
+		&channel.CreatedAt, &channel.UpdatedAt, &identifier, &ownerActive)
+	return channel, identifier, ownerActive, err
 }
