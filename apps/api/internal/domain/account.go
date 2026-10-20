@@ -17,9 +17,13 @@ type Account struct {
 	BrandColor   *string
 	// PreferredLowerPriceStrategy is what a «bajame el precio» tries first when the customer did not say.
 	PreferredLowerPriceStrategy HandlerStrategy
-	IsActive                    bool
-	CreatedAt                   time.Time
-	UpdatedAt                   time.Time
+	// InvoicingEnabled is whether the corralón invoices with Coti; off refuses issuing anything.
+	InvoicingEnabled bool
+	// HasInvoices is whether any invoice was ever recorded, which keeps the history reachable when off.
+	HasInvoices bool
+	IsActive    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client

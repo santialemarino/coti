@@ -147,7 +147,9 @@ CREATE TABLE account (
   iva_condition iva_condition,
   prices_include_vat BOOLEAN NOT NULL DEFAULT TRUE,
   invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object'),
-  preferred_lower_price_strategy lower_price_strategy NOT NULL DEFAULT 'FIND_CHEAPER_ALTERNATIVES'
+  preferred_lower_price_strategy lower_price_strategy NOT NULL DEFAULT 'FIND_CHEAPER_ALTERNATIVES',
+  -- Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
+  invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE account_onboarding (

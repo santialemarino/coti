@@ -46,11 +46,19 @@ type fakeInvoicingStore struct {
 	ticket         *domain.SealedARCATicket
 	accountLocked  bool
 	heldUnlocked   bool
+	// The account switch: invoicingOff as the first read sees it, offOnceLocked as the lock sees it.
+	invoicingOff  bool
+	offOnceLocked bool
+	created       int
 }
 
-func (f *fakeInvoicingStore) LockAccountForShare(context.Context, repository.Querier, uuid.UUID) error {
+func (f *fakeInvoicingStore) InvoicingEnabled(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+	return !f.invoicingOff, nil
+}
+
+func (f *fakeInvoicingStore) LockAccountForShare(context.Context, repository.Querier, uuid.UUID) (bool, error) {
 	f.accountLocked = true
-	return nil
+	return !f.invoicingOff && !f.offOnceLocked, nil
 }
 
 func (f *fakeInvoicingStore) GetAccountFiscal(context.Context, repository.Querier, uuid.UUID) (*domain.AccountFiscal, error) {
@@ -216,6 +224,7 @@ func sameID(a, b *uuid.UUID) bool {
 }
 
 func (f *fakeInvoicingStore) CreatePending(_ context.Context, _ repository.Querier, in domain.Invoice) (*domain.Invoice, error) {
+	f.created++
 	if !f.accountLocked {
 		f.heldUnlocked = true
 	}

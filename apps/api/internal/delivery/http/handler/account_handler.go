@@ -15,6 +15,7 @@ type AccountService interface {
 	Get(ctx context.Context, tenant domain.Tenant) (*domain.Account, error)
 	Register(ctx context.Context, in domain.Signup) (*domain.SignupResult, *domain.TokenPair, error)
 	Update(ctx context.Context, tenant domain.Tenant, in domain.AccountUpdate) (*domain.Account, error)
+	SetInvoicingEnabled(ctx context.Context, tenant domain.Tenant, enabled bool) (*domain.Account, error)
 }
 
 // AccountHandler serves registration and the account record.
@@ -141,6 +142,39 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, toAccountResponse(*account))
 }
 
+// SetInvoicingEnabled turns invoicing with Coti on or off for the caller's account.
+//
+//	@Summary		Switch invoicing with Coti on or off
+//	@Description	Off refuses issuing invoices and credit notes; issued ones stay readable and the ARCA setup is kept. Turning it off is refused with 409 INVOICE_PENDING while an invoice waits for ARCA.
+//	@Tags			invoicing
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body		dto.SetInvoicingEnabledRequest	true	"Switch"
+//	@Success		200		{object}	dto.AccountResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse
+//	@Router			/v1/invoicing/enabled [put]
+func (h *AccountHandler) SetInvoicingEnabled(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	var body dto.SetInvoicingEnabledRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	account, err := h.accounts.SetInvoicingEnabled(c.Request.Context(), tenant, *body.Enabled)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toAccountResponse(*account))
+}
+
 func toAccountResponse(a domain.Account) dto.AccountResponse {
 	return dto.AccountResponse{
 		ID:                          a.ID,
@@ -150,6 +184,8 @@ func toAccountResponse(a domain.Account) dto.AccountResponse {
 		BrandLogoURL:                a.BrandLogoURL,
 		BrandColor:                  a.BrandColor,
 		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy),
+		InvoicingEnabled:            a.InvoicingEnabled,
+		HasInvoices:                 a.HasInvoices,
 		IsActive:                    a.IsActive,
 		CreatedAt:                   a.CreatedAt,
 		UpdatedAt:                   a.UpdatedAt,

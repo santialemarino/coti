@@ -93,6 +93,9 @@ const (
 	CodeInvoiceNotCreditable   ErrorCode = "INVOICE_NOT_CREDITABLE"
 	CodeInvoiceAlreadyCredited ErrorCode = "INVOICE_ALREADY_CREDITED"
 	CodeCreditNoteInProgress   ErrorCode = "CREDIT_NOTE_IN_PROGRESS"
+	// The account switched invoicing with Coti off, so nothing new is issued; the server key is
+	// INVOICING_DISABLED.
+	CodeAccountInvoicingOff ErrorCode = "ACCOUNT_INVOICING_OFF"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

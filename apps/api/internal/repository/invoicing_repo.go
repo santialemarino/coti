@@ -303,15 +303,26 @@ func (r *InvoicingRepository) HasPendingInvoice(ctx context.Context, q Querier, 
 	return pending, err
 }
 
-// LockAccountForShare holds the account row until the transaction ends, so a CUIT change or an ARCA
-// disconnect waits for an invoice being held under the current credential.
-func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) error {
-	var id uuid.UUID
-	err := q.QueryRow(ctx, `SELECT id FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&id)
+// InvoicingEnabled reports whether the account invoices with Coti.
+func (r *InvoicingRepository) InvoicingEnabled(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var enabled bool
+	err := q.QueryRow(ctx, `SELECT invoicing_enabled FROM account WHERE id = $1`, accountID).Scan(&enabled)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
-	return err
+	return enabled, err
+}
+
+// LockAccountForShare holds the account row until the transaction ends, so a CUIT change, an ARCA
+// disconnect or switching invoicing off waits for an invoice being held. It returns whether the
+// account invoices with Coti, read under that lock.
+func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var enabled bool
+	err := q.QueryRow(ctx, `SELECT invoicing_enabled FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&enabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return enabled, err
 }
 
 // GetLatestByQuote returns the quote's newest invoice made in env, still pending anywhere, or issued
