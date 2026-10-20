@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 // List returns the fiscal history of the active branch, or of every branch the caller reaches.
@@ -32,9 +33,51 @@ func (h *InvoiceHandler) List(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	response := dto.InvoiceListResponse{Items: make([]dto.InvoiceResponse, 0, len(invoices)), Total: total, Page: page, PageSize: 25}
+	response := dto.InvoiceListResponse{Items: make([]dto.InvoiceResponse, 0, len(invoices)), Total: total, Page: page, PageSize: domain.InvoicePageSize}
 	for _, invoice := range invoices {
 		response.Items = append(response.Items, toInvoiceResponse(invoice))
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+// ListAwaitingInvoice returns the accepted sales still waiting for an invoice, paid first.
+// @Summary List sales awaiting an invoice
+// @Description Accepted, unarchived sales with no live invoice, no pending voucher and no waiver, in the caller's branch and seller reach; empty while the account does not invoice.
+// @Tags invoicing
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string false "Active branch; omitted lists every branch the caller reaches"
+// @Param page query int false "Page number"
+// @Success 200 {object} dto.SaleAwaitingInvoiceListResponse
+// @Failure 400 {object} dto.ErrorResponse
+// @Failure 401 {object} dto.ErrorResponse
+// @Failure 422 {object} dto.ErrorResponse
+// @Router /v1/quotes/awaiting-invoice [get]
+func (h *InvoiceHandler) ListAwaitingInvoice(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	sales, total, err := h.invoices.ListAwaitingInvoice(c.Request.Context(), tenant, page)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	response := dto.SaleAwaitingInvoiceListResponse{
+		Items: make([]dto.SaleAwaitingInvoiceResponse, 0, len(sales)),
+		Total: total, Page: page, PageSize: domain.InvoicePageSize,
+	}
+	for _, sale := range sales {
+		response.Items = append(response.Items, dto.SaleAwaitingInvoiceResponse{
+			QuoteID: sale.QuoteID, RFQID: sale.RFQID, Number: sale.Number, BranchID: sale.BranchID,
+			BranchName: sale.BranchName, ClientID: sale.ClientID, Client: sale.ClientLabel,
+			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt, PaidAt: sale.PaidAt,
+		})
 	}
 	c.JSON(http.StatusOK, response)
 }

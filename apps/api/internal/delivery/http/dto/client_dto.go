@@ -48,6 +48,9 @@ type ClientSaleResponse struct {
 	BranchName string    `json:"branch_name"`
 	Total      string    `json:"total"`
 	AcceptedAt time.Time `json:"accepted_at"`
+	// InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the
+	// account invoices.
+	InvoiceStatus string `json:"invoice_status" enums:"INVOICED,PENDING,WAIVED,UNINVOICED"`
 }
 
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.

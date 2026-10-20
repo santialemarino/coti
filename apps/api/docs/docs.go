@@ -5333,6 +5333,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/awaiting-invoice": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepted, unarchived sales with no live invoice, no pending voucher and no waiver, in the caller's branch and seller reach; empty while the account does not invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "List sales awaiting an invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted lists every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SaleAwaitingInvoiceListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -9061,6 +9118,16 @@ const docTemplate = `{
                 "branch_name": {
                     "type": "string"
                 },
+                "invoice_status": {
+                    "description": "InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the\naccount invoices.",
+                    "type": "string",
+                    "enum": [
+                        "INVOICED",
+                        "PENDING",
+                        "WAIVED",
+                        "UNINVOICED"
+                    ]
+                },
                 "quote_id": {
                     "type": "string"
                 },
@@ -12137,6 +12204,61 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SaleAwaitingInvoiceResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "client": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "paid_at": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "total": {
                     "type": "string"
                 }
             }

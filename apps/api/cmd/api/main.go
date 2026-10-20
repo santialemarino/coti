@@ -288,7 +288,7 @@ func run() error {
 		WithWhatsAppCredentials(channelSealer).
 		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo)
+		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment)
 	quoteDeliveryService.WithClientAssociations(clientService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).

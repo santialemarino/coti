@@ -291,7 +291,8 @@ func toClientProfileResponse(profile domain.ClientProfile) dto.ClientProfileResp
 		sale := profile.Sales[i]
 		sales = append(sales, dto.ClientSaleResponse{QuoteID: sale.QuoteID, RFQID: sale.RFQID,
 			Number: sale.Number, BranchID: sale.BranchID, BranchName: sale.BranchName,
-			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt})
+			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt,
+			InvoiceStatus: string(domain.InvoiceStatusOf(sale.Closure))})
 	}
 	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client),
 		Tags: toClientTagResponses(profile.Tags), Sales: sales}

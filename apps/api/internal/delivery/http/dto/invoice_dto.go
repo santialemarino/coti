@@ -180,6 +180,28 @@ type InvoiceListResponse struct {
 	PageSize int               `json:"page_size"`
 }
 
+// SaleAwaitingInvoiceResponse is one accepted sale still waiting for an invoice.
+type SaleAwaitingInvoiceResponse struct {
+	QuoteID    uuid.UUID  `json:"quote_id"`
+	RFQID      uuid.UUID  `json:"rfq_id"`
+	Number     int64      `json:"quote_number"`
+	BranchID   uuid.UUID  `json:"branch_id"`
+	BranchName string     `json:"branch_name"`
+	ClientID   *uuid.UUID `json:"client_id"`
+	Client     string     `json:"client"`
+	Total      string     `json:"total"`
+	AcceptedAt time.Time  `json:"accepted_at"`
+	PaidAt     *time.Time `json:"paid_at"`
+}
+
+// SaleAwaitingInvoiceListResponse is returned by GET /v1/quotes/awaiting-invoice.
+type SaleAwaitingInvoiceListResponse struct {
+	Items    []SaleAwaitingInvoiceResponse `json:"items"`
+	Total    int                           `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"page_size"`
+}
+
 // InvoiceIssuerProfileRequest carries printable fiscal registration data.
 type InvoiceIssuerProfileRequest struct {
 	Address                 string `json:"address" binding:"required,max=255"`

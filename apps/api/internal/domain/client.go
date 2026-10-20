@@ -67,6 +67,7 @@ type ClientSale struct {
 	BranchName string
 	Total      decimal.Decimal
 	AcceptedAt time.Time
+	Closure    SaleClosure
 }
 
 // ClientProfile joins a client, their tags, and accepted sales visible to the caller.

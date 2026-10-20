@@ -221,7 +221,7 @@ func newEnvWithRFQProviders(
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithInvoicingSwitch(repository.NewInvoicingRepository())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo)
+		quoteSendRepo).WithInvoicingEnvironment(domain.ARCAEnvironmentHomologation)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
 	if err != nil {
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
