@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { RfqQueuePane } from '@/app/(protected)/rfqs/_components/rfq-queue-pane';
 import { RfqDetailView } from '@/app/(protected)/rfqs/[id]/_components/rfq-detail-view';
+import { getAccount } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
@@ -26,7 +27,11 @@ async function fetchRfqDetail(id: string): Promise<RfqDetailResponse | null> {
 export default async function RfqDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const t = await getTranslations('rfqs');
-  const [detail, branches] = await Promise.all([fetchRfqDetail(id), getBranches()]);
+  const [detail, branches, account] = await Promise.all([
+    fetchRfqDetail(id),
+    getBranches(),
+    getAccount(),
+  ]);
 
   if (!detail) {
     return (
@@ -43,7 +48,11 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
   const branch = branches.find((candidate) => candidate.id === detail.rfq.branch_id);
   return (
     <RfqQueuePane>
-      <RfqDetailView detail={detail} branchMissesEmail={!!branch && missesBranchEmail(branch)} />
+      <RfqDetailView
+        detail={detail}
+        branchMissesEmail={!!branch && missesBranchEmail(branch)}
+        invoicingEnabled={account.invoicingEnabled}
+      />
     </RfqQueuePane>
   );
 }

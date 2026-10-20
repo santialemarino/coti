@@ -15,6 +15,8 @@ interface AccountRaw {
   brand_logo_url: string | null;
   brand_color: string | null;
   preferred_lower_price_strategy: LowerPriceStrategy;
+  invoicing_enabled: boolean;
+  has_invoices: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -30,6 +32,9 @@ export interface Account {
   brandLogoUrl: string | null;
   brandColor: string | null;
   preferredLowerPriceStrategy: LowerPriceStrategy;
+  // Whether the corralón invoices with Coti; off hides everything invoicing-related.
+  invoicingEnabled: boolean;
+  hasInvoices: boolean;
 }
 
 // --- Mappers ---
@@ -43,7 +48,14 @@ function mapAccount(raw: AccountRaw): Account {
     brandLogoUrl: raw.brand_logo_url,
     brandColor: raw.brand_color,
     preferredLowerPriceStrategy: raw.preferred_lower_price_strategy,
+    invoicingEnabled: raw.invoicing_enabled,
+    hasInvoices: raw.has_invoices,
   };
+}
+
+// Issued invoices are fiscal records, so their history stays reachable after invoicing is turned off.
+export function showsInvoiceHistory(account: Pick<Account, 'invoicingEnabled' | 'hasInvoices'>) {
+  return account.invoicingEnabled || account.hasInvoices;
 }
 
 // --- API functions ---

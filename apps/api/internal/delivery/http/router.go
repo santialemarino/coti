@@ -307,6 +307,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.GET("/promotions/:promotionId", h.Promotion.Get)
 	admin.POST("/promotions", h.Promotion.Create)
 	admin.PUT("/promotions/:promotionId", h.Promotion.Replace)
+	admin.PUT("/invoicing/enabled", h.Account.SetInvoicingEnabled)
 	if h.Invoice != nil {
 		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
 		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)

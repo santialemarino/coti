@@ -25,6 +25,7 @@ import { ClientFiscalForm } from '@/app/(protected)/clients/[id]/_components/cli
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
+import { getAccount } from '@/lib/api/account';
 import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
 import { getClient, getClientFiscal, getClientTags } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
@@ -41,12 +42,14 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   const fmt = await getFormatters();
   let profile: ClientProfile;
   let availableTags: ClientTag[];
-  let fiscal: ClientFiscal;
+  let fiscal: ClientFiscal | null;
+  // A client's fiscal data only serves invoicing with Coti, so it is not even read while that is off.
+  const account = await getAccount();
   try {
     [profile, availableTags, fiscal] = await Promise.all([
       getClient(id),
       getClientTags(),
-      getClientFiscal(id),
+      account.invoicingEnabled ? getClientFiscal(id) : null,
     ]);
   } catch (error) {
     if (error instanceof ApiError && errorCodeOf(error) === 'NOT_FOUND') notFound();
@@ -60,7 +63,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         <BackLink href={ROUTES.clients} label={t('backToList')} />
         <PageHeader
           title={name}
-          description={t('profile.description')}
+          description={t(fiscal ? 'profile.description' : 'profile.descriptionWithoutFiscal')}
           actions={<Badge tone="success">{t('salesCount', { total: profile.sales.length })}</Badge>}
         />
       </div>
@@ -104,7 +107,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         />
       </div>
 
-      <ClientFiscalForm key={id} client={fiscal} />
+      {fiscal ? <ClientFiscalForm key={id} client={fiscal} /> : null}
 
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="py-6">

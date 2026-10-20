@@ -40,6 +40,8 @@ const ACCOUNT: Account = {
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: '#C2410C',
   preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+  invoicingEnabled: false,
+  hasInvoices: false,
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.

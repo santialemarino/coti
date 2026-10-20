@@ -35,7 +35,7 @@ const SESSION = {
 
 // The trigger is read before the menu opens: an open menu hides everything outside it.
 async function openMenu(session = SESSION) {
-  const view = render(await AppHeader({ session }));
+  const view = render(await AppHeader({ session, showInvoiceHistory: true }));
   const trigger = view.getByRole('button', { name: /Ana Gómez/ });
   const triggerText = trigger.textContent ?? '';
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
@@ -103,7 +103,7 @@ describe('AppHeader attention', () => {
 
 describe('AppHeader account menu', () => {
   it('offers settings and sign out without a separate password entry', async () => {
-    const view = render(await AppHeader({ session: SESSION }));
+    const view = render(await AppHeader({ session: SESSION, showInvoiceHistory: true }));
 
     fireEvent.pointerDown(view.getByRole('button', { name: /Ana Gómez/ }), {
       button: 0,
@@ -128,7 +128,7 @@ describe('AppHeader account menu', () => {
     vi.mocked(getBranches).mockResolvedValue([branch]);
     vi.mocked(getEffectiveBranchId).mockResolvedValue(branch.id);
 
-    render(await AppHeader({ session: SESSION }));
+    render(await AppHeader({ session: SESSION, showInvoiceHistory: true }));
 
     expect(vi.mocked(BranchSwitcher)).toHaveBeenCalledWith(
       expect.objectContaining({ branches: [branch], activeBranchId: branch.id, isAdmin: true }),
@@ -140,14 +140,27 @@ describe('AppHeader account menu', () => {
 // A phone has room for the logo, the branch and the avatar; everything else moves or folds away.
 describe('AppHeader below lg', () => {
   it('leaves the section links to the tab bar', async () => {
-    render(await AppHeader({ session: SESSION }));
+    render(await AppHeader({ session: SESSION, showInvoiceHistory: true }));
 
-    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith({ className: 'max-lg:hidden' }, undefined);
+    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith(
+      { administration: true, className: 'max-lg:hidden' },
+      undefined,
+    );
+  });
+
+  // Whether the invoice history is offered is decided by the layout, from the account.
+  it('passes the invoice history decision to the sections', async () => {
+    render(await AppHeader({ session: SESSION, showInvoiceHistory: false }));
+
+    expect(vi.mocked(PrimaryNav)).toHaveBeenCalledWith(
+      expect.objectContaining({ administration: false }),
+      undefined,
+    );
   });
 
   // Pins the class only; the name being hidden at that width is checked in a browser.
   it('marks the profile name to hide below lg', async () => {
-    const view = render(await AppHeader({ session: SESSION }));
+    const view = render(await AppHeader({ session: SESSION, showInvoiceHistory: true }));
 
     const name = view.getByText(SESSION.name).parentElement as HTMLElement;
     expect(name.classList.contains('hidden')).toBe(true);

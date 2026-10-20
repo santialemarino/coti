@@ -2505,6 +2505,69 @@
                 }
             }
         },
+        "/v1/invoicing/enabled": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Off refuses issuing invoices and credit notes; issued ones stay readable and the ARCA setup is kept. Turning it off is refused with 409 INVOICE_PENDING while an invoice waits for ARCA.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Switch invoicing with Coti on or off",
+                "parameters": [
+                    {
+                        "description": "Switch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetInvoicingEnabledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/invoicing/points-of-sale": {
             "put": {
                 "security": [
@@ -8071,8 +8134,16 @@
                 "created_at": {
                     "type": "string"
                 },
+                "has_invoices": {
+                    "description": "Whether any invoice was ever recorded, which keeps the history readable while invoicing is off.",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
+                },
+                "invoicing_enabled": {
+                    "description": "Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.",
+                    "type": "boolean"
                 },
                 "is_active": {
                     "type": "boolean"
@@ -11830,6 +11901,17 @@
                 },
                 "stock": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SetInvoicingEnabledRequest": {
+            "type": "object",
+            "required": [
+                "enabled"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },

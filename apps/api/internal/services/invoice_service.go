@@ -27,7 +27,8 @@ type invoicingStore interface {
 	ListBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.BranchPointOfSale, error)
 	GetBranchPointOfSale(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*int, error)
 	UpdateBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int) error
-	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
+	InvoicingEnabled(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
+	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 	GetClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
@@ -243,6 +244,9 @@ func (s *InvoiceService) Preview(
 	}
 	var preview *domain.InvoicePreview
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if err := s.requireInvoicingOn(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		draft, err := s.draft(ctx, q, tenant, quoteID)
 		if err != nil {
 			return err
@@ -266,6 +270,9 @@ func (s *InvoiceService) Issue(
 	var creds, recovery domain.ARCACredentials
 	var stale *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if err := s.requireInvoicingOn(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		var err error
 		if draft, err = s.draft(ctx, q, tenant, quoteID); err != nil {
 			return err
@@ -347,6 +354,22 @@ func (s *InvoiceService) Issue(
 		},
 	})
 	return s.settle(detached, tenant, *pending, auth, issueErr)
+}
+
+// errAccountInvoicingOff refuses issuing for an account that does not invoice with Coti.
+var errAccountInvoicingOff = domain.WithCode(domain.CodeAccountInvoicingOff,
+	fmt.Errorf("%w: the account does not invoice with Coti", domain.ErrConflict))
+
+// requireInvoicingOn refuses when the account switched invoicing with Coti off.
+func (s *InvoiceService) requireInvoicingOn(ctx context.Context, q repository.Querier, accountID uuid.UUID) error {
+	enabled, err := s.store.InvoicingEnabled(ctx, q, accountID)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return errAccountInvoicingOff
+	}
+	return nil
 }
 
 // invoiceDraft is a preview with what issuing it needs on top.
@@ -504,10 +527,14 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		if err != nil {
 			return err
 		}
-		// Taken before the draft is rebuilt, so a CUIT change or disconnect either waits for this
-		// invoice or has already landed and makes the draft stale.
-		if err := s.store.LockAccountForShare(ctx, q, tenant.AccountID); err != nil {
+		// Taken before the draft is rebuilt, so a CUIT change, a disconnect or switching invoicing off
+		// either waits for this invoice or has already landed and refuses it.
+		enabled, err := s.store.LockAccountForShare(ctx, q, tenant.AccountID)
+		if err != nil {
 			return err
+		}
+		if !enabled {
+			return errAccountInvoicingOff
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
 		if err != nil {

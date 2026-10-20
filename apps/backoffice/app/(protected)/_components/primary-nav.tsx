@@ -10,16 +10,18 @@ import { NavLink } from '@/app/(protected)/_components/nav-link';
 import { isOrdersPath, ROUTES } from '@/config/routes';
 
 interface PrimaryNavProps {
+  // Whether Administración, the invoice history, is offered: see showsInvoiceHistory.
+  administration: boolean;
   // A row in the header from lg up; a tab bar along the bottom of the screen below it.
   layout?: 'bar' | 'tabs';
   className?: string;
 }
 
 /*
- * The seller's main navigation, rendered on every protected screen. All four sections are links;
- * Reportes and Administración land on placeholder screens until their real ones exist.
+ * The seller's main navigation, rendered on every protected screen. Reportes lands on a placeholder
+ * screen until its real one exists.
  */
-export function PrimaryNav({ layout = 'bar', className }: PrimaryNavProps) {
+export function PrimaryNav({ administration, layout = 'bar', className }: PrimaryNavProps) {
   const t = useTranslations('common');
   const pathname = usePathname();
 
@@ -41,17 +43,28 @@ export function PrimaryNav({ layout = 'bar', className }: PrimaryNavProps) {
       icon: ChartColumnIcon,
       active: inSection(ROUTES.reports),
     },
-    {
-      href: ROUTES.administration,
-      label: t('nav.administration'),
-      icon: BriefcaseIcon,
-      active: inSection(ROUTES.administration),
-    },
+    ...(administration
+      ? [
+          {
+            href: ROUTES.administration,
+            label: t('nav.administration'),
+            icon: BriefcaseIcon,
+            active: inSection(ROUTES.administration),
+          },
+        ]
+      : []),
   ];
 
   if (layout === 'tabs') {
     return (
-      <nav aria-label={t('nav.main')} className={cn('grid h-full grid-cols-4 px-2', className)}>
+      <nav
+        aria-label={t('nav.main')}
+        className={cn(
+          'grid h-full px-2',
+          items.length === 4 ? 'grid-cols-4' : 'grid-cols-3',
+          className,
+        )}
+      >
         {items.map(({ href, label, icon: Icon, active }) => (
           <Link
             key={href}

@@ -52,10 +52,19 @@ type AccountResponse struct {
 	BrandLogoURL *string   `json:"brand_logo_url"`
 	BrandColor   *string   `json:"brand_color"`
 	// FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.
-	PreferredLowerPriceStrategy string    `json:"preferred_lower_price_strategy"`
-	IsActive                    bool      `json:"is_active"`
-	CreatedAt                   time.Time `json:"created_at"`
-	UpdatedAt                   time.Time `json:"updated_at"`
+	PreferredLowerPriceStrategy string `json:"preferred_lower_price_strategy"`
+	// Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
+	InvoicingEnabled bool `json:"invoicing_enabled"`
+	// Whether any invoice was ever recorded, which keeps the history readable while invoicing is off.
+	HasInvoices bool      `json:"has_invoices"`
+	IsActive    bool      `json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// SetInvoicingEnabledRequest is the body for PUT /v1/invoicing/enabled.
+type SetInvoicingEnabledRequest struct {
+	Enabled *bool `json:"enabled" binding:"required"`
 }
 
 // BrandLogoResponse is returned by POST /v1/account/logo.

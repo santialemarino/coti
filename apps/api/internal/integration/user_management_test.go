@@ -27,6 +27,7 @@ import (
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	invoicepdf "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/secrets"
@@ -224,6 +225,13 @@ func newEnvWithRFQProviders(
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
 	}
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	arcaSealer, err := secrets.NewAESGCM(nil)
+	if err != nil {
+		t.Fatalf("NewAESGCM() = %v, want no error", err)
+	}
+	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo,
+		quoteDiscountRepo, nil, arcaSealer, services.InvoiceSettings{Environment: domain.ARCAEnvironmentHomologation},
+		nil, nil, invoicepdf.NewInvoiceRenderer())
 
 	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
 	if err != nil {
@@ -277,6 +285,7 @@ func newEnvWithRFQProviders(
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
+			Invoice:    handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},

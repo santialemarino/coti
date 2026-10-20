@@ -23,6 +23,9 @@ func (s *InvoiceService) IssueCreditNote(ctx context.Context, tenant domain.Tena
 	var creds, recovery domain.ARCACredentials
 	var stale *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if err := s.requireInvoicingOn(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		var err error
 		if invoice, err = s.creditableInvoice(ctx, q, tenant, invoiceID); err != nil {
 			return err
@@ -140,8 +143,12 @@ func (s *InvoiceService) holdCreditNote(ctx context.Context, tenant domain.Tenan
 		if _, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, invoice.QuoteID); err != nil {
 			return err
 		}
-		if err := s.store.LockAccountForShare(ctx, q, tenant.AccountID); err != nil {
+		enabled, err := s.store.LockAccountForShare(ctx, q, tenant.AccountID)
+		if err != nil {
 			return err
+		}
+		if !enabled {
+			return errAccountInvoicingOff
 		}
 		// Read again under the locks: a credit note held meanwhile is the one this would duplicate.
 		if invoice, err = s.creditableInvoice(ctx, q, tenant, invoiceID); err != nil {

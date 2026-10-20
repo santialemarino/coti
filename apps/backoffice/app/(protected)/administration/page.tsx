@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { ReceiptTextIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -21,6 +22,7 @@ import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { InvoicePagination } from '@/app/(protected)/administration/_components/invoice-pagination';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { ROUTES } from '@/config/routes';
+import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { getInvoices } from '@/lib/api/invoices';
 import { formatInvoiceNumber, isCredited, type Invoice } from '@/lib/api/invoicing';
@@ -47,6 +49,7 @@ export default async function AdministrationPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
+  if (!showsInvoiceHistory(await getAccount())) notFound();
   const session = await getSession();
   const fmt = await getFormatters();
   const t = await getTranslations('invoicing.history');

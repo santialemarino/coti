@@ -222,11 +222,19 @@ function RecordProbe() {
   );
 }
 
-function renderView(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
-  return render(viewTree(detail, activeBranchId));
+function renderView(
+  detail: RfqDetailResponse,
+  activeBranchId: string | null = BRANCH_ID,
+  invoicingEnabled = true,
+) {
+  return render(viewTree(detail, activeBranchId, invoicingEnabled));
 }
 
-function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
+function viewTree(
+  detail: RfqDetailResponse,
+  activeBranchId: string | null = BRANCH_ID,
+  invoicingEnabled = true,
+) {
   return (
     <NextIntlClientProvider
       locale="es"
@@ -241,7 +249,7 @@ function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRA
         userId="u-admin"
         isAdmin={true}
       >
-        <RfqDetailView detail={detail} />
+        <RfqDetailView detail={detail} invoicingEnabled={invoicingEnabled} />
         <RecordProbe />
       </RfqListProvider>
     </NextIntlClientProvider>
@@ -515,6 +523,13 @@ describe('RfqDetailView archived', () => {
 
     expect(view.queryByText(copy.detail.callouts.archived.title)).toBeNull();
     expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
+  });
+
+  it('shows no invoice on an accepted sale while invoicing with Coti is off', () => {
+    const view = renderView(makeDetail('ACCEPTED'), BRANCH_ID, false);
+
+    expect(view.getByText(copy.detail.callouts.accepted.title)).toBeTruthy();
+    expect(view.queryByTestId('invoice-card')).toBeNull();
   });
 
   it('keeps the invoice of an archived sale on screen, read-only', () => {

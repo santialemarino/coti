@@ -26,11 +26,16 @@ vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getEffectiveBranchId: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/api/invoices', () => ({ getInvoices: vi.fn() }));
+vi.mock('@/lib/api/account', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/account')>()),
+  getAccount: vi.fn(),
+}));
 
 const { getSession } = await import('@/lib/auth/session');
 const { getEffectiveBranchId } = await import('@/lib/auth/branch');
 const { getBranches } = await import('@/lib/api/branches');
 const { getInvoices } = await import('@/lib/api/invoices');
+const { getAccount } = await import('@/lib/api/account');
 const { default: AdministrationPage } = await import('@/app/(protected)/administration/page');
 
 const copy = messages.invoicing.history;
@@ -73,6 +78,7 @@ async function renderPage(branchId: string | undefined, items: Invoice[], total 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled: true, hasInvoices: true } as never);
   vi.mocked(getSession).mockResolvedValue({ role: 'ADMIN' } as never);
   vi.mocked(getBranches).mockResolvedValue([
     { id: 'moron', name: 'Morón' },
@@ -164,5 +170,30 @@ describe('AdministrationPage', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(within(rows[0]!).getByText(messages.invoicing.testBadge)).toBeTruthy();
     expect(within(rows[1]!).queryByText(messages.invoicing.testBadge)).toBeNull();
+  });
+});
+
+describe('AdministrationPage with invoicing off', () => {
+  // Nothing was ever issued, so there is no history to show and the section does not exist.
+  it('is not found when the account never invoiced', async () => {
+    vi.mocked(getAccount).mockResolvedValue({
+      invoicingEnabled: false,
+      hasInvoices: false,
+    } as never);
+
+    await expect(AdministrationPage({ searchParams: Promise.resolve({}) })).rejects.toThrow();
+    expect(getInvoices).not.toHaveBeenCalled();
+  });
+
+  // Issued invoices are fiscal records: switching invoicing off never hides them.
+  it('still lists the invoices already issued', async () => {
+    vi.mocked(getAccount).mockResolvedValue({
+      invoicingEnabled: false,
+      hasInvoices: true,
+    } as never);
+
+    await renderPage('moron', [invoice({})]);
+
+    expect(screen.getByText('Obra Norte')).toBeTruthy();
   });
 });
