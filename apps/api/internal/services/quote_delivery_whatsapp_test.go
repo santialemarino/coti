@@ -40,7 +40,7 @@ func TestQuoteDeliveryService_WhatsAppCredentialsOpenOnlyForDispatch(t *testing.
 	channelID := uuid.New()
 	channels := &fakeQuoteDeliveryWhatsAppChannels{configs: map[uuid.UUID][]byte{channelID: []byte(
 		`{"phone_number_id":"phone-id","access_token":"sealed:access-token"}`)}}
-	service := NewQuoteDeliveryService(&fakePublicQuoteDB{}, nil, nil, channels, nil, nil, nil,
+	service := NewQuoteDeliveryService(&fakePublicQuoteDB{}, nil, nil, nil, channels, nil, nil, nil,
 		nil, nil, "", nil, nil).WithWhatsAppCredentials(fakeQuoteDeliveryChannelOpener{})
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New()}
 

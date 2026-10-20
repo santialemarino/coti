@@ -273,7 +273,7 @@ func run() error {
 			quoteDiscountRepo))
 	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
 		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
-	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
+	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
 		channelRepo, branchRepo, productPriceRepo,
 		whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
 			cfg.WhatsApp.GraphAPIVersion).

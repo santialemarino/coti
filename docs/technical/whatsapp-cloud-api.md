@@ -184,6 +184,11 @@ Meta's message ID as `provider_reference`. If Meta rejects the call, the individ
 recorded as `FAILED`; email, when selected, still runs independently. The seller can also send
 solely by email without selecting a WhatsApp destination.
 
+When a branch has several active channels of the selected type, delivery uses the RFQ's original
+channel if it is among them. This applies to both WhatsApp and email; for a different type with
+several active channels, delivery is refused because no channel was selected. A single
+active channel remains usable even if the original channel is no longer active.
+
 Use a dedicated test recipient added in Meta while the app is in development. A production number
 requires Meta's production registration and the usual business verification; the integration code
 does not make an unregistered number sendable.
