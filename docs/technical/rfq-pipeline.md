@@ -533,21 +533,51 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
    the same draft.
 
-A `COMPLEX` goal runs a fixed recipe in the apply transaction, over the named lines or every line
-with a product, with quantities untouched:
+A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
+line with a product:
 
-| Intent              | Strategy recorded           | Each line becomes                                                             |
-| ------------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| `LOWER_TOTAL_PRICE` | `FIND_CHEAPER_ALTERNATIVES` | its cheapest `ECONOMY` alternative the branch prices below its own unit price |
-| `IMPROVE_QUALITY`   | `IMPROVE_QUALITY`           | its cheapest `PREMIUM` alternative the branch prices                          |
+| Strategy                    | Runs for            | Each line in scope becomes                                                      |
+| --------------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| `FIND_CHEAPER_ALTERNATIVES` | `LOWER_TOTAL_PRICE` | its cheapest `ECONOMY` alternative the branch prices below its own unit price   |
+| `ADAPT_TO_REACH_DISCOUNT`   | `LOWER_TOTAL_PRICE` | the same line at the next threshold of a promotion it targets, if that is lower |
+| `IMPROVE_QUALITY`           | `IMPROVE_QUALITY`   | its cheapest `PREMIUM` alternative the branch prices                            |
 
 Only an active alternative sold in the base product's unit counts, and ties go to its name:
-`product_alternative` has no rank. The swaps are written as
-`REPLACE_ITEM` operations and priced at once at the branch price the recipe chose them by. A
-`LOWER_TOTAL_PRICE` result stands only if the engine's total after the sweep ends below the draft's
-own swept total; `IMPROVE_QUALITY` has no cap. An `ADD_DISCOUNT` needs nothing when the promotion is
-already applied, restores it when the seller suppressed it, and is refused when the quote does not
-earn it.
+`product_alternative` has no rank. The swaps are written as `REPLACE_ITEM` operations and priced at
+once at the branch price the recipe chose them by; quantities never change. `IMPROVE_QUALITY` has
+no cap.
+
+`ADAPT_TO_REACH_DISCOUNT` never adds a product and never lowers a quantity. A line's threshold is the
+least quantity above its own at which an in-force `PER_ITEM` promotion (a condition's
+`min_quantity`) or `QUANTITY_TIERED` one (the first tier, or the next one) targets the line's
+product, family or subgroup and earns a figure the line does not earn already. `ITEM_SET` and
+`ON_TOTAL` rules are never adapted to, and a promotion the seller suppressed on the draft is
+skipped. The lines are walked in draft order and each keeps the raise whose engine total, evaluated
+in memory on the swept state, is lowest — only if it is lower than what the walk had reached. The
+raises are written as `UPDATE_QUANTITY` operations, the draft is swept again, and the strategy
+stands only if that total ends strictly below the swept baseline. An engine application the raises
+earned (one on a raised line that was not live with the same figure before) is stored with origin
+`AI_ADAPTATION`.
+
+`LOWER_TOTAL_PRICE` runs its two strategies "first that works": the first one is the customer's
+wording (the model's optional `lower_price_strategy`, valid only with `COMPLEX` +
+`LOWER_TOTAL_PRICE`), else the account's `preferred_lower_price_strategy` (an admin setting on
+`PUT /v1/account`, default `FIND_CHEAPER_ALTERNATIVES`). A strategy with no lower total rolls its
+transaction back and the other runs on the untouched draft; when neither delivers, the no-match
+lists both in `strategies_tried`, in run order.
+
+An `ADD_DISCOUNT` needs nothing when the promotion is already applied and restores it when the
+seller suppressed it. A `PER_ITEM` or `QUANTITY_TIERED` promotion the quote does not earn is reached:
+every line it targets below its threshold is raised to the least quantity that earns it, kept only
+where the engine then applies that promotion on the line, and the total may rise — the customer
+asked for that promotion, and the seller reviews it. A line the same proposal requantified keeps the
+customer's quantity. The run records `ADAPT_TO_REACH_DISCOUNT` and the raises; an `ITEM_SET` or
+`ON_TOTAL` promotion, or one no raise earns, is refused with `PROMOTION_NOT_EARNED`.
+
+An `AI_ADAPTATION` application belongs to the engine like an `AUTOMATIC` one: the sweep recomputes
+its amount, keeps it (and its origin) while it is still earned and drops it when it is not, and the
+seller suppresses or restores it the same way. A draft cloned from a version carries it as a plain
+`AUTOMATIC` promotion, suppressed or not.
 
 The model never sets money: a requantified line keeps its unit price, a new or replaced line waits
 unpriced for the seller to accept materials (a recipe's swap is the exception, priced by the
@@ -560,11 +590,14 @@ quote does not earn, rolls the whole write back — atomic operations riding bes
 records a `NO_MATCH` with origin `PIPELINE_EXHAUSTED` and reason `PIPELINE_EXHAUSTED` or
 `PROMOTION_NOT_EARNED`. Every no-match finishes the batch `PROCESSED`, so nothing loops.
 `handler_decision.ai_proposal` stores
-`{outcome, no_match_origin, no_match_reason, interpretation, intent, strategies_tried, operations}`,
-and `draft_before` / `draft_after` the draft's lines and seller-controlled discounts (typed or
+`{outcome, no_match_origin, no_match_reason, interpretation, intent, strategies_tried,
+preferred_strategy, adaptation, operations}` — `adaptation` holding each raised line (from, to, the
+promotion it reached) and the engine totals before and after, which the detail's handler note and
+the conversation panel return to the seller —`,
+and `draft_before`/`draft_after`the draft's lines and seller-controlled discounts (typed or
 suppressed) around the change, without prices. A provider failure is retried like any other error,
-up to `CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE` for
-a refusal no retry can fix, `ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
+up to`CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE`for
+a refusal no retry can fix,`ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
 
 #### The seller's decision
 
@@ -588,7 +621,7 @@ quote; anything else answers `409 BATCH_NOT_RETRYABLE`.
 The RFQ detail's `changes_requested` compares the draft with the version the customer received:
 `lines` pairs each sent line with the draft line copied from it (by `source_item_id`, never by
 position) as `UNCHANGED`, `MODIFIED` or `REMOVED`, then the lines the draft added as `ADDED`;
-`discounts` pairs discounts by name the same way; `original_total` and `requested_total` close it.
+`discounts` pairs a promotion with the same promotion — a line one on the sent line its draft line was copied from — and anything else by name, each side carrying its `origin`; `original_total` and `requested_total` close it.
 `handler` carries the latest decision on the draft, and `client_messages` every message the customer
 sent since the version they answered was frozen. The backoffice shows them as one card: the
 customer's words, the reading and its outcome, and only the changed rows. `conversation` carries the whole
