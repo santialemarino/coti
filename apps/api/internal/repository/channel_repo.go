@@ -242,14 +242,13 @@ func (r *ChannelRepository) Create(
 	return &channel, nil
 }
 
-// CreateDefaults opens the channels every branch is born with: manual entry, and the WhatsApp and
-// email routes a quote is sent through. email is the branch mailbox, nil when it has none yet.
+// CreateDefaults opens the four intake channels, using the branch mailbox when available.
 func (r *ChannelRepository) CreateDefaults(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, email *string,
 ) error {
 	_, err := q.Exec(ctx,
 		`INSERT INTO channel (account_id, branch_id, type)
-		 VALUES ($1, $2, 'MANUAL_ENTRY'), ($1, $2, 'WHATSAPP')
+		 VALUES ($1, $2, 'MANUAL_ENTRY'), ($1, $2, 'WHATSAPP'), ($1, $2, 'WEBAPP')
 		 ON CONFLICT DO NOTHING`,
 		accountID, branchID)
 	if err != nil {

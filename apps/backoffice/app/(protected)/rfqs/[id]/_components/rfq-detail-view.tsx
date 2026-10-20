@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
@@ -249,6 +250,8 @@ export function RfqDetailView({
       ) : null}
 
       <RfqStatusTimeline detail={detail} />
+
+      {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
 
       {showFollowup ? (
         <Callout tone="followup" title={t('detail.callouts.followup.title')}>

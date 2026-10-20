@@ -157,6 +157,21 @@ afterEach(() => {
 });
 
 describe('SendQuoteDialog', () => {
+  it('opens the web publication without exposing its internal destination', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(
+      sentResult([delivery({ channel: 'webapp', destination: 'customer-portal' })]),
+    );
+    const view = renderDialog();
+    openDialog(view);
+    expect(view.getByRole('button', { name: /^Enviar$/ }).hasAttribute('disabled')).toBe(true);
+    await sendOn(view);
+
+    expect(view.getByRole('link', { name: copy.visualizeOnline }).getAttribute('href')).toBe(
+      WHATSAPP_URL,
+    );
+    expect(view.queryByText('customer-portal')).toBeNull();
+  });
+
   /*
    * The send is done: what the seller still needs is the link. It rides the same two channels it
    * was sent on, so the dialog holds it until it is closed rather than disappearing with the toast.

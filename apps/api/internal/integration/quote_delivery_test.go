@@ -112,6 +112,9 @@ type sendableQuote struct {
 func (e *env) seedSendableQuote(t *testing.T, name string, corrected bool) sendableQuote {
 	t.Helper()
 	accountID, branchID := e.seedAccount(t, name)
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel(account_id,branch_id,type) VALUES ($1,$2,'WEBAPP') ON CONFLICT DO NOTHING`, accountID, branchID); err != nil {
+		t.Fatal(err)
+	}
 	channelID := e.seedIntakeChannel(t, accountID, branchID)
 	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
 	productID := e.seedPricedProduct(t, accountID, branchID, name+" cement", "50", nil)
@@ -190,9 +193,9 @@ func TestQuoteDelivery_SuccessFreezesSendsAndEvaluatesUnchangedQuote(t *testing.
 	if err != nil {
 		t.Fatalf("Send() = %v", err)
 	}
-	if result.CurrentStatus != domain.QuoteStatusSent || len(result.Deliveries) != 1 ||
+	if result.CurrentStatus != domain.QuoteStatusSent || len(result.Deliveries) != 2 ||
 		result.Deliveries[0].TrackingStatus != domain.SendTrackingStatusSent {
-		t.Fatalf("result = %+v, want one successful WhatsApp delivery", result)
+		t.Fatalf("result = %+v, want WhatsApp delivery and automatic web publication", result)
 	}
 	if whatsapp.count() != 1 || result.ExpiresAt == nil {
 		t.Fatalf("whatsapp calls/expires = %d/%v, want 1/non-nil", whatsapp.count(), result.ExpiresAt)
@@ -269,11 +272,18 @@ func TestQuoteDelivery_EmailOnlyReplaysWithoutContactingWhatsApp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("email-only Send() = %v", err)
 	}
-	if result.CurrentStatus != domain.QuoteStatusSent || len(result.Deliveries) != 1 ||
-		result.Deliveries[0].ChannelType != domain.ChannelTypeEmail ||
-		result.Deliveries[0].Destination != address ||
-		result.Deliveries[0].TrackingStatus != domain.SendTrackingStatusSent {
-		t.Fatalf("result = %+v, want one successful email delivery", result)
+	if result.CurrentStatus != domain.QuoteStatusSent || len(result.Deliveries) != 2 {
+		t.Fatalf("result = %+v, want email delivery and portal publication", result)
+	}
+	deliveries := make(map[domain.ChannelType]domain.QuoteSend, len(result.Deliveries))
+	for _, delivery := range result.Deliveries {
+		deliveries[delivery.ChannelType] = delivery
+	}
+	if deliveries[domain.ChannelTypeEmail].Destination != address ||
+		deliveries[domain.ChannelTypeEmail].TrackingStatus != domain.SendTrackingStatusSent ||
+		deliveries[domain.ChannelTypeWebApp].Destination != "customer-portal" ||
+		deliveries[domain.ChannelTypeWebApp].TrackingStatus != domain.SendTrackingStatusSent {
+		t.Fatalf("deliveries = %+v, want successful email and portal sends", deliveries)
 	}
 	if whatsapp.count() != 0 || email.count() != 1 || email.replyTo[0] != "branch@test.local" ||
 		email.to[0] != address {
@@ -281,9 +291,13 @@ func TestQuoteDelivery_EmailOnlyReplaysWithoutContactingWhatsApp(t *testing.T) {
 			whatsapp.count(), email.count(), email.replyTo, email.to)
 	}
 	replay, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
-	if err != nil || !replay.Replay || email.count() != 1 ||
-		replay.Deliveries[0].ID != result.Deliveries[0].ID {
+	if err != nil || !replay.Replay || email.count() != 1 || len(replay.Deliveries) != 2 {
 		t.Fatalf("replay = %+v, %v; email sends = %d", replay, err, email.count())
+	}
+	for _, delivery := range replay.Deliveries {
+		if delivery.ID != deliveries[delivery.ChannelType].ID {
+			t.Errorf("replayed %s delivery = %s, want the original", delivery.ChannelType, delivery.ID)
+		}
 	}
 	input.Phone = "+5491155550101"
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); domain.CodeOf(err) != domain.CodeIdempotencyMismatch {
@@ -422,30 +436,22 @@ func TestQuoteDelivery_ChannelsAreIndependentAndTenantBoundariesHold(t *testing.
 	}
 }
 
-func TestQuoteDelivery_AllChannelsFailLeavesQuoteQuotedAndDoesNotEvaluate(t *testing.T) {
+func TestQuoteDelivery_WebPublicationSurvivesExternalProviderFailure(t *testing.T) {
 	e := newEnv(t)
 	seed := e.seedSendableQuote(t, "Delivery provider failure", false)
 	whatsapp := &captureWhatsAppSender{err: errors.New("provider outage")}
 	evaluator := &failingQuoteEvaluator{}
 	service := e.quoteDeliveryService(t, whatsapp, &stagedQuoteEmailSender{}, evaluator)
-	_, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
-		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550107"})
-	if !errors.Is(err, domain.ErrDeliveryUnavailable) {
-		t.Fatalf("Send() = %v, want delivery unavailable", err)
+	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550107"})
+	if err != nil || result.CurrentStatus != domain.QuoteStatusSent {
+		t.Fatalf("web publication: %+v, %v", result, err)
 	}
-	var status string
-	var immutable bool
-	var sendStatus string
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT quote.current_status,
-	  version.is_immutable, send.tracking_status
-	  FROM quote JOIN quote_version version ON version.id = quote.current_version_id
-	  JOIN quote_send send ON send.version_id = version.id WHERE quote.id = $1`,
-		seed.draft.Quote.ID).Scan(&status, &immutable, &sendStatus); err != nil {
-		t.Fatalf("read failed delivery: %v", err)
+	statuses := map[domain.ChannelType]domain.SendTrackingStatus{}
+	for _, send := range result.Deliveries {
+		statuses[send.ChannelType] = send.TrackingStatus
 	}
-	if status != "QUOTED" || !immutable || sendStatus != "FAILED" || evaluator.count() != 0 {
-		t.Errorf("status/immutable/send/evaluations = %s/%v/%s/%d, want QUOTED/true/FAILED/0",
-			status, immutable, sendStatus, evaluator.count())
+	if statuses[domain.ChannelTypeWebApp] != domain.SendTrackingStatusSent || statuses[domain.ChannelTypeWhatsApp] != domain.SendTrackingStatusFailed || evaluator.count() != 1 {
+		t.Fatalf("publication/provider/evaluation: %+v / %d", statuses, evaluator.count())
 	}
 }
 
@@ -570,8 +576,13 @@ func (e *env) sentQuoteToken(t *testing.T, service *services.QuoteDeliveryServic
 	if err != nil {
 		t.Fatalf("Send() = %v", err)
 	}
-	return strings.TrimPrefix(result.Deliveries[0].PublicURL, "https://quotes.test/quotes/"),
-		result.Deliveries[0].ID
+	for _, delivery := range result.Deliveries {
+		if delivery.ChannelType == domain.ChannelTypeWhatsApp {
+			return strings.TrimPrefix(delivery.PublicURL, "https://quotes.test/quotes/"), delivery.ID
+		}
+	}
+	t.Fatal("Send() did not publish the WhatsApp delivery")
+	return "", uuid.Nil
 }
 
 /*
@@ -788,5 +799,30 @@ func TestQuoteClientAction_RefusesAnExpiredLink(t *testing.T) {
 	_, err := service.RecordClientAction(context.Background(), token, domain.ClientActionAccept)
 	if !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("answer on an expired link = %v, want a conflict", err)
+	}
+}
+
+func TestQuoteClientAction_WebAndMessageLinksShareOneDecision(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Unified delivery decision", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550111"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Deliveries) != 2 {
+		t.Fatalf("expected external send and web publication: %+v", result.Deliveries)
+	}
+	first, second := result.Deliveries[0].PublicToken, result.Deliveries[1].PublicToken
+	if _, err = service.RespondPublic(context.Background(), first, domain.ClientActionInput{Type: domain.ClientActionAccept}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := service.ResolvePublic(context.Background(), second)
+	if err != nil || view.CustomerStatus == nil || *view.CustomerStatus != domain.ClientActionAccept {
+		t.Fatalf("cross-channel decision view: %+v %v", view, err)
+	}
+	replay, err := service.RespondPublic(context.Background(), second, domain.ClientActionInput{Type: domain.ClientActionReject})
+	if err != nil || replay.CustomerStatus != domain.ClientActionAccept {
+		t.Fatalf("cross-channel answer replay: %+v %v", replay, err)
 	}
 }

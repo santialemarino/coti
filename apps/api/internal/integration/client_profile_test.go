@@ -161,7 +161,7 @@ func TestClientProfile_ConfirmsAcceptedSaleWithoutAutoCreatingOnSend(t *testing.
 		profile.Sales[0].QuoteID != seed.draft.Quote.ID || profile.Sales[0].Total != "100.00" {
 		t.Fatalf("profile = %#v, want one tag and the accepted sale", profile)
 	}
-	if len(result.Deliveries) != 1 {
-		t.Fatalf("deliveries = %d, want one", len(result.Deliveries))
+	if len(result.Deliveries) != 2 {
+		t.Fatalf("deliveries = %d, want WhatsApp and automatic web publication", len(result.Deliveries))
 	}
 }

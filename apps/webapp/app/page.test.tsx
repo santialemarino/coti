@@ -1,21 +1,25 @@
-import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 
-import HomePage from './page';
+import HomePage from '@/app/page';
+import { getCustomerSession } from '@/lib/auth/customer-session';
 
-vi.mock('next-intl/server', async () => import('@/lib/i18n/server-intl.mock'));
-vi.mock('@/components/brand', () => ({
-  Brand: () => <div data-testid="brand" />,
+vi.mock('@/lib/auth/customer-session', () => ({ getCustomerSession: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  redirect: (path: string) => {
+    throw new Error('redirect:' + path);
+  },
 }));
-
-describe('HomePage', () => {
-  it('renders a centered terminal state instead of an endless loading message', async () => {
-    const view = render(await HomePage());
-    const main = view.getByRole('main');
-
-    expect(main.className).toContain('min-h-dvh');
-    expect(main.className).toContain('place-items-center');
-    expect(view.getByText('No hay una cotización abierta')).toBeTruthy();
-    expect(view.queryByText('Cargando…')).toBeNull();
+beforeEach(() => vi.clearAllMocks());
+it('takes returning customers to history', async () => {
+  vi.mocked(getCustomerSession).mockResolvedValue({
+    customerId: 'c',
+    taxId: '20123456786',
+    name: null,
+    sessionExpiresAt: '2030-01-01T00:00:00Z',
   });
+  await expect(HomePage()).rejects.toThrow('redirect:/orders');
+});
+it('takes visitors to login', async () => {
+  vi.mocked(getCustomerSession).mockResolvedValue(null);
+  await expect(HomePage()).rejects.toThrow('redirect:/login');
 });

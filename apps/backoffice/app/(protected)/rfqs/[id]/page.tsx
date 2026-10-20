@@ -6,6 +6,7 @@ import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
+import { mapRfqDetail } from '@/lib/api/rfqs';
 import { generatePageMetadata } from '@/lib/utils/page';
 import { missesBranchEmail } from '@/lib/utils/setup-issues';
 
@@ -13,7 +14,7 @@ export const generateMetadata = () => generatePageMetadata('rfqs');
 
 async function fetchRfqDetail(id: string): Promise<RfqDetailResponse | null> {
   try {
-    return await apiRequest<RfqDetailResponse>({ path: `/v1/rfqs/${id}` });
+    return mapRfqDetail(await apiRequest<RfqDetailResponse>({ path: `/v1/rfqs/${id}` }));
   } catch (err) {
     if (err instanceof ApiError && errorCodeOf(err) === 'NOT_FOUND') {
       return null;

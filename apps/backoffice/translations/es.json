@@ -1555,12 +1555,13 @@
         "send": "Enviar",
         "sending": "Enviando…",
         "successTitle": "Cotización enviada",
-        "successDescription": "El enlace ya llegó con el mensaje. Copialo o abrílo si necesitás reenviarlo.",
+        "successDescription": "Podés copiar el enlace o abrir la cotización.",
         "linkLabel": "Enlace de la cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "openQuote": "Abrir",
+        "visualizeOnline": "Visualizar online",
         "resend": "Enviar a otro destino",
         "done": "Listo",
         "toast": {
@@ -1701,6 +1702,15 @@
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
           "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
         }
+      },
+      "publicRequest": {
+        "title": "Datos del solicitante",
+        "taxId": "CUIT",
+        "name": "Nombre o razón social",
+        "email": "Email",
+        "phone": "Teléfono",
+        "original": "Pedido original",
+        "file": "Ver archivo del pedido"
       }
     }
   },

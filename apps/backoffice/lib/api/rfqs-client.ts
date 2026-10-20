@@ -14,7 +14,7 @@ import type {
   RfqRecord,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
-import { mapListItem } from '@/lib/api/rfqs';
+import { mapListItem, mapRfqDetail } from '@/lib/api/rfqs';
 
 interface CreateRfqBody {
   client_label?: string | null;
@@ -133,7 +133,7 @@ export async function fetchRfqDetail(id: string): Promise<RfqDetailResponse> {
     await throwApiError(response);
   }
 
-  return response.json() as Promise<RfqDetailResponse>;
+  return mapRfqDetail(await response.json());
 }
 
 /*

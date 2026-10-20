@@ -855,6 +855,12 @@ func toRfqDetailResponse(
 		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
 	}
+	if contact := detail.PublicContact; contact != nil {
+		resp.PublicOriginalText = detail.PublicOriginalText
+		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
+		resp.PublicContact = &dto.PublicRFQContactResponse{TaxID: contact.TaxID, Name: contact.Name,
+			Email: contact.Email, Phone: contact.Phone}
+	}
 
 	if detail.Quote != nil {
 		quoteResp := toQuoteResponse(*detail.Quote)

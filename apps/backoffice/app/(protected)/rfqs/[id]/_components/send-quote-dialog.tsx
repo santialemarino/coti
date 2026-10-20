@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
-import { ExternalLinkIcon, MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
+import {
+  ExternalLinkIcon,
+  FileSymlinkIcon,
+  MailIcon,
+  MessageCircleIcon,
+  SendIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -201,20 +207,22 @@ export function SendQuoteDialog({
                   key={delivery.id}
                   className="flex flex-col p-3 gap-y-3 border border-border bg-sunken rounded-lg"
                 >
-                  <div className="flex flex-col gap-y-1">
-                    <span className="text-paragraph-xs-medium text-foreground-muted">
-                      {tChannel(delivery.channel.toLowerCase())}
-                    </span>
-                    <span className="text-paragraph-sm text-foreground">
-                      {delivery.destination}
-                    </span>
-                    <span
-                      aria-label={t('linkLabel')}
-                      className="text-paragraph-xs text-foreground-muted break-all"
-                    >
-                      {delivery.public_url}
-                    </span>
-                  </div>
+                  {delivery.channel.toLowerCase() !== 'webapp' && (
+                    <div className="flex flex-col gap-y-1">
+                      <span className="text-paragraph-xs-medium text-foreground-muted">
+                        {tChannel(delivery.channel.toLowerCase())}
+                      </span>
+                      <span className="text-paragraph-sm text-foreground">
+                        {delivery.destination}
+                      </span>
+                      <span
+                        aria-label={t('linkLabel')}
+                        className="text-paragraph-xs text-foreground-muted break-all"
+                      >
+                        {delivery.public_url}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-x-2">
                     <CopyButton
                       value={delivery.public_url}
@@ -223,8 +231,16 @@ export function SendQuoteDialog({
                     />
                     <Button asChild variant="outline" size="sm">
                       <a href={delivery.public_url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLinkIcon className="size-3.5" />
-                        {t('openQuote')}
+                        {delivery.channel.toLowerCase() === 'webapp' ? (
+                          <FileSymlinkIcon aria-hidden="true" className="size-3.5" />
+                        ) : (
+                          <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+                        )}
+                        {t(
+                          delivery.channel.toLowerCase() === 'webapp'
+                            ? 'visualizeOnline'
+                            : 'openQuote',
+                        )}
                       </a>
                     </Button>
                   </div>

@@ -8,6 +8,11 @@ import {
 } from '@/lib/api/public-quotes';
 import { API_URL } from '@/lib/config';
 
+vi.mock('@/lib/auth/customer-session', () => ({
+  getCustomerToken: async () => 'customer-session',
+  customerApiPath: async (path: string) => API_URL + '/v1/customer/sites/supplier.test' + path,
+}));
+
 function rawSend(overrides: Record<string, unknown> = {}) {
   return {
     status: 'ACTIVE',
@@ -114,13 +119,16 @@ describe('getPublicQuoteByToken', () => {
     await expect(getPublicQuoteByToken('tok-1')).resolves.toEqual(expected);
   });
 
-  it('sends the token url-encoded and attaches no credential', async () => {
+  it('encodes the delivery reference and forwards the customer session', async () => {
     const fetchMock = stubFetch(200, rawSend());
     await getPublicQuoteByToken('tok/with space');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${API_URL}/v1/public/quote-sends/tok%2Fwith%20space`);
-    expect(init.headers).toEqual({ Accept: 'application/json' });
+    expect(url).toBe(`${API_URL}/v1/customer/sites/supplier.test/quote-sends/tok%2Fwith%20space`);
+    expect(init.headers).toEqual({
+      Accept: 'application/json',
+      Authorization: 'Bearer customer-session',
+    });
     expect(init).not.toHaveProperty('credentials');
   });
 

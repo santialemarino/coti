@@ -11,7 +11,7 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
 > this skill points at but does not restate. This skill covers _how_ to build the
 > page/component once placement is decided. Coti has two apps: **backoffice** (authenticated, port
 > 3000, uses `(auth)`/`(protected)` route groups) and **webapp** (public, port
-> 3001, no auth, no route groups). Product language is Argentine Spanish; i18n
+> 3001, separate customer sessions, routes directly under app). Product language is Argentine Spanish; i18n
 > runs on **next-intl** (single locale `es-AR`, no routing) — see "Copy, i18n,
 > and formatting".
 
@@ -29,9 +29,9 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
    - **backoffice `(protected)`:** the layout already enforces a session; call
      `getSession()` in the page only if you need the user/branch. **backoffice
      `(auth)`:** redirect to `ROUTES.home` when already logged in.
-   - **webapp:** the page is public. A customer-scoped route (e.g.
-     `quotes/[token]`) resolves the **token** server-side and 404s an invalid one —
-     access control is the token, never a session.
+   - **webapp:** customer pages call `requireCustomer` and the backend authorizes each
+     request by supplier and authenticated CUIT/CUIL. Delivery tokens identify immutable
+     sends and preserve expiry; they do not authorize access without a customer session.
 4. **Metadata:** Use `generatePageMetadata(...)` from `lib/utils/page.tsx` for a
    page title/description, so tab titles stay consistent across the app.
 
@@ -628,8 +628,8 @@ export async function getQuotes(branchId: string): Promise<Quote[]> {
 ```
 
 - **backoffice** reads/writes go through the **authenticated** fetch (JWT from
-  session). **webapp** reads are **unauthenticated** — a public/token-scoped fetch,
-  e.g. `getPublicQuoteByToken(token)` resolves a tokenized quote with no session.
+  session). **webapp** customer reads use the distinct opaque customer session through
+  `customerFetch`; only supplier metadata and credential entry endpoints are public.
 - **Actions (`actions.ts`) build explicit snake_case bodies:**
 
 ```ts
