@@ -273,6 +273,42 @@
       "QUOTED": "En preparación",
       "DRAFT": "En preparación"
     },
-    "pagination": "Páginas de pedidos"
+    "pagination": "Páginas de pedidos",
+    "profile": "Mis datos"
+  },
+  "customerProfile": {
+    "title": "Mis datos",
+    "orders": "Mis pedidos",
+    "taxId": "CUIT/CUIL",
+    "name": "Nombre o razón social",
+    "namePlaceholder": "Ingresá tu nombre o razón social",
+    "whatsapp": "WhatsApp",
+    "email": "Emails",
+    "phonePlaceholder": "Ingresá tu teléfono",
+    "emailPlaceholder": "Ingresá tu email",
+    "contactNumber": "{kind} {number}",
+    "primary": "Principal",
+    "makePrimary": "Usar como principal",
+    "addPhone": "Agregar teléfono",
+    "addEmail": "Agregar email",
+    "remove": "Quitar",
+    "removeTitle": "Quitar contacto",
+    "removeDescription": "Se quitará {value} al guardar los cambios. Si era el principal, elegí otro antes de guardar.",
+    "removing": "Quitando…",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Guardamos tus datos de contacto.",
+    "errors": {
+      "nameTooLong": "El nombre admite hasta 255 caracteres.",
+      "invalidEmail": "Ingresá un email válido.",
+      "invalidPhone": "Ingresá un teléfono válido.",
+      "duplicate": "Este contacto ya está cargado.",
+      "choosePrimary": "Elegí un contacto principal.",
+      "invalid": "Revisá los datos ingresados.",
+      "conflict": "Los datos cambiaron. Volvé a cargar la página e intentá de nuevo.",
+      "unavailable": "No pudimos guardar tus datos. Intentá de nuevo."
+    },
+    "reviewPending": "Recibimos datos de contacto nuevos con tu CUIT/CUIL. Revisá tus datos y agregalos si corresponden."
   }
 }

@@ -1881,7 +1881,8 @@
       "errors": {
         "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
       }
-    }
+    },
+    "contactSuggestions": "Coincidencias pendientes"
   },
   "reports": {
     "placeholderTitle": "Reportes",
@@ -2913,5 +2914,29 @@
       "credits": "Anula {type} {number}"
     },
     "testBadge": "Prueba"
+  },
+  "clientContactSuggestions": {
+    "title": "Coincidencias de clientes",
+    "pending": "{count, plural, =0 {Sin coincidencias pendientes} one {# coincidencia pendiente} other {# coincidencias pendientes}}",
+    "empty": "No hay coincidencias pendientes",
+    "unknown": "Cliente sin nombre",
+    "review": "Revisar",
+    "reviewTitle": "Revisar coincidencia",
+    "taxId": "CUIT/CUIL declarado",
+    "incoming": "Contacto de entrada",
+    "candidate": "Ficha candidata",
+    "absent": "Sin datos",
+    "original": "Mensaje original",
+    "associate": "Asociar contacto",
+    "separate": "Mantener separado",
+    "merge": "Revisar fusión",
+    "confirm": "Confirmar",
+    "decisionDescription": "Confirmá tu decisión sobre {value}. Los datos recibidos se conservarán.",
+    "mergeDescription": "Se incorporarán los contactos y las asociaciones de la ficha de origen a la ficha candidata. Se conservará el registro de origen y el mensaje recibido de {value}.",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "retry": "Reintentar",
+    "loadError": "No pudimos cargar las coincidencias.",
+    "resolveError": "No pudimos resolver la coincidencia. Revisá tus permisos o volvé a cargar la página."
   }
 }

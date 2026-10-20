@@ -405,6 +405,22 @@ definitions:
       tax_id:
         type: string
     type: object
+  dto.ClientContactResponse:
+    properties:
+      kind:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        type: string
+      primary:
+        type: boolean
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
   dto.ClientFiscalResponse:
     properties:
       address:
@@ -579,6 +595,29 @@ definitions:
     properties:
       imported_rows:
         type: integer
+    type: object
+  dto.ContactSuggestionResponse:
+    properties:
+      candidate_client_id:
+        type: string
+      candidate_name:
+        type: string
+      created_at:
+        type: string
+      declared_name:
+        type: string
+      id:
+        type: string
+      kind:
+        type: string
+      original_text:
+        type: string
+      source_client_id:
+        type: string
+      tax_id:
+        type: string
+      value:
+        type: string
     type: object
   dto.ConversationBatchResponse:
     properties:
@@ -1023,6 +1062,21 @@ definitions:
     required:
     - password
     - token
+    type: object
+  dto.CustomerProfileResponse:
+    properties:
+      client_id:
+        type: string
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactResponse'
+        type: array
+      name:
+        type: string
+      review_pending:
+        type: boolean
+      tax_id:
+        type: string
     type: object
   dto.CustomerRecoveryRequest:
     properties:
@@ -2371,6 +2425,17 @@ definitions:
     - new_password
     - token
     type: object
+  dto.ResolveContactSuggestionRequest:
+    properties:
+      action:
+        enum:
+        - ASSOCIATE
+        - SEPARATE
+        - MERGE
+        type: string
+    required:
+    - action
+    type: object
   dto.RfqDetailResponse:
     properties:
       alternatives:
@@ -2737,6 +2802,18 @@ definitions:
       tax_id:
         maxLength: 32
         type: string
+    type: object
+  dto.UpdateCustomerProfileRequest:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactResponse'
+        type: array
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - contacts
     type: object
   dto.UpdateDiscountRequest:
     properties:
@@ -3663,6 +3740,87 @@ paths:
       summary: Authorize a branch Gmail mailbox
       tags:
       - channels
+  /v1/client-contact-suggestions:
+    get:
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ContactSuggestionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client contact suggestions
+      tags:
+      - clients
+  /v1/client-contact-suggestions/{suggestionId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Suggestion ID
+        in: path
+        name: suggestionId
+        required: true
+        type: string
+      - description: Seller decision
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResolveContactSuggestionRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a client contact suggestion
+      tags:
+      - clients
   /v1/clients:
     get:
       description: Returns account-level client profiles. Tags are account-wide; accepted
@@ -4245,6 +4403,73 @@ paths:
       summary: Get a customer request
       tags:
       - customer-orders
+  /v1/customer/sites/{hostname}/profile:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerProfileResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get customer commercial profile
+      tags:
+      - customer-profile
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Commercial profile
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateCustomerProfileRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update customer commercial profile
+      tags:
+      - customer-profile
   /v1/customer/sites/{hostname}/quote-sends/{token}:
     get:
       parameters:

@@ -57,6 +57,7 @@ type whatsAppInboundRFQCreator interface {
 // WhatsAppInboundService turns verified WhatsApp messages into idempotent inbound RFQ drafts, or
 // into client messages on the live quote conversation their sender continues.
 type WhatsAppInboundService struct {
+	contacts      inboundContactRecorder
 	db            whatsAppInboundDB
 	routes        whatsAppInboundRouter
 	messages      whatsAppInboundMessageStore
@@ -197,6 +198,9 @@ func (s *WhatsAppInboundService) ingestOne(
 			// A retry keeps whatever the first delivery became; rolling back discards this attempt's join.
 			if reserved.ID != in.ID {
 				return errInboundAlreadyReserved
+			}
+			if s.contacts != nil {
+				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, declaredClientData(message.Body))
 			}
 			return nil
 		})

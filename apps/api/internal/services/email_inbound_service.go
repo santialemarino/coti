@@ -47,6 +47,7 @@ type emailInboundChannels interface {
 
 // EmailInboundService durably records an email and its original files for the RFQ pipeline.
 type EmailInboundService struct {
+	contacts    inboundContactRecorder
 	db          emailInboundDB
 	messages    emailInboundMessages
 	rfqs        emailInboundRFQs
@@ -255,6 +256,11 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 		}
 		if reserved.RFQID == nil || *reserved.RFQID != rfqID {
 			return errInboundAlreadyReserved
+		}
+		if s.contacts != nil {
+			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, declaredClientData(text)); err != nil {
+				return err
+			}
 		}
 		return s.attachments.CreateInboundBatch(ctx, q, route.AccountID, route.BranchID, rfqID, files)
 	})

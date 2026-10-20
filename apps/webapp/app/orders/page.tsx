@@ -28,6 +28,9 @@ export default async function OrdersPage({
         <header className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-heading-4">{t('title')}</h1>
           <div className="flex items-center gap-x-2">
+            <Button asChild variant="outline">
+              <Link href={ROUTES.profile}>{t('profile')}</Link>
+            </Button>
             <Button asChild>
               <Link href={ROUTES.newRequest}>{t('newRequest')}</Link>
             </Button>

@@ -27,6 +27,7 @@ export function safeCustomerDestination(value: unknown, fallback: string = ROUTE
     return fallback;
   if (
     value === ROUTES.orders ||
+    value === ROUTES.profile ||
     value === ROUTES.newRequest ||
     /^\/google-complete(?:\?[^#]*)?$/.test(value) ||
     /^\/(orders|quotes|rfq)\/[A-Za-z0-9_-]+(?:\?[^#]*)?$/.test(value)

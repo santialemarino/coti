@@ -74,7 +74,9 @@ The product's access rule is exact CUIT/CUIL matching within the authenticated s
 therefore grants access to earlier matching requests. CUIT/CUIL is treated as a declared identifier;
 this flow does not verify fiscal ownership. Queries match a request's associated commercial client
 or the retained, normalized web declaration. They never infer identity from a loose name. Customer
-credentials do not create or merge commercial profiles. The seller confirms the client association
+credentials do not merge commercial profiles. Commercial data saves and authenticated request
+declarations can create the unique supplier-scoped fiscal profile; credential registration alone
+does not. The seller confirms the client association
 in the same transaction that publishes a quotation, so all-channel requests become accessible
 before customer acceptance.
 
@@ -99,6 +101,11 @@ action endpoints return 401. A token alone no longer authorizes private content 
 Customer responses are shared across deliveries of the same frozen version, so a response from
 WhatsApp and a visit from history show the same decision. Existing expiry, archive checks,
 idempotency, quote locking and deterministic state transitions remain enforced.
+
+The authenticated `/profile` page manages optional commercial contact collections through
+`GET`/`PUT /v1/customer/sites/{hostname}/profile`. It never modifies recovery email verification,
+passwords or Google links. See [Client profiles](client-profiles.md) for intake provenance,
+uniqueness, primary-contact compatibility and seller-reviewed contact suggestions.
 
 ## Request intake
 

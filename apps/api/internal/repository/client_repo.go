@@ -40,7 +40,7 @@ func (r *ClientRepository) ListSummaries(
 		  WHERE change.account_id = quote.account_id AND change.quote_id = quote.id
 		    AND change.new_status = 'ACCEPTED'
 		) accepted ON quote.id IS NOT NULL
-		WHERE client.account_id = $1
+		WHERE client.account_id = $1 AND client.merged_into IS NULL
 		GROUP BY client.id
 		ORDER BY max(COALESCE(accepted.accepted_at, quote.updated_at)) DESC NULLS LAST,
 		  lower(COALESCE(client.name, client.email, client.phone, '')), client.id`,
@@ -69,7 +69,7 @@ func (r *ClientRepository) ListSummaries(
 func (r *ClientRepository) GetByID(ctx context.Context, q Querier, accountID,
 	clientID uuid.UUID) (*domain.Client, error) {
 	return scanClient(q.QueryRow(ctx, `SELECT `+clientColumns+`
-		FROM client WHERE account_id = $1 AND id = $2`, accountID, clientID))
+		FROM client WHERE account_id = $1 AND id = $2 AND merged_into IS NULL`, accountID, clientID))
 }
 
 // FindByContacts returns exact phone or email matches for seller confirmation.
@@ -78,9 +78,10 @@ func (r *ClientRepository) FindByContacts(
 ) ([]domain.Client, error) {
 	rows, err := q.Query(ctx, `SELECT `+clientColumns+`
 		FROM client
-		WHERE account_id = $1 AND (
+		WHERE account_id = $1 AND merged_into IS NULL AND (
 		  ($2::text IS NOT NULL AND regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = $2)
 		  OR ($3::text IS NOT NULL AND lower(btrim(COALESCE(email, ''))) = $3)
+		  OR EXISTS(SELECT 1 FROM client_contact cc WHERE cc.account_id=client.account_id AND cc.client_id=client.id AND ((cc.kind='WHATSAPP' AND regexp_replace(cc.value,'[^0-9+]','','g')=$2) OR (cc.kind='EMAIL' AND lower(btrim(cc.value))=$3)))
 		)
 		ORDER BY updated_at DESC, id
 		LIMIT 10`, accountID, phone, email)
@@ -142,13 +143,17 @@ func (r *ClientRepository) ListAcceptedSales(
 	return sales, rows.Err()
 }
 
-// Create adds a client only after a seller confirms the profile association.
+// Create adds an account-scoped client without duplicating a fiscal identifier.
 func (r *ClientRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID,
 	in domain.NewClient) (*domain.Client, error) {
-	return scanClient(q.QueryRow(ctx, `INSERT INTO client
+	client, err := scanClient(q.QueryRow(ctx, `INSERT INTO client
 		(account_id, name, phone, email, origin_channel, tax_id)
 		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+clientColumns,
 		accountID, in.Name, in.Phone, in.Email, in.OriginChannel, in.TaxID))
+	if isUniqueViolation(err, "uq_client_account_tax_id") {
+		return nil, domain.ErrConflict
+	}
+	return client, err
 }
 
 func scanClient(row pgx.Row) (*domain.Client, error) {

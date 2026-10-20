@@ -9,6 +9,11 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+The customer portal includes authenticated request history and optional commercial profile data.
+Customers manage multiple phones and emails from **My data**; sellers review incoming contact
+conflicts from **Clients**. See [client profiles](docs/technical/client-profiles.md) for the API,
+the required migrations and the separation from customer credentials and recovery email.
+
 ## Stack
 
 | Layer            | Technology                                             |

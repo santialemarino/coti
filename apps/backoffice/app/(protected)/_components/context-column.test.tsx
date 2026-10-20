@@ -21,6 +21,9 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api/rfqs-client', () => ({ fetchQueue: vi.fn(async () => []) }));
 vi.mock('@/app/(onboarding)/onboarding/actions', () => ({ resumeOnboarding: vi.fn() }));
 vi.mock('@/app/(protected)/settings/onboarding/actions', () => ({ setChecklistHidden: vi.fn() }));
+vi.mock('@/app/(protected)/clients/_components/client-contact-suggestions', () => ({
+  ClientContactSuggestions: () => <div data-testid="client-suggestions" />,
+}));
 
 const { fetchQueue } = await import('@/lib/api/rfqs-client');
 
@@ -104,6 +107,14 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.restoreAllMocks());
 
 describe('ContextColumn', () => {
+  it('shows client suggestions on client routes and returns to the queue after navigation', () => {
+    const { column, navigate } = renderAt(ROUTES.clients);
+    expect(column().dataset.open).toBe('true');
+    expect(column().dataset.root).toBe('false');
+    expect(screen.getByTestId('client-suggestions')).toBeDefined();
+    navigate(ROUTES.home);
+    expect(screen.queryByTestId('client-suggestions')).toBeNull();
+  });
   it.each([ROUTES.home, ROUTES.rfqsDetail('r1')])('is open on the queue screen %s', (path) => {
     const { column } = renderAt(path);
 
@@ -112,7 +123,7 @@ describe('ContextColumn', () => {
   });
 
   // The table lists the same orders at full width; a rail beside it would repeat it, narrower.
-  it.each([ROUTES.rfqs, ROUTES.clients, ROUTES.reports])('is closed on %s', (path) => {
+  it.each([ROUTES.rfqs, ROUTES.reports])('is closed on %s', (path) => {
     const { column } = renderAt(path);
 
     expect(column().dataset.open).toBe('false');
@@ -244,7 +255,7 @@ describe('ContextColumn', () => {
 
     navigate(ROUTES.clients);
     expect(column().dataset.root).toBe('false');
-    expect(column().dataset.open).toBe('false');
+    expect(column().dataset.open).toBe('true');
   });
 
   // Below lg the home pane that carries the setup card steps aside, so the list carries it.
@@ -289,7 +300,7 @@ describe('ContextColumn', () => {
   it('keeps the settings sections on show while the column closes', () => {
     const { column, navigate } = renderAt(ROUTES.accountSettings);
 
-    navigate(ROUTES.clients);
+    navigate(ROUTES.reports);
 
     expect(column().dataset.open).toBe('false');
     expect(

@@ -10,6 +10,7 @@ export * from './color-picker';
 export * from './combobox';
 export * from './command';
 export * from './confirm-dialog';
+export * from './toaster';
 export * from './copy-button';
 export * from './dialog';
 export * from './dropdown-chevron';

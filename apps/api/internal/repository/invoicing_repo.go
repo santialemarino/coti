@@ -177,7 +177,7 @@ func (r *InvoicingRepository) GetClientFiscal(
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
 		`SELECT id, name, legal_name, tax_id, iva_condition, fiscal_address
-		 FROM client WHERE account_id = $1 AND id = $2`, accountID, clientID,
+		 FROM client WHERE account_id = $1 AND id = $2 AND merged_into IS NULL`, accountID, clientID,
 	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -195,10 +195,13 @@ func (r *InvoicingRepository) UpdateClientFiscal(
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
 		`UPDATE client SET legal_name = $3, tax_id = $4, iva_condition = $5, fiscal_address = $6
-		 WHERE account_id = $1 AND id = $2
+		 WHERE account_id = $1 AND id = $2 AND merged_into IS NULL
 		 RETURNING id, name, legal_name, tax_id, iva_condition, fiscal_address`,
 		accountID, clientID, in.LegalName, in.TaxID, in.IVACondition, in.Address,
 	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
+	if isUniqueViolation(err, "uq_client_account_tax_id") {
+		return nil, domain.ErrConflict
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

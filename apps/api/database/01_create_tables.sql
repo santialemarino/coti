@@ -201,7 +201,8 @@ CREATE TABLE app_user (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   email_verified_at TIMESTAMPTZ,
-  CONSTRAINT uq_app_user_email UNIQUE (account_id, email)
+  CONSTRAINT uq_app_user_email UNIQUE (account_id, email),
+  CONSTRAINT uq_app_user_account_id UNIQUE(account_id,id)
 );
 
 CREATE TABLE user_branch (
@@ -393,10 +394,13 @@ CREATE TABLE client (
   phone          VARCHAR(64),
   email          VARCHAR(255),
   origin_channel client_origin,
+  merged_into UUID,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_account UNIQUE (account_id, id),
+  CONSTRAINT fk_client_merge FOREIGN KEY (account_id,merged_into) REFERENCES client(account_id,id),
+  CONSTRAINT ck_client_merge CHECK(merged_into IS NULL OR merged_into<>id),
   legal_name VARCHAR(255),
   tax_id VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
   iva_condition iva_condition,
@@ -1263,6 +1267,7 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_client_account_tax_id ON client(account_id, tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
@@ -1634,3 +1639,64 @@ CREATE TABLE customer_auth_challenge (
 CREATE INDEX idx_customer_challenge_subject ON customer_auth_challenge(account_id,customer_id,purpose);
 ALTER TABLE customer_auth_challenge ENABLE ROW LEVEL SECURITY;
 CREATE POLICY customer_auth_challenge_account_isolation ON customer_auth_challenge USING (account_id=app_current_account_id()) WITH CHECK (account_id=app_current_account_id());
+
+CREATE TYPE client_contact_source AS ENUM ('LEGACY','CHANNEL','CUSTOMER','SELLER');
+CREATE TYPE client_contact_review_status AS ENUM ('PENDING','ASSOCIATED','SEPARATE','RECORDED','MERGED');
+
+CREATE TABLE client_contact (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ client_id UUID NOT NULL,
+ kind channel_type NOT NULL CHECK (kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+ source client_contact_source NOT NULL,
+ original_value VARCHAR(255),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,client_id) REFERENCES client(account_id,id) ON DELETE CASCADE,
+ UNIQUE(account_id,client_id,kind,value)
+);
+CREATE UNIQUE INDEX uq_client_contact_primary ON client_contact(account_id,client_id,kind) WHERE is_primary;
+CREATE INDEX idx_client_contact_lookup ON client_contact(account_id,kind,value);
+
+
+CREATE TABLE client_contact_observation (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ branch_id UUID NOT NULL,
+ message_id UUID NOT NULL,
+ source_client_id UUID,
+ candidate_client_id UUID,
+ tax_id VARCHAR(11),
+ kind channel_type NOT NULL CHECK (kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ declared_name VARCHAR(255),
+ original_text TEXT NOT NULL,
+ status client_contact_review_status NOT NULL DEFAULT 'PENDING',
+ decided_by UUID,
+ decided_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,branch_id) REFERENCES branch(account_id,id),
+ FOREIGN KEY (account_id,source_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,candidate_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,decided_by) REFERENCES app_user(account_id,id),
+ UNIQUE(account_id,message_id,kind,value)
+);
+CREATE INDEX idx_contact_observation_pending ON client_contact_observation(account_id,branch_id,created_at) WHERE status='PENDING';
+ALTER TABLE client_contact ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_contact_account_isolation ON client_contact USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+ALTER TABLE client_contact_observation ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_contact_observation_account_isolation ON client_contact_observation USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+CREATE FUNCTION seed_client_contacts() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.phone IS NOT NULL AND btrim(NEW.phone)<>'' THEN
+  INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source) VALUES(NEW.account_id,NEW.id,'WHATSAPP',regexp_replace(NEW.phone,'[^0-9+]','','g'),TRUE,'SELLER');
+ END IF;
+ IF NEW.email IS NOT NULL AND btrim(NEW.email)<>'' THEN
+  INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source) VALUES(NEW.account_id,NEW.id,'EMAIL',lower(btrim(NEW.email)),TRUE,'SELLER');
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER seed_client_contacts AFTER INSERT ON client FOR EACH ROW EXECUTE FUNCTION seed_client_contacts();

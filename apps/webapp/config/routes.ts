@@ -9,6 +9,7 @@ export const ROUTES = {
   googleComplete: '/google-complete',
   googleStart: '/api/customer/google/start',
   orders: '/orders',
+  profile: '/profile',
   order: (id: string) => `/orders/${id}`,
   newRequest: '/new-request',
   rfq: (channelId: string) => `/rfq/${channelId}`,

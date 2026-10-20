@@ -48,6 +48,13 @@ func (s *ClientService) ValidateForSend(ctx context.Context, q repository.Querie
 	if !domain.ValidCUIT(in.TaxID) || (in.ClientID == nil) == (in.New == nil) {
 		return domain.ErrInvalidInput
 	}
+	matches, err := s.clients.FindByTaxID(ctx, q, tenant.AccountID, in.TaxID)
+	if err != nil {
+		return err
+	}
+	if len(matches) > 0 && (in.ClientID == nil || matches[0].ID != *in.ClientID) {
+		return fmt.Errorf("%w: select the existing client for this CUIT/CUIL", domain.ErrConflict)
+	}
 	if quote.ClientID != nil && (in.ClientID == nil || *quote.ClientID != *in.ClientID) {
 		if quote.CurrentStatus == domain.QuoteStatusSent {
 			return domain.ErrConflict

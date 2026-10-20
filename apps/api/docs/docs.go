@@ -1089,6 +1089,134 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/client-contact-suggestions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List client contact suggestions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.ContactSuggestionResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/client-contact-suggestions/{suggestionId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Resolve a client contact suggestion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Suggestion ID",
+                        "name": "suggestionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Seller decision",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ResolveContactSuggestionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients": {
             "get": {
                 "security": [
@@ -1985,6 +2113,112 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Get customer commercial profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerProfileResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Update customer commercial profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Commercial profile",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateCustomerProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -8603,6 +8837,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientContactResponse": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "WHATSAPP",
+                        "EMAIL"
+                    ]
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.ClientFiscalResponse": {
             "type": "object",
             "properties": {
@@ -8869,6 +9126,41 @@ const docTemplate = `{
             "properties": {
                 "imported_rows": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.ContactSuggestionResponse": {
+            "type": "object",
+            "properties": {
+                "candidate_client_id": {
+                    "type": "string"
+                },
+                "candidate_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "declared_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "original_text": {
+                    "type": "string"
+                },
+                "source_client_id": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
@@ -9499,6 +9791,29 @@ const docTemplate = `{
                     "maxLength": 72
                 },
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerProfileResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactResponse"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "review_pending": {
+                    "type": "boolean"
+                },
+                "tax_id": {
                     "type": "string"
                 }
             }
@@ -11504,6 +11819,22 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ResolveContactSuggestionRequest": {
+            "type": "object",
+            "required": [
+                "action"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "ASSOCIATE",
+                        "SEPARATE",
+                        "MERGE"
+                    ]
+                }
+            }
+        },
         "dto.RfqDetailResponse": {
             "type": "object",
             "properties": {
@@ -12025,6 +12356,24 @@ const docTemplate = `{
                 "tax_id": {
                     "type": "string",
                     "maxLength": 32
+                }
+            }
+        },
+        "dto.UpdateCustomerProfileRequest": {
+            "type": "object",
+            "required": [
+                "contacts"
+            ],
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactResponse"
+                    }
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
                 }
             }
         },
