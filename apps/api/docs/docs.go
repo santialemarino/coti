@@ -5447,6 +5447,7 @@ const docTemplate = `{
                     "clients"
                 ],
                 "summary": "Reject standalone client association",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -5473,12 +5474,6 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ClientMatchResponse"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {

@@ -6502,6 +6502,7 @@ paths:
     put:
       consumes:
       - application/json
+      deprecated: true
       description: Client selection is confirmed through quotation delivery. This
         standalone operation returns 409.
       parameters:
@@ -6524,10 +6525,6 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ClientMatchResponse'
         "400":
           description: Bad Request
           schema:

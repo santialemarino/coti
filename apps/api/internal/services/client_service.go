@@ -255,7 +255,17 @@ func (s *ClientService) AssociateQuote(ctx context.Context, tenant domain.Tenant
 	if err := requireBranch(tenant, "a client association"); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("%w: confirm the client when sending the quotation", domain.ErrConflict)
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: confirm the client when sending the quotation", domain.ErrConflict)
+	})
+	return nil, err
 }
 
 // ReplaceClientTags validates account ownership and replaces one profile's tag set.

@@ -5440,6 +5440,7 @@
                     "clients"
                 ],
                 "summary": "Reject standalone client association",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -5466,12 +5467,6 @@
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ClientMatchResponse"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {

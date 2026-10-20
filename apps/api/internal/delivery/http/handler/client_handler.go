@@ -196,13 +196,13 @@ func (h *ClientHandler) GetQuoteAssociation(c *gin.Context) {
 //	@Param			X-Branch-Id	header		string					true	"Active branch"
 //	@Param			quoteId		path		string					true	"Quote id"
 //	@Param			request		body		dto.AssociateQuoteClientRequest	true	"Client selection and tags"
-//	@Success		200			{object}	dto.ClientMatchResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
 //	@Failure		409			{object}	dto.ErrorResponse	"Association is confirmed during quotation delivery"
 //	@Failure		422			{object}	dto.ErrorResponse
+//	@Deprecated
 //	@Router			/v1/quotes/{quoteId}/client-association [put]
 func (h *ClientHandler) AssociateQuote(c *gin.Context) {
 	tenant, ok := tenantOf(c)
