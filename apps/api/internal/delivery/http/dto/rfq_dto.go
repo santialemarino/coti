@@ -80,6 +80,8 @@ type RfqListItemResponse struct {
 	InvoiceWaivedBy *string    `json:"invoice_waived_by"`
 	// Invoiced is whether an issued invoice no credit note cancelled stands for the sale.
 	Invoiced bool `json:"invoiced"`
+	// InvoicePending is whether a voucher of the sale still waits for ARCA's answer.
+	InvoicePending bool `json:"invoice_pending"`
 	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
 	// account does not invoice with Coti.
 	SaleComplete bool `json:"sale_complete"`

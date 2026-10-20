@@ -12053,6 +12053,10 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "invoice_pending": {
+                    "description": "InvoicePending is whether a voucher of the sale still waits for ARCA's answer.",
+                    "type": "boolean"
+                },
                 "invoice_waived_at": {
                     "description": "InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.",
                     "type": "string"

@@ -60,6 +60,7 @@ type closureView struct {
 	InvoiceWaivedAt *time.Time `json:"invoice_waived_at"`
 	InvoiceWaivedBy *string    `json:"invoice_waived_by"`
 	Invoiced        bool       `json:"invoiced"`
+	InvoicePending  bool       `json:"invoice_pending"`
 	SaleComplete    bool       `json:"sale_complete"`
 }
 
@@ -200,12 +201,20 @@ func TestSaleClosure_WaiverAndCompletenessFollowTheInvoice(t *testing.T) {
 		}
 	}
 
-	var rfqID uuid.UUID
+	var rfqID, pendingRfqID uuid.UUID
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
 		`SELECT rfq_id FROM quote WHERE id = $1`, invoiced.quoteID).Scan(&rfqID); err != nil {
 		t.Fatal(err)
 	}
-	if detail, _ := e.closureView(t, token, branch, rfqID); !detail.Invoiced || detail.SaleComplete {
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT rfq_id FROM quote WHERE id = $1`, pending.quoteID).Scan(&pendingRfqID); err != nil {
+		t.Fatal(err)
+	}
+	// The queue reads the voucher in flight, so it offers no second invoice beside it.
+	if _, row := e.closureView(t, token, branch, pendingRfqID); !row.InvoicePending || row.Invoiced {
+		t.Fatalf("pending: list row %+v, want the invoice pending and not invoiced", row)
+	}
+	if detail, row := e.closureView(t, token, branch, rfqID); !detail.Invoiced || detail.SaleComplete || row.InvoicePending {
 		t.Fatalf("invoiced, unpaid: %+v, want invoiced and still open", detail)
 	}
 	if rec := e.do(t, request{method: http.MethodPost, path: quotePath(invoiced.quoteID, "payment"), token: token, branch: branch}); rec.Code != http.StatusOK {

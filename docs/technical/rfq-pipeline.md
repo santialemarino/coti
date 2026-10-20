@@ -702,7 +702,8 @@ waiver but does not count as invoiced here, and the sale reopens waiting for its
 **A complete sale is derived, never stored.** `GET /v1/rfqs` and `GET /v1/rfqs/{id}` carry, per
 order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_waived_by`, `invoiced`
 — an issued invoice no credit note cancelled, in this server's ARCA environment or in production —
-and `sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
+`invoice_pending` — a voucher still waiting for ARCA, so the queue offers no second one — and
+`sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
 Coti — never while any voucher of the sale still waits for ARCA, in either environment. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
 re-deriving fiscal state.
 
@@ -711,7 +712,8 @@ re-deriving fiscal state.
 `quote.archived_at` is a flag beside the state machine, never a state. `POST
 /v1/quotes/{quoteId}/archive` sets it on a quote in any status and `POST .../unarchive` clears it;
 neither writes `quote_status_change`. The queue leaves archived quotes out unless
-`?include_archived=true` asks for them, and `idx_quote_expires` skips them.
+`?include_archived=true` asks for them, and `idx_quote_expires` skips them. The backoffice reads the
+queue without them and asks for them only while the table's «Archivado» filter is on.
 
 **Every edit on an archived quote answers `409 QUOTE_ARCHIVED`** until it is unarchived: lines and
 discounts, accepting materials, approving an alternative, a transition, reactivation, sending,
@@ -727,7 +729,8 @@ answer through the link is refused with `QUOTE_ARCHIVED`, which the webapp words
 longer available. A customer who already answered keeps seeing their answer.
 
 Quotes also archive themselves: the `quote-auto-archive` job puts away the ones nobody has moved in
-`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
+`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed — and the complete
+sales and rejected quotes quiet for `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
 
 ## Where the code lives
 

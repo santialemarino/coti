@@ -56,7 +56,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
-		"QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", "QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
+		"QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS",
+		"QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
 		"RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
@@ -505,22 +506,25 @@ func TestLoad_QuoteArchiveDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() = %v, want no error", err)
 	}
-	if cfg.QuoteArchive.InactiveAfter != 30*24*time.Hour || cfg.QuoteArchive.BatchSize != 100 {
-		t.Errorf("QuoteArchive = %+v, want 720h/100", cfg.QuoteArchive)
+	if cfg.QuoteArchive.InactiveAfter != 30*24*time.Hour || cfg.QuoteArchive.ClosedAfter != 30*24*time.Hour ||
+		cfg.QuoteArchive.BatchSize != 100 {
+		t.Errorf("QuoteArchive = %+v, want 720h/720h/100", cfg.QuoteArchive)
 	}
 }
 
 func TestLoad_QuoteArchiveKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "45"
+	env["QUOTE_AUTO_ARCHIVE_CLOSED_DAYS"] = "12"
 	env["QUOTE_AUTO_ARCHIVE_BATCH_SIZE"] = "7"
 	setEnv(t, env)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() = %v, want no error", err)
 	}
-	if cfg.QuoteArchive.InactiveAfter != 45*24*time.Hour || cfg.QuoteArchive.BatchSize != 7 {
-		t.Errorf("QuoteArchive = %+v, want 1080h/7", cfg.QuoteArchive)
+	if cfg.QuoteArchive.InactiveAfter != 45*24*time.Hour || cfg.QuoteArchive.ClosedAfter != 12*24*time.Hour ||
+		cfg.QuoteArchive.BatchSize != 7 {
+		t.Errorf("QuoteArchive = %+v, want 1080h/288h/7", cfg.QuoteArchive)
 	}
 }
 
@@ -748,6 +752,11 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a quote archived the moment it stops moving",
 			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "0" },
 			wantSub: "QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a closed sale archived the moment it closes",
+			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_CLOSED_DAYS"] = "0" },
+			wantSub: "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS must be greater than zero",
 		},
 		{
 			name:    "an archive sweep that takes nothing per batch",

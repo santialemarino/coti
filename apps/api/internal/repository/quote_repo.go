@@ -321,6 +321,58 @@ func (r *QuoteRepository) ArchiveInactiveCrossAccount(
 	return archived, rows.Err()
 }
 
+// ArchiveClosedCrossAccount archives up to limit closed outcomes, across every account, whose row
+// has not changed since before: a REJECTED quote, or an ACCEPTED sale complete as
+// domain.SaleComplete defines it, with an invoice counted in env or in production. It runs on a
+// scheduled job's owner connection.
+func (r *QuoteRepository) ArchiveClosedCrossAccount(
+	ctx context.Context, q Querier, env domain.ARCAEnvironment, before time.Time, limit int,
+) ([]domain.ArchivedQuote, error) {
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH closed AS (
+		   SELECT q.id, q.updated_at FROM quote q
+		   JOIN account a ON a.id = q.account_id
+		   WHERE q.archived_at IS NULL
+		     AND q.updated_at < $1
+		     AND (q.current_status = 'REJECTED'
+		          OR (q.current_status = 'ACCEPTED' AND q.paid_at IS NOT NULL
+		              AND NOT EXISTS (SELECT 1 FROM invoice p
+		                WHERE p.account_id = q.account_id AND p.quote_id = q.id AND p.status = 'PENDING')
+		              AND (q.invoice_waived_at IS NOT NULL OR NOT a.invoicing_enabled
+		                   OR EXISTS (SELECT 1 FROM invoice i
+		                     WHERE i.account_id = q.account_id AND i.quote_id = q.id
+		                       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
+		                       AND (i.environment::text = $3 OR i.environment = 'PRODUCTION')
+		                       AND NOT `+invoiceCredited+`))))
+		   ORDER BY q.updated_at, q.id
+		   LIMIT $2
+		   FOR UPDATE OF q SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET archived_at = now()
+		 FROM closed
+		 WHERE quote.id = closed.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, closed.updated_at`,
+		before, limit, string(env))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	archived := make([]domain.ArchivedQuote, 0)
+	for rows.Next() {
+		var quote domain.ArchivedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		archived = append(archived, quote)
+	}
+	return archived, rows.Err()
+}
+
 // SetClient attaches the same account-scoped client used by the quote's RFQ.
 func (r *QuoteRepository) SetClient(
 	ctx context.Context, q Querier, accountID, branchID, quoteID, clientID uuid.UUID,

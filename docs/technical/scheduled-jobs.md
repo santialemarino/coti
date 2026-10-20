@@ -102,6 +102,7 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`    | 5       | Orders read per firing of the sweep       |
 | `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`   | 15      | How long one run's claim on a file stands |
 | `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`        | 30      | Days without movement before archiving    |
+| `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`          | 30      | The same, for a complete sale or REJECTED |
 | `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`           | 100     | Quotes archived per statement             |
 | `CONVERSATION_MAX_ATTEMPTS`               | 3       | Failed attempts before a batch is FAILED  |
 | `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` | 600     | One attempt's bound; older claims reclaim |
@@ -176,20 +177,25 @@ in a bill.
 **What it archives.** A quote not yet archived, in `DRAFT`, `QUOTED` or `SENT`, whose row has not
 changed in `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — and, for a `SENT` one, whose offer has lapsed
 (`quote.expires_at` in the past). Those are the two stalls follow-up chases: the seller has not
-finished or sent it, or the client has not answered. Everything else is left alone:
+finished or sent it, or the client has not answered. A second sweep in the same run archives the
+closed outcomes quiet for `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`: a complete sale and a rejected quote.
+Everything else is left alone:
 
-| Status             | Archived automatically | Why                                                          |
-| ------------------ | ---------------------- | ------------------------------------------------------------ |
-| `DRAFT`, `QUOTED`  | Yes                    | Waiting on the seller                                        |
-| `SENT`, lapsed     | Yes                    | The client never answered and the offer is over              |
-| `SENT`, link live  | No                     | The client may still accept; archiving would lose the sale   |
-| `SENT`, no expiry  | No                     | Nothing proves the offer is over; the seller decides         |
-| `CHANGE_REQUESTED` | No                     | The client asked for something; burying it loses the request |
-| `ACCEPTED`         | No                     | A sale may still be invoiced or delivered                    |
-| `REJECTED`         | No                     | A closed outcome; the seller archives it when they choose    |
+| Status                 | Archived automatically    | Why                                                          |
+| ---------------------- | ------------------------- | ------------------------------------------------------------ |
+| `DRAFT`, `QUOTED`      | Yes                       | Waiting on the seller                                        |
+| `SENT`, lapsed         | Yes                       | The client never answered and the offer is over              |
+| `SENT`, link live      | No                        | The client may still accept; archiving would lose the sale   |
+| `SENT`, no expiry      | No                        | Nothing proves the offer is over; the seller decides         |
+| `CHANGE_REQUESTED`     | No                        | The client asked for something; burying it loses the request |
+| `ACCEPTED`, complete   | Yes, on the closed window | Paid, and invoiced or needing no invoice: nothing left to do |
+| `ACCEPTED`, still open | No                        | It may still be paid, invoiced or delivered                  |
+| `REJECTED`             | Yes, on the closed window | A closed outcome nobody has touched                          |
 
-Invoices only exist on an accepted quote, so the status rule alone keeps a pending or issued
-invoice out of the sweep.
+"Complete" is `domain.SaleComplete`, written again in the sweep's SQL: accepted, paid, no voucher
+pending in ARCA, and an issued invoice no credit note cancelled (in `ARCA_ENVIRONMENT` or
+production), «No requiere factura», or invoicing off for the account. A sale with an invoice in
+flight is never complete, so it is never swept.
 
 **What counts as activity is `quote.updated_at`.** Every write to the quote row moves it: a
 transition, a send, assigning the seller, associating the client, and unarchiving — so a quote the
