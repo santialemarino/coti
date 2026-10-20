@@ -120,13 +120,19 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		return
 	}
 
+	var strategy *domain.HandlerStrategy
+	if body.PreferredLowerPriceStrategy != nil {
+		value := domain.HandlerStrategy(*body.PreferredLowerPriceStrategy)
+		strategy = &value
+	}
 	account, err := h.accounts.Update(c.Request.Context(), tenant, domain.AccountUpdate{
-		Name:           body.Name,
-		LegalName:      body.LegalName,
-		TaxID:          body.TaxID,
-		BrandLogoURL:   body.BrandLogoURL,
-		BrandColor:     body.BrandColor,
-		DisconnectARCA: body.DisconnectARCA,
+		Name:                        body.Name,
+		LegalName:                   body.LegalName,
+		TaxID:                       body.TaxID,
+		BrandLogoURL:                body.BrandLogoURL,
+		BrandColor:                  body.BrandColor,
+		DisconnectARCA:              body.DisconnectARCA,
+		PreferredLowerPriceStrategy: strategy,
 	})
 	if err != nil {
 		Respond(c, err)
@@ -137,14 +143,15 @@ func (h *AccountHandler) Update(c *gin.Context) {
 
 func toAccountResponse(a domain.Account) dto.AccountResponse {
 	return dto.AccountResponse{
-		ID:           a.ID,
-		Name:         a.Name,
-		LegalName:    a.LegalName,
-		TaxID:        a.TaxID,
-		BrandLogoURL: a.BrandLogoURL,
-		BrandColor:   a.BrandColor,
-		IsActive:     a.IsActive,
-		CreatedAt:    a.CreatedAt,
-		UpdatedAt:    a.UpdatedAt,
+		ID:                          a.ID,
+		Name:                        a.Name,
+		LegalName:                   a.LegalName,
+		TaxID:                       a.TaxID,
+		BrandLogoURL:                a.BrandLogoURL,
+		BrandColor:                  a.BrandColor,
+		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy),
+		IsActive:                    a.IsActive,
+		CreatedAt:                   a.CreatedAt,
+		UpdatedAt:                   a.UpdatedAt,
 	}
 }

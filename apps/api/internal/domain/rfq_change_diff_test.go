@@ -165,3 +165,47 @@ func TestBuildChangeRequestDiff_PairsDiscountsByName(t *testing.T) {
 		t.Errorf("Compra grande = %+v, want suppressed only on the draft", suppressed)
 	}
 }
+
+/*
+ * One promotion applies on two lines under one name: each draft application is compared with the
+ * one on the sent line its line was copied from, and a seller discount sharing the name stays apart.
+ */
+func TestBuildChangeRequestDiff_PairsPromotionsByPromotionAndSentLine(t *testing.T) {
+	cement, sand := diffItem("cemento", "20", nil, nullPrice("100")), diffItem("arena", "10", nil, nullPrice("50"))
+	promotionID := uuid.New()
+	applied := func(line QuoteItem, amount string, origin DiscountOrigin) QuoteDiscount {
+		return QuoteDiscount{PromotionID: &promotionID, PromotionName: strPtr("Obra 10%"),
+			Scope: DiscountScopeItem, ItemIDs: []uuid.UUID{line.ID}, Origin: origin,
+			Amount: decimal.RequireFromString(amount)}
+	}
+	typed := QuoteDiscount{PromotionName: strPtr("Obra 10%"), Origin: DiscountOriginManualSeller,
+		Amount: decimal.NewFromInt(5)}
+	draftCement, draftSand := copied(cement), copied(sand)
+	draftSand.Quantity = decimal.NewFromInt(20)
+	frozen := ChangeRequestSnapshot{Items: []QuoteItem{cement, sand}, Discounts: []QuoteDiscount{
+		applied(cement, "200", DiscountOriginAutomatic), applied(sand, "50", DiscountOriginAutomatic)}}
+	draft := ChangeRequestSnapshot{Items: []QuoteItem{draftCement, draftSand}, Discounts: []QuoteDiscount{
+		applied(draftSand, "100", DiscountOriginAIAdaptation), applied(draftCement, "200", DiscountOriginAutomatic),
+		typed}}
+
+	diff := BuildChangeRequestDiff(nil, frozen, draft)
+
+	got := make([]string, 0, len(diff.Discounts))
+	for _, discount := range diff.Discounts {
+		side := discount.Requested
+		if side == nil {
+			side = discount.Original
+		}
+		got = append(got, string(discount.Change)+" "+side.Amount+" "+string(side.Origin))
+	}
+	want := []string{"MODIFIED 100.00 AI_ADAPTATION", "UNCHANGED 200.00 AUTOMATIC", "ADDED 5.00 MANUAL_SELLER"}
+	if len(got) != len(want) {
+		t.Fatalf("discounts = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("discounts = %v, want %v", got, want)
+			break
+		}
+	}
+}

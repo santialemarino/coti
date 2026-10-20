@@ -94,6 +94,8 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'IN
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
 CREATE TYPE message_batch_failure_reason AS ENUM ('UNPROCESSABLE', 'ATTEMPTS_EXHAUSTED');
+-- Which recipe a «bajame el precio» runs first when the customer did not say.
+CREATE TYPE lower_price_strategy AS ENUM ('FIND_CHEAPER_ALTERNATIVES', 'ADAPT_TO_REACH_DISCOUNT');
 
 -- What an AI provider call was paid for. One value per call site that spends, so a cost report
 -- groups by the work, not by the provider method.
@@ -144,7 +146,8 @@ CREATE TABLE account (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   iva_condition iva_condition,
   prices_include_vat BOOLEAN NOT NULL DEFAULT TRUE,
-  invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object')
+  invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object'),
+  preferred_lower_price_strategy lower_price_strategy NOT NULL DEFAULT 'FIND_CHEAPER_ALTERNATIVES'
 );
 
 CREATE TABLE account_onboarding (

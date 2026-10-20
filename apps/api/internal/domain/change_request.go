@@ -92,8 +92,10 @@ type ChangeRequestProposal struct {
 	Interpretation string               `json:"interpretation"`
 	Intent         *ChangeRequestIntent `json:"intent,omitempty"`
 	// IntentItemIDs are the lines the customer named for the intent; empty means the whole quote.
-	IntentItemIDs []uuid.UUID              `json:"intent_item_ids,omitempty"`
-	Operations    []ChangeRequestOperation `json:"operations"`
+	IntentItemIDs []uuid.UUID `json:"intent_item_ids,omitempty"`
+	// LowerPriceStrategy is the way to a lower total the customer's wording prefers, if any.
+	LowerPriceStrategy *HandlerStrategy         `json:"lower_price_strategy,omitempty"`
+	Operations         []ChangeRequestOperation `json:"operations"`
 }
 
 // ChangeRequestHandler turns a customer message into reviewable draft operations.

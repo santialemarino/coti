@@ -81,6 +81,17 @@ func TestChangeRequestHandler_Propose_MapsLevelsIntentsAndDiscounts(t *testing.T
 					len(proposal.Operations) != 0 {
 					t.Errorf("proposal = %+v, want the intent on the named line and no operations", proposal)
 				}
+				if proposal.LowerPriceStrategy != nil {
+					t.Errorf("strategy = %v, want none when the answer omits it", *proposal.LowerPriceStrategy)
+				}
+			}},
+		{"a lower price carries the customer's preferred strategy",
+			`{"level":"COMPLEX","interpretation":"Prefiere llevar más.","intent":"LOWER_TOTAL_PRICE","intent_item_ids":[],"lower_price_strategy":"ADAPT_TO_REACH_DISCOUNT","operations":[]}`,
+			func(t *testing.T, proposal *domain.ChangeRequestProposal) {
+				if proposal.LowerPriceStrategy == nil ||
+					*proposal.LowerPriceStrategy != domain.HandlerStrategyAdaptToReachDiscount {
+					t.Errorf("strategy = %v, want ADAPT_TO_REACH_DISCOUNT", proposal.LowerPriceStrategy)
+				}
 			}},
 		{"a discount names its promotion",
 			`{"level":"ATOMIC","interpretation":"Pide la promo.","intent":null,"intent_item_ids":[],"operations":[
@@ -132,6 +143,15 @@ func TestChangeRequestSchema_UsesTheClosedCatalogs(t *testing.T) {
 	if want := []string{"LOWER_TOTAL_PRICE", "IMPROVE_QUALITY"}; !reflect.DeepEqual(intents, want) ||
 		intent[1].(map[string]any)["type"] != "null" {
 		t.Errorf("intent = %v, want %v or null", intent, want)
+	}
+	strategy := properties["lower_price_strategy"].(map[string]any)["anyOf"].([]any)
+	strategies := strategy[0].(map[string]any)["enum"].([]string)
+	if want := []string{"FIND_CHEAPER_ALTERNATIVES", "ADAPT_TO_REACH_DISCOUNT"}; !reflect.DeepEqual(strategies, want) ||
+		strategy[1].(map[string]any)["type"] != "null" {
+		t.Errorf("lower_price_strategy = %v, want %v or null", strategy, want)
+	}
+	if required := changeRequestSchema()["required"].([]string); !slices.Contains(required, "lower_price_strategy") {
+		t.Errorf("required = %v, want lower_price_strategy: a strict schema lists every key", required)
 	}
 	operation := properties["operations"].(map[string]any)["items"].(map[string]any)
 	got := operation["properties"].(map[string]any)["type"].(map[string]any)["enum"].([]string)

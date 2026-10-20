@@ -115,7 +115,7 @@ func run() error {
 	if providers.LanguageModelBound() {
 		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
 	}
-	batchChangeHandler := services.NewBatchChangeHandler(db, quoteRepo,
+	batchChangeHandler := services.NewBatchChangeHandler(db, repository.NewAccountRepository(), quoteRepo,
 		repository.NewQuoteMessageRepository(), messageBatchRepo,
 		repository.NewHandlerDecisionRepository(), repository.NewProductPriceRepository(),
 		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),

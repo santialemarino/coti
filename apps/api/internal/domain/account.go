@@ -15,9 +15,11 @@ type Account struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
-	IsActive     bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// PreferredLowerPriceStrategy is what a «bajame el precio» tries first when the customer did not say.
+	PreferredLowerPriceStrategy HandlerStrategy
+	IsActive                    bool
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
 }
 
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client
@@ -28,6 +30,8 @@ type AccountUpdate struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
+	// PreferredLowerPriceStrategy nil keeps the stored one.
+	PreferredLowerPriceStrategy *HandlerStrategy
 	// DisconnectARCA confirms that a new CUIT may remove the ARCA connection made with the old one.
 	DisconnectARCA bool
 }

@@ -248,6 +248,9 @@ func (s *AccountService) Update(
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, fmt.Errorf("%w: name is required", domain.ErrInvalidInput)
 	}
+	if in.PreferredLowerPriceStrategy != nil && !in.PreferredLowerPriceStrategy.IsLowerPriceStrategy() {
+		return nil, fmt.Errorf("%w: preferred_lower_price_strategy is unknown", domain.ErrInvalidInput)
+	}
 	taxID, err := accountCUIT(in.TaxID)
 	if err != nil {
 		return nil, err

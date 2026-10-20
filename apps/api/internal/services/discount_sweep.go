@@ -31,12 +31,37 @@ type promotionReader interface {
 }
 
 // discountSweep settles a mutable version's discounts: seller percentages follow their lines, the
-// promotion engine re-earns the AUTOMATIC applications, and the total follows. Without promotions
+// promotion engine re-earns the applications it owns, and the total follows. Without promotions
 // wired it only does the first and the last.
 type discountSweep struct {
 	discounts  versionDiscountStore
 	promotions promotionReader
 	now        func() time.Time
+}
+
+// sweepState is everything a sweep of one version reads before it decides anything, so the same
+// state can be evaluated against candidate lines without another round trip.
+type sweepState struct {
+	discounts  []domain.QuoteDiscount
+	links      map[uuid.UUID][]uuid.UUID
+	promotions []domain.Promotion
+	groups     map[uuid.UUID]domain.ProductGroup
+	at         time.Time
+}
+
+// sweepResult is what a sweep decides for a set of lines, before anything is written.
+type sweepResult struct {
+	total decimal.Decimal
+	// engine are the stored engine-owned applications still live, which the earned set replaces.
+	engine   []domain.QuoteDiscount
+	earned   []domain.DiscountApplication
+	followed []followedAmount
+}
+
+// followedAmount is a seller discount whose money moved with its lines.
+type followedAmount struct {
+	discountID uuid.UUID
+	amount     decimal.Decimal
 }
 
 // settle re-evaluates a mutable version's discounts against its lines as stored and returns the
@@ -45,39 +70,84 @@ func (s *discountSweep) settle(
 	ctx context.Context, q repository.Querier, accountID, branchID, versionID uuid.UUID,
 	items []domain.QuoteItem,
 ) (decimal.Decimal, error) {
-	discounts, err := s.discounts.ListByVersionID(ctx, q, accountID, versionID)
+	state, err := s.load(ctx, q, accountID, branchID, versionID, quoteItemProductIDs(items))
 	if err != nil {
 		return decimal.Zero, err
+	}
+	result, err := state.evaluate(branchID, items)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	for _, moved := range result.followed {
+		if err := s.discounts.UpdateAmount(ctx, q, accountID, versionID, moved.discountID,
+			moved.amount); err != nil {
+			return decimal.Zero, err
+		}
+	}
+	if err := s.persist(ctx, q, accountID, versionID, result.engine, state.links,
+		result.earned); err != nil {
+		return decimal.Zero, err
+	}
+	return result.total, nil
+}
+
+// load reads a version's discounts with their lines, and the rules in force with the taxonomy of
+// the given products. No rules are read when none are wired.
+func (s *discountSweep) load(
+	ctx context.Context, q repository.Querier, accountID, branchID, versionID uuid.UUID,
+	productIDs []uuid.UUID,
+) (sweepState, error) {
+	discounts, err := s.discounts.ListByVersionID(ctx, q, accountID, versionID)
+	if err != nil {
+		return sweepState{}, err
 	}
 	links, err := s.discounts.ListItemIDsByDiscountIDs(ctx, q, accountID, versionID,
 		discountIDs(discounts))
 	if err != nil {
-		return decimal.Zero, err
+		return sweepState{}, err
 	}
+	state := sweepState{discounts: discounts, links: links}
+	if s.promotions == nil {
+		return state, nil
+	}
+	state.at = s.now()
+	if state.promotions, err = s.promotions.ListInForce(ctx, q, accountID, branchID,
+		state.at); err != nil || len(state.promotions) == 0 {
+		return state, err
+	}
+	state.groups, err = s.promotions.ListProductGroups(ctx, q, accountID, productIDs)
+	return state, err
+}
 
+// evaluate decides the version's discounts and total for the given lines, writing nothing.
+func (st sweepState) evaluate(branchID uuid.UUID, items []domain.QuoteItem) (sweepResult, error) {
+	result := sweepResult{engine: make([]domain.QuoteDiscount, 0)}
 	live := decimal.Zero
 	held := make([]engineHeldDiscount, 0)
 	suppressed := make([]engineSuppression, 0)
-	automatic := make([]domain.QuoteDiscount, 0)
-	for _, discount := range discounts {
-		covered := links[discount.ID]
-		if discount.Origin == domain.DiscountOriginAutomatic {
+	for _, discount := range st.discounts {
+		covered := st.links[discount.ID]
+		if discount.Origin.EngineOwned() {
 			if discount.SuppressedBySeller {
 				if discount.PromotionID != nil {
 					suppressed = append(suppressed, engineSuppression{PromotionID: *discount.PromotionID,
 						Scope: discount.Scope, ItemIDs: covered})
 				}
 			} else {
-				automatic = append(automatic, discount)
+				result.engine = append(result.engine, discount)
 			}
 			continue
 		}
 		if discount.SuppressedBySeller {
 			continue
 		}
-		amount, err := s.followLines(ctx, q, accountID, versionID, discount, items, covered)
+		amount, err := followLines(discount, items, covered)
 		if err != nil {
-			return decimal.Zero, err
+			return sweepResult{}, err
+		}
+		if !amount.Equal(discount.Amount) {
+			result.followed = append(result.followed, followedAmount{discountID: discount.ID,
+				amount: amount})
 		}
 		live = live.Add(amount)
 		heldOn := covered
@@ -87,14 +157,8 @@ func (s *discountSweep) settle(
 		held = append(held, engineHeldDiscount{Amount: amount, ItemIDs: heldOn})
 	}
 
-	earned, err := s.earn(ctx, q, accountID, branchID, items, suppressed, held)
-	if err != nil {
-		return decimal.Zero, err
-	}
-	if err := s.persist(ctx, q, accountID, versionID, automatic, links, earned); err != nil {
-		return decimal.Zero, err
-	}
-	for _, app := range earned {
+	result.earned = st.earn(branchID, items, suppressed, held)
+	for _, app := range result.earned {
 		live = live.Add(app.Amount)
 	}
 
@@ -104,13 +168,13 @@ func (s *discountSweep) settle(
 	if total.IsNegative() {
 		total = decimal.Zero
 	}
-	return roundMoney(total), nil
+	result.total = roundMoney(total)
+	return result, nil
 }
 
-// followLines returns a seller or AI discount's money, rewriting a seller's when its lines moved
-// underneath it: a percentage follows them, a fixed amount is capped at what they still carry.
-func (s *discountSweep) followLines(
-	ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+// followLines returns a seller or AI discount's money for the lines as they stand: a seller's
+// percentage follows them, a seller's fixed amount is capped at what they still carry.
+func followLines(
 	discount domain.QuoteDiscount, items []domain.QuoteItem, covered []uuid.UUID,
 ) (decimal.Decimal, error) {
 	if discount.Origin != domain.DiscountOriginManualSeller || discount.ActionValue == nil {
@@ -126,32 +190,16 @@ func (s *discountSweep) followLines(
 		discount.Scope != domain.DiscountScopeTotal {
 		computed = decimal.Min(computed, base)
 	}
-	if computed.Equal(discount.Amount) {
-		return computed, nil
-	}
-	if err := s.discounts.UpdateAmount(ctx, q, accountID, versionID, discount.ID,
-		computed); err != nil {
-		return decimal.Zero, err
-	}
 	return computed, nil
 }
 
-// earn runs the engine over the version's lines, or earns nothing when no rules are wired.
-func (s *discountSweep) earn(
-	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
-	items []domain.QuoteItem, suppressed []engineSuppression, held []engineHeldDiscount,
-) ([]domain.DiscountApplication, error) {
-	if s.promotions == nil {
-		return nil, nil
-	}
-	at := s.now()
-	promotions, err := s.promotions.ListInForce(ctx, q, accountID, branchID, at)
-	if err != nil || len(promotions) == 0 {
-		return nil, err
-	}
-	groups, err := s.promotions.ListProductGroups(ctx, q, accountID, quoteItemProductIDs(items))
-	if err != nil {
-		return nil, err
+// earn runs the engine over the version's lines, or earns nothing when no rules are in force.
+func (st sweepState) earn(
+	branchID uuid.UUID, items []domain.QuoteItem, suppressed []engineSuppression,
+	held []engineHeldDiscount,
+) []domain.DiscountApplication {
+	if len(st.promotions) == 0 {
+		return nil
 	}
 	lines := make([]engineLine, 0, len(items))
 	for _, item := range items {
@@ -159,16 +207,17 @@ func (s *discountSweep) earn(
 			UnitPrice: item.UnitPriceSnapshot, MinPrice: item.MinPriceSnapshot,
 			Subtotal: item.Subtotal}
 		if item.ProductID != nil {
-			line.Group = groups[*item.ProductID]
+			line.Group = st.groups[*item.ProductID]
 		}
 		lines = append(lines, line)
 	}
-	return evaluateDiscounts(engineInput{Lines: lines, Promotions: promotions, BranchID: branchID,
-		At: at, Suppressed: suppressed, Held: held}), nil
+	return evaluateDiscounts(engineInput{Lines: lines, Promotions: st.promotions, BranchID: branchID,
+		At: st.at, Suppressed: suppressed, Held: held})
 }
 
-// persist turns the stored AUTOMATIC rows into the earned set: a row whose application is still
-// earned keeps its id and is updated in place, the rest are dropped, and new ones are written.
+// persist turns the stored engine-owned rows into the earned set: a row whose application is
+// still earned keeps its id and origin and is updated in place, the rest are dropped, and new ones
+// are written as AUTOMATIC.
 func (s *discountSweep) persist(
 	ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
 	stored []domain.QuoteDiscount, links map[uuid.UUID][]uuid.UUID,

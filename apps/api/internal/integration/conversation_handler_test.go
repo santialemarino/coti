@@ -80,7 +80,8 @@ func (e *env) batchChangeHandler(proposer domain.ChangeRequestHandler,
 		Match(context.Context, domain.Tenant, []string) ([]domain.LineMatch, error)
 	},
 ) *services.BatchChangeHandler {
-	return services.NewBatchChangeHandler(e.db, repository.NewQuoteRepository(),
+	return services.NewBatchChangeHandler(e.db, repository.NewAccountRepository(),
+		repository.NewQuoteRepository(),
 		repository.NewQuoteMessageRepository(), repository.NewMessageBatchRepository(),
 		repository.NewHandlerDecisionRepository(), repository.NewProductPriceRepository(),
 		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),

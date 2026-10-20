@@ -612,6 +612,10 @@ func (s *RFQService) buildChangeRequestDiff(
 	if discountsErr != nil {
 		return discountsErr
 	}
+	if linkErr := s.attachDiscountItemIDs(ctx, q, tenant.AccountID, previous.ID,
+		frozenDiscounts); linkErr != nil {
+		return linkErr
+	}
 	diff := domain.BuildChangeRequestDiff(version.Comment, domain.ChangeRequestSnapshot{
 		Items: frozenItems, Discounts: frozenDiscounts, Total: previous.Total,
 	}, domain.ChangeRequestSnapshot{
@@ -980,7 +984,7 @@ func (s *RFQService) UpdateDiscount(
 		fresh, freshErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID, discountID)
 		// A restored application the sweep no longer earns is gone: the restore is refused instead.
 		if errors.Is(freshErr, domain.ErrNotFound) &&
-			existing.Origin == domain.DiscountOriginAutomatic {
+			existing.Origin.EngineOwned() {
 			return domain.WithCode(domain.CodeDiscountNotApplicable, domain.ErrConflict)
 		}
 		if freshErr != nil {

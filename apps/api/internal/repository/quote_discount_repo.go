@@ -172,7 +172,8 @@ func (r *QuoteDiscountRepository) CreateApplications(
 }
 
 // CopySellerDecisions copies a version's seller-typed discounts and the promotions the seller
-// suppressed into a draft cloned from it, each covering the draft lines copied from its own.
+// suppressed into a draft cloned from it, each covering the draft lines copied from its own. In the
+// new draft an AI adaptation is just a promotion, so it lands as AUTOMATIC.
 func (r *QuoteDiscountRepository) CopySellerDecisions(
 	ctx context.Context, q Querier, accountID, sourceVersionID, draftVersionID uuid.UUID,
 ) error {
@@ -181,13 +182,16 @@ func (r *QuoteDiscountRepository) CopySellerDecisions(
 		   SELECT qd.*, gen_random_uuid() AS copy_id
 		   FROM quote_discount qd
 		   WHERE qd.account_id = $1 AND qd.quote_version_id = $2
-		     AND (qd.origin <> 'AUTOMATIC'::discount_origin OR qd.suppressed_by_seller)
+		     AND (qd.origin = 'MANUAL_SELLER'::discount_origin OR qd.suppressed_by_seller)
 		 ), copied AS (
 		   INSERT INTO quote_discount (id, account_id, quote_version_id, promotion_id,
 		          condition_type, scope, origin, amount, action_type, action_value, description,
 		          suppressed_by_seller)
 		   SELECT source.copy_id, $1, draft.id, source.promotion_id, source.condition_type,
-		          source.scope, source.origin, source.amount, source.action_type,
+		          source.scope,
+		          CASE WHEN source.origin = 'AI_ADAPTATION'::discount_origin
+		               THEN 'AUTOMATIC'::discount_origin ELSE source.origin END,
+		          source.amount, source.action_type,
 		          source.action_value, source.description, source.suppressed_by_seller
 		   FROM source
 		   JOIN quote_version draft ON draft.account_id = $1 AND draft.id = $3
@@ -347,7 +351,7 @@ func (r *QuoteDiscountRepository) UpdateAmount(
 		accountID, versionID, discountID, amount)
 }
 
-// UpdateApplication rewrites the figure and the money of an AUTOMATIC application on a mutable
+// UpdateApplication rewrites the figure and the money of an engine-earned application on a mutable
 // version, for a sweep whose rule still applies but to different quantities.
 func (r *QuoteDiscountRepository) UpdateApplication(
 	ctx context.Context, q Querier, accountID, versionID, discountID uuid.UUID,
@@ -359,7 +363,7 @@ func (r *QuoteDiscountRepository) UpdateApplication(
 		 FROM quote_version qv
 		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
 		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = $3
-		   AND qd.origin = 'AUTOMATIC'::discount_origin
+		   AND qd.origin IN ('AUTOMATIC'::discount_origin, 'AI_ADAPTATION'::discount_origin)
 		 RETURNING qd.id`,
 		accountID, versionID, discountID, actionValue, amount)
 }
@@ -409,7 +413,7 @@ func (r *QuoteDiscountRepository) DeleteByVersion(
 	return err
 }
 
-// DeleteApplications removes AUTOMATIC applications a sweep no longer earns, with their line links.
+// DeleteApplications removes engine-earned applications a sweep no longer earns, with their links.
 func (r *QuoteDiscountRepository) DeleteApplications(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID,
 ) error {
@@ -421,7 +425,7 @@ func (r *QuoteDiscountRepository) DeleteApplications(
 		 USING quote_discount qd, quote_version qv
 		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
 		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = ANY($3)
-		   AND qd.origin = 'AUTOMATIC'::discount_origin
+		   AND qd.origin IN ('AUTOMATIC'::discount_origin, 'AI_ADAPTATION'::discount_origin)
 		   AND qdi.account_id = $1 AND qdi.quote_discount_id = qd.id`,
 		accountID, versionID, discountIDs); err != nil {
 		return err
@@ -429,6 +433,31 @@ func (r *QuoteDiscountRepository) DeleteApplications(
 	tag, err := q.Exec(ctx,
 		`DELETE FROM quote_discount qd
 		 USING quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = ANY($3)
+		   AND qd.origin IN ('AUTOMATIC'::discount_origin, 'AI_ADAPTATION'::discount_origin)`,
+		accountID, versionID, discountIDs)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(discountIDs)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// MarkAdaptations turns AUTOMATIC applications on a mutable version into AI_ADAPTATION ones: the
+// promotions the AI reached by raising quantities.
+func (r *QuoteDiscountRepository) MarkAdaptations(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID,
+) error {
+	if len(discountIDs) == 0 {
+		return nil
+	}
+	tag, err := q.Exec(ctx,
+		`UPDATE quote_discount qd
+		 SET origin = 'AI_ADAPTATION'::discount_origin
+		 FROM quote_version qv
 		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
 		   AND qd.account_id = $1 AND qd.quote_version_id = qv.id AND qd.id = ANY($3)
 		   AND qd.origin = 'AUTOMATIC'::discount_origin`,
