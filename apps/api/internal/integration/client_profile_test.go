@@ -115,7 +115,11 @@ func TestClientProfile_InvalidSelectionNeverPublishesOrCreatesAClient(t *testing
 	seed := e.seedSendableQuote(t, "Invalid send client", false)
 	sender := &captureWhatsAppSender{}
 	delivery := e.quoteDeliveryService(t, sender, &stagedQuoteEmailSender{}, nil)
+	foreignAccount, _ := e.seedAccount(t, "Foreign client owner")
 	missing := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO client(id,account_id,name,tax_id) VALUES($1,$2,'Foreign client','20123456786')`, missing, foreignAccount); err != nil {
+		t.Fatal(err)
+	}
 	_, err := delivery.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188", ClientAssociation: &domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &missing}})
 	if err == nil || sender.count() != 0 {
 		t.Fatalf("invalid selection: %v, sends %d", err, sender.count())
@@ -126,5 +130,40 @@ func TestClientProfile_InvalidSelectionNeverPublishesOrCreatesAClient(t *testing
 	}
 	if count != 0 {
 		t.Fatalf("invalid selection created %d publications", count)
+	}
+}
+
+func TestClientProfile_SendRequiresCUITAndPreservesExistingContacts(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Confirm existing client", false)
+	var clientID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT client_id FROM quote WHERE id=$1`, seed.draft.Quote.ID).Scan(&clientID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE client SET tax_id=NULL,phone='+5491155550100',email='original@example.test' WHERE id=$1`, clientID); err != nil {
+		t.Fatal(err)
+	}
+	sender := &captureWhatsAppSender{}
+	service := e.quoteDeliveryService(t, sender, &stagedQuoteEmailSender{}, nil)
+	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199"}
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); !errors.Is(err, domain.ErrInvalidInput) || sender.count() != 0 {
+		t.Fatalf("missing CUIT: %v, provider calls %d", err, sender.count())
+	}
+	input.ClientAssociation = &domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID}
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	var taxID, phone, email string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT tax_id,phone,email FROM client WHERE id=$1`, clientID).Scan(&taxID, &phone, &email); err != nil {
+		t.Fatal(err)
+	}
+	if taxID != "20123456786" || phone != "+5491155550100" || email != "original@example.test" {
+		t.Fatalf("profile contents: %s %s %s", taxID, phone, email)
+	}
+	name := "Another client"
+	input.IdempotencyKey = uuid.New()
+	input.ClientAssociation = &domain.AssociateQuoteClientInput{TaxID: "30712345671", New: &domain.NewClient{Name: &name}}
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); !errors.Is(err, domain.ErrConflict) || sender.count() != 1 {
+		t.Fatalf("published client reassignment: %v, provider calls %d", err, sender.count())
 	}
 }
