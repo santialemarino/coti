@@ -770,6 +770,7 @@ CREATE TABLE quote_status_change (
 -- The link is issued per send and channel, not stored on quote. public_token is the
 -- webapp's only lookup key, so it is unique.
 CREATE TABLE quote_send (
+  client_association_hash VARCHAR(64) NOT NULL DEFAULT '',
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
   version_id      UUID NOT NULL,
@@ -1236,6 +1237,7 @@ CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
+CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);

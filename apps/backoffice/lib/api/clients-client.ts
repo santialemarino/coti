@@ -1,12 +1,10 @@
 import {
   clientMatchFromSummary,
-  mapClientMatch,
   mapClientSummary,
   mapClientTag,
   mapQuoteClientAssociation,
   type ClientListRaw,
   type ClientMatch,
-  type ClientMatchRaw,
   type ClientTag,
   type ClientTagListRaw,
   type ClientTagRaw,
@@ -20,16 +18,6 @@ import {
   type ClientFiscalRaw,
   type IvaCondition,
 } from '@/lib/api/invoicing';
-
-export interface AssociateQuoteClientBody {
-  client_id?: string;
-  new_client?: {
-    name?: string;
-    phone?: string;
-    email?: string;
-  };
-  tag_ids: string[];
-}
 
 export async function getClientDirectory(branchId: string): Promise<ClientMatch[]> {
   const response = await fetch('/api/clients', {
@@ -52,21 +40,6 @@ export async function getQuoteClientAssociation(
   if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as QuoteClientAssociationRaw;
   return mapQuoteClientAssociation(raw);
-}
-
-export async function associateQuoteClient(
-  quoteId: string,
-  branchId: string,
-  body: AssociateQuoteClientBody,
-): Promise<ClientMatch> {
-  const response = await fetch(`/api/quotes/${quoteId}/client-association`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Branch-Id': branchId },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
-  if (!response.ok) await throwApiError(response);
-  return mapClientMatch((await response.json()) as ClientMatchRaw);
 }
 
 export async function createClientTag(name: string): Promise<ClientTag> {

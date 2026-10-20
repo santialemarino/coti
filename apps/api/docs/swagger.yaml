@@ -150,6 +150,9 @@ definitions:
         items:
           type: string
         type: array
+      tax_id:
+        maxLength: 20
+        type: string
     type: object
   dto.AvailabilityListResponse:
     properties:
@@ -395,7 +398,11 @@ definitions:
     properties:
       email:
         type: string
+      name:
+        type: string
       phone:
+        type: string
+      tax_id:
         type: string
     type: object
   dto.ClientFiscalResponse:
@@ -465,6 +472,8 @@ definitions:
         type: string
       phone:
         type: string
+      tax_id:
+        type: string
       updated_at:
         type: string
     type: object
@@ -509,6 +518,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientTagResponse'
         type: array
+      tax_id:
+        type: string
       updated_at:
         type: string
     type: object
@@ -2143,6 +2154,8 @@ definitions:
     type: object
   dto.QuoteSendRequest:
     properties:
+      client_association:
+        $ref: '#/definitions/dto.AssociateQuoteClientRequest'
       email_delivery:
         $ref: '#/definitions/dto.QuoteEmailDeliveryRequest'
       expiry_days:
@@ -6474,7 +6487,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: Quote is not accepted
+          description: Quote cannot be sent
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
@@ -6483,15 +6496,14 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get accepted-sale client association
+      summary: Get quotation-send client association
       tags:
       - clients
     put:
       consumes:
       - application/json
-      description: Links the quote and its RFQ to exactly one seller-confirmed profile,
-        and atomically replaces that profile's tags. Contact suggestions are never
-        accepted automatically.
+      description: Client selection is confirmed through quotation delivery. This
+        standalone operation returns 409.
       parameters:
       - description: Active branch
         in: header
@@ -6533,7 +6545,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: Quote is not accepted
+          description: Association is confirmed during quotation delivery
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
@@ -6542,7 +6554,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Associate an accepted sale with a client
+      summary: Reject standalone client association
       tags:
       - clients
   /v1/quotes/{quoteId}/discard-ai-changes:

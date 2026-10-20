@@ -191,7 +191,7 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 		email = &request.EmailDelivery.Address
 	}
 	result, err := h.delivery.Send(c.Request.Context(), tenant, quoteID,
-		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone,
+		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone, ClientAssociation: fromSendClientRequest(request.ClientAssociation),
 			Email: email, ExpiryDays: request.ExpiryDays})
 	if err != nil {
 		Respond(c, err)

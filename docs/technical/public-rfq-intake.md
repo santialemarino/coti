@@ -74,14 +74,16 @@ The product's access rule is exact CUIT/CUIL matching within the authenticated s
 therefore grants access to earlier matching requests. CUIT/CUIL is treated as a declared identifier;
 this flow does not verify fiscal ownership. Queries match a request's associated commercial client
 or the retained, normalized web declaration. They never infer identity from a loose name. Customer
-credentials do not create, associate, merge or edit commercial client profiles.
+credentials do not create or merge commercial profiles. The seller confirms the client association
+in the same transaction that publishes a quotation, so all-channel requests become accessible
+before customer acceptance.
 
 GET /orders provides bounded pages; GET /orders/{rfqId} checks the same supplier and CUIT/CUIL
 before returning the original request and a successful immutable delivery reference. Draft contents
 and AI results are not returned. Until a quotation has been sent, the projection reports RECEIVED.
 Sent versions remain available while the seller edits another version internally.
 
-Every seller send creates a WEBAPP publication alongside the required WhatsApp attempt and any
+Every seller send confirms the client profile and creates a WEBAPP publication alongside the required WhatsApp attempt and any
 selected email delivery. The seller's phone requirement remains unchanged. Publication commits
 with delivery outcomes and the backend-controlled SENT transition; no browser push or notification
 subscription flow is included. An external provider failure does not withdraw a web publication.

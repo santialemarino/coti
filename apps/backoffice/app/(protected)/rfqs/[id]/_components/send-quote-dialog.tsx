@@ -37,9 +37,11 @@ import {
   type QuoteSendResponse,
   type QuoteSendTrackingResponse,
   type RfqDetailResponse,
+  type SendClientSelection,
 } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { SendClientForm } from './send-client-form';
 
 interface Destinations {
   phone: string;
@@ -94,6 +96,7 @@ export function SendQuoteDialog({
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
+  const [clientSelection, setClientSelection] = useState<SendClientSelection | null>(null);
   const [phone, setPhone] = useState('');
   const [alsoEmail, setAlsoEmail] = useState(false);
   const [email, setEmail] = useState('');
@@ -103,7 +106,7 @@ export function SendQuoteDialog({
   const quoteId = detail.quote?.id ?? null;
   const phoneValid = isValidPhoneNumber(phone);
   const emailValid = !alsoEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canSend = !!quoteId && phoneValid && emailValid;
+  const canSend = !!quoteId && phoneValid && emailValid && clientSelection !== null;
 
   // The sent URLs are the recovery surface for a message that never arrived, so the dialog holds
   // them until it closes rather than vanishing the moment the send returns.
@@ -117,7 +120,8 @@ export function SendQuoteDialog({
     if (next) {
       const previous = previousDestinations(detail.deliveries, detail.inbound_whatsapp_phone);
       setResult(null);
-      setPhone(previous.phone);
+      setClientSelection(null);
+      setPhone(previous.phone || detail.publicRequest?.phone || '');
       setAlsoEmail(previous.email !== null);
       setEmail(previous.email ?? '');
     }
@@ -130,6 +134,7 @@ export function SendQuoteDialog({
     try {
       const result = await sendQuote(quoteId, branchId, {
         recipient_phone: phone,
+        clientAssociation: clientSelection ?? undefined,
         email_delivery: alsoEmail ? { address: email.trim() } : null,
       });
       reportOutcome(result.deliveries);
@@ -176,7 +181,7 @@ export function SendQuoteDialog({
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
           <DialogHeader>
             <DialogTitle>{result ? t('successTitle') : t('title')}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className={result ? undefined : 'sr-only'}>
               {result ? t('successDescription') : t('description')}
             </DialogDescription>
           </DialogHeader>
@@ -236,6 +241,20 @@ export function SendQuoteDialog({
             </div>
           ) : (
             <div className="flex flex-col gap-y-4">
+              {open && quoteId ? (
+                <SendClientForm
+                  quoteId={quoteId}
+                  branchId={branchId}
+                  disabled={sending}
+                  locked={
+                    detail.quote?.current_status === 'SENT' ||
+                    detail.deliveries.some((delivery) =>
+                      ['SENT', 'DELIVERED', 'VIEWED'].includes(delivery.tracking_status),
+                    )
+                  }
+                  onChange={setClientSelection}
+                />
+              ) : null}
               <div className="flex flex-col gap-y-1.5">
                 <Label htmlFor="send-phone" required>
                   <MessageCircleIcon aria-hidden="true" className="size-4 text-foreground-muted" />
@@ -253,12 +272,8 @@ export function SendQuoteDialog({
                     message: tPhone('landline'),
                     action: (mobile) => tPhone('useMobile', { number: mobile }),
                   }}
-                  aria-describedby="send-phone-hint"
                   autoFocus
                 />
-                <p id="send-phone-hint" className="text-paragraph-xs text-foreground-muted">
-                  {t('phoneHint')}
-                </p>
               </div>
 
               <div className="flex flex-col gap-y-2">
@@ -307,7 +322,6 @@ export function SendQuoteDialog({
                     {fmt.currency(detail.version?.total ?? '0')}
                   </span>
                 </div>
-                <p className="pt-1 text-paragraph-xs text-foreground-muted">{t('summaryLink')}</p>
               </div>
             </div>
           )}

@@ -35,9 +35,6 @@ vi.mock('./invoice-card', () => ({
     <div data-testid="invoice-card" data-read-only={String(Boolean(readOnly))} />
   ),
 }));
-vi.mock('./client-association-card', () => ({
-  ClientAssociationCard: () => <div data-testid="client-association-card" />,
-}));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
 
 const { toast } = await import('sonner');
@@ -478,10 +475,10 @@ describe('RfqDetailView send flow', () => {
 });
 
 describe('RfqDetailView client association', () => {
-  it('shows the association card for an active accepted quote', () => {
+  it('does not offer a new association after accepting the quote', () => {
     const view = renderView(makeDetail('ACCEPTED'));
 
-    expect(view.getByTestId('client-association-card')).toBeTruthy();
+    expect(view.queryByTestId('client-association-card')).toBeNull();
   });
 
   it('hides the association card while the accepted quote is archived', () => {

@@ -120,6 +120,7 @@ type quotePublicDB interface {
 
 // QuoteDeliveryService freezes and delivers a seller-approved quote, then labels it post-commit.
 type QuoteDeliveryService struct {
+	clients             quoteClientConfirmer
 	db                  quotePublicDB
 	sends               quoteDeliveryRepository
 	quotes              quoteDeliveryQuoteRepository
@@ -185,13 +186,16 @@ func (s *QuoteDeliveryService) Send(ctx context.Context, tenant domain.Tenant, q
 	if err := requireBranch(tenant, "a quote delivery"); err != nil {
 		return nil, err
 	}
+	if s.clients == nil {
+		return nil, domain.ErrNotConfigured
+	}
 	normalized, err := normalizeQuoteDeliveryInput(in)
 	if err != nil {
 		return nil, err
 	}
 	var result *domain.QuoteDeliveryResult
 	err = s.db.WithAdvisoryLock(ctx, strings.Join([]string{"quote-delivery",
-		tenant.AccountID.String(), quoteID.String(), normalized.IdempotencyKey.String()}, ":"),
+		tenant.AccountID.String(), quoteID.String()}, ":"),
 		func() error {
 			var sendErr error
 			result, sendErr = s.sendLocked(ctx, tenant, quoteID, normalized)
@@ -258,11 +262,18 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		if !anySuccess {
 			return nil
 		}
+		current, err := s.quotes.GetByIDForUpdate(commitCtx, q, tenant.AccountID, tenant.BranchID, quote.ID)
+		if err != nil {
+			return err
+		}
+		if err := s.clients.ConfirmForSend(commitCtx, q, tenant, *current, normalized.ClientAssociation); err != nil {
+			return err
+		}
 		if err := s.quotes.SetExpiry(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID, expiresAt); err != nil {
 			return err
 		}
-		current, err := s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
+		current, err = s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID)
 		if err != nil {
 			return err
@@ -386,6 +397,12 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			return validateReplay(prepared, version.ID, in, validityDays)
 		}
 
+		if s.clients == nil {
+			return domain.ErrNotConfigured
+		}
+		if err := s.clients.ValidateForSend(ctx, q, tenant, *quote, in.ClientAssociation); err != nil {
+			return err
+		}
 		selected, err := s.selectedChannels(ctx, q, tenant, in)
 		if err != nil {
 			return err
@@ -406,7 +423,7 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			news = append(news, domain.NewQuoteSend{ID: uuid.New(), VersionID: version.ID,
 				ChannelID: selectedChannel.ID, IdempotencyKey: in.IdempotencyKey,
 				Destination: destination, PublicToken: token,
-				Format: domain.SendFormatWebAppLink, ValidityDays: validityDays})
+				Format: domain.SendFormatWebAppLink, ValidityDays: validityDays, ClientAssociationHash: sendClientFingerprint(in.ClientAssociation)})
 		}
 		prepared, err = s.sends.CreateBatch(ctx, q, tenant.AccountID, news)
 		return err
@@ -866,6 +883,9 @@ func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeli
 		return in, fmt.Errorf("%w: expiry_days must be between %d and %d",
 			domain.ErrInvalidInput, minQuoteValidityDays, maxQuoteValidityDays)
 	}
+	if err := normalizeSendClient(in.ClientAssociation); err != nil {
+		return in, err
+	}
 	return in, nil
 }
 
@@ -932,7 +952,7 @@ func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,
 	for _, send := range sends {
 		destination, ok := want[send.ChannelType]
 		if !ok || send.VersionID != versionID || send.Destination != destination ||
-			send.ValidityDays != validityDays {
+			send.ValidityDays != validityDays || send.ClientAssociationHash != sendClientFingerprint(in.ClientAssociation) {
 			return domain.WithCode(domain.CodeIdempotencyMismatch, domain.ErrConflict)
 		}
 	}

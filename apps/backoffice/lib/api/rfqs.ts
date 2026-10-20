@@ -296,7 +296,15 @@ export interface FileRfqDraftResponse {
 
 // Body of POST /v1/quotes/:quoteId/sends. WhatsApp and the public link always go; the email
 // copy is the optional one, so an absent email_delivery means "WhatsApp only".
+export interface SendClientSelection {
+  taxId: string;
+  clientId?: string;
+  newClient?: { name: string; phone?: string; email?: string };
+  tagIds: string[];
+}
+
 export interface QuoteSendBody {
+  clientAssociation?: SendClientSelection;
   recipient_phone: string;
   email_delivery?: { address: string } | null;
   expiry_days?: number | null;

@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients-client';
 import { ApiError } from '@/lib/api/errors';
 import type {
   QuoteDeliveryResponse,
@@ -14,6 +15,10 @@ import { sendQuote } from '@/lib/api/rfqs-client';
 import messages from '@/translations/es.json';
 import { previousDestinations, SendQuoteDialog } from './send-quote-dialog';
 
+vi.mock('@/lib/api/clients-client', () => ({
+  getClientDirectory: vi.fn(),
+  getQuoteClientAssociation: vi.fn(),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/api/rfqs-client', () => ({ sendQuote: vi.fn() }));
 
@@ -139,12 +144,22 @@ function phoneField(view: RenderResult) {
 
 async function sendOn(view: RenderResult, phone = PHONE) {
   fireEvent.change(phoneField(view), { target: { value: phone } });
-  fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+  await waitFor(() =>
+    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+  );
+  fireEvent.click(view.getByRole('button', { name: copy.send }));
   await waitFor(() => expect(sendQuote).toHaveBeenCalled());
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getClientDirectory).mockResolvedValue([]);
+  vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+    currentClient: null,
+    suggestions: [],
+    availableTags: [],
+    contactHints: { taxId: '20123456786', name: 'Constructora', email: null, phone: null },
+  });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 });
 
@@ -159,7 +174,7 @@ describe('SendQuoteDialog', () => {
     );
     const view = renderDialog();
     openDialog(view);
-    expect(view.getByRole('button', { name: /^Enviar$/ }).hasAttribute('disabled')).toBe(true);
+    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(true);
     await sendOn(view);
 
     expect(view.getByRole('link', { name: copy.visualizeOnline }).getAttribute('href')).toBe(
@@ -188,11 +203,19 @@ describe('SendQuoteDialog', () => {
     const view = renderDialog(PHONE);
     openDialog(view);
 
-    fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
 
     await waitFor(() =>
       expect(sendQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, {
         recipient_phone: PHONE,
+        clientAssociation: {
+          taxId: '20123456786',
+          newClient: { name: 'Constructora' },
+          tagIds: [],
+        },
         email_delivery: null,
       }),
     );
@@ -291,7 +314,7 @@ describe('SendQuoteDialog', () => {
 
     // Too short to be a number anywhere, whatever the country picker says.
     fireEvent.change(phoneField(view), { target: { value: '1234' } });
-    fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
 
     expect(sendQuote).not.toHaveBeenCalled();
   });

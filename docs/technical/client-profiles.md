@@ -1,67 +1,58 @@
-# Client profiles and accepted sales
+# Client profiles and quotation delivery
 
-US-22 adds the client history as a projection of the quoting flow. It is not a separate CRM
-module: an accepted quote becomes part of a profile only after a seller confirms the association.
+## Association at publication
 
-## Lifecycle
+`GET /v1/quotes/{quoteId}/client-association` reads the current profile, the original request's
+normalized declarations, exact CUIT/CUIL candidates, and reusable tags. Without a declared CUIT,
+existing delivery contacts remain available as hints. Reads never create or associate a profile.
 
-Sending a quote stores each destination in `quote_send`; it does not create a `client`, update
-contact data, or set `quote.client_id` or `rfq.client_id`. Once the quote reaches `ACCEPTED`, the
-backoffice requests association context. The API returns the most recent WhatsApp and email
-destinations as hints plus account clients that match either contact exactly after normalization.
-The seller can also search the account-scoped client directory by name, phone, or email when the
-sale arrived through a different contact. Both reads have no side effects.
+The seller includes `client_association` in `POST /v1/quotes/{quoteId}/sends`:
 
-The seller then chooses one existing suggestion or provides at least one field for a new client.
-`PUT /v1/quotes/{quoteId}/client-association` locks the accepted quote and, in one tenant
-transaction:
+```json
+{
+  "recipient_phone": "+5491155550101",
+  "client_association": {
+    "tax_id": "20123456786",
+    "new_client": { "name": "Example company" },
+    "tag_ids": []
+  }
+}
+```
 
-1. loads the selected account client or creates the confirmed profile;
-2. validates and replaces that profile's selected tags;
-3. sets the same `client_id` on the quote and its source RFQ.
+Exactly one of `client_id` and `new_client` is selected. CUIT/CUIL and a new profile's name are
+required; profile email and phone are optional. The WhatsApp delivery recipient remains required.
+An existing profile's different fiscal identifier is refused; an absent identifier is filled only
+when the seller confirms it. Other existing contact fields are preserved. Several exact matches
+require an explicit selection, and no profiles are merged automatically.
 
-The service rejects quotes outside `ACCEPTED`, archived quotes, client or tag IDs from another
-account, and a body that selects both or neither association option. An archived accepted quote
-must be unarchived before reading or changing its association. There is no fuzzy match, automatic
-merge, or automatic contact overwrite. Selecting a directory result sends only its existing
-`client_id` and the seller-confirmed tag set; delivery destinations remain in `quote_send`.
+The delivery service validates the selected profile and account-owned tags before contacting any
+provider. A quote-scoped advisory lock serializes deliveries. The successful publication transaction
+creates or loads the client, applies the confirmed tag set, associates both quote and RFQ, records
+delivery outcomes, and moves the quotation to SENT. Failure rolls back those database changes.
+A completed resend retains its profile; another profile cannot be substituted on a SENT quote.
 
-## Tags
+Migration `00053_quote_send_client_association.sql` adds a normalized selection fingerprint to each
+send. A replay with a different selection is refused, while a repeated successful operation does
+not create another profile. The retired standalone association PUT returns 409; there is no client
+association action after customer acceptance.
 
-Tags belong to the account and profiles use the existing `client_tag` many-to-many table. Migration
-`00027_default_client_tags.sql` adds `Recurrente` and `Obra grande` to existing accounts; account
-registration seeds the same defaults in its creation transaction.
+## Profiles and accepted sales
 
-Sellers can create reusable tags inline. The service trims the name, collapses repeated whitespace,
-and relies on `uq_tag_account_name` for case-insensitive idempotency. Both association and profile
-editing use replacement semantics for the selected tag set. The existing `tag.color` column is not
-part of this workflow.
+Profiles and tags are account-scoped. Every repository access includes the account; request and
+quotation operations additionally enforce branch scope. PostgreSQL RLS remains enabled. Profile
+lists and details continue projecting accepted sales within the caller's branch and seller reach.
+Associating a client at SENT does not turn the quotation into an accepted sale.
 
-## HTTP surface
+Tags retain their existing account-owned many-to-many model and replacement semantics. The send
+form preserves the chosen profile's current tags and allows selecting existing reusable tags.
+Profile tag editing and tag creation remain available through their existing endpoints.
 
-| Method | Route                                     | Purpose                                                    |
-| ------ | ----------------------------------------- | ---------------------------------------------------------- |
-| `GET`  | `/v1/clients`                             | Account profiles with branch-visible accepted-sale summary |
-| `GET`  | `/v1/clients/{clientId}`                  | Contact, tags, and visible accepted sales                  |
-| `PUT`  | `/v1/clients/{clientId}/tags`             | Replace a profile's account-owned tags                     |
-| `GET`  | `/v1/tags`                                | List reusable account tags                                 |
-| `POST` | `/v1/tags`                                | Create or return a normalized reusable tag                 |
-| `GET`  | `/v1/quotes/{quoteId}/client-association` | Return current association, exact matches, hints, and tags |
-| `PUT`  | `/v1/quotes/{quoteId}/client-association` | Confirm the client and tag set for an accepted quote       |
-
-Money remains a decimal string at the API boundary. The backoffice maps snake_case responses to
-camelCase in `lib/api/client-profiles.ts`; browser writes travel through authenticated BFF routes.
-
-## Scope and visibility
-
-Profiles and tags are account-wide. Every repository query includes `account_id`, and request work
-runs under the tenant RLS role. Accepted-sale counts and history are additionally constrained by
-the caller's branch reach and seller assignment. An active branch is mandatory when reading or
-confirming an individual quote association.
+The backoffice maps API snake_case to camelCase in its fetch boundary. The send dialog uses the
+shared form controls, CUIT/CUIL input, phone input, validation states, and semantic design tokens.
 
 ## Verification
 
-The service tests pin normalization, active accepted-only association, transactional quote/RFQ
-updates, and the no-write suggestion contract. PostgreSQL integration tests cover send without
-implicit client creation through confirmed association and profile history. Backoffice tests cover
-API mapping, the archived boundary, and seller confirmation.
+Service and PostgreSQL integration tests cover validated selections, branch and account isolation,
+atomic publication and association, pre-acceptance customer history, rollback, and replay safety.
+Frontend tests cover prefill, exact and ambiguous matches, required identifiers, API mapping,
+retirement of the post-acceptance card, and the combined send action.
