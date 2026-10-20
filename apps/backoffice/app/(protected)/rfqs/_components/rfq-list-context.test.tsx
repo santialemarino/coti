@@ -28,6 +28,7 @@ function order(id: string): RfqRecord {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
 }
@@ -95,5 +96,70 @@ describe('RfqListProvider', () => {
 
     expect(screen.getByText('a')).toBeTruthy();
     expect(list.records[0]?.client).toBe('Obra Norte');
+  });
+});
+
+describe('RfqListProvider archive', () => {
+  function providerWith(records: RfqRecord[]) {
+    return (
+      <RfqListProvider
+        records={records}
+        hasQueue
+        activeBranchId={null}
+        userName="Ana"
+        userId="u1"
+        isAdmin
+      >
+        <Probe />
+      </RfqListProvider>
+    );
+  }
+
+  it('re-reads the open queue only until the archive is asked for', async () => {
+    vi.mocked(fetchQueue).mockResolvedValue([order('a')]);
+    renderList();
+
+    await act(() => list.reload());
+
+    expect(fetchQueue).toHaveBeenCalledExactlyOnceWith(false);
+    expect(list.archivedState).toBe('idle');
+  });
+
+  it('brings the archive in once asked, and keeps it on every later re-read', async () => {
+    vi.mocked(fetchQueue).mockResolvedValue([order('a'), { ...order('old'), archived: true }]);
+    renderList();
+
+    act(() => list.requestArchived());
+    expect(list.archivedState).toBe('loading');
+    await vi.waitFor(() => expect(list.archivedState).toBe('loaded'));
+    expect(screen.getByText('a,old')).toBeTruthy();
+
+    act(() => list.requestArchived());
+    await act(() => list.reload());
+    expect(vi.mocked(fetchQueue).mock.calls).toEqual([[true], [true]]);
+  });
+
+  // The server's list carries no archive, so a refresh would otherwise drop it from the filter.
+  it('reads the archive again when the server hands down a fresh list', async () => {
+    vi.mocked(fetchQueue).mockResolvedValue([order('a'), { ...order('old'), archived: true }]);
+    const view = render(providerWith([order('a')]));
+    act(() => list.requestArchived());
+    await vi.waitFor(() => expect(list.archivedState).toBe('loaded'));
+
+    view.rerender(providerWith([order('a'), order('b')]));
+
+    await vi.waitFor(() => expect(fetchQueue).toHaveBeenCalledTimes(2));
+    expect(fetchQueue).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(list.archivedState).toBe('loaded'));
+  });
+
+  it('reports a refused archive and asks again only on request', async () => {
+    vi.mocked(fetchQueue).mockRejectedValueOnce(new Error('down'));
+    renderList();
+
+    act(() => list.requestArchived());
+    await vi.waitFor(() => expect(list.archivedState).toBe('failed'));
+    await act(() => list.reload());
+    expect(fetchQueue).toHaveBeenLastCalledWith(false);
   });
 });

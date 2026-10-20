@@ -14,11 +14,11 @@ import {
   CardTitle,
   PendingButton,
 } from '@repo/ui/components';
+import { MarkPaidDialog } from '@/app/(protected)/rfqs/_components/mark-paid-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import { setQuotePaid } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
-import { MarkPaidDialog } from './mark-paid-dialog';
 
 interface SaleClosureCardProps {
   quoteId: string;

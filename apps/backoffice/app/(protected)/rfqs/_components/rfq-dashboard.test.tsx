@@ -3,7 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RfqDashboard } from '@/app/(protected)/rfqs/_components/rfq-dashboard';
-import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { RfqListProvider, useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ApiError } from '@/lib/api/errors';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
@@ -18,7 +18,10 @@ vi.mock('@/app/(protected)/rfqs/_components/create-rfq-dialog', () => ({
 }));
 vi.mock('@/lib/api/rfqs-client', () => ({
   assignRfqSeller: vi.fn(),
+  fetchQueue: vi.fn(async () => []),
+  setInvoiceWaived: vi.fn(),
   setQuoteArchived: vi.fn(),
+  setQuotePaid: vi.fn(),
   setRfqSeller: vi.fn(),
 }));
 vi.mock('@/lib/api/sellers', () => ({
@@ -26,7 +29,14 @@ vi.mock('@/lib/api/sellers', () => ({
 }));
 
 const { toast } = await import('sonner');
-const { assignRfqSeller, setQuoteArchived, setRfqSeller } = await import('@/lib/api/rfqs-client');
+const {
+  assignRfqSeller,
+  fetchQueue,
+  setInvoiceWaived,
+  setQuoteArchived,
+  setQuotePaid,
+  setRfqSeller,
+} = await import('@/lib/api/rfqs-client');
 const { listSellers } = await import('@/lib/api/sellers');
 
 const copy = { ...messages.rfqs, common: messages.common };
@@ -53,6 +63,7 @@ const RFQS: RfqRecord[] = [
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   },
   {
@@ -75,6 +86,7 @@ const RFQS: RfqRecord[] = [
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   },
   {
@@ -97,6 +109,7 @@ const RFQS: RfqRecord[] = [
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   },
   {
@@ -118,6 +131,7 @@ const RFQS: RfqRecord[] = [
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   },
   {
@@ -139,6 +153,7 @@ const RFQS: RfqRecord[] = [
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   },
 ];
@@ -158,6 +173,12 @@ function renderDashboard(records: RfqRecord[] = RFQS) {
   );
 }
 
+// The dashboard as the page mounts it: on the list the provider holds, so a re-read reaches it.
+function ConnectedDashboard() {
+  const { records } = useRfqList();
+  return <RfqDashboard initialRecords={records} activeBranchId={null} />;
+}
+
 // Renders the dashboard with explicit roles; useful for assign flow tests.
 function renderAs(
   roles: { userName: string; userId: string; isAdmin: boolean },
@@ -170,7 +191,7 @@ function renderAs(
       timeZone="America/Argentina/Buenos_Aires"
     >
       <RfqListProvider hasQueue records={records} activeBranchId={null} {...roles}>
-        <RfqDashboard initialRecords={records} activeBranchId={null} />
+        <ConnectedDashboard />
       </RfqListProvider>
     </NextIntlClientProvider>,
   );
@@ -262,11 +283,7 @@ describe('RfqDashboard archived filter', () => {
    * Archivado is a value in the status picker, so picking it on its own means the archive — not
    * the whole queue with the archive added to it.
    */
-  it('hides archived orders until the filter asks for them, then shows only those', async () => {
-    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, [...RFQS, ARCHIVED]);
-
-    expect(view.queryByText('#77')).toBeNull();
-
+  async function pickArchived(view: ReturnType<typeof render>) {
     fireEvent.click(view.getByRole('combobox', { name: copy.list.filters.status }));
     const option = await vi.waitFor(() =>
       view
@@ -275,9 +292,175 @@ describe('RfqDashboard archived filter', () => {
     );
     if (!option) throw new Error('Archivados option never appeared');
     fireEvent.click(option);
+  }
+
+  // The shell reads the open queue only; the archive comes down when the filter asks for it.
+  it('fetches the archive only once the filter asks for it, then shows only those', async () => {
+    let answer: (records: RfqRecord[]) => void = () => undefined;
+    vi.mocked(fetchQueue).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, RFQS);
+
+    expect(fetchQueue).not.toHaveBeenCalled();
+    await pickArchived(view);
+
+    expect(fetchQueue).toHaveBeenCalledExactlyOnceWith(true);
+    await vi.waitFor(() => expect(view.getByText(copy.list.archived.loading)).toBeTruthy());
+
+    answer([...RFQS, ARCHIVED]);
+    await vi.waitFor(() => expect(view.getByText('#77')).toBeTruthy());
+    expect(view.queryByText(copy.list.archived.loading)).toBeNull();
+    expect(view.queryByText('#01')).toBeNull();
+  });
+
+  it('says the archive could not be read, and reads it again on request', async () => {
+    vi.mocked(fetchQueue).mockRejectedValueOnce(new Error('down'));
+    vi.mocked(fetchQueue).mockResolvedValueOnce([...RFQS, ARCHIVED]);
+    const view = renderAs({ userName: 'Ana', userId: 'me', isAdmin: true }, RFQS);
+
+    await pickArchived(view);
+    fireEvent.click(await view.findByRole('button', { name: copy.list.archived.retry }));
 
     await vi.waitFor(() => expect(view.getByText('#77')).toBeTruthy());
-    expect(view.queryByText('#01')).toBeNull();
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetchQueue).mock.calls).toEqual([[true], [true]]);
+  });
+});
+
+describe('RfqDashboard closing actions', () => {
+  const SALE: RfqRecord = {
+    ...(RFQS[0] as RfqRecord),
+    id: 'sale-1',
+    quoteNumber: 40,
+    quoteId: 'quote-sale',
+    branchId: 'b1',
+    status: 'ACCEPTED',
+  };
+  const PAID_AT = '2026-10-10T12:00:00.000Z';
+
+  function renderSales(records: RfqRecord[], invoicingEnabled = true) {
+    return render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <RfqListProvider
+          hasQueue
+          records={records}
+          activeBranchId={null}
+          userName="Ana"
+          userId="me"
+          isAdmin
+          invoicingEnabled={invoicingEnabled}
+        >
+          <ConnectedDashboard />
+        </RfqListProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  async function menuOf(view: ReturnType<typeof render>, reference: string) {
+    const name = copy.list.closing.menu.replace('{id}', reference);
+    fireEvent.pointerDown(rowOf(view, reference).getByRole('button', { name }), { button: 0 });
+    return within(await view.findByRole('menu'));
+  }
+
+  function itemNames(menu: Awaited<ReturnType<typeof menuOf>>) {
+    return menu.getAllByRole('menuitem').map((item: HTMLElement) => item.textContent);
+  }
+
+  it('offers an unpaid sale its payment, its invoice and the waiver, beside archiving', async () => {
+    const view = renderSales([SALE]);
+
+    expect(itemNames(await menuOf(view, '#40'))).toEqual([
+      copy.list.closing.MARK_PAID,
+      copy.list.closing.INVOICE,
+      copy.list.closing.WAIVE,
+      copy.list.actions.archive,
+    ]);
+  });
+
+  it('offers taking back what a paid, waived sale already has', async () => {
+    const view = renderSales([
+      { ...SALE, paidAt: PAID_AT, invoiceWaivedAt: PAID_AT, saleComplete: true },
+    ]);
+
+    expect(itemNames(await menuOf(view, '#40'))).toEqual([
+      copy.list.closing.UNMARK_PAID,
+      copy.list.closing.UNWAIVE,
+      copy.list.actions.archive,
+    ]);
+  });
+
+  it('offers nothing about invoices while the account does not invoice', async () => {
+    const view = renderSales([SALE], false);
+
+    expect(itemNames(await menuOf(view, '#40'))).toEqual([
+      copy.list.closing.MARK_PAID,
+      copy.list.actions.archive,
+    ]);
+  });
+
+  it('leaves every other status with its single inline archive action', () => {
+    const view = renderSales([
+      RFQS[0] as RfqRecord,
+      { ...SALE, archived: false, status: 'REJECTED' },
+    ]);
+
+    expect(
+      view.queryByRole('button', { name: copy.list.closing.menu.replace('{id}', '#01') }),
+    ).toBeNull();
+    expect(
+      rowOf(view, '#01').getByRole('button', { name: copy.list.actions.archive }),
+    ).toBeTruthy();
+    expect(
+      rowOf(view, '#40').getByRole('button', { name: copy.list.actions.archive }),
+    ).toBeTruthy();
+  });
+
+  it('takes the waiver back straight from the menu and reads the queue again', async () => {
+    vi.mocked(setInvoiceWaived).mockResolvedValue({} as never);
+    const view = renderSales([
+      { ...SALE, paidAt: PAID_AT, invoiceWaivedAt: PAID_AT, saleComplete: true },
+    ]);
+
+    fireEvent.click(
+      (await menuOf(view, '#40')).getByRole('menuitem', { name: copy.list.closing.UNWAIVE }),
+    );
+
+    await vi.waitFor(() =>
+      expect(setInvoiceWaived).toHaveBeenCalledWith('quote-sale', false, 'b1'),
+    );
+    await vi.waitFor(() => expect(fetchQueue).toHaveBeenCalledWith(false));
+    expect(toast.success).toHaveBeenCalledWith(
+      messages.invoicing.card.waiver.restored.replace('{reference}', '#40'),
+    );
+  });
+
+  it('takes the payment back straight from the menu', async () => {
+    vi.mocked(setQuotePaid).mockResolvedValue({} as never);
+    const view = renderSales([{ ...SALE, paidAt: PAID_AT }]);
+
+    fireEvent.click(
+      (await menuOf(view, '#40')).getByRole('menuitem', { name: copy.list.closing.UNMARK_PAID }),
+    );
+
+    await vi.waitFor(() => expect(setQuotePaid).toHaveBeenCalledWith('quote-sale', false, 'b1'));
+  });
+
+  // Marking it paid asks first, with the invoice offered in the same confirmation.
+  it('confirms marking a sale paid before writing it', async () => {
+    const view = renderSales([SALE], false);
+
+    fireEvent.click(
+      (await menuOf(view, '#40')).getByRole('menuitem', { name: copy.list.closing.MARK_PAID }),
+    );
+
+    const dialog = within(await view.findByRole('dialog'));
+    expect(
+      dialog.getByText(copy.detail.closure.dialog.title.replace('{reference}', '#40')),
+    ).toBeTruthy();
+    expect(setQuotePaid).not.toHaveBeenCalled();
   });
 });
 
@@ -408,6 +591,7 @@ describe('RfqDashboard claiming an unassigned order', () => {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
 
@@ -551,6 +735,7 @@ describe('RfqDashboard admin steering the seller', () => {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
   const villaOrder: RfqRecord = {
@@ -720,6 +905,7 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
 

@@ -48,6 +48,7 @@ const ORDER: RfqRecord = {
   paidAt: null,
   invoiceWaivedAt: null,
   invoiced: false,
+  invoicePending: false,
   saleComplete: false,
 };
 

@@ -63,6 +63,7 @@ function makeDetail(inboundWhatsAppPhone: string | null = null): RfqDetailRespon
       invoice_waived_at: null,
       invoice_waived_by: null,
       invoiced: false,
+      invoice_pending: false,
       sale_complete: false,
       archived_at: null,
     },

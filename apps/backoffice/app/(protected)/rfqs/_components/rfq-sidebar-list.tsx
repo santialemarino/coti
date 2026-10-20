@@ -6,9 +6,18 @@ import { LayoutGroup } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
 import { EmptyState } from '@repo/ui/components';
+import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqQueueGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-group';
-import { groupQueue } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
-import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
+import {
+  groupQueue,
+  queueStackOf,
+  type QueueStack,
+} from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
+import {
+  SaleClosureDialogs,
+  type ClosingTarget,
+} from '@/app/(protected)/rfqs/_components/sale-closure-dialogs';
+import type { RfqRecord } from '@/lib/api/rfqs';
 
 interface RfqSidebarListProps {
   records: RfqRecord[];
@@ -16,40 +25,43 @@ interface RfqSidebarListProps {
 }
 
 /*
- * The queue rail: the open orders grouped by status, every group folded into a stack until it is
- * opened. Archived orders are left out — they are archived precisely so they stop appearing here;
- * the dashboard's status filter is where they are found again.
+ * The queue rail: the open orders grouped by who has to act, every group folded into a stack until
+ * it is opened, and the closed outcomes folded away at the foot. Archived orders are left out — they
+ * are archived precisely so they stop appearing here; the dashboard's status filter is where they
+ * are found again.
  *
  * The column outlives navigation, so which groups are open survives moving between orders and
  * sections; a reload folds them all again but the open order's.
  */
 export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   const t = useTranslations('rfqs');
+  const { reload } = useRfqList();
 
   const groups = useMemo(() => groupQueue(records), [records]);
-  const activeStatus =
-    records.find((rfq) => rfq.id === activeRfqId && !rfq.archived)?.status ?? null;
+  const activeRecord = records.find((rfq) => rfq.id === activeRfqId && !rfq.archived);
+  const activeStack = activeRecord ? queueStackOf(activeRecord) : null;
 
-  const [expanded, setExpanded] = useState<ReadonlySet<RfqStatus>>(
-    () => new Set(activeStatus ? [activeStatus] : []),
+  const [expanded, setExpanded] = useState<ReadonlySet<QueueStack>>(
+    () => new Set(activeStack ? [activeStack] : []),
   );
+  const [closing, setClosing] = useState<ClosingTarget | null>(null);
   /*
-   * The open order's group unfolds whenever another order opens or the open one changes status —
+   * The open order's group unfolds whenever another order opens or the open one changes stack —
    * from the table, the rail or a transition — so the selection is never buried in a stack.
    * Adjusted during render rather than in an effect, so the group is never painted folded first.
    */
-  const [seen, setSeen] = useState({ id: activeRfqId, status: activeStatus });
-  if (seen.id !== activeRfqId || seen.status !== activeStatus) {
-    setSeen({ id: activeRfqId, status: activeStatus });
-    if (activeStatus && !expanded.has(activeStatus)) {
-      setExpanded(new Set(expanded).add(activeStatus));
+  const [seen, setSeen] = useState({ id: activeRfqId, stack: activeStack });
+  if (seen.id !== activeRfqId || seen.stack !== activeStack) {
+    setSeen({ id: activeRfqId, stack: activeStack });
+    if (activeStack && !expanded.has(activeStack)) {
+      setExpanded(new Set(expanded).add(activeStack));
     }
   }
 
-  function toggle(status: RfqStatus) {
+  function toggle(stack: QueueStack) {
     setExpanded((previous) => {
       const next = new Set(previous);
-      if (!next.delete(status)) next.add(status);
+      if (!next.delete(stack)) next.add(stack);
       return next;
     });
   }
@@ -67,14 +79,16 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
       <LayoutGroup>
         {groups.map((group) => (
           <RfqQueueGroup
-            key={group.status}
+            key={group.stack}
             group={group}
-            expanded={expanded.has(group.status)}
+            expanded={expanded.has(group.stack)}
             activeRfqId={activeRfqId}
-            onToggle={() => toggle(group.status)}
+            onToggle={() => toggle(group.stack)}
+            onClosingStep={(record, action) => setClosing({ record, action })}
           />
         ))}
       </LayoutGroup>
+      <SaleClosureDialogs target={closing} onClose={() => setClosing(null)} onDone={reload} />
     </nav>
   );
 }

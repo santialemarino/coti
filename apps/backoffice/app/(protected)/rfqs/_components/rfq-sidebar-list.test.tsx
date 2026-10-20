@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqSidebarList } from '@/app/(protected)/rfqs/_components/rfq-sidebar-list';
 import { ROUTES } from '@/config/routes';
 import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
@@ -33,6 +34,7 @@ function order(id: string, quoteNumber: number, status: RfqStatus): RfqRecord {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
 }
@@ -156,5 +158,117 @@ describe('RfqSidebarList', () => {
 
     expect(reachable('SENT')).toHaveLength(4);
     expect(screen.getByRole('button', { current: 'page' }).textContent).toContain('#13');
+  });
+});
+
+describe('RfqSidebarList closing', () => {
+  const PAID_AT = '2026-10-10T12:00:00.000Z';
+  const sale = (id: string, quoteNumber: number, facts: Partial<RfqRecord> = {}): RfqRecord => ({
+    ...order(id, quoteNumber, 'ACCEPTED'),
+    quoteId: `quote-${id}`,
+    ...facts,
+  });
+  const stacks = copy.list.groups.stacks;
+  const stackGroup = (name: string) => screen.getByRole('group', { name: new RegExp(`^${name}`) });
+
+  function renderClosing(records: RfqRecord[], invoicingEnabled = true) {
+    return render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <RfqListProvider
+          hasQueue
+          records={records}
+          activeBranchId={null}
+          userName="Ana"
+          userId="me"
+          isAdmin
+          invoicingEnabled={invoicingEnabled}
+        >
+          <RfqSidebarList records={records} activeRfqId={null} />
+        </RfqListProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  const step = (action: string, reference: string) =>
+    screen.queryByRole('button', {
+      name: copy.list.closing.labelled.replace('{action}', action).replace('{id}', reference),
+    });
+
+  // The closed outcomes sit folded at the foot, heading and count only, until they are shown.
+  it('folds «Completados» and the rejected away until they are shown', () => {
+    renderClosing([
+      sale('done', 31, { paidAt: PAID_AT, saleComplete: true }),
+      order('lost', 32, 'REJECTED'),
+      order('sent', 33, 'SENT'),
+    ]);
+
+    const headings = screen.getAllByRole('heading').map((heading) => heading.textContent);
+    expect(headings).toEqual([
+      `${copy.status.SENT}1`,
+      `${stacks.COMPLETED}1`,
+      `${copy.status.REJECTED}1`,
+    ]);
+    expect(within(stackGroup(stacks.COMPLETED)).queryAllByRole('listitem')).toHaveLength(0);
+    expect(within(stackGroup(copy.status.REJECTED)).queryAllByRole('listitem')).toHaveLength(0);
+
+    fireEvent.click(
+      within(stackGroup(stacks.COMPLETED)).getByRole('button', { name: copy.list.groups.show }),
+    );
+    expect(within(stackGroup(stacks.COMPLETED)).getAllByRole('listitem')).toHaveLength(1);
+    expect(
+      within(stackGroup(stacks.COMPLETED)).getByRole('button', { name: copy.list.groups.hide }),
+    ).toBeTruthy();
+  });
+
+  it('offers an unpaid sale its payment, and opens the confirmation without opening the order', async () => {
+    renderClosing([sale('open', 41)], false);
+
+    const markPaid = step(copy.list.closing.MARK_PAID, '#41') as HTMLElement;
+    expect(within(stackGroup(stacks.TO_CLOSE)).getByText(copy.list.closing.MARK_PAID)).toBeTruthy();
+    fireEvent.click(markPaid);
+
+    expect(router.push).not.toHaveBeenCalled();
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(
+      dialog.getByText(copy.detail.closure.dialog.title.replace('{reference}', '#41')),
+    ).toBeTruthy();
+  });
+
+  // The rest of the card keeps opening the order, the step beside it is a target of its own.
+  it('still opens the order from the rest of the card', () => {
+    renderClosing([sale('open', 41)], false);
+
+    const card = within(stackGroup(stacks.TO_CLOSE))
+      .getAllByRole('button')
+      .find((button) => button.closest('li') && button.textContent?.includes('#41'));
+    fireEvent.click(card as HTMLElement);
+    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('open'));
+  });
+
+  it('offers a paid sale its invoice while the account invoices, and nothing once it does not', () => {
+    const view = renderClosing([sale('paid', 42, { paidAt: PAID_AT })]);
+    expect(step(copy.list.closing.INVOICE, '#42')).toBeTruthy();
+    view.unmount();
+
+    renderClosing([sale('paid', 42, { paidAt: PAID_AT, saleComplete: true })], false);
+    expect(step(copy.list.closing.INVOICE, '#42')).toBeNull();
+    expect(step(copy.list.closing.MARK_PAID, '#42')).toBeNull();
+  });
+
+  it.each([
+    ['waived', { paidAt: PAID_AT, invoiceWaivedAt: PAID_AT, saleComplete: true }],
+    ['invoice pending in ARCA', { paidAt: PAID_AT, invoicePending: true }],
+  ])('offers no step on a sale %s', (_, facts) => {
+    renderClosing([sale('s', 43, facts)]);
+
+    expect(step(copy.list.closing.INVOICE, '#43')).toBeNull();
+    expect(step(copy.list.closing.MARK_PAID, '#43')).toBeNull();
+  });
+
+  it('offers no step on any other status', () => {
+    renderClosing([{ ...order('q', 44, 'QUOTED'), quoteId: 'quote-q' }]);
+
+    expect(screen.queryByText(copy.list.closing.MARK_PAID)).toBeNull();
+    expect(screen.queryByText(copy.list.closing.INVOICE)).toBeNull();
   });
 });

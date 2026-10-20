@@ -64,6 +64,8 @@ export interface RfqRecord {
   invoiceWaivedAt: string | null;
   // Whether an issued invoice no credit note cancelled stands for the sale.
   invoiced: boolean;
+  // Whether a voucher of the sale still waits for ARCA, so no second one is offered.
+  invoicePending: boolean;
   // Accepted, paid, and invoiced or waived (or the account does not invoice), as the API derives it.
   saleComplete: boolean;
 }
@@ -93,6 +95,7 @@ export interface RfqListItem {
   invoice_waived_at: string | null;
   invoice_waived_by: string | null;
   invoiced: boolean;
+  invoice_pending: boolean;
   sale_complete: boolean;
 }
 
@@ -118,6 +121,7 @@ export function mapListItem(item: RfqListItem): RfqRecord {
     paidAt: item.paid_at,
     invoiceWaivedAt: item.invoice_waived_at,
     invoiced: item.invoiced,
+    invoicePending: item.invoice_pending,
     saleComplete: item.sale_complete,
   };
 }
