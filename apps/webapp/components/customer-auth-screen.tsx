@@ -80,6 +80,13 @@ export function CustomerAuthScreen({
   const loginUrl = `${ROUTES.login}?method=password&next=${encodeURIComponent(next)}`;
   const signupUrl = `${ROUTES.signup}?next=${encodeURIComponent(next)}`;
 
+  const googleLabel = (
+    <>
+      <Image src="/icons/google.png" width={20} height={20} alt="" className="shrink-0" />
+      {t('google')}
+    </>
+  );
+
   async function onSubmit(values: {
     taxId: string;
     password: string;
@@ -139,7 +146,7 @@ export function CustomerAuthScreen({
           </StatusScreen>
         ) : (
           <Card>
-            <CardHeader>
+            <CardHeader className="text-center">
               <CardTitle>
                 <h1>{t(`titles.${mode}`)}</h1>
               </CardTitle>
@@ -150,28 +157,27 @@ export function CustomerAuthScreen({
                   {googleEnabled ? (
                     <Button asChild variant="outline" size="lg">
                       <Link href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
-                        <Image
-                          src="https://developers.google.com/static/identity/images/g-logo.png"
-                          width={20}
-                          height={20}
-                          alt=""
-                          unoptimized
-                        />
-                        {t('google')}
+                        {googleLabel}
                       </Link>
                     </Button>
                   ) : (
                     <Button variant="outline" size="lg" disabled>
-                      {t('google')}
+                      {googleLabel}
                     </Button>
                   )}
                   {!googleEnabled ? (
-                    <p role="status" className="text-paragraph-sm text-foreground-muted">
+                    <p
+                      role="status"
+                      className="text-center text-paragraph-sm text-foreground-muted"
+                    >
                       {t('errors.googleUnavailable')}
                     </p>
                   ) : null}
                   {initialError ? (
-                    <p role="alert" className="text-paragraph-sm text-danger-foreground">
+                    <p
+                      role="alert"
+                      className="text-center text-paragraph-sm text-danger-foreground"
+                    >
                       {t(`errors.${initialError}`)}
                     </p>
                   ) : null}
