@@ -342,4 +342,47 @@ func TestSaleClosure_InvoiceOnPaymentSetting(t *testing.T) {
 	if rec.Code != http.StatusOK || !read() {
 		t.Fatalf("omitted: status = %d, body = %s, want the default kept", rec.Code, rec.Body)
 	}
+
+	// A seller reads it on the account, since the settings themselves are an admin's.
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	rec = e.do(t, request{method: http.MethodGet, path: "/v1/account", token: e.tokenFor(t, seller)})
+	var account struct {
+		InvoiceOnPayment *bool `json:"invoice_on_payment"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &account) != nil ||
+		account.InvoiceOnPayment == nil || !*account.InvoiceOnPayment {
+		t.Fatalf("seller reads the account: status = %d, body = %s, want invoice_on_payment true", rec.Code, rec.Body)
+	}
+}
+
+// A voucher still waiting for ARCA keeps a paid, waived sale open: it may yet be issued.
+func TestSaleClosure_APendingInvoiceKeepsTheSaleOpen(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón Pendiente Cierre")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	e.setInvoicing(t, accountID, true)
+	sale := e.seedInvoicedSale(t, accountID, branchID, admin, domain.InvoiceStatusPending)
+	ctx := context.Background()
+	if _, err := e.db.CrossAccount().Exec(ctx,
+		`UPDATE quote SET paid_at = now(), paid_by_user_id = $2, invoice_waived_at = now(),
+		                  invoice_waived_by_user_id = $2
+		 WHERE id = $1`, sale.quoteID, admin.ID); err != nil {
+		t.Fatal(err)
+	}
+	var rfqID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT rfq_id FROM quote WHERE id = $1`, sale.quoteID).Scan(&rfqID); err != nil {
+		t.Fatal(err)
+	}
+	token, branch := e.tokenFor(t, admin), branchID.String()
+
+	if detail, listed := e.closureView(t, token, branch, rfqID); detail.SaleComplete || listed.SaleComplete {
+		t.Fatalf("paid, waived, invoice pending: detail = %+v, list = %+v, want open", detail, listed)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx,
+		`UPDATE invoice SET status = 'REJECTED' WHERE id = $1`, sale.invoiceID); err != nil {
+		t.Fatal(err)
+	}
+	if detail, _ := e.closureView(t, token, branch, rfqID); !detail.SaleComplete {
+		t.Fatalf("paid and waived once ARCA refused the invoice: %+v, want complete", detail)
+	}
 }

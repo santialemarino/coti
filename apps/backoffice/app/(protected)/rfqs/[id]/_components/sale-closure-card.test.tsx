@@ -63,6 +63,7 @@ function renderCard(
         saleComplete={false}
         invoicingEnabled
         invoiceOnPayment={false}
+        invoiceWaived={false}
         onChanged={onChanged}
         {...props}
       />
@@ -122,6 +123,23 @@ describe('MarkPaidDialog', () => {
 
     await waitFor(() => expect(setQuotePaid).toHaveBeenCalledWith(QUOTE_ID, true, BRANCH_ID));
     expect(issueInvoice).not.toHaveBeenCalled();
+  });
+
+  // The seller declined the invoice; the default must not tick it back on behind their back.
+  it('offers no invoice on a sale marked «No requiere factura», whatever the default', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue(PREVIEW);
+    const view = renderCard({ invoiceOnPayment: true, invoiceWaived: true });
+    const dialog = await openDialog(view);
+
+    expect(dialog.queryByRole('checkbox')).toBeNull();
+    expect(dialog.getByText(copy.dialog.invoiceWaived)).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: copy.dialog.confirmAndInvoice })).toBeNull();
+    fireEvent.click(dialog.getByRole('button', { name: copy.dialog.confirm }));
+
+    await waitFor(() => expect(setQuotePaid).toHaveBeenCalledWith(QUOTE_ID, true, BRANCH_ID));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(issueInvoice).not.toHaveBeenCalled();
+    expect(getInvoicePreview).not.toHaveBeenCalled();
   });
 
   it('starts ticked from the account default and issues after the paid mark', async () => {

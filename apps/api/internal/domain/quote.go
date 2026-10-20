@@ -64,14 +64,16 @@ type SaleClosure struct {
 	InvoiceWaivedBy *string
 	// Invoiced is whether an issued invoice no credit note cancelled closes the sale here.
 	Invoiced bool
+	// InvoicePending is whether a voucher waits for ARCA's answer, in any environment.
+	InvoicePending bool
 	// InvoicingEnabled is the account switch; an account that does not invoice needs no invoice.
 	InvoicingEnabled bool
 }
 
 // SaleComplete reports whether a sale in status is fully closed: accepted, paid, and invoiced or
-// waived, or with invoicing off for the account.
+// waived, or with invoicing off for the account. A voucher still waiting for ARCA keeps it open.
 func SaleComplete(status QuoteStatus, closure SaleClosure) bool {
-	if status != QuoteStatusAccepted || closure.PaidAt == nil {
+	if status != QuoteStatusAccepted || closure.PaidAt == nil || closure.InvoicePending {
 		return false
 	}
 	return closure.Invoiced || closure.InvoiceWaivedAt != nil || !closure.InvoicingEnabled

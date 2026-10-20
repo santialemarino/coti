@@ -294,6 +294,7 @@ export function RfqDetailView({
               saleComplete={detail.rfq.sale_complete}
               invoicingEnabled={invoicingEnabled}
               invoiceOnPayment={invoiceOnPayment}
+              invoiceWaived={detail.rfq.invoice_waived_at != null}
               readOnly={archived}
               onChanged={handleClosureChanged}
             />

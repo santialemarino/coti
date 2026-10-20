@@ -695,13 +695,15 @@ invoice ARCA refuses leaves the sale paid, and the invoice card shows the refusa
 
 **An issued invoice ends the waiver.** The transaction that records ARCA's authorization of an
 invoice — on the first answer or on reconciling a pending one — clears «No requiere factura» on the
-sale. A refused or released attempt leaves it as the seller set it.
+sale. A refused or released attempt leaves it as the seller set it. Reconciling adopts a pending
+invoice in the environment it was requested in, so one from the other environment still clears the
+waiver but does not count as invoiced here, and the sale reopens waiting for its invoice.
 
 **A complete sale is derived, never stored.** `GET /v1/rfqs` and `GET /v1/rfqs/{id}` carry, per
 order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_waived_by`, `invoiced`
 — an issued invoice no credit note cancelled, in this server's ARCA environment or in production —
 and `sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
-Coti. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
+Coti — never while any voucher of the sale still waits for ARCA, in either environment. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
 re-deriving fiscal state.
 
 ### Archiving a quote

@@ -20,6 +20,8 @@ func TestSaleComplete(t *testing.T) {
 		{"paid, waiting for the invoice", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now, InvoicingEnabled: true}, false},
 		{"paid and invoiced", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now, InvoicingEnabled: true, Invoiced: true}, true},
 		{"paid and waived", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now, InvoicingEnabled: true, InvoiceWaivedAt: &now}, true},
+		{"paid, waived, a voucher pending", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now, InvoicingEnabled: true, InvoiceWaivedAt: &now, InvoicePending: true}, false},
+		{"paid, invoicing off, a voucher pending", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now, InvoicePending: true}, false},
 		{"paid, invoicing off", domain.QuoteStatusAccepted, domain.SaleClosure{PaidAt: &now}, true},
 		{"unpaid, invoicing off", domain.QuoteStatusAccepted, domain.SaleClosure{}, false},
 		{"not accepted", domain.QuoteStatusSent, domain.SaleClosure{PaidAt: &now, Invoiced: true}, false},

@@ -184,7 +184,7 @@ WHERE r.account_id = $1
 		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 		&item.ItemCount, &item.ReviewCount,
 		&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
-		&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicingEnabled,
+		&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -212,17 +212,21 @@ const rfqCurrentLineCounts = `LEFT JOIN LATERAL (
 
 // rfqClosureColumns are the facts that close an accepted sale, read beside each order.
 const rfqClosureColumns = `q.paid_at, payer.name, q.invoice_waived_at, waiver.name,
-		        COALESCE(closure.invoiced, FALSE), a.invoicing_enabled`
+		        COALESCE(closure.invoiced, FALSE), COALESCE(closure.pending, FALSE), a.invoicing_enabled`
 
-// rfqClosureJoins names who closed the sale and whether an issued invoice no credit note cancelled
-// stands for it in the server's environment ($5) or in production.
+// rfqClosureJoins names who closed the sale, whether an issued invoice no credit note cancelled
+// stands for it in the server's environment ($5) or in production, and whether any voucher of the
+// sale still waits for ARCA, in any environment.
 const rfqClosureJoins = `LEFT JOIN app_user payer ON payer.id = q.paid_by_user_id AND payer.account_id = r.account_id
 		 LEFT JOIN app_user waiver ON waiver.id = q.invoice_waived_by_user_id AND waiver.account_id = r.account_id
 		 LEFT JOIN LATERAL (
 		   SELECT EXISTS (SELECT 1 FROM invoice i
 		     WHERE i.account_id = q.account_id AND i.branch_id = q.branch_id AND i.quote_id = q.id
 		       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
-		       AND (i.environment::text = $5 OR i.environment = 'PRODUCTION') AND NOT ` + invoiceCredited + `) AS invoiced
+		       AND (i.environment::text = $5 OR i.environment = 'PRODUCTION') AND NOT ` + invoiceCredited + `) AS invoiced,
+		          EXISTS (SELECT 1 FROM invoice p
+		     WHERE p.account_id = q.account_id AND p.branch_id = q.branch_id AND p.quote_id = q.id
+		       AND p.status = 'PENDING') AS pending
 		 ) closure ON TRUE`
 
 // ListByTenant returns the RFQ list the Backoffice dashboard consumes. needs_followup rows sort
@@ -287,7 +291,7 @@ func (r *RFQRepository) ListByTenant(
 			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 			&item.ItemCount, &item.ReviewCount,
 			&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
-			&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicingEnabled,
+			&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
 		); err != nil {
 			return nil, err
 		}

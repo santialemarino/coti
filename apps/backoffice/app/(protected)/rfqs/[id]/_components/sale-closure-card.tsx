@@ -30,6 +30,8 @@ interface SaleClosureCardProps {
   saleComplete: boolean;
   invoicingEnabled: boolean;
   invoiceOnPayment: boolean;
+  // «No requiere factura» is set, so marking it paid offers no invoice.
+  invoiceWaived: boolean;
   // An archived sale shows its closure but offers no change until unarchived.
   readOnly?: boolean;
   onChanged: () => Promise<void>;
@@ -48,6 +50,7 @@ export function SaleClosureCard({
   saleComplete,
   invoicingEnabled,
   invoiceOnPayment,
+  invoiceWaived,
   readOnly = false,
   onChanged,
 }: SaleClosureCardProps) {
@@ -112,6 +115,7 @@ export function SaleClosureCard({
         reference={reference}
         invoicingEnabled={invoicingEnabled}
         invoiceOnPayment={invoiceOnPayment}
+        invoiceWaived={invoiceWaived}
         onDone={onChanged}
       />
     </Card>

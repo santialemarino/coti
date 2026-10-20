@@ -40,6 +40,8 @@ interface MarkPaidDialogProps {
   invoicingEnabled: boolean;
   // The account default for «Facturar también».
   invoiceOnPayment: boolean;
+  // «No requiere factura» is set: the seller declined the invoice, so it is not offered until undone.
+  invoiceWaived: boolean;
   // Runs once the paid mark is saved, whether or not the invoice went out.
   onDone: () => Promise<void>;
 }
@@ -56,6 +58,7 @@ export function MarkPaidDialog({
   reference,
   invoicingEnabled,
   invoiceOnPayment,
+  invoiceWaived,
   onDone,
 }: MarkPaidDialogProps) {
   const fmt = useFormatters();
@@ -70,9 +73,11 @@ export function MarkPaidDialog({
   const checkboxId = useId();
 
   const preview = state.kind === 'loaded' ? state.preview : null;
-  // A sale with an invoice issued or in flight has nothing to offer; neither has an account off.
+  // Only a sale that still waits for its invoice is offered one.
+  const offerable = invoicingEnabled && !invoiceWaived;
+  // A sale with an invoice issued or in flight has nothing to offer either.
   const offered =
-    invoicingEnabled &&
+    offerable &&
     state.kind !== 'failed' &&
     preview?.invoice?.status !== 'ISSUED' &&
     preview?.invoice?.status !== 'PENDING';
@@ -81,7 +86,7 @@ export function MarkPaidDialog({
 
   // Each opening reads the invoice afresh and starts from the account default.
   useEffect(() => {
-    if (!open || !invoicingEnabled) return;
+    if (!open || !offerable) return;
     const read = ++latestRead.current;
     setState({ kind: 'loading' });
     setInvoice(invoiceOnPayment);
@@ -92,7 +97,7 @@ export function MarkPaidDialog({
       .catch(() => {
         if (read === latestRead.current) setState({ kind: 'failed' });
       });
-  }, [branchId, invoiceOnPayment, invoicingEnabled, open, quoteId]);
+  }, [branchId, invoiceOnPayment, offerable, open, quoteId]);
 
   function confirm() {
     startSave(async () => {
@@ -141,7 +146,9 @@ export function MarkPaidDialog({
           <DialogDescription>{t('dialog.description')}</DialogDescription>
         </DialogHeader>
 
-        {!invoicingEnabled ? null : state.kind === 'loading' ? (
+        {!invoicingEnabled ? null : invoiceWaived ? (
+          <p className="text-paragraph-sm text-foreground-muted">{t('dialog.invoiceWaived')}</p>
+        ) : state.kind === 'loading' ? (
           <div className="flex items-center gap-x-2 text-paragraph-sm text-foreground-muted">
             <Spinner size="sm" />
             {t('dialog.invoiceLoading')}
@@ -182,7 +189,7 @@ export function MarkPaidDialog({
           <PendingButton
             pending={saving}
             pendingLabel={t('dialog.pending')}
-            disabled={invoicingEnabled && state.kind === 'loading'}
+            disabled={offerable && state.kind === 'loading'}
             onClick={confirm}
           >
             {invoicing ? t('dialog.confirmAndInvoice') : t('dialog.confirm')}
