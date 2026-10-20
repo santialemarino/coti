@@ -450,7 +450,7 @@ func newQuoteActionHarness() *quoteActionHarness {
 		token:           "public-token-quote-action",
 		now:             fixedNow,
 	}
-	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
+	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, nil, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
 		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
@@ -774,7 +774,7 @@ func TestQuoteDeliveryService_RespondPublic_BlankOrUnknownTokenIsNotFound(t *tes
 
 func TestQuoteDeliveryService_RespondPublic_RequiresWiredActions(t *testing.T) {
 	h := newQuoteActionHarness()
-	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
+	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, nil, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil)
 

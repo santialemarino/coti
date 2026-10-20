@@ -165,7 +165,7 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 		WithHandlerDecisions(services.NewHandlerDecisionSettler(repository.NewHandlerDecisionRepository(),
 			repository.NewQuoteRepository(), repository.NewQuoteDiscountRepository()))
 	return services.NewQuoteDeliveryService(e.db, repository.NewQuoteSendRepository(),
-		repository.NewQuoteRepository(), repository.NewChannelRepository(),
+		repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewChannelRepository(),
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations).
@@ -304,6 +304,57 @@ func TestQuoteDelivery_EmailOnlyReplaysWithoutContactingWhatsApp(t *testing.T) {
 	input.Phone = "+5491155550101"
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); domain.CodeOf(err) != domain.CodeIdempotencyMismatch {
 		t.Errorf("replay with added channel = %v, want idempotency mismatch", err)
+	}
+}
+
+func TestQuoteDelivery_UsesOriginalWhatsAppChannelWhenSeveralAreActive(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Delivery original channel", false)
+	e.seedIntakeChannel(t, seed.tenant.AccountID, seed.tenant.BranchID)
+	whatsapp := &captureWhatsAppSender{}
+	service := e.quoteDeliveryService(t, whatsapp, &stagedQuoteEmailSender{}, nil)
+	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550101"}
+	result, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
+	if err != nil {
+		t.Fatalf("Send() = %v", err)
+	}
+	var sent *domain.QuoteSend
+	for i := range result.Deliveries {
+		if result.Deliveries[i].ChannelType == domain.ChannelTypeWhatsApp {
+			sent = &result.Deliveries[i]
+		}
+	}
+	if sent == nil || sent.ChannelID != seed.draft.RFQ.ChannelID || whatsapp.count() != 1 {
+		t.Fatalf("WhatsApp delivery = %+v, calls = %d; want source channel %s once",
+			sent, whatsapp.count(), seed.draft.RFQ.ChannelID)
+	}
+	replay, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
+	if err != nil || !replay.Replay || whatsapp.count() != 1 {
+		t.Fatalf("replay = %+v, error = %v, calls = %d; want one provider call", replay, err, whatsapp.count())
+	}
+}
+
+func TestQuoteDelivery_RejectsAmbiguousAlternativeChannel(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Delivery ambiguous alternative", false)
+	for range 2 {
+		id := uuid.New()
+		address := uuid.NewString() + "@example.test"
+		if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel
+		  (id, account_id, branch_id, type, identifier, is_active)
+		  VALUES ($1, $2, $3, 'EMAIL', $4, TRUE)`, id, seed.tenant.AccountID,
+			seed.tenant.BranchID, address); err != nil {
+			t.Fatalf("seed email channel: %v", err)
+		}
+		t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM channel WHERE id = $1`, id) })
+	}
+	email := &stagedQuoteEmailSender{}
+	service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, email, nil)
+	address := "client@example.test"
+	_, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Email: &address})
+	if domain.CodeOf(err) != domain.CodeDeliveryChannel || email.count() != 0 {
+		t.Fatalf("Send() = %v, email calls = %d; want channel error and no delivery", err, email.count())
 	}
 }
 

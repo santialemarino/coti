@@ -87,6 +87,11 @@ type quoteDeliveryChannelRepository interface {
 		branchID uuid.UUID) ([]domain.Channel, error)
 }
 
+type quoteDeliveryRFQRepository interface {
+	GetByID(ctx context.Context, q repository.Querier, accountID, branchID,
+		rfqID uuid.UUID) (*domain.RFQ, error)
+}
+
 type quoteDeliveryChannelConfigReader interface {
 	GetActiveConfigurationsByIDs(ctx context.Context, q repository.Querier, accountID,
 		branchID uuid.UUID, channelIDs []uuid.UUID) (map[uuid.UUID][]byte, error)
@@ -124,6 +129,7 @@ type QuoteDeliveryService struct {
 	db                  quotePublicDB
 	sends               quoteDeliveryRepository
 	quotes              quoteDeliveryQuoteRepository
+	rfqs                quoteDeliveryRFQRepository
 	messages            quoteMessageWriter
 	channels            quoteDeliveryChannelRepository
 	branches            quoteDeliveryBranchRepository
@@ -162,7 +168,7 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 
 // NewQuoteDeliveryService builds the delivery orchestrator.
 func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
-	quotes quoteDeliveryQuoteRepository, channels quoteDeliveryChannelRepository,
+	quotes quoteDeliveryQuoteRepository, rfqs quoteDeliveryRFQRepository, channels quoteDeliveryChannelRepository,
 	branches quoteDeliveryBranchRepository, prices branchPriceReader,
 	whatsapp domain.QuoteWhatsAppSender,
 	email quoteEmailSender, evaluator QuoteQualityEvaluator, webappURL string,
@@ -173,7 +179,7 @@ func NewQuoteDeliveryService(db quotePublicDB, sends quoteDeliveryRepository,
 	if log == nil {
 		log = slog.Default()
 	}
-	return &QuoteDeliveryService{db: db, sends: sends, quotes: quotes,
+	return &QuoteDeliveryService{db: db, sends: sends, quotes: quotes, rfqs: rfqs,
 		channels: channels, branches: branches, prices: prices, whatsapp: whatsapp,
 		email: email, evaluator: evaluator, webappURL: strings.TrimRight(webappURL, "/"),
 		now: now, log: log}
@@ -186,7 +192,7 @@ func (s *QuoteDeliveryService) Send(ctx context.Context, tenant domain.Tenant, q
 	if err := requireBranch(tenant, "a quote delivery"); err != nil {
 		return nil, err
 	}
-	if s.clients == nil {
+	if s.clients == nil || s.rfqs == nil {
 		return nil, domain.ErrNotConfigured
 	}
 	normalized, err := normalizeQuoteDeliveryInput(in)
@@ -403,7 +409,11 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		if err := s.clients.ValidateForSend(ctx, q, tenant, *quote, in.ClientAssociation); err != nil {
 			return err
 		}
-		selected, err := s.selectedChannels(ctx, q, tenant, in)
+		rfq, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID)
+		if err != nil {
+			return err
+		}
+		selected, err := s.selectedChannels(ctx, q, tenant, in, rfq.ChannelID)
 		if err != nil {
 			return err
 		}
@@ -432,7 +442,7 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 }
 
 func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repository.Querier,
-	tenant domain.Tenant, in domain.QuoteDeliveryInput) ([]domain.Channel, error) {
+	tenant domain.Tenant, in domain.QuoteDeliveryInput, originChannelID uuid.UUID) ([]domain.Channel, error) {
 	active, err := s.channels.ListActiveByBranch(ctx, q, tenant.AccountID, tenant.BranchID)
 	if err != nil {
 		return nil, err
@@ -451,6 +461,14 @@ func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repositor
 		for _, channel := range active {
 			if channel.Type == channelType {
 				channels = append(channels, channel)
+			}
+		}
+		if len(channels) > 1 {
+			for _, channel := range channels {
+				if channel.ID == originChannelID {
+					channels = []domain.Channel{channel}
+					break
+				}
 			}
 		}
 		if len(channels) != 1 {
