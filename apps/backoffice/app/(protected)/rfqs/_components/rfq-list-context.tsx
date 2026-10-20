@@ -67,8 +67,9 @@ type RfqListProviderProps = Omit<
   | 'invoiceOnPayment'
 > & {
   loadFailed?: boolean;
-  invoicingEnabled?: boolean;
-  invoiceOnPayment?: boolean;
+  // Null when the account could not be read: the last known value stands until a refresh reads it.
+  invoicingEnabled?: boolean | null;
+  invoiceOnPayment?: boolean | null;
   children: React.ReactNode;
 };
 
@@ -84,10 +85,23 @@ export function RfqListProvider({
   userName,
   userId,
   isAdmin,
-  invoicingEnabled = false,
-  invoiceOnPayment = false,
+  invoicingEnabled: readInvoicing = false,
+  invoiceOnPayment: readOnPayment = false,
   children,
 }: RfqListProviderProps) {
+  const [invoicing, setInvoicing] = useState({
+    enabled: readInvoicing ?? false,
+    onPayment: readOnPayment ?? false,
+  });
+  // Adjusted during render, so the switch never paints stale once the account is read again.
+  if (
+    readInvoicing !== null &&
+    (readInvoicing !== invoicing.enabled || (readOnPayment ?? false) !== invoicing.onPayment)
+  ) {
+    setInvoicing({ enabled: readInvoicing, onPayment: readOnPayment ?? false });
+  }
+  const invoicingEnabled = invoicing.enabled;
+  const invoiceOnPayment = invoicing.onPayment;
   const [records, setRecords] = useState(initialRecords);
   const [loadFailed, setLoadFailed] = useState(initialLoadFailed);
   const [archivedState, setArchivedState] = useState<ArchivedState>('idle');

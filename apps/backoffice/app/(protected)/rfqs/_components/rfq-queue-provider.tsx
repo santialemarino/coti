@@ -25,7 +25,8 @@ async function readQueue(): Promise<RfqRecord[] | null> {
   }
 }
 
-// Null when the account cannot be read: the queue then offers no invoicing step rather than failing.
+// Null when the account cannot be read: the list keeps the switch it last knew, and the next
+// refresh of the shell reads it again.
 async function readAccount(): Promise<Account | null> {
   try {
     return await getAccount();
@@ -57,8 +58,8 @@ export async function RfqQueueProvider({ children }: { children: React.ReactNode
       userName={session?.name ?? ''}
       userId={session?.userId ?? ''}
       isAdmin={isAdmin}
-      invoicingEnabled={account?.invoicingEnabled ?? false}
-      invoiceOnPayment={account?.invoiceOnPayment ?? false}
+      invoicingEnabled={account ? account.invoicingEnabled : null}
+      invoiceOnPayment={account ? account.invoiceOnPayment : null}
     >
       {children}
     </RfqListProvider>

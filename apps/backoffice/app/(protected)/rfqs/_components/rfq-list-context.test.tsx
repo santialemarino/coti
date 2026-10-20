@@ -99,6 +99,37 @@ describe('RfqListProvider', () => {
   });
 });
 
+describe('RfqListProvider invoicing switch', () => {
+  function withSwitch(enabled: boolean | null) {
+    return (
+      <RfqListProvider
+        records={[order('a')]}
+        hasQueue
+        activeBranchId={null}
+        userName="Ana"
+        userId="u1"
+        isAdmin
+        invoicingEnabled={enabled}
+        invoiceOnPayment={enabled}
+      >
+        <Probe />
+      </RfqListProvider>
+    );
+  }
+
+  // A failed account read must not take the invoicing steps away; the next read that lands decides.
+  it('keeps the last known switch while the account cannot be read', () => {
+    const view = render(withSwitch(true));
+
+    view.rerender(withSwitch(null));
+    expect(list.invoicingEnabled).toBe(true);
+    expect(list.invoiceOnPayment).toBe(true);
+
+    view.rerender(withSwitch(false));
+    expect(list.invoicingEnabled).toBe(false);
+  });
+});
+
 describe('RfqListProvider archive', () => {
   function providerWith(records: RfqRecord[]) {
     return (
