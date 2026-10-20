@@ -149,7 +149,9 @@ CREATE TABLE account (
   invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object'),
   preferred_lower_price_strategy lower_price_strategy NOT NULL DEFAULT 'FIND_CHEAPER_ALTERNATIVES',
   -- Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
-  invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE
+  invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Whether «Marcar cobrado» starts with «Facturar también» ticked.
+  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE account_onboarding (
@@ -206,7 +208,8 @@ CREATE TABLE app_user (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   email_verified_at TIMESTAMPTZ,
-  CONSTRAINT uq_app_user_email UNIQUE (account_id, email)
+  CONSTRAINT uq_app_user_email UNIQUE (account_id, email),
+  CONSTRAINT uq_app_user_account_id UNIQUE (account_id, id)
 );
 
 CREATE TABLE user_branch (
@@ -566,6 +569,14 @@ CREATE TABLE quote (
   followup_flagged_at TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Closing an accepted sale: facts with who and when, never statuses.
+  paid_at                   TIMESTAMPTZ,
+  paid_by_user_id           UUID,
+  invoice_waived_at         TIMESTAMPTZ,
+  invoice_waived_by_user_id UUID,
+  CONSTRAINT ck_quote_paid CHECK ((paid_at IS NULL) = (paid_by_user_id IS NULL)),
+  CONSTRAINT ck_quote_invoice_waived
+    CHECK ((invoice_waived_at IS NULL) = (invoice_waived_by_user_id IS NULL)),
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
   CONSTRAINT uq_quote_account_number UNIQUE (account_id, number),
   CONSTRAINT ck_quote_number CHECK (number > 0),
@@ -1136,6 +1147,8 @@ ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFEREN
 ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_seller FOREIGN KEY (seller_id) REFERENCES app_user(id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_paid_by FOREIGN KEY (account_id, paid_by_user_id) REFERENCES app_user(account_id, id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_invoice_waived_by FOREIGN KEY (account_id, invoice_waived_by_user_id) REFERENCES app_user(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_current_version FOREIGN KEY (current_version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_number_counter ADD CONSTRAINT fk_quote_number_counter_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_account FOREIGN KEY (account_id) REFERENCES account(id);

@@ -422,6 +422,8 @@ type InvoicingSettings struct {
 	Account     AccountFiscal
 	Branches    []BranchPointOfSale
 	Credential  *ARCACredentialStatus
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool
 }
 
 // InvoicingSettingsUpdate replaces the account's fiscal settings and the given branches' points of sale.
@@ -430,6 +432,8 @@ type InvoicingSettingsUpdate struct {
 	IVACondition     *IVACondition
 	PricesIncludeVAT bool
 	PointsOfSale     map[uuid.UUID]*int
+	// InvoiceOnPayment is left as it is when nil.
+	InvoiceOnPayment *bool
 }
 
 // InvoicePreview is the invoice an accepted quote would produce, with whatever stops it.

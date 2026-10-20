@@ -32,21 +32,29 @@ describe('InvoicingSwitchCard', () => {
     expect(screen.getByText(copy.description)).toBeTruthy();
   });
 
-  // Turning it on connects nothing, so there is nothing to confirm.
-  it('turns invoicing on at once', async () => {
-    vi.mocked(setInvoicingEnabled).mockResolvedValue({});
+  // Turning it on connects nothing, so there is nothing to confirm; the toast asks for a connection
+  // only when there is none to take up again.
+  it.each([
+    [false, copy.enabled],
+    [true, copy.enabledConnected],
+  ])('turns invoicing on at once (connected: %s)', async (arcaConnected, toastCopy) => {
+    vi.mocked(setInvoicingEnabled).mockResolvedValue({ hasInvoices: false, arcaConnected });
     renderCard(false);
 
     await act(async () => fireEvent.click(screen.getByRole('switch', { name: copy.label })));
 
     expect(setInvoicingEnabled).toHaveBeenCalledWith(true);
     expect(screen.queryByRole('dialog')).toBeNull();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.enabled));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(toastCopy));
   });
 
-  // Off hides invoicing everywhere, so it asks first and writes only on confirmation.
-  it('asks before turning invoicing off', async () => {
-    vi.mocked(setInvoicingEnabled).mockResolvedValue({});
+  // Off hides invoicing everywhere, so it asks first and writes only on confirmation. Comprobantes is
+  // named only when it holds something.
+  it.each([
+    [false, copy.disabled],
+    [true, copy.disabledWithInvoices],
+  ])('asks before turning invoicing off (invoices: %s)', async (hasInvoices, toastCopy) => {
+    vi.mocked(setInvoicingEnabled).mockResolvedValue({ hasInvoices, arcaConnected: false });
     renderCard(true);
 
     fireEvent.click(screen.getByRole('switch', { name: copy.label }));
@@ -60,7 +68,7 @@ describe('InvoicingSwitchCard', () => {
     );
 
     expect(setInvoicingEnabled).toHaveBeenCalledWith(false);
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.disabled));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(toastCopy));
   });
 
   it('writes nothing when the confirmation is cancelled', async () => {

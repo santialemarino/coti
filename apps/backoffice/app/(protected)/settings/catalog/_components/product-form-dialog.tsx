@@ -41,6 +41,8 @@ interface ProductFormDialogProps {
   mode: 'create' | 'edit';
   product: Product | null;
   families: ProductFamily[];
+  // Off, the IVA rate is not asked for and the product keeps the one it has.
+  invoicingEnabled: boolean;
   pending: boolean;
   onSubmit: (values: ProductValues, image: File | null) => void;
 }
@@ -51,6 +53,7 @@ export function ProductFormDialog({
   mode,
   product,
   families,
+  invoicingEnabled,
   pending,
   onSubmit,
 }: ProductFormDialogProps) {
@@ -233,28 +236,30 @@ export function ProductFormDialog({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="vatRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel required>{t('vatRate.label')}</FormLabel>
-                    <FormControl>
-                      <Combobox
-                        ref={field.ref}
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        options={VAT_RATES.map((rate) => ({ value: rate, label: tRates(rate) }))}
-                        placeholder={t('vatRate.placeholder')}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('vatRate.hint', { rate: tRates(DEFAULT_VAT_RATE) })}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {invoicingEnabled ? (
+                <FormField
+                  control={form.control}
+                  name="vatRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel required>{t('vatRate.label')}</FormLabel>
+                      <FormControl>
+                        <Combobox
+                          ref={field.ref}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          options={VAT_RATES.map((rate) => ({ value: rate, label: tRates(rate) }))}
+                          placeholder={t('vatRate.placeholder')}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('vatRate.hint', { rate: tRates(DEFAULT_VAT_RATE) })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
             </div>
 
             {copy === 'create' && (

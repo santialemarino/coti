@@ -19,11 +19,13 @@ type Account struct {
 	PreferredLowerPriceStrategy HandlerStrategy
 	// InvoicingEnabled is whether the corralón invoices with Coti; off refuses issuing anything.
 	InvoicingEnabled bool
-	// HasInvoices is whether any invoice was ever recorded, which keeps the history reachable when off.
+	// HasInvoices is whether ARCA ever authorized a voucher here, which keeps the history reachable when off.
 	HasInvoices bool
-	IsActive    bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool
+	IsActive         bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client

@@ -32,6 +32,13 @@ type quoteRepository interface {
 	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	HasLiveInvoice(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment) (bool, error)
+	SetPaid(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID) (*domain.Quote, error)
+	SetInvoiceWaived(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID) (*domain.Quote, error)
+}
+
+// invoicingSwitch reads whether the account invoices with Coti.
+type invoicingSwitch interface {
+	InvoicingEnabled(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 }
 
 // branchPriceReader is the price-in-force surface valuation needs. One call carries every
@@ -51,6 +58,14 @@ type QuoteService struct {
 	sweep *discountSweep
 	// carry starts a reactivated draft from the discounts the customer saw; nil without the engine.
 	carry *draftCarry
+	// invoicing is the account switch; nil reads as off, so no sale is waived from an invoice.
+	invoicing invoicingSwitch
+}
+
+// WithInvoicingSwitch wires the account switch «No requiere factura» depends on.
+func (s *QuoteService) WithInvoicingSwitch(invoicing invoicingSwitch) *QuoteService {
+	s.invoicing = invoicing
+	return s
 }
 
 // WithDiscountEngine wires the discount sweep, so accepting the materials also earns the promotions
@@ -299,6 +314,10 @@ func (s *QuoteService) Reactivate(
 		if invoiced {
 			return domain.WithCode(domain.CodeQuoteAlreadyInvoiced, domain.ErrConflict)
 		}
+		// Paid closes the sale for everyone; reopening it starts by taking the mark back.
+		if quote.PaidAt != nil {
+			return domain.WithCode(domain.CodeQuoteAlreadyPaid, domain.ErrConflict)
+		}
 
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
 			quote.ID)
@@ -336,7 +355,11 @@ func (s *QuoteService) Reactivate(
 			&previousStatus, target, &tenant.UserID); err != nil {
 			return err
 		}
-		return nil
+		// A reopened sale is a new sale to close, so «No requiere factura» does not carry over.
+		if moved.InvoiceWaivedAt != nil {
+			moved, err = s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, nil)
+		}
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -439,4 +462,113 @@ func (s *QuoteService) Unarchive(
 		return nil, err
 	}
 	return restored, nil
+}
+
+// MarkPaid records «Cobrado» on an accepted, unarchived sale, with who and when. It is a fact, not a
+// transition: the status, its history and what the AI reads stay as they are. Marking a paid sale
+// again keeps the first mark.
+func (s *QuoteService) MarkPaid(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error) {
+	return s.setPaid(ctx, tenant, quoteID, &tenant.UserID)
+}
+
+// UnmarkPaid takes «Cobrado» back from an accepted, unarchived sale.
+func (s *QuoteService) UnmarkPaid(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error) {
+	return s.setPaid(ctx, tenant, quoteID, nil)
+}
+
+// WaiveInvoice records «No requiere factura» on an accepted, unarchived sale, taking it out of the
+// invoicing wait. It is refused while invoicing is off or the sale has a live invoice.
+func (s *QuoteService) WaiveInvoice(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "closing a sale"); err != nil {
+		return nil, err
+	}
+	var waived *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.openSale(ctx, q, tenant, quoteID)
+		if err != nil {
+			return err
+		}
+		enabled := false
+		if s.invoicing != nil {
+			if enabled, err = s.invoicing.InvoicingEnabled(ctx, q, tenant.AccountID); err != nil {
+				return err
+			}
+		}
+		if !enabled {
+			return errAccountInvoicingOff
+		}
+		// The quote row is locked, so an issue cannot slip a pending invoice in after this read.
+		invoiced, err := s.quotes.HasLiveInvoice(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, s.env)
+		if err != nil {
+			return err
+		}
+		if invoiced {
+			return domain.WithCode(domain.CodeQuoteAlreadyInvoiced, domain.ErrConflict)
+		}
+		waived, err = s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, &tenant.UserID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return waived, nil
+}
+
+// RestoreInvoiceWait undoes «No requiere factura», so the sale waits for its invoice again.
+func (s *QuoteService) RestoreInvoiceWait(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "closing a sale"); err != nil {
+		return nil, err
+	}
+	var restored *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.openSale(ctx, q, tenant, quoteID)
+		if err != nil {
+			return err
+		}
+		restored, err = s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, nil)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return restored, nil
+}
+
+func (s *QuoteService) setPaid(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	if err := requireBranch(tenant, "closing a sale"); err != nil {
+		return nil, err
+	}
+	var marked *domain.Quote
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.openSale(ctx, q, tenant, quoteID)
+		if err != nil {
+			return err
+		}
+		marked, err = s.quotes.SetPaid(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, userID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return marked, nil
+}
+
+// openSale locks a quote and refuses it unless it is an accepted sale still in the list: closing
+// facts are written only there.
+func (s *QuoteService) openSale(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	if quote.ArchivedAt != nil {
+		return nil, domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+	}
+	if quote.CurrentStatus != domain.QuoteStatusAccepted {
+		return nil, domain.WithCode(domain.CodeQuoteNotAccepted, domain.ErrConflict)
+	}
+	return quote, nil
 }

@@ -40,7 +40,8 @@ export function InvoicingSwitchCard({ enabled }: InvoicingSwitchCardProps) {
         toast.error(message(result.error));
         return;
       }
-      toast.success(t(next ? 'enabled' : 'disabled'));
+      if (next) toast.success(t(result.arcaConnected ? 'enabledConnected' : 'enabled'));
+      else toast.success(t(result.hasInvoices ? 'disabledWithInvoices' : 'disabled'));
     });
   }
 

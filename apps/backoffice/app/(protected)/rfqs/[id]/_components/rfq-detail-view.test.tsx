@@ -36,6 +36,24 @@ vi.mock('./invoice-card', () => ({
   ),
 }));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
+vi.mock('./sale-closure-card', () => ({
+  SaleClosureCard: ({
+    readOnly,
+    invoicingEnabled,
+    paidBy,
+  }: {
+    readOnly?: boolean;
+    invoicingEnabled: boolean;
+    paidBy: string | null;
+  }) => (
+    <div
+      data-testid="sale-closure-card"
+      data-read-only={String(Boolean(readOnly))}
+      data-invoicing={String(invoicingEnabled)}
+      data-paid-by={paidBy ?? ''}
+    />
+  ),
+}));
 
 const { toast } = await import('sonner');
 const { discardAIChanges, fetchRfqDetail, generateQuote, setQuoteArchived } =
@@ -99,6 +117,10 @@ function draftRecord(): RfqRecord {
     status: 'GENERATED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
 }
 
@@ -152,6 +174,12 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       status: rfqStatus,
       needs_followup: false,
       followup_flagged_at: null,
+      paid_at: null,
+      paid_by: null,
+      invoice_waived_at: null,
+      invoice_waived_by: null,
+      invoiced: false,
+      sale_complete: false,
       archived_at: null,
     },
     inbound_whatsapp_phone: null,
@@ -170,6 +198,10 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       followup_flagged_at: null,
       created_at: BASE_TIME,
       updated_at: BASE_TIME,
+      paid_at: null,
+      paid_by_user_id: null,
+      invoice_waived_at: null,
+      invoice_waived_by_user_id: null,
     },
     version: {
       id: VERSION_ID,
@@ -530,12 +562,32 @@ describe('RfqDetailView archived', () => {
 
     expect(view.getByText(copy.detail.callouts.accepted.title)).toBeTruthy();
     expect(view.queryByTestId('invoice-card')).toBeNull();
+    // Closing the sale does not depend on invoicing: «Cobrado» is offered either way.
+    expect(view.getByTestId('sale-closure-card').dataset.invoicing).toBe('false');
+  });
+
+  it('closes an accepted sale from its closure card, with who marked it paid', () => {
+    const detail = makeDetail('ACCEPTED');
+    detail.rfq = { ...detail.rfq, paid_at: BASE_TIME, paid_by: 'Ana Pérez' };
+    const view = renderView(detail);
+
+    const closure = view.getByTestId('sale-closure-card');
+    expect(closure.dataset.paidBy).toBe('Ana Pérez');
+    expect(closure.dataset.readOnly).toBe('false');
+    expect(closure.dataset.invoicing).toBe('true');
+  });
+
+  it('offers no closure before the sale is accepted', () => {
+    const view = renderView(makeDetail('SENT'));
+
+    expect(view.queryByTestId('sale-closure-card')).toBeNull();
   });
 
   it('keeps the invoice of an archived sale on screen, read-only', () => {
     const view = renderView(archivedDetail('ACCEPTED'));
 
     expect(view.getByTestId('invoice-card').dataset.readOnly).toBe('true');
+    expect(view.getByTestId('sale-closure-card').dataset.readOnly).toBe('true');
     expect(view.queryByTestId('client-association-card')).toBeNull();
   });
 

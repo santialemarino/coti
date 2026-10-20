@@ -59,7 +59,12 @@ const PRODUCT: Product = {
   updatedAt: '2026-09-01T12:00:00Z',
 };
 
-function renderManager(products: Product[] = [PRODUCT], query = '', bulkEditTargetId?: string) {
+function renderManager(
+  products: Product[] = [PRODUCT],
+  query = '',
+  bulkEditTargetId?: string,
+  invoicingEnabled = true,
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -70,6 +75,7 @@ function renderManager(products: Product[] = [PRODUCT], query = '', bulkEditTarg
         page={{ items: products, total: products.length, limit: 20, offset: 0 }}
         families={[FAMILY]}
         query={query}
+        invoicingEnabled={invoicingEnabled}
         bulkEditTargetId={bulkEditTargetId}
       />
     </NextIntlClientProvider>,
@@ -126,6 +132,24 @@ describe('ProductManager', () => {
     const dialog = within(await view.findByRole('dialog'));
 
     expect(dialog.getByText(messages.invoicing.vatRates.VAT_21)).toBeTruthy();
+  });
+
+  it('leaves the VAT rate out while invoicing is off, and keeps the product’s on save', async () => {
+    vi.mocked(updateProduct).mockResolvedValue({ ok: true, productId: PRODUCT.id });
+    const view = renderManager([PRODUCT], '', undefined, false);
+    const row = within(view.getByRole('row', { name: new RegExp(PRODUCT.name) }));
+
+    fireEvent.click(row.getByRole('button', { name: messages.products.edit.action }));
+    const dialog = within(await view.findByRole('dialog'));
+    expect(dialog.queryByText(messages.products.vatRate.label)).toBeNull();
+    fireEvent.click(dialog.getByRole('button', { name: messages.products.edit.submit }));
+
+    await waitFor(() =>
+      expect(updateProduct).toHaveBeenCalledWith(
+        PRODUCT.id,
+        expect.objectContaining({ vatRate: 'VAT_10_5' }),
+      ),
+    );
   });
 
   it('confirms before soft-deactivating a product', async () => {

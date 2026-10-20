@@ -6070,6 +6070,134 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/invoice-waiver": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Takes the accepted sale out of the invoicing wait. Refused while invoicing is off or the sale has a live invoice; issuing an invoice later clears it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale as needing no invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED, QUOTE_ARCHIVED, ACCOUNT_INVOICING_OFF or QUOTE_ALREADY_INVOICED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The accepted sale waits for its invoice again.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Undo «No requiere factura»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/items": {
             "post": {
                 "security": [
@@ -6471,6 +6599,134 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "BATCH_NOT_RETRYABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/payment": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records who marked the accepted sale paid and when. A fact, not a status; repeating it keeps the first mark. Paying never issues an invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale paid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the paid mark of an accepted sale; a paid sale is reopened only after this.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Unmark a paid sale",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -8142,11 +8398,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "has_invoices": {
-                    "description": "Whether any invoice was ever recorded, which keeps the history readable while invoicing is off.",
+                    "description": "Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.",
                     "type": "boolean"
                 },
                 "id": {
                     "type": "string"
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
                 },
                 "invoicing_enabled": {
                     "description": "Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.",
@@ -10123,6 +10383,10 @@ const docTemplate = `{
                         "PRODUCTION"
                     ]
                 },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
+                },
                 "iva_condition": {
                     "type": "string"
                 },
@@ -11320,11 +11584,25 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».",
+                    "type": "string"
+                },
+                "invoice_waived_by_user_id": {
+                    "type": "string"
+                },
                 "needs_followup": {
                     "type": "boolean"
                 },
                 "number": {
                     "type": "integer"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidByUserID record «Cobrado» on an accepted sale; null while it is not paid.",
+                    "type": "string"
+                },
+                "paid_by_user_id": {
+                    "type": "string"
                 },
                 "rfq_id": {
                     "type": "string"
@@ -11775,11 +12053,29 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.",
+                    "type": "string"
+                },
+                "invoice_waived_by": {
+                    "type": "string"
+                },
+                "invoiced": {
+                    "description": "Invoiced is whether an issued invoice no credit note cancelled stands for the sale.",
+                    "type": "boolean"
+                },
                 "item_count": {
                     "type": "integer"
                 },
                 "needs_followup": {
                     "type": "boolean"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.",
+                    "type": "string"
+                },
+                "paid_by": {
+                    "type": "string"
                 },
                 "quote_id": {
                     "type": "string"
@@ -11790,6 +12086,10 @@ const docTemplate = `{
                 "review_count": {
                     "description": "ReviewCount is how many of the current version's lines matching left for the seller.",
                     "type": "integer"
+                },
+                "sale_complete": {
+                    "description": "SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the\naccount does not invoice with Coti.",
+                    "type": "boolean"
                 },
                 "seller": {
                     "type": "string"
@@ -12249,6 +12549,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.BranchPointOfSaleInput"
                     }
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.",
+                    "type": "boolean"
                 },
                 "iva_condition": {
                     "type": "string",

@@ -72,6 +72,17 @@ type RfqListItemResponse struct {
 	NeedsFollowup bool       `json:"needs_followup"`
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.
 	FollowupFlaggedAt *time.Time `json:"followup_flagged_at"`
+	// PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.
+	PaidAt *time.Time `json:"paid_at"`
+	PaidBy *string    `json:"paid_by"`
+	// InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.
+	InvoiceWaivedAt *time.Time `json:"invoice_waived_at"`
+	InvoiceWaivedBy *string    `json:"invoice_waived_by"`
+	// Invoiced is whether an issued invoice no credit note cancelled stands for the sale.
+	Invoiced bool `json:"invoiced"`
+	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
+	// account does not invoice with Coti.
+	SaleComplete bool `json:"sale_complete"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.

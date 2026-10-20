@@ -57,11 +57,19 @@ interface ProductManagerProps {
   page: ProductPage;
   families: ProductFamily[];
   query: string;
+  // Off, a product's IVA rate is not asked for: nothing is invoiced with it.
+  invoicingEnabled: boolean;
   // The bulk-edit section's id, present only while there is a branch to import into.
   bulkEditTargetId?: string;
 }
 
-export function ProductManager({ page, families, query, bulkEditTargetId }: ProductManagerProps) {
+export function ProductManager({
+  page,
+  families,
+  query,
+  invoicingEnabled,
+  bulkEditTargetId,
+}: ProductManagerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -343,6 +351,7 @@ export function ProductManager({ page, families, query, bulkEditTargetId }: Prod
         mode={form?.mode ?? 'create'}
         product={form?.product ?? null}
         families={families}
+        invoicingEnabled={invoicingEnabled}
         pending={saving}
         onSubmit={onSubmit}
       />

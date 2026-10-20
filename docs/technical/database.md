@@ -308,5 +308,5 @@ none, and that communicates in the schema itself which table is a log and which 
 
 Process tables instead carry **one timestamp per transition that matters** rather than a
 generic `updated_at`: `notification.sent_at`, `rfq_attachment.processed_at`,
-`quote.followup_flagged_at`, `quote.archived_at`. An `updated_at` says something changed;
+`quote.followup_flagged_at`, `quote.archived_at`, `quote.paid_at`, `quote.invoice_waived_at`. An `updated_at` says something changed;
 these say what changed and when, which is what gets queried later.

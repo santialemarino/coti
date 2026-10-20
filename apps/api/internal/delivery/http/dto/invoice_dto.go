@@ -13,6 +13,8 @@ type UpdateInvoicingSettingsRequest struct {
 	IVACondition     *string                      `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
 	PricesIncludeVAT bool                         `json:"prices_include_vat"`
 	Branches         []BranchPointOfSaleInput     `json:"branches" binding:"dive"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.
+	InvoiceOnPayment *bool `json:"invoice_on_payment"`
 }
 
 // UpdatePointsOfSaleRequest is the body for PUT /v1/invoicing/points-of-sale. Branches not listed
@@ -38,6 +40,8 @@ type InvoicingSettingsResponse struct {
 	PricesIncludeVAT bool                        `json:"prices_include_vat"`
 	Branches         []BranchPointOfSaleResponse `json:"branches"`
 	Credential       *ARCACredentialResponse     `json:"credential"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool `json:"invoice_on_payment"`
 }
 
 // BranchPointOfSaleResponse is one branch and its point of sale.

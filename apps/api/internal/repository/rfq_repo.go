@@ -132,7 +132,7 @@ func (r *RFQRepository) ListStatusChanges(
 // route does not confirm an order it refuses to show. An admin keeps their existing reach:
 // account-wide, independent of any active branch.
 func (r *RFQRepository) GetByRFQID(
-	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID,
+	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID, env domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
 	var item domain.RfqListItem
 	var total decimal.Decimal
@@ -158,20 +158,23 @@ func (r *RFQRepository) GetByRFQID(
 		        COALESCE(q.needs_followup, FALSE),
 		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
-		        COALESCE(lines.to_review, 0)
+		        COALESCE(lines.to_review, 0),
+		        `+rfqClosureColumns+`
 		 FROM rfq r
 		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
+		 JOIN account a ON a.id = r.account_id
 		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
 		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
 		 `+rfqCurrentLineCounts+`
+		 `+rfqClosureJoins+`
 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND r.id = $3
 		   AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)`,
-		tenant.AccountID, branchFilter, rfqID, sellerParam(tenant),
+		tenant.AccountID, branchFilter, rfqID, sellerParam(tenant), env,
 	).Scan(
 		&item.ID, &item.ClientID,
 		&item.ClientLabel, &item.CreatedAt,
@@ -180,6 +183,8 @@ WHERE r.account_id = $1
 		&item.QuoteID, &item.QuoteNumber,
 		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 		&item.ItemCount, &item.ReviewCount,
+		&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
+		&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -205,12 +210,31 @@ const rfqCurrentLineCounts = `LEFT JOIN LATERAL (
 		   WHERE qi.account_id = r.account_id AND qi.version_id = q.current_version_id
 		 ) lines ON TRUE`
 
+// rfqClosureColumns are the facts that close an accepted sale, read beside each order.
+const rfqClosureColumns = `q.paid_at, payer.name, q.invoice_waived_at, waiver.name,
+		        COALESCE(closure.invoiced, FALSE), COALESCE(closure.pending, FALSE), a.invoicing_enabled`
+
+// rfqClosureJoins names who closed the sale, whether an issued invoice no credit note cancelled
+// stands for it in the server's environment ($5) or in production, and whether any voucher of the
+// sale still waits for ARCA, in any environment.
+const rfqClosureJoins = `LEFT JOIN app_user payer ON payer.id = q.paid_by_user_id AND payer.account_id = r.account_id
+		 LEFT JOIN app_user waiver ON waiver.id = q.invoice_waived_by_user_id AND waiver.account_id = r.account_id
+		 LEFT JOIN LATERAL (
+		   SELECT EXISTS (SELECT 1 FROM invoice i
+		     WHERE i.account_id = q.account_id AND i.branch_id = q.branch_id AND i.quote_id = q.id
+		       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
+		       AND (i.environment::text = $5 OR i.environment = 'PRODUCTION') AND NOT ` + invoiceCredited + `) AS invoiced,
+		          EXISTS (SELECT 1 FROM invoice p
+		     WHERE p.account_id = q.account_id AND p.branch_id = q.branch_id AND p.quote_id = q.id
+		       AND p.status = 'PENDING') AS pending
+		 ) closure ON TRUE`
+
 // ListByTenant returns the RFQ list the Backoffice dashboard consumes. needs_followup rows sort
 // first and the client display name falls back to rfq.client_label when no ficha client is linked.
 // Archived quotes are hidden unless includeArchived asks for them, which is what lets a screen
 // offer "archivados" as a filter rather than as a place orders disappear into.
 func (r *RFQRepository) ListByTenant(
-	ctx context.Context, q Querier, tenant domain.Tenant, includeArchived bool,
+	ctx context.Context, q Querier, tenant domain.Tenant, includeArchived bool, env domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	rows, err := q.Query(ctx,
 		`SELECT r.id, r.client_id,
@@ -230,21 +254,24 @@ func (r *RFQRepository) ListByTenant(
 		        COALESCE(q.needs_followup, FALSE),
 		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
-		        COALESCE(lines.to_review, 0)
+		        COALESCE(lines.to_review, 0),
+		        `+rfqClosureColumns+`
 		 FROM rfq r
 		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
+		 JOIN account a ON a.id = r.account_id
 		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
 		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
 		 `+rfqCurrentLineCounts+`
+		 `+rfqClosureJoins+`
 		 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   AND ($4::bool OR q.id IS NULL OR q.archived_at IS NULL)
 		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
-		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), includeArchived,
+		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), includeArchived, env,
 	)
 	if err != nil {
 		return nil, err
@@ -263,6 +290,8 @@ func (r *RFQRepository) ListByTenant(
 			&item.QuoteID, &item.QuoteNumber,
 			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
 			&item.ItemCount, &item.ReviewCount,
+			&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
+			&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
 		); err != nil {
 			return nil, err
 		}

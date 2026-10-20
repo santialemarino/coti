@@ -10,10 +10,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
+// has_invoices counts only vouchers ARCA authorized, test ones included: a refused attempt is no
+// fiscal record to keep reachable.
 const accountColumns = `id, name, legal_name, tax_id, brand_logo_url, brand_color,
 	preferred_lower_price_strategy, invoicing_enabled,
-	EXISTS (SELECT 1 FROM invoice WHERE invoice.account_id = account.id),
-	is_active, created_at, updated_at`
+	EXISTS (SELECT 1 FROM invoice WHERE invoice.account_id = account.id AND invoice.status = 'ISSUED'),
+	invoice_on_payment, is_active, created_at, updated_at`
 
 // AccountRepository owns persistence for account.
 type AccountRepository struct{}
@@ -106,8 +108,8 @@ func (r *AccountRepository) SetInvoicingEnabled(
 func scanAccount(row pgx.Row) (*domain.Account, error) {
 	var a domain.Account
 	if err := row.Scan(&a.ID, &a.Name, &a.LegalName, &a.TaxID, &a.BrandLogoURL, &a.BrandColor,
-		&a.PreferredLowerPriceStrategy, &a.InvoicingEnabled, &a.HasInvoices, &a.IsActive, &a.CreatedAt,
-		&a.UpdatedAt); err != nil {
+		&a.PreferredLowerPriceStrategy, &a.InvoicingEnabled, &a.HasInvoices, &a.InvoiceOnPayment, &a.IsActive,
+		&a.CreatedAt, &a.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &a, nil

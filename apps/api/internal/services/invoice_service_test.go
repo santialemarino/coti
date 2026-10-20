@@ -47,9 +47,19 @@ type fakeInvoicingStore struct {
 	accountLocked  bool
 	heldUnlocked   bool
 	// The account switch: invoicingOff as the first read sees it, offOnceLocked as the lock sees it.
-	invoicingOff  bool
-	offOnceLocked bool
-	created       int
+	invoicingOff     bool
+	offOnceLocked    bool
+	created          int
+	invoiceOnPayment bool
+}
+
+func (f *fakeInvoicingStore) GetInvoiceOnPayment(context.Context, repository.Querier, uuid.UUID) (bool, error) {
+	return f.invoiceOnPayment, nil
+}
+
+func (f *fakeInvoicingStore) UpdateInvoiceOnPayment(_ context.Context, _ repository.Querier, _ uuid.UUID, on bool) error {
+	f.invoiceOnPayment = on
+	return nil
 }
 
 func (f *fakeInvoicingStore) InvoicingEnabled(context.Context, repository.Querier, uuid.UUID) (bool, error) {
@@ -288,6 +298,17 @@ type fakeInvoiceQuotes struct {
 	quote   domain.Quote
 	version domain.QuoteVersion
 	items   []domain.QuoteItem
+	// waiverCleared counts the writes that took «No requiere factura» off the sale.
+	waiverCleared int
+}
+
+func (f *fakeInvoiceQuotes) SetInvoiceWaived(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID) (*domain.Quote, error) {
+	if userID == nil {
+		f.waiverCleared++
+		f.quote.InvoiceWaivedAt, f.quote.InvoiceWaivedByUserID = nil, nil
+	}
+	quote := f.quote
+	return &quote, nil
 }
 
 func (f *fakeInvoiceQuotes) GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Quote, error) {

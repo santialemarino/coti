@@ -17,6 +17,7 @@ function rawAccount(overrides: Record<string, unknown> = {}) {
     preferred_lower_price_strategy: 'ADAPT_TO_REACH_DISCOUNT',
     invoicing_enabled: true,
     has_invoices: false,
+    invoice_on_payment: true,
     is_active: true,
     created_at: '2026-07-01T10:00:00Z',
     updated_at: '2026-07-02T10:00:00Z',
@@ -45,6 +46,7 @@ describe('getAccount', () => {
       preferredLowerPriceStrategy: 'ADAPT_TO_REACH_DISCOUNT',
       invoicingEnabled: true,
       hasInvoices: false,
+      invoiceOnPayment: true,
     });
   });
 

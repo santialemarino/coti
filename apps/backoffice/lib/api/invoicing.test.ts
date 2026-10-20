@@ -36,12 +36,14 @@ describe('invoicing API mapping', () => {
         iva_condition: 'REGISTERED',
         prices_include_vat: true,
         branches: [{ branch_id: 'b1', name: 'Centro', is_active: false, point_of_sale: 3 }],
+        invoice_on_payment: true,
       }),
     ).toEqual({
       legalName: 'Corralón del Sur SRL',
       taxId: '30711111112',
       ivaCondition: 'REGISTERED',
       pricesIncludeVat: true,
+      invoiceOnPayment: true,
       branches: [{ branchId: 'b1', name: 'Centro', isActive: false, pointOfSale: 3 }],
     });
   });
@@ -53,6 +55,7 @@ describe('invoicing API mapping', () => {
       iva_condition: 'SOMETHING_NEW',
       prices_include_vat: false,
       branches: null,
+      invoice_on_payment: false,
     });
 
     expect(settings.ivaCondition).toBeNull();

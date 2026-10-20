@@ -287,9 +287,11 @@ stored value back.
 
 ### Invoicing with Coti
 
-`invoicing_enabled` says whether the corralón invoices with Coti, and `has_invoices` whether any
-invoice was ever recorded; both are read-only on the record, so every member — sellers included —
-reads them from `GET /v1/account`. `PUT /v1/invoicing/enabled` (`{"enabled": bool}`, admin-only) is
+`invoicing_enabled` says whether the corralón invoices with Coti, and `has_invoices` whether ARCA ever
+authorized a voucher for it — an issued invoice or credit note, test-environment ones included,
+since «Comprobantes» lists those too with their «Prueba» mark; a pending or refused attempt is no
+fiscal record and does not count. Both are read-only on the record, so every member — sellers
+included — reads them from `GET /v1/account`. `PUT /v1/invoicing/enabled` (`{"enabled": bool}`, admin-only) is
 the one write. It is not part of `PUT /v1/account`, which replaces the whole record, so flipping a
 switch would otherwise have to resend the name and the brand.
 
@@ -307,9 +309,16 @@ off for every other account. A new account starts off. `INVOICING_DISABLED` is a
 server has no ARCA encryption key, whatever the account chose.
 
 The backoffice hides everything invoicing-related while it is off: the invoice card on an accepted
-order, the client's fiscal data, the setup notices and the ARCA guide (`/settings/invoicing/arca`
-redirects to `/settings/invoicing`, where the switch lives). «Administración», the invoice history,
-stays reachable while the account has invoices, since those are still readable.
+order, «Facturar también» and «No requiere factura» when closing a sale, a product's IVA rate, the
+client's fiscal data, the setup notices and the ARCA guide (`/settings/invoicing/arca` redirects to
+`/settings/invoicing`, where the switch lives). «Administración», the invoice history, stays
+reachable while the account has invoices, since those are still readable.
+
+`invoice_on_payment` is the account default for «Facturar también» when a sale is marked paid
+(false for every account). It is written through `PUT /v1/invoicing/settings` beside the other
+invoicing settings — omitted, it keeps its value — and read back there and, for sellers, on
+`GET /v1/account`. It only pre-ticks the box: every invoice is still confirmed by a person. See
+[rfq-pipeline.md](rfq-pipeline.md#closing-a-sale-paid-and-no-requiere-factura).
 
 ## Identity
 
