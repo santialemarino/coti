@@ -16,7 +16,7 @@ const quoteSendColumns = `send.id, send.account_id, send.version_id, send.channe
 	channel.type, send.idempotency_key, COALESCE(send.destination, ''),
 	send.provider_reference, COALESCE(send.public_token, ''), send.format,
 	send.validity_days, send.sent_at, send.expires_at, send.tracking_status, send.created_at,
-	channel.identifier`
+	channel.identifier, send.client_association_hash`
 
 const quoteSendIdempotencyIndex = "uq_quote_send_idempotency_channel"
 
@@ -53,13 +53,13 @@ func (r *QuoteSendRepository) CreateBatch(ctx context.Context, q Querier, accoun
 	rows, err := q.Query(ctx, `WITH incoming AS (
 		  SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(
 		    "ID" uuid, "VersionID" uuid, "ChannelID" uuid, "IdempotencyKey" uuid,
-		    "Destination" text, "PublicToken" text, "Format" text, "ValidityDays" integer)
+		    "Destination" text, "PublicToken" text, "Format" text, "ValidityDays" integer, "ClientAssociationHash" text)
 		), inserted AS (
 		  INSERT INTO quote_send (id, account_id, version_id, channel_id, idempotency_key,
-		    destination, public_token, format, validity_days)
+		    destination, public_token, format, validity_days, client_association_hash)
 		  SELECT incoming."ID", $1, version.id, channel.id, incoming."IdempotencyKey",
 		    incoming."Destination", incoming."PublicToken", incoming."Format"::send_format,
-		    incoming."ValidityDays"
+		    incoming."ValidityDays", COALESCE(incoming."ClientAssociationHash",'')
 		  FROM incoming
 		  JOIN quote_version version ON version.account_id = $1
 		    AND version.id = incoming."VersionID"
@@ -250,7 +250,7 @@ func scanQuoteSend(row pgx.Row) (*domain.QuoteSend, error) {
 	err := row.Scan(&send.ID, &send.AccountID, &send.VersionID, &send.ChannelID,
 		&send.ChannelType, &send.IdempotencyKey, &send.Destination, &send.ProviderReference,
 		&send.PublicToken, &send.Format, &send.ValidityDays, &send.SentAt, &send.ExpiresAt,
-		&send.TrackingStatus, &send.CreatedAt, &send.ChannelIdentifier)
+		&send.TrackingStatus, &send.CreatedAt, &send.ChannelIdentifier, &send.ClientAssociationHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

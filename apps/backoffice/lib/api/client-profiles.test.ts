@@ -35,6 +35,7 @@ describe('client profile API mapping', () => {
       }),
     ).toEqual({
       id: 'client-1',
+      taxId: null,
       name: 'Constructora Horizonte',
       phone: '+5491155550101',
       email: 'compras@horizonte.test',
@@ -59,6 +60,7 @@ describe('client profile API mapping', () => {
     expect(clientMatchFromSummary(summary)).toEqual({
       client: {
         id: CLIENT.id,
+        taxId: null,
         name: CLIENT.name,
         phone: CLIENT.phone,
         email: CLIENT.email,
@@ -110,6 +112,11 @@ describe('client profile API mapping', () => {
     expect(mapped.currentClient).toBeNull();
     expect(mapped.suggestions).toHaveLength(1);
     expect(mapped.suggestions[0]?.client.id).toBe(CLIENT.id);
-    expect(mapped.contactHints).toEqual({ phone: CLIENT.phone, email: CLIENT.email });
+    expect(mapped.contactHints).toEqual({
+      taxId: null,
+      name: null,
+      phone: CLIENT.phone,
+      email: CLIENT.email,
+    });
   });
 });

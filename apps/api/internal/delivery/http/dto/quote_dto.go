@@ -112,9 +112,10 @@ type QuoteAlternativeApprovalRequest struct {
 
 // QuoteSendRequest selects delivery destinations and an optional validity override.
 type QuoteSendRequest struct {
-	RecipientPhone string                     `json:"recipient_phone"`
-	EmailDelivery  *QuoteEmailDeliveryRequest `json:"email_delivery"`
-	ExpiryDays     *int                       `json:"expiry_days"`
+	ClientAssociation *AssociateQuoteClientRequest `json:"client_association"`
+	RecipientPhone    string                       `json:"recipient_phone"`
+	EmailDelivery     *QuoteEmailDeliveryRequest   `json:"email_delivery"`
+	ExpiryDays        *int                         `json:"expiry_days"`
 }
 
 // QuoteEmailDeliveryRequest is the optional independent email destination.

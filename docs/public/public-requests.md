@@ -17,12 +17,13 @@ changed in the request form. They choose between writing an order and uploading 
 spreadsheet, audio recording or text file. The receipt screen confirms durable reception.
 
 The seller receives the original request and its customer declarations. This flow does not create,
-merge or modify commercial client profiles. Client association retains the accepted-sale workflow.
+merge or modify commercial client profiles. The seller confirms the client association while sending the quotation.
 
 Customers can consult and answer seller-sent quotations from their history or an existing delivery
 link; both open the same authenticated detail. Internal quotation drafts remain private. When
-sending, the seller still supplies the required WhatsApp recipient. Sending also publishes the
-quotation in the customer portal automatically, including when the external delivery fails.
+sending, the seller selects WhatsApp, email, or both and supplies the corresponding destinations.
+Sending also publishes the quotation in the customer portal automatically, including when the
+external delivery fails.
 
 Password recovery asks for CUIT/CUIL and the account's verified recovery email. A matching request
 receives a one-use reset link; resetting the password closes previous sessions.

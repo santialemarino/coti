@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import {
   ExternalLinkIcon,
@@ -37,9 +37,11 @@ import {
   type QuoteSendResponse,
   type QuoteSendTrackingResponse,
   type RfqDetailResponse,
+  type SendClientSelection,
 } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { SendClientForm } from './send-client-form';
 
 interface Destinations {
   phone: string;
@@ -100,17 +102,24 @@ export function SendQuoteDialog({
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
+  const [clientSelection, setClientSelection] = useState<SendClientSelection | null>(null);
   const [phone, setPhone] = useState('');
   const [sendWhatsApp, setSendWhatsApp] = useState(true);
   const [alsoEmail, setAlsoEmail] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<QuoteSendResponse | null>(null);
+  const sendAttempt = useRef<{ payload: string; key: string } | null>(null);
 
   const quoteId = detail.quote?.id ?? null;
   const phoneValid = !sendWhatsApp || isValidPhoneNumber(phone);
   const emailValid = !alsoEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canSend = !!quoteId && (sendWhatsApp || alsoEmail) && phoneValid && emailValid;
+  const canSend =
+    !!quoteId &&
+    (sendWhatsApp || alsoEmail) &&
+    phoneValid &&
+    emailValid &&
+    clientSelection !== null;
 
   // The sent URLs are the recovery surface for a message that never arrived, so the dialog holds
   // them until it closes rather than vanishing the moment the send returns.
@@ -122,6 +131,7 @@ export function SendQuoteDialog({
   function handleOpenChange(next: boolean) {
     if (sending) return;
     if (next) {
+      sendAttempt.current = null;
       const previous = previousDestinations(
         detail.deliveries,
         detail.inbound_whatsapp_phone,
@@ -129,7 +139,8 @@ export function SendQuoteDialog({
         detail.rfq.channel,
       );
       setResult(null);
-      setPhone(previous.phone);
+      setClientSelection(null);
+      setPhone(previous.phone || detail.publicRequest?.phone || '');
       setSendWhatsApp(previous.whatsapp);
       setAlsoEmail(previous.email !== null);
       setEmail(previous.email ?? '');
@@ -141,10 +152,16 @@ export function SendQuoteDialog({
     if (!quoteId || !canSend) return;
     setSending(true);
     try {
-      const result = await sendQuote(quoteId, branchId, {
+      const body = {
         ...(sendWhatsApp ? { recipient_phone: phone } : {}),
+        clientAssociation: clientSelection ?? undefined,
         email_delivery: alsoEmail ? { address: email.trim() } : null,
-      });
+      };
+      const payload = JSON.stringify(body);
+      const key =
+        sendAttempt.current?.payload === payload ? sendAttempt.current.key : crypto.randomUUID();
+      sendAttempt.current = { payload, key };
+      const result = await sendQuote(quoteId, branchId, body, key);
       reportOutcome(result.deliveries);
       setResult(result);
       await onSent();
@@ -189,7 +206,7 @@ export function SendQuoteDialog({
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
           <DialogHeader>
             <DialogTitle>{result ? t('successTitle') : t('title')}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className={result ? undefined : 'sr-only'}>
               {result ? t('successDescription') : t('description')}
             </DialogDescription>
           </DialogHeader>
@@ -249,6 +266,20 @@ export function SendQuoteDialog({
             </div>
           ) : (
             <div className="flex flex-col gap-y-4">
+              {open && quoteId ? (
+                <SendClientForm
+                  quoteId={quoteId}
+                  branchId={branchId}
+                  disabled={sending}
+                  locked={
+                    detail.quote?.current_status === 'SENT' ||
+                    detail.deliveries.some((delivery) =>
+                      ['SENT', 'DELIVERED', 'VIEWED'].includes(delivery.tracking_status),
+                    )
+                  }
+                  onChange={setClientSelection}
+                />
+              ) : null}
               <div className="flex flex-col gap-y-2">
                 <label
                   htmlFor="send-whatsapp"
@@ -336,7 +367,6 @@ export function SendQuoteDialog({
                     {fmt.currency(detail.version?.total ?? '0')}
                   </span>
                 </div>
-                <p className="pt-1 text-paragraph-xs text-foreground-muted">{t('summaryLink')}</p>
               </div>
             </div>
           )}
@@ -344,7 +374,14 @@ export function SendQuoteDialog({
           <DialogFooter>
             {result ? (
               <>
-                <Button type="button" variant="outline" onClick={() => setResult(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    sendAttempt.current = null;
+                    setResult(null);
+                  }}
+                >
                   {t('resend')}
                 </Button>
                 <Button type="button" onClick={() => handleOpenChange(false)}>

@@ -151,9 +151,9 @@ func (h *ClientHandler) CreateTag(c *gin.Context) {
 	c.JSON(http.StatusCreated, toClientTagResponse(*tag))
 }
 
-// GetQuoteAssociation returns manual client-match context for an accepted quote.
+// GetQuoteAssociation returns manual client-match context for a quotation send.
 //
-//	@Summary		Get accepted-sale client association
+//	@Summary		Get quotation-send client association
 //	@Description	Returns the current client, exact contact matches, delivery contact hints, and reusable tags. Suggestions never mutate or merge a profile.
 //	@Tags			clients
 //	@Produce		json
@@ -165,7 +165,7 @@ func (h *ClientHandler) CreateTag(c *gin.Context) {
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		409			{object}	dto.ErrorResponse	"Quote is not accepted"
+//	@Failure		409			{object}	dto.ErrorResponse	"Quote cannot be sent"
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
 //	@Router			/v1/quotes/{quoteId}/client-association [get]
 func (h *ClientHandler) GetQuoteAssociation(c *gin.Context) {
@@ -185,10 +185,10 @@ func (h *ClientHandler) GetQuoteAssociation(c *gin.Context) {
 	c.JSON(http.StatusOK, toQuoteClientAssociationResponse(*association))
 }
 
-// AssociateQuote confirms an existing or new client for one accepted quote.
+// AssociateQuote rejects the retired standalone client-association operation.
 //
-//	@Summary		Associate an accepted sale with a client
-//	@Description	Links the quote and its RFQ to exactly one seller-confirmed profile, and atomically replaces that profile's tags. Contact suggestions are never accepted automatically.
+//	@Summary		Reject standalone client association
+//	@Description	Client selection is confirmed through quotation delivery. This standalone operation returns 409.
 //	@Tags			clients
 //	@Accept			json
 //	@Produce		json
@@ -196,13 +196,13 @@ func (h *ClientHandler) GetQuoteAssociation(c *gin.Context) {
 //	@Param			X-Branch-Id	header		string					true	"Active branch"
 //	@Param			quoteId		path		string					true	"Quote id"
 //	@Param			request		body		dto.AssociateQuoteClientRequest	true	"Client selection and tags"
-//	@Success		200			{object}	dto.ClientMatchResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		409			{object}	dto.ErrorResponse	"Quote is not accepted"
+//	@Failure		409			{object}	dto.ErrorResponse	"Association is confirmed during quotation delivery"
 //	@Failure		422			{object}	dto.ErrorResponse
+//	@Deprecated
 //	@Router			/v1/quotes/{quoteId}/client-association [put]
 func (h *ClientHandler) AssociateQuote(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -274,7 +274,7 @@ func toClientResponse(client domain.Client) dto.ClientResponse {
 		value := string(*client.OriginChannel)
 		origin = &value
 	}
-	return dto.ClientResponse{ID: client.ID, Name: client.Name, Phone: client.Phone,
+	return dto.ClientResponse{ID: client.ID, TaxID: client.TaxID, Name: client.Name, Phone: client.Phone,
 		Email: client.Email, OriginChannel: origin, Notes: client.Notes,
 		CreatedAt: client.CreatedAt, UpdatedAt: client.UpdatedAt}
 }
@@ -322,7 +322,7 @@ func toQuoteClientAssociationResponse(
 		suggestions = append(suggestions, toClientMatchResponse(association.Suggestions[i]))
 	}
 	response := dto.QuoteClientAssociationResponse{Suggestions: suggestions,
-		ContactHints: dto.ClientContactHintsResponse{Phone: association.ContactHints.Phone,
+		ContactHints: dto.ClientContactHintsResponse{TaxID: association.ContactHints.TaxID, Name: association.ContactHints.Name, Phone: association.ContactHints.Phone,
 			Email: association.ContactHints.Email},
 		AvailableTags: toClientTagResponses(association.AvailableTags)}
 	if association.CurrentClient != nil {

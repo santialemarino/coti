@@ -22,7 +22,6 @@ import {
   setQuoteArchived,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
-import { ClientAssociationCard } from './client-association-card';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
@@ -67,10 +66,7 @@ export function RfqDetailView({
   const [unarchiving, startUnarchive] = useTransition();
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  // The sale's client: the quote's own, then whatever the association card changes it to.
-  const [clientId, setClientId] = useState<string | null | undefined>(
-    initialDetail.quote?.client_id,
-  );
+  const clientId = detail.quote?.client_id;
   const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
@@ -268,13 +264,6 @@ export function RfqDetailView({
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId && !archived ? (
-            <ClientAssociationCard
-              quoteId={quoteId}
-              branchId={branchId}
-              onClientChange={setClientId}
-            />
-          ) : null}
           {quoteId ? (
             <InvoiceCard
               quoteId={quoteId}

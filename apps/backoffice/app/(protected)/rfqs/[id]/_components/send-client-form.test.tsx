@@ -1,0 +1,108 @@
+import { fireEvent, render, waitFor } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { ClientMatch, QuoteClientAssociation } from '@/lib/api/client-profiles';
+import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients-client';
+import messages from '@/translations/es.json';
+import { SendClientForm } from './send-client-form';
+
+vi.mock('@/lib/api/clients-client', () => ({
+  getClientDirectory: vi.fn(),
+  getQuoteClientAssociation: vi.fn(),
+}));
+const copy = messages.rfqs.detail.send;
+const taxId = '20123456786';
+const candidate: ClientMatch = {
+  client: {
+    id: 'client-1',
+    taxId,
+    name: 'Existing company',
+    email: null,
+    phone: null,
+    notes: null,
+    originChannel: null,
+    createdAt: '2026-10-19T00:00:00Z',
+    updatedAt: '2026-10-19T00:00:00Z',
+  },
+  tags: [],
+};
+const context: QuoteClientAssociation = {
+  currentClient: null,
+  suggestions: [],
+  availableTags: [],
+  contactHints: { taxId, name: 'Web customer', phone: null, email: 'customer@example.test' },
+};
+
+function renderForm() {
+  const onChange = vi.fn();
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <SendClientForm quoteId="quote-1" branchId="branch-1" disabled={false} onChange={onChange} />
+    </NextIntlClientProvider>,
+  );
+  return { ...view, onChange };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(getQuoteClientAssociation).mockResolvedValue(context);
+  vi.mocked(getClientDirectory).mockResolvedValue([]);
+});
+
+describe('send client selection', () => {
+  it('prefills a new profile from the web request without saving it separately', async () => {
+    const view = renderForm();
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith({
+        taxId,
+        newClient: { name: 'Web customer', email: 'customer@example.test' },
+        tagIds: [],
+      }),
+    );
+    expect((view.getByLabelText(new RegExp(copy.clientName)) as HTMLInputElement).value).toBe(
+      'Web customer',
+    );
+    expect(getQuoteClientAssociation).toHaveBeenCalledWith('quote-1', 'branch-1');
+  });
+  it('suggests the exact CUIT match and keeps its profile tags', async () => {
+    const tag = { id: 'tag-1', name: 'Frecuente', createdAt: '2026-10-19T00:00:00Z' };
+    vi.mocked(getClientDirectory).mockResolvedValue([{ ...candidate, tags: [tag] }]);
+    const view = renderForm();
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith({
+        taxId,
+        clientId: 'client-1',
+        tagIds: ['tag-1'],
+      }),
+    );
+    expect(view.queryByLabelText(new RegExp(copy.clientName))).toBeNull();
+  });
+  it('requires a choice when several profiles have the same CUIT', async () => {
+    vi.mocked(getClientDirectory).mockResolvedValue([
+      candidate,
+      { ...candidate, client: { ...candidate.client, id: 'client-2' } },
+    ]);
+    const view = renderForm();
+    await view.findByRole('combobox');
+    expect(view.onChange).toHaveBeenLastCalledWith(null);
+  });
+  it('does not accept a different CUIT for the selected profile', async () => {
+    vi.mocked(getClientDirectory).mockResolvedValue([candidate]);
+    const view = renderForm();
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith({ taxId, clientId: 'client-1', tagIds: [] }),
+    );
+    fireEvent.change(view.getByLabelText(new RegExp(copy.clientTax)), {
+      target: { value: '30712345671' },
+    });
+    await waitFor(() => expect(view.onChange).toHaveBeenLastCalledWith(null));
+    expect(view.getByText(copy.clientTaxMismatch)).toBeTruthy();
+  });
+  it('leaves sending unavailable when client context cannot be read', async () => {
+    vi.mocked(getQuoteClientAssociation).mockRejectedValue(new Error('offline'));
+    const view = renderForm();
+    await view.findByText(copy.clientLoadFailed);
+    expect(view.onChange).toHaveBeenLastCalledWith(null);
+  });
+});

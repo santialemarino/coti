@@ -296,8 +296,16 @@ export interface FileRfqDraftResponse {
   items: QuoteItemResponse[];
 }
 
-// Body of POST /v1/quotes/:quoteId/sends; at least one destination is required.
+// Client identification for POST /v1/quotes/:quoteId/sends.
+export interface SendClientSelection {
+  taxId: string;
+  clientId?: string;
+  newClient?: { name: string; phone?: string; email?: string };
+  tagIds: string[];
+}
+
 export interface QuoteSendBody {
+  clientAssociation?: SendClientSelection;
   recipient_phone?: string;
   email_delivery?: { address: string } | null;
   expiry_days?: number | null;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchQueue } from '@/lib/api/rfqs-client';
+import { fetchQueue, sendQuote } from '@/lib/api/rfqs-client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -47,5 +47,31 @@ describe('fetchQueue', () => {
     answer(500, {});
 
     await expect(fetchQueue()).rejects.toThrow();
+  });
+});
+
+describe('sendQuote client association boundary', () => {
+  it('maps the reviewed profile selection to the send API contract', async () => {
+    answer(200, {});
+    await sendQuote('quote-1', 'branch-1', {
+      recipient_phone: '+5491155550101',
+      clientAssociation: {
+        taxId: '20123456786',
+        newClient: { name: 'Example customer', email: 'customer@example.test' },
+        tagIds: ['tag-1'],
+      },
+    });
+    const [url, options] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('/api/quotes/quote-1/sends');
+    expect(JSON.parse(options?.body as string)).toEqual({
+      recipient_phone: '+5491155550101',
+      client_association: {
+        tax_id: '20123456786',
+        new_client: { name: 'Example customer', email: 'customer@example.test' },
+        tag_ids: ['tag-1'],
+      },
+    });
+    expect(new Headers(options?.headers).get('X-Branch-Id')).toBe('branch-1');
+    expect(new Headers(options?.headers).get('Idempotency-Key')).toBeTruthy();
   });
 });

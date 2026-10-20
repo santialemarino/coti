@@ -5420,7 +5420,7 @@ const docTemplate = `{
                 "tags": [
                     "clients"
                 ],
-                "summary": "Get accepted-sale client association",
+                "summary": "Get quotation-send client association",
                 "parameters": [
                     {
                         "type": "string",
@@ -5469,7 +5469,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Quote is not accepted",
+                        "description": "Quote cannot be sent",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -5488,7 +5488,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Links the quote and its RFQ to exactly one seller-confirmed profile, and atomically replaces that profile's tags. Contact suggestions are never accepted automatically.",
+                "description": "Client selection is confirmed through quotation delivery. This standalone operation returns 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5498,7 +5498,8 @@ const docTemplate = `{
                 "tags": [
                     "clients"
                 ],
-                "summary": "Associate an accepted sale with a client",
+                "summary": "Reject standalone client association",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -5525,12 +5526,6 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ClientMatchResponse"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -5556,7 +5551,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Quote is not accepted",
+                        "description": "Association is confirmed during quotation delivery",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -8226,6 +8221,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
                 }
             }
         },
@@ -8593,7 +8592,13 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "phone": {
+                    "type": "string"
+                },
+                "tax_id": {
                     "type": "string"
                 }
             }
@@ -8701,6 +8706,9 @@ const docTemplate = `{
                 "phone": {
                     "type": "string"
                 },
+                "tax_id": {
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -8767,6 +8775,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                },
+                "tax_id": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
@@ -11172,6 +11183,9 @@ const docTemplate = `{
         "dto.QuoteSendRequest": {
             "type": "object",
             "properties": {
+                "client_association": {
+                    "$ref": "#/definitions/dto.AssociateQuoteClientRequest"
+                },
                 "email_delivery": {
                     "$ref": "#/definitions/dto.QuoteEmailDeliveryRequest"
                 },
