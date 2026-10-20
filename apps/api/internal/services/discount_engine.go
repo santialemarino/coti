@@ -439,10 +439,15 @@ func matchesAnyCondition(conditions []domain.PromotionCondition, line engineLine
 
 // matchesCondition reports whether a line is the condition's target in at least its minimum quantity.
 func matchesCondition(c domain.PromotionCondition, line engineLine) bool {
-	if line.ProductID == nil {
+	if c.MinQuantity != nil && line.Quantity.LessThan(*c.MinQuantity) {
 		return false
 	}
-	if c.MinQuantity != nil && line.Quantity.LessThan(*c.MinQuantity) {
+	return conditionTargets(c, line)
+}
+
+// conditionTargets reports whether a line's product is the condition's target, whatever its quantity.
+func conditionTargets(c domain.PromotionCondition, line engineLine) bool {
+	if line.ProductID == nil {
 		return false
 	}
 	switch {

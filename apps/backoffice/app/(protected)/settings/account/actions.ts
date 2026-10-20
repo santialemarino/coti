@@ -53,5 +53,6 @@ function bodyOf(values: AccountValues) {
     tax_id: values.taxId || undefined,
     brand_logo_url: values.brandLogoUrl || undefined,
     brand_color: values.brandColor ? `#${values.brandColor}` : undefined,
+    preferred_lower_price_strategy: values.lowerPriceStrategy,
   };
 }

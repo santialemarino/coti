@@ -48,8 +48,8 @@ const DIFF: ChangeRequestDiff = {
     {
       change: 'MODIFIED',
       name: '5% en compras desde $500.000',
-      original: { amount: '80700.00', suppressed: false },
-      requested: { amount: '71460.00', suppressed: true },
+      original: { amount: '80700.00', suppressed: false, origin: 'AUTOMATIC' },
+      requested: { amount: '71460.00', suppressed: true, origin: 'AUTOMATIC' },
     },
   ],
   original_total: '200000.00',
@@ -136,6 +136,54 @@ describe('RfqChangeRequestCard', () => {
       fireEvent.click(trigger);
     });
     expect(view.getByText('mensaje del historial')).toBeTruthy();
+  });
+
+  /*
+   * A promotion the customer asked for by name was reached by raising a quantity: the card says
+   * which line moved and to what, that the total went up because of it, which strategy ran, and
+   * marks the discount as the AI's — every enum through the catalog, never raw.
+   */
+  it('explains a quantity raised to reach a promotion and the higher total', () => {
+    const recipe = messages.rfqs.detail.handlerRecipe;
+    const view = renderCard({
+      ...DIFF,
+      handler: {
+        ...DIFF.handler!,
+        strategies_tried: ['ADAPT_TO_REACH_DISCOUNT'],
+        adaptation: {
+          lines: [
+            {
+              item_id: 'i1',
+              description: 'Cemento Loma Negra 50 kg',
+              from_quantity: '15.00',
+              to_quantity: '20.00',
+              promotion_id: 'p1',
+              promotion_name: 'Cemento x20',
+            },
+          ],
+          total_before: '142500.00',
+          total_after: '171000.00',
+          total_raised: true,
+        },
+      },
+      discounts: [
+        {
+          change: 'ADDED',
+          name: 'Cemento x20',
+          original: null,
+          requested: { amount: '19000.00', suppressed: false, origin: 'AI_ADAPTATION' },
+        },
+      ],
+    });
+
+    const text = (view.container.textContent ?? '').replace(/\s/g, ' ');
+    expect(text).toContain(
+      'Se subió Cemento Loma Negra 50 kg de 15 a 20 para alcanzar «Cemento x20».',
+    );
+    expect(text).toMatch(/El total sube de \$ 142\.500,00 a \$ 171\.000,00/);
+    expect(text).toContain(recipe.strategy.ADAPT_TO_REACH_DISCOUNT);
+    expect(text).not.toContain('ADAPT_TO_REACH_DISCOUNT');
+    expect(view.getByText(copy.adaptedDiscount)).toBeTruthy();
   });
 
   it('hands the discard to the caller', () => {

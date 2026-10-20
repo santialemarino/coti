@@ -24,6 +24,7 @@ const VALUES: AccountValues = {
   taxId: '30-71234567-1',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: 'C2410C',
+  lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
 };
 
 function requestSent() {
@@ -59,6 +60,7 @@ describe('updateAccount', () => {
       tax_id: '30712345671',
       brand_logo_url: 'https://tucorralon.com/logo.png',
       brand_color: '#C2410C',
+      preferred_lower_price_strategy: 'FIND_CHEAPER_ALTERNATIVES',
       disconnect_arca: false,
     });
   });

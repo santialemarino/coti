@@ -179,3 +179,39 @@ func TestAccountService_UpdateDisconnectsARCAOnlyWhenConfirmed(t *testing.T) {
 		})
 	}
 }
+
+// Only a lower-price strategy may be the account's first choice; none keeps the stored one.
+func TestAccountService_UpdateAcceptsOnlyALowerPriceStrategy(t *testing.T) {
+	t.Parallel()
+	adapt, quality := domain.HandlerStrategyAdaptToReachDiscount, domain.HandlerStrategyImproveQuality
+	cases := []struct {
+		name     string
+		strategy *domain.HandlerStrategy
+		refused  bool
+	}{
+		{"adapt", &adapt, false},
+		{"kept", nil, false},
+		{"not a lower-price strategy", &quality, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := &accountTestRepo{account: &domain.Account{Name: "Corralón"}}
+			service := &AccountService{db: &accountTestDB{}, accounts: repo,
+				arcaSetups: &accountTestARCASetups{}, invoices: &accountTestARCASetups{}}
+
+			_, err := service.Update(context.Background(), domain.Tenant{AccountID: uuid.New()},
+				domain.AccountUpdate{Name: "Corralón", PreferredLowerPriceStrategy: tc.strategy})
+
+			if tc.refused {
+				if !errors.Is(err, domain.ErrInvalidInput) || repo.updated != nil {
+					t.Fatalf("err = %v, updated = %v, want INVALID_INPUT and nothing written", err, repo.updated)
+				}
+				return
+			}
+			if err != nil || repo.updated == nil || repo.updated.PreferredLowerPriceStrategy != tc.strategy {
+				t.Fatalf("err = %v, updated = %+v, want the strategy passed through", err, repo.updated)
+			}
+		})
+	}
+}

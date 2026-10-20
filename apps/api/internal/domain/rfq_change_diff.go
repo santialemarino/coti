@@ -55,7 +55,7 @@ type DiffLineItem struct {
 	UnitPrice   *string
 }
 
-// DiffDiscount is one discount of the comparison, paired by name.
+// DiffDiscount is one discount of the comparison, paired by promotion when it has one, else by name.
 type DiffDiscount struct {
 	Change    DiffChange
 	Name      string
@@ -67,6 +67,8 @@ type DiffDiscount struct {
 type DiffDiscountSide struct {
 	Amount     string
 	Suppressed bool
+	// Origin is shown, not compared: a promotion the AI reached is the same promotion.
+	Origin DiscountOrigin
 }
 
 // BuildChangeRequestDiff pairs each frozen line with the draft line copied from it, by the draft
@@ -106,16 +108,22 @@ func BuildChangeRequestDiff(reason *string, frozen, draft ChangeRequestSnapshot)
 		}
 	}
 
+	sources := make(map[uuid.UUID]uuid.UUID, len(draft.Items))
+	for _, line := range draft.Items {
+		if line.SourceItemID != nil {
+			sources[line.ID] = *line.SourceItemID
+		}
+	}
 	sent := make(map[string]QuoteDiscount, len(frozen.Discounts))
 	for _, discount := range frozen.Discounts {
-		sent[discountName(discount)] = discount
+		sent[discountKey(discount, nil)] = discount
 	}
 	seen := make(map[string]bool, len(draft.Discounts))
 	for _, discount := range draft.Discounts {
-		name := discountName(discount)
-		seen[name] = true
+		name, key := discountName(discount), discountKey(discount, sources)
+		seen[key] = true
 		requested := discountSide(discount)
-		previous, ok := sent[name]
+		previous, ok := sent[key]
 		if !ok {
 			diff.Discounts = append(diff.Discounts, DiffDiscount{Change: DiffAdded, Name: name,
 				Requested: &requested})
@@ -123,20 +131,42 @@ func BuildChangeRequestDiff(reason *string, frozen, draft ChangeRequestSnapshot)
 		}
 		original := discountSide(previous)
 		change := DiffUnchanged
-		if original != requested {
+		if original.Amount != requested.Amount || original.Suppressed != requested.Suppressed {
 			change = DiffModified
 		}
 		diff.Discounts = append(diff.Discounts, DiffDiscount{Change: change, Name: name,
 			Original: &original, Requested: &requested})
 	}
 	for _, discount := range frozen.Discounts {
-		if name := discountName(discount); !seen[name] {
+		if !seen[discountKey(discount, nil)] {
 			original := discountSide(discount)
-			diff.Discounts = append(diff.Discounts, DiffDiscount{Change: DiffRemoved, Name: name,
-				Original: &original})
+			diff.Discounts = append(diff.Discounts, DiffDiscount{Change: DiffRemoved,
+				Name: discountName(discount), Original: &original})
 		}
 	}
 	return diff
+}
+
+// discountKey pairs a draft discount with the sent one it continues: a promotion's by the promotion
+// and, for one line, the sent line that draft line was copied from (sources maps draft lines to
+// sent ones; nil reads the sent side); anything else by its name.
+func discountKey(discount QuoteDiscount, sources map[uuid.UUID]uuid.UUID) string {
+	if discount.PromotionID == nil {
+		return "name:" + discountName(discount)
+	}
+	key := "promotion:" + discount.PromotionID.String()
+	if discount.Scope != DiscountScopeItem || len(discount.ItemIDs) != 1 {
+		return key
+	}
+	line := discount.ItemIDs[0]
+	if sources != nil {
+		source, ok := sources[line]
+		if !ok {
+			return key + "/added:" + line.String()
+		}
+		line = source
+	}
+	return key + "/" + line.String()
 }
 
 func diffLineItem(item QuoteItem) DiffLineItem {
@@ -147,7 +177,7 @@ func diffLineItem(item QuoteItem) DiffLineItem {
 
 func discountSide(discount QuoteDiscount) DiffDiscountSide {
 	return DiffDiscountSide{Amount: discount.Amount.StringFixed(MoneyScale),
-		Suppressed: discount.SuppressedBySeller}
+		Suppressed: discount.SuppressedBySeller, Origin: discount.Origin}
 }
 
 func sameItem(frozen, draft QuoteItem) bool {

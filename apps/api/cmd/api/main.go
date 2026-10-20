@@ -216,7 +216,7 @@ func run() error {
 	if providers.LanguageModelBound() {
 		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
 	}
-	batchChangeHandler := services.NewBatchChangeHandler(db, quoteRepo, quoteMessageRepo,
+	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
 		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
 			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)

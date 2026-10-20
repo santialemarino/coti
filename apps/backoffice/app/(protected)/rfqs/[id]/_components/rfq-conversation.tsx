@@ -30,6 +30,7 @@ import {
 } from '@/lib/api/rfqs';
 import { retryConversationBatch } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { HandlerRecipeNote } from './handler-recipe-note';
 
 const SELLER_DECISION_TONES = {
   APPROVED_AS_IS: 'success',
@@ -134,11 +135,17 @@ function BatchOutcome({ batch, retrying, onRetry }: BatchOutcomeProps) {
   }
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <p className="text-paragraph-sm text-foreground-muted">
-        {decision.outcome === 'APPLIED'
-          ? t('decision.applied', { interpretation: decision.interpretation })
-          : t(`decision.noMatch.${decision.no_match_reason ?? 'REQUIRES_SELLER'}`)}
-      </p>
+      <div className="flex flex-col min-w-0 gap-y-1">
+        <p className="text-paragraph-sm text-foreground-muted">
+          {decision.outcome === 'APPLIED'
+            ? t('decision.applied', { interpretation: decision.interpretation })
+            : t(`decision.noMatch.${decision.no_match_reason ?? 'REQUIRES_SELLER'}`)}
+        </p>
+        <HandlerRecipeNote
+          strategies={decision.strategies_tried}
+          adaptation={decision.adaptation}
+        />
+      </div>
       {decision.seller_decision ? (
         <Badge tone={SELLER_DECISION_TONES[decision.seller_decision]} size="sm">
           {t(`sellerDecision.${decision.seller_decision}`)}

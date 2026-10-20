@@ -272,7 +272,11 @@ anything naming the corralón needs it; `PUT /v1/account` replaces it and is adm
 carries no account id — it writes whatever the session resolved.
 
 **Replaces, so an omitted optional field is cleared.** That is how a corralón removes a logo it no
-longer wants on its quotes. A name that is blank once trimmed is refused with 422.
+longer wants on its quotes. A name that is blank once trimmed is refused with 422. The one
+exception is `preferred_lower_price_strategy` (`FIND_CHEAPER_ALTERNATIVES`, the default, or
+`ADAPT_TO_REACH_DISCOUNT`): it cannot be empty, so omitting it keeps the stored one. It is the
+strategy the conversation handler runs first for a lower total when the customer did not say
+([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)).
 
 The brand pair (`brand_logo_url`, `brand_color`) is what the client webapp renders a quote with, and
 both carry a format because a malformed one breaks a screen the corralón cannot see: the logo must be

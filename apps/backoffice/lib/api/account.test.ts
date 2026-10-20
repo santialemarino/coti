@@ -14,6 +14,7 @@ function rawAccount(overrides: Record<string, unknown> = {}) {
     tax_id: '30-71234567-9',
     brand_logo_url: 'https://tucorralon.com/logo.png',
     brand_color: '#C2410C',
+    preferred_lower_price_strategy: 'ADAPT_TO_REACH_DISCOUNT',
     is_active: true,
     created_at: '2026-07-01T10:00:00Z',
     updated_at: '2026-07-02T10:00:00Z',
@@ -39,6 +40,7 @@ describe('getAccount', () => {
       taxId: '30-71234567-9',
       brandLogoUrl: 'https://tucorralon.com/logo.png',
       brandColor: '#C2410C',
+      preferredLowerPriceStrategy: 'ADAPT_TO_REACH_DISCOUNT',
     });
   });
 

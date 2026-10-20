@@ -85,6 +85,15 @@ func validateChangeRequestProposal(proposal *domain.ChangeRequestProposal, sourc
 			seen[id] = struct{}{}
 		}
 		intent := *proposal.Intent
+		if strategy := proposal.LowerPriceStrategy; strategy != nil {
+			if intent != domain.ChangeRequestIntentLowerTotalPrice || !strategy.IsLowerPriceStrategy() {
+				return resolvedChangeRequest{}, fmt.Errorf(
+					"%w: a lower-price strategy belongs only to a known lower-price goal",
+					domain.ErrInvalidInput)
+			}
+			preferred := *strategy
+			resolved.Proposal.LowerPriceStrategy = &preferred
+		}
 		resolved.Proposal.Intent = &intent
 		resolved.Proposal.IntentItemIDs = append([]uuid.UUID(nil), proposal.IntentItemIDs...)
 		return resolved, nil
@@ -93,7 +102,7 @@ func validateChangeRequestProposal(proposal *domain.ChangeRequestProposal, sourc
 		return resolvedChangeRequest{}, fmt.Errorf("%w: change request has an unknown level",
 			domain.ErrInvalidInput)
 	}
-	if proposal.Intent != nil || len(proposal.IntentItemIDs) > 0 {
+	if proposal.Intent != nil || len(proposal.IntentItemIDs) > 0 || proposal.LowerPriceStrategy != nil {
 		return resolvedChangeRequest{}, fmt.Errorf("%w: only a complex request carries an intent",
 			domain.ErrInvalidInput)
 	}

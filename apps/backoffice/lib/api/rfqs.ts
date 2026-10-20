@@ -1,3 +1,5 @@
+import type { HandlerStrategy } from '@/lib/constants/conversation';
+
 /*
  * The statuses a seller sees and reasons about. DRAFT is deliberately absent: it is an internal
  * quote_state while the RFQ is still GENERATED, never a visible business state (see
@@ -394,6 +396,7 @@ export interface DiffLine {
 export interface DiffDiscountSide {
   amount: string;
   suppressed: boolean;
+  origin: DiscountOrigin;
 }
 
 export interface DiffDiscount {
@@ -411,6 +414,25 @@ export type HandlerNoMatchReason =
   | 'PIPELINE_EXHAUSTED'
   | 'PROMOTION_NOT_EARNED';
 
+// One line the AI raised to reach a promotion; quantities and totals are decimal strings.
+export interface HandlerAdaptedLine {
+  item_id: string;
+  description: string;
+  from_quantity: string;
+  to_quantity: string;
+  promotion_id: string;
+  promotion_name: string;
+}
+
+// What reaching a promotion did to the draft. total_raised: the customer asked for that promotion
+// and reaching it costs more.
+export interface HandlerAdaptation {
+  lines: HandlerAdaptedLine[];
+  total_before: string;
+  total_after: string;
+  total_raised: boolean;
+}
+
 // The latest conversation handler decision on the draft: what the customer wrote and how the AI
 // read it.
 export interface HandlerDecisionNote {
@@ -419,6 +441,9 @@ export interface HandlerDecisionNote {
   outcome: 'APPLIED' | 'NO_MATCH';
   no_match_reason: HandlerNoMatchReason | null;
   seller_decision?: HandlerSellerDecision | null;
+  // The recipes run for a complex goal, in run order.
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
   created_at: string;
 }
 
@@ -444,6 +469,8 @@ export interface ConversationDecision {
   outcome: 'APPLIED' | 'NO_MATCH';
   no_match_reason: HandlerNoMatchReason | null;
   seller_decision: HandlerSellerDecision | null;
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
   decided_at: string | null;
   created_at: string;
 }

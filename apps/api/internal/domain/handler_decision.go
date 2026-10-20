@@ -58,7 +58,33 @@ const (
 	HandlerStrategyFindCheaperAlternatives HandlerStrategy = "FIND_CHEAPER_ALTERNATIVES"
 	// HandlerStrategyImproveQuality swaps lines for their cheapest PREMIUM alternative.
 	HandlerStrategyImproveQuality HandlerStrategy = "IMPROVE_QUALITY"
+	// HandlerStrategyAdaptToReachDiscount raises quoted quantities to a promotion's threshold.
+	HandlerStrategyAdaptToReachDiscount HandlerStrategy = "ADAPT_TO_REACH_DISCOUNT"
 )
+
+// IsLowerPriceStrategy reports whether a strategy is one a lower-price goal can run first.
+func (s HandlerStrategy) IsLowerPriceStrategy() bool {
+	return s == HandlerStrategyFindCheaperAlternatives || s == HandlerStrategyAdaptToReachDiscount
+}
+
+// HandlerAdaptation is what ADAPT_TO_REACH_DISCOUNT did to the draft, with the engine's totals.
+type HandlerAdaptation struct {
+	Lines       []HandlerAdaptedLine `json:"lines"`
+	TotalBefore string               `json:"total_before"`
+	TotalAfter  string               `json:"total_after"`
+	// TotalRaised is true when the customer asked for the promotion and reaching it costs more.
+	TotalRaised bool `json:"total_raised"`
+}
+
+// HandlerAdaptedLine is one line raised to reach a promotion. Quantities are decimal strings.
+type HandlerAdaptedLine struct {
+	ItemID        uuid.UUID `json:"item_id"`
+	Description   string    `json:"description"`
+	FromQuantity  string    `json:"from_quantity"`
+	ToQuantity    string    `json:"to_quantity"`
+	PromotionID   uuid.UUID `json:"promotion_id"`
+	PromotionName string    `json:"promotion_name"`
+}
 
 // HandlerProposalRecord is what handler_decision.ai_proposal stores for one batch.
 type HandlerProposalRecord struct {
@@ -70,8 +96,11 @@ type HandlerProposalRecord struct {
 	// IntentItemIDs are the draft lines a complex intent was tied to; empty for the whole quote.
 	IntentItemIDs []uuid.UUID `json:"intent_item_ids,omitempty"`
 	// StrategiesTried lists the recipes run for a complex intent; empty for a direct request.
-	StrategiesTried []HandlerStrategy        `json:"strategies_tried,omitempty"`
-	Operations      []ChangeRequestOperation `json:"operations"`
+	StrategiesTried []HandlerStrategy `json:"strategies_tried,omitempty"`
+	// PreferredStrategy is the lower-price strategy the customer's own wording asked for.
+	PreferredStrategy *HandlerStrategy         `json:"preferred_strategy,omitempty"`
+	Adaptation        *HandlerAdaptation       `json:"adaptation,omitempty"`
+	Operations        []ChangeRequestOperation `json:"operations"`
 }
 
 // NewHandlerDecision is one unreviewed AI proposal recorded for pilot quality metrics.
@@ -89,23 +118,27 @@ type NewHandlerDecision struct {
 
 // HandlerDecisionNote is the latest handler decision on a draft, as the seller reads it.
 type HandlerDecisionNote struct {
-	ClientInput    string
-	Interpretation string
-	Outcome        HandlerOutcome
-	NoMatchReason  *HandlerNoMatchReason
-	SellerDecision *HandlerSellerDecision
-	CreatedAt      time.Time
+	ClientInput     string
+	Interpretation  string
+	Outcome         HandlerOutcome
+	NoMatchReason   *HandlerNoMatchReason
+	StrategiesTried []HandlerStrategy
+	Adaptation      *HandlerAdaptation
+	SellerDecision  *HandlerSellerDecision
+	CreatedAt       time.Time
 }
 
 // HandlerDecisionReview is a handler run as the conversation panel shows it.
 type HandlerDecisionReview struct {
-	VersionID      uuid.UUID
-	Interpretation string
-	Outcome        HandlerOutcome
-	NoMatchReason  *HandlerNoMatchReason
-	SellerDecision *HandlerSellerDecision
-	DecidedAt      *time.Time
-	CreatedAt      time.Time
+	VersionID       uuid.UUID
+	Interpretation  string
+	Outcome         HandlerOutcome
+	NoMatchReason   *HandlerNoMatchReason
+	StrategiesTried []HandlerStrategy
+	Adaptation      *HandlerAdaptation
+	SellerDecision  *HandlerSellerDecision
+	DecidedAt       *time.Time
+	CreatedAt       time.Time
 }
 
 // HandlerDecisionTrace is a recorded run on one draft, in the order it happened, for settling.

@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 
 import { apiRequest } from '@/lib/api/client';
+import type { LowerPriceStrategy } from '@/lib/constants/conversation';
 
 // --- Raw types (API JSON shape, snake_case) ---
 
@@ -13,6 +14,7 @@ interface AccountRaw {
   tax_id: string | null;
   brand_logo_url: string | null;
   brand_color: string | null;
+  preferred_lower_price_strategy: LowerPriceStrategy;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -27,6 +29,7 @@ export interface Account {
   taxId: string | null;
   brandLogoUrl: string | null;
   brandColor: string | null;
+  preferredLowerPriceStrategy: LowerPriceStrategy;
 }
 
 // --- Mappers ---
@@ -39,6 +42,7 @@ function mapAccount(raw: AccountRaw): Account {
     taxId: raw.tax_id,
     brandLogoUrl: raw.brand_logo_url,
     brandColor: raw.brand_color,
+    preferredLowerPriceStrategy: raw.preferred_lower_price_strategy,
   };
 }
 

@@ -8090,6 +8090,10 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "preferred_lower_price_strategy": {
+                    "description": "FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.",
+                    "type": "string"
+                },
                 "tax_id": {
                     "type": "string"
                 },
@@ -8914,6 +8918,9 @@ const docTemplate = `{
         "dto.ConversationDecisionResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -8948,6 +8955,18 @@ const docTemplate = `{
                         "REJECTED",
                         "MANUAL_OVERRIDE"
                     ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
                 }
             }
         },
@@ -9571,6 +9590,14 @@ const docTemplate = `{
                 "amount": {
                     "type": "string"
                 },
+                "origin": {
+                    "type": "string",
+                    "enum": [
+                        "AUTOMATIC",
+                        "AI_ADAPTATION",
+                        "MANUAL_SELLER"
+                    ]
+                },
                 "suppressed": {
                     "type": "boolean"
                 }
@@ -9658,9 +9685,56 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.HandlerAdaptationResponse": {
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.HandlerAdaptedLineResponse"
+                    }
+                },
+                "total_after": {
+                    "type": "string"
+                },
+                "total_before": {
+                    "type": "string"
+                },
+                "total_raised": {
+                    "description": "TotalRaised is true when the customer asked for the promotion and reaching it costs more.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.HandlerAdaptedLineResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "from_quantity": {
+                    "type": "string"
+                },
+                "item_id": {
+                    "type": "string"
+                },
+                "promotion_id": {
+                    "type": "string"
+                },
+                "promotion_name": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.HandlerDecisionResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
                 "client_input": {
                     "type": "string"
                 },
@@ -9695,6 +9769,18 @@ const docTemplate = `{
                         "REJECTED",
                         "MANUAL_OVERRIDE"
                     ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
                 }
             }
         },
@@ -11950,6 +12036,14 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "preferred_lower_price_strategy": {
+                    "description": "What a request for a lower price tries first when the customer did not say; omitted keeps it.",
+                    "type": "string",
+                    "enum": [
+                        "FIND_CHEAPER_ALTERNATIVES",
+                        "ADAPT_TO_REACH_DISCOUNT"
+                    ]
                 },
                 "tax_id": {
                     "type": "string",

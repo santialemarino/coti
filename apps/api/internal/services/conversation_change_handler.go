@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -50,6 +51,13 @@ type batchHandlerDiscounts interface {
 	draftDiscountCopier
 	UpdateByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID,
 		in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
+	MarkAdaptations(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		discountIDs []uuid.UUID) error
+}
+
+// batchHandlerAccounts reads the account's preferred way to a lower total.
+type batchHandlerAccounts interface {
+	GetByID(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.Account, error)
 }
 
 // batchHandlerAlternatives reads the catalog's alternatives a complex intent's recipe swaps in.
@@ -81,6 +89,7 @@ type BatchChangeHandlerConfig struct {
 // recipe, the discount sweep prices, and handler_decision records it for the seller.
 type BatchChangeHandler struct {
 	db           tenantTxRunner
+	accounts     batchHandlerAccounts
 	quotes       batchHandlerQuotes
 	messages     batchHandlerMessages
 	claims       batchClaimFence
@@ -97,13 +106,15 @@ type BatchChangeHandler struct {
 
 // NewBatchChangeHandler builds a BatchChangeHandler. A nil proposer means no language model is
 // configured: every batch is left to the seller as a no-match.
-func NewBatchChangeHandler(db tenantTxRunner, quotes batchHandlerQuotes,
-	messages batchHandlerMessages, claims batchClaimFence, decisions handlerDecisionRecorder,
-	prices branchPriceReader, discounts batchHandlerDiscounts, promotions promotionReader,
-	alternatives batchHandlerAlternatives, proposer domain.ChangeRequestHandler,
-	matcher catalogMatcher, cfg BatchChangeHandlerConfig, log *slog.Logger,
+func NewBatchChangeHandler(db tenantTxRunner, accounts batchHandlerAccounts,
+	quotes batchHandlerQuotes, messages batchHandlerMessages, claims batchClaimFence,
+	decisions handlerDecisionRecorder, prices branchPriceReader, discounts batchHandlerDiscounts,
+	promotions promotionReader, alternatives batchHandlerAlternatives,
+	proposer domain.ChangeRequestHandler, matcher catalogMatcher, cfg BatchChangeHandlerConfig,
+	log *slog.Logger,
 ) *BatchChangeHandler {
-	return &BatchChangeHandler{db: db, quotes: quotes, messages: messages, claims: claims,
+	return &BatchChangeHandler{db: db, accounts: accounts, quotes: quotes, messages: messages,
+		claims:    claims,
 		decisions: decisions, prices: prices, discounts: discounts, alternatives: alternatives,
 		sweep:    &discountSweep{discounts: discounts, promotions: promotions, now: time.Now},
 		proposer: proposer, matcher: matcher, cfg: cfg, log: log}
@@ -120,15 +131,21 @@ type preparedBatch struct {
 	promotions   []domain.Promotion
 	messages     []domain.QuoteMessage
 	context      []domain.QuoteMessage
+	// lowerPrice is the account's first strategy for a lower total.
+	lowerPrice domain.HandlerStrategy
 }
 
 type batchProposal struct {
 	record   domain.HandlerProposalRecord
 	resolved *resolvedChangeRequest
+	// strategies is a complex intent's recipes in run order; attempt is the one this run tries.
+	strategies []domain.HandlerStrategy
+	attempt    int
 }
 
 // Handle runs one claimed batch. Its error leaves the batch for a retry, except one wrapping
-// domain.ErrBatchUnprocessable, which fails it at once.
+// domain.ErrBatchUnprocessable, which fails it at once. A recipe that cannot deliver rolls back and
+// the next one runs on the untouched draft; when none is left the run is recorded as a no-match.
 func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBatch) error {
 	prepared, err := h.prepare(ctx, batch)
 	if err != nil {
@@ -141,12 +158,19 @@ func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBat
 	if err != nil {
 		return err
 	}
-	err = h.apply(ctx, batch, prepared, proposal)
-	var exhausted *recipeNoMatch
-	if errors.As(err, &exhausted) {
+	for {
+		err = h.apply(ctx, batch, prepared, proposal)
+		var exhausted *recipeNoMatch
+		if !errors.As(err, &exhausted) {
+			return err
+		}
+		if exhausted.reason == domain.HandlerNoMatchRecipesExhausted &&
+			proposal.attempt+1 < len(proposal.strategies) {
+			proposal.attempt++
+			continue
+		}
 		return h.apply(ctx, batch, prepared, exhausted.proposal(proposal.record))
 	}
-	return err
 }
 
 // prepare moves a SENT quote to CHANGE_REQUESTED and ensures its single draft, then reads what
@@ -165,6 +189,11 @@ func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBa
 			}
 			prepared.tenant = domain.Tenant{AccountID: quote.AccountID, BranchID: quote.BranchID}
 			prepared.stateAtClaim = quote.CurrentStatus
+			account, err := h.accounts.GetByID(ctx, q, quote.AccountID)
+			if err != nil {
+				return err
+			}
+			prepared.lowerPrice = account.PreferredLowerPriceStrategy
 			prepared.messages, err = h.messages.ListByBatch(ctx, q, batch.AccountID, quote.ID, batch.ID)
 			if err != nil {
 				return err
@@ -254,10 +283,36 @@ func (h *BatchChangeHandler) propose(ctx context.Context, prepared preparedBatch
 		return batchProposal{}, err
 	}
 	resolveChangeRequestMatches(ctx, prepared.tenant, h.matcher, &validated, h.log)
-	return batchProposal{resolved: &validated, record: domain.HandlerProposalRecord{
-		Outcome: domain.HandlerOutcomeApplied, Interpretation: validated.Proposal.Interpretation,
-		Intent: validated.Proposal.Intent, IntentItemIDs: validated.Proposal.IntentItemIDs,
-		Operations: validated.Proposal.Operations}}, nil
+	return batchProposal{resolved: &validated,
+		strategies: strategyOrder(validated.Proposal, prepared.lowerPrice),
+		record: domain.HandlerProposalRecord{
+			Outcome: domain.HandlerOutcomeApplied, Interpretation: validated.Proposal.Interpretation,
+			Intent: validated.Proposal.Intent, IntentItemIDs: validated.Proposal.IntentItemIDs,
+			PreferredStrategy: validated.Proposal.LowerPriceStrategy,
+			Operations:        validated.Proposal.Operations}}, nil
+}
+
+// strategyOrder is the order a complex intent's recipes run in. A lower total runs the customer's
+// preferred strategy first, else the account's, else cheaper alternatives, then the other one.
+func strategyOrder(proposal domain.ChangeRequestProposal, account domain.HandlerStrategy,
+) []domain.HandlerStrategy {
+	if proposal.Level != domain.ChangeRequestLevelComplex || proposal.Intent == nil {
+		return nil
+	}
+	if *proposal.Intent != domain.ChangeRequestIntentLowerTotalPrice {
+		return []domain.HandlerStrategy{domain.HandlerStrategyImproveQuality}
+	}
+	first := domain.HandlerStrategyFindCheaperAlternatives
+	if account.IsLowerPriceStrategy() {
+		first = account
+	}
+	if proposal.LowerPriceStrategy != nil {
+		first = *proposal.LowerPriceStrategy
+	}
+	if first == domain.HandlerStrategyAdaptToReachDiscount {
+		return []domain.HandlerStrategy{first, domain.HandlerStrategyFindCheaperAlternatives}
+	}
+	return []domain.HandlerStrategy{first, domain.HandlerStrategyAdaptToReachDiscount}
 }
 
 // apply re-checks the claim, the matrix and the draft under the quote's lock, then writes the
@@ -289,11 +344,16 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 				*proposal.resolved); err != nil {
 				return err
 			}
-			written, err := h.write(ctx, q, *quote, *draft, *proposal.resolved)
+			var tried []domain.HandlerStrategy
+			if len(proposal.strategies) > 0 {
+				tried = proposal.strategies[:proposal.attempt+1]
+			}
+			written, err := h.write(ctx, q, *quote, *draft, *proposal.resolved, tried)
 			if err != nil {
 				return err
 			}
 			record.Operations, record.StrategiesTried = written.operations, written.strategies
+			record.Adaptation = written.adaptation
 			if after, err = draftSnapshot(ctx, q, h.quotes, h.sweep.discounts, quote.AccountID,
 				draft.ID); err != nil {
 				return err
@@ -317,10 +377,12 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 type handlerWrite struct {
 	operations []domain.ChangeRequestOperation
 	strategies []domain.HandlerStrategy
+	adaptation *domain.HandlerAdaptation
 }
 
+// write applies a proposal to the draft. A complex one runs the last of the tried strategies.
 func (h *BatchChangeHandler) write(ctx context.Context, q repository.Querier, quote domain.Quote,
-	draft domain.QuoteVersion, proposal resolvedChangeRequest,
+	draft domain.QuoteVersion, proposal resolvedChangeRequest, tried []domain.HandlerStrategy,
 ) (handlerWrite, error) {
 	current, err := h.quotes.ListItems(ctx, q, quote.AccountID, draft.ID)
 	if err != nil {
@@ -342,7 +404,10 @@ func (h *BatchChangeHandler) write(ctx context.Context, q repository.Querier, qu
 		}
 	}
 	if proposal.Proposal.Level == domain.ChangeRequestLevelComplex {
-		return h.runRecipe(ctx, q, quote, draft, current, proposal.Proposal)
+		if tried[len(tried)-1] == domain.HandlerStrategyAdaptToReachDiscount {
+			return h.adaptToLowerTotal(ctx, q, quote, draft, current, proposal.Proposal, tried)
+		}
+		return h.runRecipe(ctx, q, quote, draft, current, proposal.Proposal, tried)
 	}
 
 	if err := applyChangeOperations(ctx, q, h.quotes, quote.AccountID, draft.ID, proposal); err != nil {
@@ -357,74 +422,85 @@ func (h *BatchChangeHandler) write(ctx context.Context, q repository.Querier, qu
 		return handlerWrite{}, err
 	}
 	requested := make([]uuid.UUID, 0)
+	requantified := make(map[uuid.UUID]bool)
 	for _, operation := range proposal.Operations {
-		if operation.Operation.Type == domain.ChangeRequestOperationAddDiscount {
+		switch operation.Operation.Type {
+		case domain.ChangeRequestOperationAddDiscount:
 			requested = append(requested, *operation.Operation.PromotionID)
+		case domain.ChangeRequestOperationUpdateQuantity, domain.ChangeRequestOperationReplaceItem:
+			requantified[*operation.Operation.TargetItemID] = true
 		}
 	}
+	written := handlerWrite{operations: proposal.Proposal.Operations}
 	if len(requested) > 0 {
-		if total, err = h.restorePromotions(ctx, q, quote, draft.ID, items, requested,
+		var missing []uuid.UUID
+		if total, missing, err = h.restorePromotions(ctx, q, quote, draft.ID, items, requested,
 			total); err != nil {
 			return handlerWrite{}, err
+		}
+		if len(missing) > 0 {
+			var raises []adaptRaise
+			if total, raises, written.adaptation, err = h.reachPromotions(ctx, q, quote, draft.ID,
+				items, missing, requantified, total); err != nil {
+				return handlerWrite{}, err
+			}
+			written.operations = append(slices.Clone(written.operations), raiseOperations(raises)...)
+			written.strategies = []domain.HandlerStrategy{domain.HandlerStrategyAdaptToReachDiscount}
 		}
 	}
 	if _, err := h.quotes.UpdateVersionTotal(ctx, q, quote.AccountID, draft.ID, total); err != nil {
 		return handlerWrite{}, err
 	}
-	return handlerWrite{operations: proposal.Proposal.Operations}, nil
+	return written, nil
 }
 
-// restorePromotions makes each requested promotion live on the draft: one the sweep already
-// earned needs nothing, one the seller suppressed is restored and re-earned, and one the quote
-// does not earn is a no-match. Returns the total after any restore.
+// restorePromotions makes each requested promotion live on the draft where nothing has to change:
+// one the sweep already earned needs nothing, and one the seller suppressed is restored and
+// re-earned. Returns the total after any restore and the promotions still not live.
 func (h *BatchChangeHandler) restorePromotions(ctx context.Context, q repository.Querier,
 	quote domain.Quote, draftID uuid.UUID, items []domain.QuoteItem, requested []uuid.UUID,
 	total decimal.Decimal,
-) (decimal.Decimal, error) {
+) (decimal.Decimal, []uuid.UUID, error) {
 	discounts, err := h.discounts.ListByVersionID(ctx, q, quote.AccountID, draftID)
 	if err != nil {
-		return decimal.Zero, err
+		return decimal.Zero, nil, err
 	}
 	restore := make([]uuid.UUID, 0)
 	for _, promotionID := range requested {
 		if promotionLive(discounts, promotionID) {
 			continue
 		}
-		suppressed := false
 		for _, discount := range discounts {
-			if discount.Origin == domain.DiscountOriginAutomatic && discount.SuppressedBySeller &&
+			if discount.Origin.EngineOwned() && discount.SuppressedBySeller &&
 				discount.PromotionID != nil && *discount.PromotionID == promotionID {
 				restore = append(restore, discount.ID)
-				suppressed = true
 			}
 		}
-		if !suppressed {
-			return decimal.Zero, &recipeNoMatch{reason: domain.HandlerNoMatchPromotionNotEarned}
+	}
+	if len(restore) > 0 {
+		unsuppressed := false
+		for _, discountID := range restore {
+			if _, err := h.discounts.UpdateByID(ctx, q, quote.AccountID, draftID, discountID,
+				domain.QuoteDiscountUpdate{SuppressedBySeller: &unsuppressed}); err != nil {
+				return decimal.Zero, nil, err
+			}
+		}
+		if total, err = h.sweep.settle(ctx, q, quote.AccountID, quote.BranchID, draftID,
+			items); err != nil {
+			return decimal.Zero, nil, err
+		}
+		if discounts, err = h.discounts.ListByVersionID(ctx, q, quote.AccountID,
+			draftID); err != nil {
+			return decimal.Zero, nil, err
 		}
 	}
-	if len(restore) == 0 {
-		return total, nil
-	}
-	unsuppressed := false
-	for _, discountID := range restore {
-		if _, err := h.discounts.UpdateByID(ctx, q, quote.AccountID, draftID, discountID,
-			domain.QuoteDiscountUpdate{SuppressedBySeller: &unsuppressed}); err != nil {
-			return decimal.Zero, err
-		}
-	}
-	if total, err = h.sweep.settle(ctx, q, quote.AccountID, quote.BranchID, draftID,
-		items); err != nil {
-		return decimal.Zero, err
-	}
-	if discounts, err = h.discounts.ListByVersionID(ctx, q, quote.AccountID, draftID); err != nil {
-		return decimal.Zero, err
-	}
+	missing := make([]uuid.UUID, 0)
 	for _, promotionID := range requested {
 		if !promotionLive(discounts, promotionID) {
-			return decimal.Zero, &recipeNoMatch{reason: domain.HandlerNoMatchPromotionNotEarned}
+			missing = append(missing, promotionID)
 		}
 	}
-	return total, nil
+	return total, missing, nil
 }
 
 // runRecipe reaches a complex intent by swapping the targeted lines for catalog alternatives:
@@ -433,15 +509,13 @@ func (h *BatchChangeHandler) restorePromotions(ctx context.Context, q repository
 // not end below the draft's own total is dropped.
 func (h *BatchChangeHandler) runRecipe(ctx context.Context, q repository.Querier,
 	quote domain.Quote, draft domain.QuoteVersion, current []domain.QuoteItem,
-	proposal domain.ChangeRequestProposal,
+	proposal domain.ChangeRequestProposal, tried []domain.HandlerStrategy,
 ) (handlerWrite, error) {
-	strategy, kind := domain.HandlerStrategyImproveQuality, domain.ProductAlternativePremium
-	if *proposal.Intent == domain.ChangeRequestIntentLowerTotalPrice {
-		strategy, kind = domain.HandlerStrategyFindCheaperAlternatives,
-			domain.ProductAlternativeEconomy
+	strategy, kind := tried[len(tried)-1], domain.ProductAlternativePremium
+	if strategy == domain.HandlerStrategyFindCheaperAlternatives {
+		kind = domain.ProductAlternativeEconomy
 	}
-	exhausted := &recipeNoMatch{reason: domain.HandlerNoMatchRecipesExhausted,
-		strategies: []domain.HandlerStrategy{strategy}}
+	exhausted := &recipeNoMatch{reason: domain.HandlerNoMatchRecipesExhausted, strategies: tried}
 
 	named := make(map[uuid.UUID]struct{}, len(proposal.IntentItemIDs))
 	for _, id := range proposal.IntentItemIDs {
@@ -531,8 +605,7 @@ func (h *BatchChangeHandler) runRecipe(ctx context.Context, q repository.Querier
 	if _, err := h.quotes.UpdateVersionTotal(ctx, q, quote.AccountID, draft.ID, total); err != nil {
 		return handlerWrite{}, err
 	}
-	return handlerWrite{operations: resolved.Proposal.Operations,
-		strategies: []domain.HandlerStrategy{strategy}}, nil
+	return handlerWrite{operations: resolved.Proposal.Operations, strategies: tried}, nil
 }
 
 // lock takes the quote's row lock, then the batch's, the order every conversation writer follows,

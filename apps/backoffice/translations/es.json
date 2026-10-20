@@ -1506,7 +1506,7 @@
           },
           "origin": {
             "AUTOMATIC": "Promoción",
-            "AI_ADAPTATION": "Sugerido por IA"
+            "AI_ADAPTATION": "Por ajuste de la IA"
           },
           "toast": {
             "added": "Agregamos el descuento «{name}».",
@@ -1623,8 +1623,8 @@
             "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
-            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1632,6 +1632,7 @@
         "unchanged": "{count, plural, one {# ítem sin cambios} other {# ítems sin cambios}}",
         "total": "Total",
         "suppressed": "Suprimido",
+        "adaptedDiscount": "Por ajuste de la IA",
         "change": {
           "MODIFIED": "Modificado",
           "ADDED": "Agregado",
@@ -1639,6 +1640,16 @@
         },
         "conversation": "Conversación con el cliente",
         "rounds": "{count, plural, one {# ronda} other {# rondas}}"
+      },
+      "handlerRecipe": {
+        "raised": "Se subió {item} de {from} a {to} para alcanzar «{promotion}».",
+        "totalRaised": "El total sube de {before} a {after}: el cliente pidió esa promoción.",
+        "strategies": "Estrategias probadas: {list}.",
+        "strategy": {
+          "FIND_CHEAPER_ALTERNATIVES": "alternativas más baratas",
+          "ADAPT_TO_REACH_DISCOUNT": "ajuste de cantidades para alcanzar una promoción",
+          "IMPROVE_QUALITY": "alternativas de mejor calidad"
+        }
       },
       "conversation": {
         "title": "Conversación con el cliente",
@@ -1658,8 +1669,8 @@
             "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
-            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
           }
         },
         "sellerDecision": {
@@ -2033,6 +2044,19 @@
       "placeholder": "C2410C",
       "pickerLabel": "Elegir color de marca",
       "invalid": "Ingresá un color hexadecimal válido."
+    },
+    "lowerPrice": {
+      "title": "Pedidos de un precio más bajo",
+      "label": "Qué prueba primero la IA",
+      "hint": "Si esa opción no baja el total, la IA prueba la otra. Si el cliente dice cómo prefiere pagar menos, se sigue lo que pide.",
+      "FIND_CHEAPER_ALTERNATIVES": {
+        "label": "Alternativas más baratas",
+        "hint": "Cambia productos por alternativas económicas del catálogo, sin tocar las cantidades."
+      },
+      "ADAPT_TO_REACH_DISCOUNT": {
+        "label": "Ajustar cantidades para alcanzar una promoción",
+        "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
+      }
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",

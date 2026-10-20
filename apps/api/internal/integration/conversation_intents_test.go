@@ -170,9 +170,9 @@ func TestConversationIntents_LowerTotalPriceIsDroppedUnlessTheEngineEndsLower(t 
 	run := e.lastRun(t, quote.quoteID)
 	if run.Outcome != "NO_MATCH" || run.NoMatchOrigin == nil || *run.NoMatchOrigin != "PIPELINE_EXHAUSTED" ||
 		run.NoMatchReason == nil || *run.NoMatchReason != "PIPELINE_EXHAUSTED" ||
-		len(run.StrategiesTried) != 1 || run.StrategiesTried[0] != "FIND_CHEAPER_ALTERNATIVES" ||
+		!slices.Equal(run.StrategiesTried, []string{"FIND_CHEAPER_ALTERNATIVES", "ADAPT_TO_REACH_DISCOUNT"}) ||
 		run.Intent == nil || len(run.Operations) != 0 {
-		t.Errorf("run = %+v, want a pipeline-exhausted no-match naming the strategy", run)
+		t.Errorf("run = %+v, want a pipeline-exhausted no-match naming both strategies in run order", run)
 	}
 }
 
