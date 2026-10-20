@@ -76,7 +76,7 @@ CREATE TYPE discount_origin AS ENUM ('AUTOMATIC', 'AI_ADAPTATION', 'MANUAL_SELLE
 -- where the client came from — and is its own type for that reason.
 CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'MANUAL_ENTRY');
 CREATE TYPE client_origin AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'PHONE', 'WALK_IN');
-CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT');
+CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT', 'OTHER');
 CREATE TYPE attachment_processing_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 
 CREATE TYPE send_format AS ENUM ('WEBAPP_LINK', 'PDF', 'MESSAGE');
@@ -461,6 +461,30 @@ CREATE TABLE inbound_channel_message (
     CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
 );
 
+CREATE TABLE gmail_mailbox (
+  channel_id               UUID PRIMARY KEY REFERENCES channel(id),
+  account_id               UUID NOT NULL REFERENCES account(id),
+  branch_id                UUID NOT NULL REFERENCES branch(id),
+  email_address            TEXT NOT NULL,
+  refresh_token_ciphertext TEXT NOT NULL,
+  history_id               TEXT NOT NULL,
+  connected_at             TIMESTAMPTZ NOT NULL,
+  initial_sync_pending     BOOLEAN NOT NULL DEFAULT TRUE,
+  last_synced_at           TIMESTAMPTZ,
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE gmail_authorization_state (
+  state_hash          BYTEA PRIMARY KEY,
+  account_id          UUID NOT NULL REFERENCES account(id),
+  branch_id           UUID NOT NULL REFERENCES branch(id),
+  channel_id          UUID NOT NULL REFERENCES channel(id),
+  user_id             UUID NOT NULL REFERENCES app_user(id),
+  session_epoch       INTEGER NOT NULL,
+  verifier_ciphertext TEXT NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL
+);
+
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
 -- not a third entity.
 CREATE TABLE rfq (
@@ -495,7 +519,8 @@ CREATE TABLE rfq_attachment (
   processing_status     attachment_processing_status NOT NULL DEFAULT 'PENDING',
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   processing_started_at TIMESTAMPTZ,
-  processed_at          TIMESTAMPTZ
+  processed_at          TIMESTAMPTZ,
+  original_filename     TEXT
 );
 
 CREATE TABLE rfq_status_change (
@@ -1395,7 +1420,8 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'inbound_channel_message', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'inbound_channel_message', 'gmail_mailbox', 'gmail_authorization_state',
+    'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
     'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',

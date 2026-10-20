@@ -1037,6 +1037,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/channels/{channelId}/gmail/authorization": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "Authorize a branch Gmail mailbox",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Email channel id",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.GmailAuthorizationResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients": {
             "get": {
                 "security": [
@@ -8488,6 +8540,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.GmailAuthorizationResponse": {
+            "type": "object",
+            "properties": {
+                "authorization_url": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.HandlerDecisionResponse": {
             "type": "object",
             "properties": {
@@ -10076,6 +10136,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "original_filename": {
                     "type": "string"
                 },
                 "processing_status": {

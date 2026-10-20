@@ -290,3 +290,7 @@ stays valid. `config.Load()` refuses a value of zero or less.
 `CHANNEL_CONFIG_ENCRYPTION_KEY` (no default) is 32 bytes of base64 — `openssl rand -base64 32` — and
 seals the credential fields of `channel.config`. Unset, storing a credential is refused; malformed,
 `config.Load()` refuses to start.
+
+Gmail intake binds an administrator-authorized mailbox to its branch channel instead of resolving a
+provider callback destination. It uses the same encryption key for mailbox credentials. See
+[Gmail intake](gmail-intake.md) for the authorization and synchronization flow.

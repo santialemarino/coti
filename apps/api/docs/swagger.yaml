@@ -960,6 +960,11 @@ definitions:
     required:
     - email
     type: object
+  dto.GmailAuthorizationResponse:
+    properties:
+      authorization_url:
+        type: string
+    type: object
   dto.HandlerDecisionResponse:
     properties:
       client_input:
@@ -2032,6 +2037,8 @@ definitions:
       expires_at:
         type: string
       id:
+        type: string
+      original_filename:
         type: string
       processing_status:
         type: string
@@ -3388,6 +3395,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Update an intake channel
+      tags:
+      - channels
+  /v1/channels/{channelId}/gmail/authorization:
+    post:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Email channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GmailAuthorizationResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Authorize a branch Gmail mailbox
       tags:
       - channels
   /v1/clients:
