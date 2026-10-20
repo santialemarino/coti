@@ -67,7 +67,7 @@ func (e *env) inboundService(t *testing.T, rfqs *recordingInboundRFQs) *services
 	return services.NewWhatsAppInboundService(e.db,
 		services.NewInboundRoutingService(e.db, repository.NewChannelRepository()),
 		repository.NewInboundChannelMessageRepository(), nil, rfqs, nil,
-		slog.New(slog.NewTextHandler(io.Discard, nil))).WithConversations(conversations).WithContacts(services.NewClientContactService(e.db,repository.NewClientRepository(),repository.NewClientContactRepository()))
+		slog.New(slog.NewTextHandler(io.Discard, nil))).WithConversations(conversations).WithContacts(services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()))
 }
 
 // seedWhatsAppInbox opens a WhatsApp channel whose provider number id routes webhooks; the

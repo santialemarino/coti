@@ -46,7 +46,7 @@ func TestEmailInbound_PreservesOriginalAndRoutesIdempotently(t *testing.T) {
 	}
 	service := services.NewEmailInboundService(e.db, repository.NewInboundChannelMessageRepository(),
 		repository.NewRFQRepository(), repository.NewRFQAttachmentRepository(),
-		repository.NewChannelRepository(), objects, 1024).WithContacts(services.NewClientContactService(e.db,repository.NewClientRepository(),repository.NewClientContactRepository()))
+		repository.NewChannelRepository(), objects, 1024).WithContacts(services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()))
 	route := domain.InboundChannelRoute{AccountID: accountID, BranchID: branchID,
 		ChannelID: channelID, ChannelType: domain.ChannelTypeEmail}
 	original := []byte("From: client@example.com\r\n\r\noriginal full email")
