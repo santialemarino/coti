@@ -374,10 +374,11 @@ export async function sendQuote(
   quoteId: string,
   branchId: string,
   body: QuoteSendBody,
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<QuoteSendResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/sends`, {
     method: 'POST',
-    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': crypto.randomUUID() },
+    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({
       recipient_phone: body.recipient_phone,
       email_delivery: body.email_delivery,

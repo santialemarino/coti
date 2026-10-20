@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import {
   ExternalLinkIcon,
@@ -102,6 +102,7 @@ export function SendQuoteDialog({
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<QuoteSendResponse | null>(null);
+  const sendAttempt = useRef<{ payload: string; key: string } | null>(null);
 
   const quoteId = detail.quote?.id ?? null;
   const phoneValid = isValidPhoneNumber(phone);
@@ -118,6 +119,7 @@ export function SendQuoteDialog({
   function handleOpenChange(next: boolean) {
     if (sending) return;
     if (next) {
+      sendAttempt.current = null;
       const previous = previousDestinations(detail.deliveries, detail.inbound_whatsapp_phone);
       setResult(null);
       setClientSelection(null);
@@ -132,11 +134,16 @@ export function SendQuoteDialog({
     if (!quoteId || !canSend) return;
     setSending(true);
     try {
-      const result = await sendQuote(quoteId, branchId, {
+      const body = {
         recipient_phone: phone,
         clientAssociation: clientSelection ?? undefined,
         email_delivery: alsoEmail ? { address: email.trim() } : null,
-      });
+      };
+      const payload = JSON.stringify(body);
+      const key =
+        sendAttempt.current?.payload === payload ? sendAttempt.current.key : crypto.randomUUID();
+      sendAttempt.current = { payload, key };
+      const result = await sendQuote(quoteId, branchId, body, key);
       reportOutcome(result.deliveries);
       setResult(result);
       await onSent();
@@ -329,7 +336,14 @@ export function SendQuoteDialog({
           <DialogFooter>
             {result ? (
               <>
-                <Button type="button" variant="outline" onClick={() => setResult(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    sendAttempt.current = null;
+                    setResult(null);
+                  }}
+                >
                   {t('resend')}
                 </Button>
                 <Button type="button" onClick={() => handleOpenChange(false)}>

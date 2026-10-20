@@ -168,6 +168,23 @@ afterEach(() => {
 });
 
 describe('SendQuoteDialog', () => {
+  it('reuses the reviewed operation after a transport failure', async () => {
+    vi.mocked(sendQuote)
+      .mockRejectedValueOnce(new ApiError('UNREACHABLE', 0))
+      .mockResolvedValueOnce(sentResult([delivery({})]));
+    const view = renderDialog();
+    openDialog(view);
+    await sendOn(view);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
+    await waitFor(() => expect(sendQuote).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(sendQuote).mock.calls[1]?.[3]).toBe(vi.mocked(sendQuote).mock.calls[0]?.[3]);
+    await view.findByText(copy.successTitle);
+  });
+
   it('opens the web publication without exposing its internal destination', async () => {
     vi.mocked(sendQuote).mockResolvedValue(
       sentResult([delivery({ channel: 'webapp', destination: 'customer-portal' })]),
@@ -209,15 +226,20 @@ describe('SendQuoteDialog', () => {
     fireEvent.click(view.getByRole('button', { name: copy.send }));
 
     await waitFor(() =>
-      expect(sendQuote).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, {
-        recipient_phone: PHONE,
-        clientAssociation: {
-          taxId: '20123456786',
-          newClient: { name: 'Constructora' },
-          tagIds: [],
+      expect(sendQuote).toHaveBeenCalledWith(
+        QUOTE_ID,
+        BRANCH_ID,
+        {
+          recipient_phone: PHONE,
+          clientAssociation: {
+            taxId: '20123456786',
+            newClient: { name: 'Constructora' },
+            tagIds: [],
+          },
+          email_delivery: null,
         },
-        email_delivery: null,
-      }),
+        expect.any(String),
+      ),
     );
   });
 
