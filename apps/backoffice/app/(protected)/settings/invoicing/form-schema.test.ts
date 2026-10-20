@@ -12,6 +12,7 @@ import messages from '@/translations/es.json';
 const VALID: InvoicingSettingsValues = {
   ivaCondition: 'REGISTERED',
   pricesIncludeVat: false,
+  invoiceOnPayment: false,
   address: 'Av. Rivadavia 1234',
   grossIncomeKind: 'number',
   grossIncomeNumber: '901-123456-7',

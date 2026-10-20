@@ -101,6 +101,9 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
     if (before.pricesIncludeVat !== after.pricesIncludeVat) {
       changes.push(t('changes.pricesIncludeVat'));
     }
+    if (before.invoiceOnPayment !== after.invoiceOnPayment) {
+      changes.push(t('changes.invoiceOnPayment'));
+    }
     const moved = settings.branches
       .filter(
         (_, index) => before.branches[index]?.pointOfSale !== after.branches[index]?.pointOfSale,
@@ -300,6 +303,26 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                 </FormItem>
               )}
             />
+
+            <FormField
+              control={form.control}
+              name="invoiceOnPayment"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center gap-x-3">
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={pending}
+                      />
+                    </FormControl>
+                    <FormLabel>{t('invoiceOnPayment.label')}</FormLabel>
+                  </div>
+                  <FormDescription>{t('invoiceOnPayment.hint')}</FormDescription>
+                </FormItem>
+              )}
+            />
           </section>
 
           <section
@@ -349,6 +372,7 @@ export function valuesOf(settings: InvoicingSettings): InvoicingSettingsValues {
         ? settings.ivaCondition
         : '',
     pricesIncludeVat: settings.pricesIncludeVat,
+    invoiceOnPayment: settings.invoiceOnPayment,
     branches: pointsOfSaleValues(settings.branches),
   };
 }

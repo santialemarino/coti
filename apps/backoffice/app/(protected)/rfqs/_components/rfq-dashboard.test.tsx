@@ -50,6 +50,10 @@ const RFQS: RfqRecord[] = [
     total: '100.00',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   },
   {
     id: '2002',
@@ -68,6 +72,10 @@ const RFQS: RfqRecord[] = [
     total: '200.00',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   },
   {
     id: '2003',
@@ -86,6 +94,10 @@ const RFQS: RfqRecord[] = [
     total: '300.00',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   },
   {
     id: '2004',
@@ -103,6 +115,10 @@ const RFQS: RfqRecord[] = [
     status: 'RECEIVED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   },
   {
     id: '2005',
@@ -120,6 +136,10 @@ const RFQS: RfqRecord[] = [
     status: 'GENERATED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   },
 ];
 
@@ -385,6 +405,10 @@ describe('RfqDashboard claiming an unassigned order', () => {
     status: 'RECEIVED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
 
   beforeEach(() => {
@@ -403,6 +427,10 @@ describe('RfqDashboard claiming an unassigned order', () => {
       followup_flagged_at: null,
       created_at: '2026-08-03T05:00:00.000Z',
       updated_at: '2026-08-03T05:00:00.000Z',
+      paid_at: null,
+      paid_by_user_id: null,
+      invoice_waived_at: null,
+      invoice_waived_by_user_id: null,
     });
   });
 
@@ -482,6 +510,10 @@ const quoteResponse = (rfqId: string, branchId: string, sellerId: string | null)
   followup_flagged_at: null,
   created_at: '2026-08-03T05:00:00.000Z',
   updated_at: '2026-08-03T05:00:00.000Z',
+  paid_at: null,
+  paid_by_user_id: null,
+  invoice_waived_at: null,
+  invoice_waived_by_user_id: null,
 });
 
 /*
@@ -516,6 +548,10 @@ describe('RfqDashboard admin steering the seller', () => {
     status: 'RECEIVED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
   const villaOrder: RfqRecord = {
     ...moronOrder,
@@ -681,6 +717,10 @@ describe('RfqDashboard seller column as the assignment surface', () => {
     status: 'RECEIVED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
 
   beforeEach(() => {
@@ -782,6 +822,10 @@ describe('RfqDashboard seller column as the assignment surface', () => {
       followup_flagged_at: null,
       created_at: '2026-08-03T05:00:00.000Z',
       updated_at: '2026-08-03T05:00:00.000Z',
+      paid_at: null,
+      paid_by_user_id: null,
+      invoice_waived_at: null,
+      invoice_waived_by_user_id: null,
     });
     const view = await openSellerCellMenu(
       renderAs({ userName: 'Ana Robles', userId: 'me', isAdmin: false }, [moronOrder]),

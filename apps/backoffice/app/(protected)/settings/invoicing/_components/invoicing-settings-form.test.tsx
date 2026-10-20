@@ -25,6 +25,7 @@ const SETTINGS: InvoicingSettings = {
   taxId: '30711111112',
   ivaCondition: 'REGISTERED',
   pricesIncludeVat: true,
+  invoiceOnPayment: false,
   branches: [
     { branchId: 'b1', name: 'Centro', isActive: true, pointOfSale: 3 },
     { branchId: 'b2', name: 'Morón', isActive: false, pointOfSale: null },
@@ -196,8 +197,25 @@ describe('InvoicingSettingsForm focus and hints', () => {
     expect(hint()).toMatch(
       /^Los precios ya incluyen el IVA\. .*\$ 1\.210,00 se factura como \$ 1\.000,00/,
     );
-    fireEvent.click(view.getByRole('switch'));
+    fireEvent.click(view.getByRole('switch', { name: copy.pricesIncludeVat.label }));
     expect(hint()).toMatch(/^El IVA se suma al facturar\. .*= \$ 1\.210,00\.$/);
+  });
+
+  // The default for «Facturar también» is saved with the rest and named in the confirmation.
+  it('saves whether marking a sale paid offers its invoice ticked', async () => {
+    const view = renderForm();
+
+    fireEvent.click(view.getByRole('switch', { name: copy.invoiceOnPayment.label }));
+    fireEvent.click(view.getByRole('button', { name: copy.submit }));
+
+    await waitFor(() =>
+      expect(updateInvoicingSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ invoiceOnPayment: true }),
+      ),
+    );
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining(copy.changes.invoiceOnPayment),
+    );
   });
 
   it('offers the account CUIT from the hint under the number, not beside the field', () => {

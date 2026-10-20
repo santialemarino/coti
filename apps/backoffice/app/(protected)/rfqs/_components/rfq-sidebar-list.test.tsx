@@ -30,6 +30,10 @@ function order(id: string, quoteNumber: number, status: RfqStatus): RfqRecord {
     status,
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
 }
 

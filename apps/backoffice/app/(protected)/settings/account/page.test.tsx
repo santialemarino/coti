@@ -26,6 +26,7 @@ const ACCOUNT = {
   preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES' as const,
   invoicingEnabled: false,
   hasInvoices: false,
+  invoiceOnPayment: false,
 };
 
 async function renderPage() {

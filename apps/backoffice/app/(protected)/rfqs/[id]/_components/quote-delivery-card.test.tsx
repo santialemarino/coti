@@ -77,6 +77,12 @@ function makeDetail({
       status: rfqStatus,
       needs_followup: false,
       followup_flagged_at: null,
+      paid_at: null,
+      paid_by: null,
+      invoice_waived_at: null,
+      invoice_waived_by: null,
+      invoiced: false,
+      sale_complete: false,
       archived_at: archived ? BASE_TIME : null,
     },
     inbound_whatsapp_phone: null,
@@ -96,6 +102,10 @@ function makeDetail({
           followup_flagged_at: null,
           created_at: BASE_TIME,
           updated_at: BASE_TIME,
+          paid_at: null,
+          paid_by_user_id: null,
+          invoice_waived_at: null,
+          invoice_waived_by_user_id: null,
         }
       : null,
     version: withVersion

@@ -58,6 +58,14 @@ export interface RfqRecord {
   followupFlaggedAt: string | null;
   processing?: boolean;
   archived?: boolean;
+  // When the sale was marked paid; null while it is not.
+  paidAt: string | null;
+  // When it was marked as needing no invoice; null while it is not.
+  invoiceWaivedAt: string | null;
+  // Whether an issued invoice no credit note cancelled stands for the sale.
+  invoiced: boolean;
+  // Accepted, paid, and invoiced or waived (or the account does not invoice), as the API derives it.
+  saleComplete: boolean;
 }
 
 // Raw shape returned by GET /v1/rfqs; mapListItem turns it into an RfqRecord.
@@ -79,6 +87,13 @@ export interface RfqListItem {
   needs_followup: boolean;
   followup_flagged_at: string | null;
   archived_at: string | null;
+  paid_at: string | null;
+  // The name of whoever marked the sale paid.
+  paid_by: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by: string | null;
+  invoiced: boolean;
+  sale_complete: boolean;
 }
 
 export function mapListItem(item: RfqListItem): RfqRecord {
@@ -100,6 +115,10 @@ export function mapListItem(item: RfqListItem): RfqRecord {
     needsFollowup: item.needs_followup,
     followupFlaggedAt: item.followup_flagged_at,
     archived: item.archived_at != null,
+    paidAt: item.paid_at,
+    invoiceWaivedAt: item.invoice_waived_at,
+    invoiced: item.invoiced,
+    saleComplete: item.sale_complete,
   };
 }
 
@@ -181,6 +200,10 @@ export interface QuoteResponse {
   followup_flagged_at: string | null;
   created_at: string;
   updated_at: string;
+  paid_at: string | null;
+  paid_by_user_id: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by_user_id: string | null;
 }
 
 export interface QuoteVersionResponse {

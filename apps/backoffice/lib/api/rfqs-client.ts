@@ -206,6 +206,36 @@ export async function setQuoteArchived(
   }
 }
 
+// Marks an accepted sale paid, or takes the mark back. A fact on the sale, never a status change.
+export async function setQuotePaid(
+  quoteId: string,
+  paid: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/payment`, {
+    method: paid ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
+}
+
+// Marks an accepted sale as needing no invoice, or puts it back to wait for one.
+export async function setInvoiceWaived(
+  quoteId: string,
+  waived: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/invoice-waiver`, {
+    method: waived ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
+}
+
 /*
  * Patch an editable quote item. Only provided fields are written.
  */

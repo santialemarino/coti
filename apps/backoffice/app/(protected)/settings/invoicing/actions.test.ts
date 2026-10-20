@@ -23,11 +23,13 @@ const SETTINGS_RAW = {
   iva_condition: 'REGISTERED',
   prices_include_vat: true,
   branches: [],
+  invoice_on_payment: false,
 };
 
 const VALUES: InvoicingSettingsValues = {
   ivaCondition: 'REGISTERED',
   pricesIncludeVat: true,
+  invoiceOnPayment: true,
   address: 'Av.  Rivadavia 1234',
   grossIncomeKind: 'number',
   grossIncomeNumber: '901.123456-7',
@@ -55,6 +57,7 @@ describe('updateInvoicingSettings', () => {
       body: {
         iva_condition: 'REGISTERED',
         prices_include_vat: true,
+        invoice_on_payment: true,
         branches: [
           { branch_id: 'b1', point_of_sale: 3 },
           { branch_id: 'b2', point_of_sale: null },
@@ -148,10 +151,13 @@ describe('updatePointsOfSale', () => {
 describe('setInvoicingEnabled', () => {
   // The switch changes what the whole shell shows, so every protected layout is re-read.
   it('sends the switch and revalidates every screen', async () => {
-    vi.mocked(apiRequest).mockResolvedValue({});
+    vi.mocked(apiRequest).mockResolvedValue({ has_invoices: true });
     const { revalidatePath } = await import('next/cache');
 
-    await expect(setInvoicingEnabled(false)).resolves.toEqual({});
+    await expect(setInvoicingEnabled(false)).resolves.toEqual({
+      hasInvoices: true,
+      arcaConnected: false,
+    });
 
     expect(apiRequest).toHaveBeenCalledWith({
       path: '/v1/invoicing/enabled',
@@ -160,6 +166,21 @@ describe('setInvoicingEnabled', () => {
       body: { enabled: false },
     });
     expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+  });
+
+  // Switching on says whether an ARCA connection is already there to take up again.
+  it('reads the ARCA connection after switching on', async () => {
+    vi.mocked(apiRequest).mockResolvedValueOnce({ has_invoices: false }).mockResolvedValueOnce({
+      has_certificate: true,
+      reconnect_required: false,
+      environment: 'PRODUCTION',
+    });
+
+    await expect(setInvoicingEnabled(true)).resolves.toEqual({
+      hasInvoices: false,
+      arcaConnected: true,
+    });
+    expect(apiRequest).toHaveBeenLastCalledWith({ path: '/v1/arca/setup', branchScoped: false });
   });
 
   it('returns the code a refusal carries', async () => {

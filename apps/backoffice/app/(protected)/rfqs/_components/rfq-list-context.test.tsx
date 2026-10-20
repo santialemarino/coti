@@ -25,6 +25,10 @@ function order(id: string): RfqRecord {
     status: 'QUOTED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    saleComplete: false,
   };
 }
 

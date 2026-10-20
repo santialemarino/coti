@@ -54,6 +54,7 @@ export interface InvoicingSettingsRaw {
   iva_condition: string | null;
   prices_include_vat: boolean;
   branches: InvoicingBranchRaw[] | null;
+  invoice_on_payment: boolean;
 }
 
 interface VatAmountRaw {
@@ -150,6 +151,8 @@ export interface InvoicingSettings {
   ivaCondition: IvaCondition | null;
   pricesIncludeVat: boolean;
   branches: InvoicingBranch[];
+  // Whether «Marcar cobrado» starts with «Facturar también» ticked.
+  invoiceOnPayment: boolean;
 }
 
 export interface VatAmount {
@@ -259,6 +262,7 @@ export function mapInvoicingSettings(raw: InvoicingSettingsRaw): InvoicingSettin
     taxId: raw.tax_id,
     ivaCondition: ivaConditionOf(raw.iva_condition),
     pricesIncludeVat: raw.prices_include_vat,
+    invoiceOnPayment: raw.invoice_on_payment,
     branches: (raw.branches ?? []).map((branch) => ({
       branchId: branch.branch_id,
       name: branch.name,

@@ -42,6 +42,7 @@ const ACCOUNT: Account = {
   preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
   invoicingEnabled: false,
   hasInvoices: false,
+  invoiceOnPayment: false,
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.

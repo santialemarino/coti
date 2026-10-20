@@ -52,6 +52,7 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
         detail={detail}
         branchMissesEmail={!!branch && missesBranchEmail(branch)}
         invoicingEnabled={account.invoicingEnabled}
+        invoiceOnPayment={account.invoiceOnPayment}
       />
     </RfqQueuePane>
   );

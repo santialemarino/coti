@@ -405,7 +405,9 @@
     "INVOICE_NOT_CREDITABLE": "Solo se anula con nota de crédito una factura autorizada por ARCA.",
     "INVOICE_ALREADY_CREDITED": "Esta factura ya está anulada por una nota de crédito.",
     "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
-    "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación."
+    "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
+    "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
   },
   "meta": {
     "home": {
@@ -1729,7 +1731,8 @@
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
-          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
+          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura.",
+          "QUOTE_ALREADY_PAID": "Esta venta está cobrada y no se puede reactivar. Desmarcá el cobro en «Cierre de la venta» y volvé a intentar."
         }
       },
       "publicRequest": {
@@ -1740,6 +1743,36 @@
         "phone": "Teléfono",
         "original": "Pedido original",
         "file": "Ver archivo del pedido"
+      },
+      "closure": {
+        "title": "Cierre de la venta",
+        "unpaid": "Todavía no está cobrada.",
+        "paid": "Cobrada por {name} el {date}.",
+        "complete": "Venta completa",
+        "markPaid": "Marcar cobrado",
+        "unmarkPaid": "Desmarcar",
+        "unmarking": "Desmarcando…",
+        "markedPaid": "Marcamos el pedido {reference} como cobrado.",
+        "markedPaidAndInvoiced": "Marcamos el pedido {reference} como cobrado y emitimos la factura {type} {number}.",
+        "invoiceRejected": "Marcamos el cobro, pero ARCA rechazó la factura. Los motivos están en la tarjeta de la factura.",
+        "invoiceFailed": "Marcamos el cobro, pero la factura no se emitió. Volvé a intentarlo desde su tarjeta.",
+        "unmarkedPaid": "Desmarcamos el cobro del pedido {reference}.",
+        "dialog": {
+          "title": "Marcar cobrado el pedido {reference}",
+          "description": "Registra que el cliente pagó, con tu nombre y la fecha. Se puede desmarcar después.",
+          "invoice": "Facturar también",
+          "invoiceHint": "Después de guardar el cobro, le pedimos a ARCA la factura {type} a {receiver} por {total}.",
+          "invoiceLoading": "Revisando la factura…",
+          "invoiceBlocked": "Todavía no se puede facturar: {reasons}. Resolvelo desde la tarjeta de la factura.",
+          "invoiceUnavailable": "No pudimos revisar la factura. Podés emitirla después desde su tarjeta.",
+          "confirm": "Marcar cobrado",
+          "confirmAndInvoice": "Marcar cobrado y facturar",
+          "pending": "Guardando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "QUOTE_ARCHIVED": "La venta está archivada. Desarchivala antes de marcar el cobro."
+        }
       }
     }
   },
@@ -2715,6 +2748,10 @@
         "hintOn": "Los precios ya incluyen el IVA. Por ejemplo, un ítem de {gross} se factura como {net} + {vat} de IVA.",
         "hintOff": "El IVA se suma al facturar. Por ejemplo, un ítem de {net} se factura como {net} + {vat} de IVA = {gross}."
       },
+      "invoiceOnPayment": {
+        "label": "Facturar al marcar cobrado",
+        "hint": "Al marcar una venta como cobrada, «Facturar también» aparece tildado. Igual se confirma cada factura."
+      },
       "profile": {
         "address": "Domicilio fiscal",
         "addressPlaceholder": "Ingresá el domicilio fiscal",
@@ -2760,6 +2797,7 @@
       "changes": {
         "ivaCondition": "la condición frente al IVA",
         "pricesIncludeVat": "si los precios incluyen IVA",
+        "invoiceOnPayment": "si se factura al marcar cobrado",
         "pointOfSale": "el punto de venta de {branches}",
         "pointsOfSale": "los puntos de venta de {count} sucursales",
         "profile": "los datos del emisor"
@@ -2772,7 +2810,9 @@
         "label": "Facturación electrónica",
         "description": "Emití facturas electrónicas de ARCA desde Coti para las ventas aceptadas.",
         "enabled": "Activamos la facturación electrónica. Conectá el CUIT con ARCA para empezar a facturar.",
-        "disabled": "Desactivamos la facturación electrónica. Las facturas emitidas siguen en Comprobantes.",
+        "enabledConnected": "Activamos la facturación electrónica con la conexión de ARCA que ya tenías.",
+        "disabled": "Desactivamos la facturación electrónica.",
+        "disabledWithInvoices": "Desactivamos la facturación electrónica. Las facturas emitidas siguen en Comprobantes.",
         "confirm": {
           "title": "Desactivar la facturación electrónica",
           "description": "Se ocultan la factura de los pedidos aceptados, los datos fiscales de los clientes y la conexión con ARCA. Las facturas emitidas se siguen consultando en Comprobantes, y la conexión queda guardada por si la volvés a activar.",
@@ -2922,6 +2962,16 @@
         "downloadNote": "Descargar nota de crédito",
         "downloadInvoice": "Descargar factura anulada",
         "verify": "Verificar la nota de crédito en ARCA"
+      },
+      "waiver": {
+        "action": "No requiere factura",
+        "pending": "Guardando…",
+        "title": "No requiere factura",
+        "body": "Marcado por {name} el {date}. La venta ya no espera su factura.",
+        "undo": "Deshacer",
+        "undoing": "Deshaciendo…",
+        "waived": "El pedido {reference} ya no espera factura.",
+        "restored": "El pedido {reference} vuelve a esperar su factura."
       }
     },
     "history": {
