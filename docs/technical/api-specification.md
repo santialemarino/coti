@@ -125,6 +125,9 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `INVOICE_NOT_CREDITABLE`    | 409    | asking for a credit note for anything but an issued invoice                                                         |
 | `INVOICE_ALREADY_CREDITED`  | 409    | asking for a credit note for an invoice an issued credit note already cancelled                                     |
 | `CREDIT_NOTE_IN_PROGRESS`   | 409    | asking for a credit note while the invoice's previous one is still waiting for ARCA's answer                        |
+| `QUOTE_ALREADY_INVOICED`    | 409    | reactivating, or marking as needing no invoice, a sale with a pending invoice or an issued one not credited         |
+| `QUOTE_ALREADY_PAID`        | 409    | reactivating a sale still marked paid                                                                               |
+| `QUOTE_NOT_ACCEPTED`        | 409    | marking paid or as needing no invoice, either way, a quote that is not accepted                                     |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is

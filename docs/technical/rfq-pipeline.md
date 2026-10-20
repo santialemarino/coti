@@ -15,17 +15,21 @@ files an order arrives with are stored beside it and are not read here — see
 
 ## Endpoints
 
-| Method | Path                               | What it does                                                           |
-| ------ | ---------------------------------- | ---------------------------------------------------------------------- |
-| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
-| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
-| `GET`  | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
-| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
-| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                      |
-| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
-| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
-| `POST` | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
-| `POST` | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
+| Method   | Path                               | What it does                                                           |
+| -------- | ---------------------------------- | ---------------------------------------------------------------------- |
+| `POST`   | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
+| `POST`   | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
+| `GET`    | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
+| `GET`    | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
+| `GET`    | `/v1/channels`                     | The active intake channels of the selected branch                      |
+| `POST`   | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
+| `POST`   | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
+| `POST`   | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
+| `POST`   | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
+| `POST`   | `/v1/quotes/{id}/payment`          | Marks an accepted sale paid («Cobrado»), with who and when             |
+| `DELETE` | `/v1/quotes/{id}/payment`          | Takes the paid mark back                                               |
+| `POST`   | `/v1/quotes/{id}/invoice-waiver`   | Marks an accepted sale as needing no invoice («No requiere factura»)   |
+| `DELETE` | `/v1/quotes/{id}/invoice-waiver`   | Puts the sale back to waiting for its invoice                          |
 
 The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
@@ -645,6 +649,11 @@ actions carry no internal user id, while seller actions credit the authenticated
 `POST /v1/quotes/{quoteId}/reactivate` is the only way out of either terminal state and always
 operates on the same quote:
 
+It refuses a sale that still stands as closed: **409** `QUOTE_ALREADY_INVOICED` while it has an
+invoice in flight or issued and not cancelled by a credit note, and **409** `QUOTE_ALREADY_PAID`
+while it is marked paid — the seller takes the mark back first. Reactivating clears «No requiere
+factura» in the same transaction: a reopened sale is a new sale to close.
+
 - `RESEND` moves the quote back to `QUOTED` and retains the current frozen version unchanged.
 - `EDIT` copies the frozen version into the next mutable version, resets alternative approvals,
   values products and alternatives at the branch's current prices, records the seller as author,
@@ -658,6 +667,43 @@ tracking view combines both histories chronologically without duplicating one ev
 Archiving remains an orthogonal flag: it can hide a quote in any lifecycle state, including
 `ACCEPTED` and `REJECTED`, and restoring it preserves that status.
 
+### Closing a sale: paid and «No requiere factura»
+
+Closing an accepted sale adds **facts, not statuses**: `quote.paid_at` / `paid_by_user_id` record
+«Cobrado» and `invoice_waived_at` / `invoice_waived_by_user_id` record «No requiere factura», each
+timestamp paired with its user by a CHECK and the user tied to the quote's account by a composite
+foreign key. Neither touches `current_status`, `quote_status_change`, the state×intention matrix or
+anything the conversation handler reads. Every write moves `quote.updated_at`, which is what the
+inactivity sweep measures.
+
+- `POST`/`DELETE /v1/quotes/{id}/payment` marks or unmarks the sale paid, by the caller, now. A
+  repeat of the state the quote is already in changes nothing, so a second mark keeps the first
+  author and time.
+- `POST`/`DELETE /v1/quotes/{id}/invoice-waiver` takes the sale out of the invoicing wait or puts it
+  back. Setting it is refused with **409** `ACCOUNT_INVOICING_OFF` while the account does not invoice
+  with Coti, and with **409** `QUOTE_ALREADY_INVOICED` while the sale has a pending invoice or an
+  issued one no credit note cancelled.
+- All four answer **409** `QUOTE_NOT_ACCEPTED` on a quote that is not accepted and
+  `QUOTE_ARCHIVED` on an archived one, and return the quote.
+
+**Paying never gates invoicing, and Coti never invoices on its own.** «Marcar cobrado» in the
+backoffice offers «Facturar también» with the invoice preview (type, receiver, total) in the same
+confirmation, ticked by default when the account's `invoice_on_payment` is on and shown only while
+invoicing is on and the sale has no live invoice; a preview that reports gaps disables it and names
+them. The paid mark is committed first and the invoice issued after it, as two requests: an
+invoice ARCA refuses leaves the sale paid, and the invoice card shows the refusal.
+
+**An issued invoice ends the waiver.** The transaction that records ARCA's authorization of an
+invoice — on the first answer or on reconciling a pending one — clears «No requiere factura» on the
+sale. A refused or released attempt leaves it as the seller set it.
+
+**A complete sale is derived, never stored.** `GET /v1/rfqs` and `GET /v1/rfqs/{id}` carry, per
+order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_waived_by`, `invoiced`
+— an issued invoice no credit note cancelled, in this server's ARCA environment or in production —
+and `sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
+Coti. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
+re-deriving fiscal state.
+
 ### Archiving a quote
 
 `quote.archived_at` is a flag beside the state machine, never a state. `POST
@@ -667,7 +713,8 @@ neither writes `quote_status_change`. The queue leaves archived quotes out unles
 
 **Every edit on an archived quote answers `409 QUOTE_ARCHIVED`** until it is unarchived: lines and
 discounts, accepting materials, approving an alternative, a transition, reactivation, sending,
-generating the PDF, the client association and issuing the invoice. The guard is checked before the
+generating the PDF, the client association, issuing the invoice, and marking the sale paid or as
+needing no invoice (either way). The guard is checked before the
 status, so the refusal names the archive rather than a status the seller cannot see a reason for.
 Reads stay open, and so does recovering an invoice already in flight at ARCA (the backoffice shows
 the invoice card read-only and offers neither action until the quote is unarchived).
