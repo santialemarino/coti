@@ -55,6 +55,9 @@ type fakeQuoteRepo struct {
 	updateStatusErr error
 	applyPricingErr error
 	liveInvoice     bool
+	// paidWrites and waiverWrites record each closing write: the user, or nil for a clear.
+	paidWrites   []*uuid.UUID
+	waiverWrites []*uuid.UUID
 
 	branchesAskedFor      []uuid.UUID
 	versionBranches       []uuid.UUID
@@ -1109,4 +1112,36 @@ func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
 
 func (f *fakeQuoteRepo) HasLiveInvoice(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ARCAEnvironment) (bool, error) {
 	return f.liveInvoice, nil
+}
+
+func (f *fakeQuoteRepo) SetPaid(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	f.paidWrites = append(f.paidWrites, userID)
+	if (f.quote.PaidByUserID == nil) != (userID == nil) {
+		f.quote.PaidByUserID = userID
+		f.quote.PaidAt = nil
+		if userID != nil {
+			now := time.Now()
+			f.quote.PaidAt = &now
+		}
+	}
+	quote := *f.quote
+	return &quote, nil
+}
+
+func (f *fakeQuoteRepo) SetInvoiceWaived(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	f.waiverWrites = append(f.waiverWrites, userID)
+	if (f.quote.InvoiceWaivedByUserID == nil) != (userID == nil) {
+		f.quote.InvoiceWaivedByUserID = userID
+		f.quote.InvoiceWaivedAt = nil
+		if userID != nil {
+			now := time.Now()
+			f.quote.InvoiceWaivedAt = &now
+		}
+	}
+	quote := *f.quote
+	return &quote, nil
 }

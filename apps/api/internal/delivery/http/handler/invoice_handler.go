@@ -89,7 +89,7 @@ func (h *InvoiceHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	in := domain.InvoicingSettingsUpdate{PricesIncludeVAT: body.PricesIncludeVAT,
-		PointsOfSale: make(map[uuid.UUID]*int, len(body.Branches))}
+		PointsOfSale: make(map[uuid.UUID]*int, len(body.Branches)), InvoiceOnPayment: body.InvoiceOnPayment}
 	if body.Profile != nil {
 		in.Profile = &domain.InvoiceIssuerProfile{Address: body.Profile.Address, GrossIncomeRegistration: body.Profile.GrossIncomeRegistration, ActivityStartedOn: body.Profile.ActivityStartedOn}
 	}
@@ -335,6 +335,7 @@ func toInvoicingSettingsResponse(s domain.InvoicingSettings) dto.InvoicingSettin
 		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: string(s.Environment), LegalName: s.Account.LegalName,
 		TaxID: s.Account.TaxID, IVACondition: conditionString(s.Account.IVACondition),
 		PricesIncludeVAT: s.Account.PricesIncludeVAT, Branches: make([]dto.BranchPointOfSaleResponse, 0, len(s.Branches)),
+		InvoiceOnPayment: s.InvoiceOnPayment,
 	}
 	for _, b := range s.Branches {
 		response.Branches = append(response.Branches, dto.BranchPointOfSaleResponse{

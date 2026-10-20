@@ -47,6 +47,34 @@ type Quote struct {
 	FollowupFlaggedAt *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// PaidAt and PaidByUserID record «Cobrado» on an accepted sale: a fact, not a status.
+	PaidAt       *time.Time
+	PaidByUserID *uuid.UUID
+	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
+	InvoiceWaivedAt       *time.Time
+	InvoiceWaivedByUserID *uuid.UUID
+}
+
+// SaleClosure is what has closed an accepted sale so far, with who did it. It is derived, never
+// stored as a status.
+type SaleClosure struct {
+	PaidAt          *time.Time
+	PaidBy          *string // the user's name.
+	InvoiceWaivedAt *time.Time
+	InvoiceWaivedBy *string
+	// Invoiced is whether an issued invoice no credit note cancelled closes the sale here.
+	Invoiced bool
+	// InvoicingEnabled is the account switch; an account that does not invoice needs no invoice.
+	InvoicingEnabled bool
+}
+
+// SaleComplete reports whether a sale in status is fully closed: accepted, paid, and invoiced or
+// waived, or with invoicing off for the account.
+func SaleComplete(status QuoteStatus, closure SaleClosure) bool {
+	if status != QuoteStatusAccepted || closure.PaidAt == nil {
+		return false
+	}
+	return closure.Invoiced || closure.InvoiceWaivedAt != nil || !closure.InvoicingEnabled
 }
 
 // AutoArchiveStatuses are the statuses the inactivity sweep archives: the stalls follow-up chases,

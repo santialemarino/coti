@@ -205,6 +205,7 @@ func run() error {
 		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
 		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
+		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
@@ -262,7 +263,8 @@ func run() error {
 		}
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
-		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
+		WithInvoicingSwitch(invoicingRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,

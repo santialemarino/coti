@@ -16,7 +16,8 @@ import (
 
 const quoteColumns = `id, account_id, number, branch_id, client_id, rfq_id, seller_id,
 	current_version_id, current_status, expires_at, archived_at, needs_followup,
-	followup_flagged_at, created_at, updated_at`
+	followup_flagged_at, created_at, updated_at, paid_at, paid_by_user_id, invoice_waived_at,
+	invoice_waived_by_user_id`
 
 const quoteVersionColumns = `id, account_id, quote_id, author_id, version_number, currency, total,
 	is_immutable, frozen_at, comment, created_at`
@@ -232,6 +233,44 @@ func (r *QuoteRepository) ClaimForEdit(
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
 		 RETURNING `+quoteColumns,
 		accountID, branchID, quoteID))
+}
+
+// SetPaid marks the quote paid by userID now, or clears the mark when userID is nil. A quote
+// already in the asked state is returned untouched, so a repeat neither moves updated_at nor
+// rewrites who marked it.
+func (r *QuoteRepository) SetPaid(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET paid_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END, paid_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (paid_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
+}
+
+// SetInvoiceWaived records «No requiere factura» by userID now, or clears it when userID is nil.
+// A quote already in the asked state is returned untouched.
+func (r *QuoteRepository) SetInvoiceWaived(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET invoice_waived_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END,
+		     invoice_waived_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (invoice_waived_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
 }
 
 // ArchiveInactiveCrossAccount archives up to limit quotes, across every account, that sit in one of
@@ -1073,7 +1112,8 @@ func scanQuote(row pgx.Row) (*domain.Quote, error) {
 	err := row.Scan(&quote.ID, &quote.AccountID, &quote.Number, &quote.BranchID, &quote.ClientID, &quote.RFQID,
 		&quote.SellerID, &quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
 		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt, &quote.CreatedAt,
-		&quote.UpdatedAt)
+		&quote.UpdatedAt, &quote.PaidAt, &quote.PaidByUserID, &quote.InvoiceWaivedAt,
+		&quote.InvoiceWaivedByUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

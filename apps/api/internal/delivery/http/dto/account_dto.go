@@ -55,11 +55,13 @@ type AccountResponse struct {
 	PreferredLowerPriceStrategy string `json:"preferred_lower_price_strategy"`
 	// Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
 	InvoicingEnabled bool `json:"invoicing_enabled"`
-	// Whether any invoice was ever recorded, which keeps the history readable while invoicing is off.
-	HasInvoices bool      `json:"has_invoices"`
-	IsActive    bool      `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	// Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.
+	HasInvoices bool `json:"has_invoices"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool      `json:"invoice_on_payment"`
+	IsActive         bool      `json:"is_active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // SetInvoicingEnabledRequest is the body for PUT /v1/invoicing/enabled.

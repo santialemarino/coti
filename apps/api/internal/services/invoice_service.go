@@ -24,6 +24,8 @@ type invoicingStore interface {
 	ClaimRecovery(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, before time.Time) (bool, error)
 	GetAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.AccountFiscal, error)
 	UpdateAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID, condition *domain.IVACondition, pricesIncludeVAT bool) error
+	GetInvoiceOnPayment(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
+	UpdateInvoiceOnPayment(ctx context.Context, q repository.Querier, accountID uuid.UUID, on bool) error
 	ListBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.BranchPointOfSale, error)
 	GetBranchPointOfSale(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*int, error)
 	UpdateBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int) error
@@ -57,6 +59,7 @@ type invoiceQuoteReader interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	SetInvoiceWaived(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID) (*domain.Quote, error)
 }
 
 type invoiceDiscountReader interface {
@@ -124,6 +127,9 @@ func (s *InvoiceService) GetSettings(ctx context.Context, tenant domain.Tenant) 
 			return err
 		}
 		settings.Account = *account
+		if settings.InvoiceOnPayment, err = s.store.GetInvoiceOnPayment(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		if settings.Branches, err = s.store.ListBranchPointsOfSale(ctx, q, tenant.AccountID); err != nil {
 			return err
 		}
@@ -163,6 +169,11 @@ func (s *InvoiceService) UpdateSettings(
 		}
 		if err := s.store.UpdateAccountFiscal(ctx, q, tenant.AccountID, in.IVACondition, in.PricesIncludeVAT); err != nil {
 			return err
+		}
+		if in.InvoiceOnPayment != nil {
+			if err := s.store.UpdateInvoiceOnPayment(ctx, q, tenant.AccountID, *in.InvoiceOnPayment); err != nil {
+				return err
+			}
 		}
 		return s.savePointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
 	})
@@ -612,7 +623,7 @@ func (s *InvoiceService) settle(
 		var issued *domain.Invoice
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
-			issued, err = s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, *auth)
+			issued, err = s.markIssued(ctx, q, tenant, pending.ID, *auth)
 			return err
 		})
 		return issued, err
@@ -635,6 +646,21 @@ func (s *InvoiceService) settle(
 	}
 }
 
+// markIssued records ARCA's authorization. An issued invoice ends «No requiere factura» in the same
+// transaction: the sale was invoiced after all.
+func (s *InvoiceService) markIssued(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, id uuid.UUID, auth domain.InvoiceAuthorization,
+) (*domain.Invoice, error) {
+	issued, err := s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, id, auth)
+	if err != nil || issued.Kind != domain.VoucherKindInvoice {
+		return issued, err
+	}
+	if _, err := s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, issued.BranchID, issued.QuoteID, nil); err != nil {
+		return nil, err
+	}
+	return issued, nil
+}
+
 // reconcile reads back the number a pending invoice of unknown outcome claimed: ARCA's invoice there
 // is adopted when it is this one, otherwise nothing was authorized and the hold is released.
 func (s *InvoiceService) reconcile(
@@ -653,7 +679,7 @@ func (s *InvoiceService) reconcile(
 		var issued *domain.Invoice
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
-			issued, err = s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, domain.InvoiceAuthorization{
+			issued, err = s.markIssued(ctx, q, tenant, pending.ID, domain.InvoiceAuthorization{
 				Number: found.Number, CAE: found.CAE, CAEExpiresOn: found.CAEExpiresOn,
 			})
 			return err

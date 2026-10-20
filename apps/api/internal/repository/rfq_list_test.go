@@ -95,7 +95,7 @@ func listByTenantIncluding(
 	var items []domain.RfqListItem
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
-		items, err = repo.ListByTenant(ctx, q, tenant, includeArchived)
+		items, err = repo.ListByTenant(ctx, q, tenant, includeArchived, domain.ARCAEnvironmentHomologation)
 		return err
 	}); err != nil {
 		t.Fatalf("ListByTenant() = %v, want no error", err)
@@ -395,7 +395,7 @@ func getByRFQID(t *testing.T, db *DB, tenant domain.Tenant, rfqID uuid.UUID) (*d
 	var out *domain.RfqListItem
 	err := db.InTenantTx(context.Background(), tenant, func(q Querier) error {
 		var err error
-		out, err = repo.GetByRFQID(context.Background(), q, tenant, rfqID)
+		out, err = repo.GetByRFQID(context.Background(), q, tenant, rfqID, domain.ARCAEnvironmentHomologation)
 		return err
 	})
 	return out, err
@@ -663,7 +663,7 @@ func TestRFQRepository_ListByTenant_CountsOnlyTheCurrentVersionsLines(t *testing
 		Role: domain.UserRoleAdmin}, func(q Querier) error {
 		var getErr error
 		single, getErr = NewRFQRepository().GetByRFQID(ctx, q,
-			domain.Tenant{AccountID: account, BranchID: branch, Role: domain.UserRoleAdmin}, rfqID)
+			domain.Tenant{AccountID: account, BranchID: branch, Role: domain.UserRoleAdmin}, rfqID, "")
 		return getErr
 	}); err != nil {
 		t.Fatalf("GetByRFQID() = %v", err)

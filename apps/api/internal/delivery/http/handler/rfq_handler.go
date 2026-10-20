@@ -618,6 +618,12 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		ArchivedAt:        item.ArchivedAt,
 		NeedsFollowup:     item.NeedsFollowup,
 		FollowupFlaggedAt: item.FollowupFlaggedAt,
+		PaidAt:            item.Closure.PaidAt,
+		PaidBy:            item.Closure.PaidBy,
+		InvoiceWaivedAt:   item.Closure.InvoiceWaivedAt,
+		InvoiceWaivedBy:   item.Closure.InvoiceWaivedBy,
+		Invoiced:          item.Closure.Invoiced,
+		SaleComplete:      item.SaleComplete(),
 	}
 }
 

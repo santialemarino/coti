@@ -113,6 +113,12 @@ type RfqListItem struct {
 	NeedsFollowup bool
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
 	FollowupFlaggedAt *time.Time
+	Closure           SaleClosure
+}
+
+// SaleComplete reports whether the order is a fully closed sale.
+func (i RfqListItem) SaleComplete() bool {
+	return SaleComplete(QuoteStatus(i.Status), i.Closure)
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.

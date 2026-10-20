@@ -186,6 +186,7 @@ func toAccountResponse(a domain.Account) dto.AccountResponse {
 		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy),
 		InvoicingEnabled:            a.InvoicingEnabled,
 		HasInvoices:                 a.HasInvoices,
+		InvoiceOnPayment:            a.InvoiceOnPayment,
 		IsActive:                    a.IsActive,
 		CreatedAt:                   a.CreatedAt,
 		UpdatedAt:                   a.UpdatedAt,

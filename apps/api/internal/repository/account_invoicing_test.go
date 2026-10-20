@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -77,14 +78,14 @@ func TestAccountMigration_InvoicingBackfill(t *testing.T) {
 	}
 }
 
-// The switch round-trips, the account read says whether invoices exist, and the share lock reports
-// the switch it holds.
+// The switch round-trips, the account read says whether an authorized voucher exists, and the share
+// lock reports the switch it holds. A pending or refused attempt is no fiscal record.
 func TestAccountRepository_InvoicingSwitch(t *testing.T) {
 	db, tenant, quoteID, versionID, _ := invoiceFixture(t)
 	ctx := context.Background()
 	accounts, invoices := NewAccountRepository(), NewInvoicingRepository()
 
-	var fresh, on, locked *domain.Account
+	var fresh, on, whilePending, afterRefusal, locked *domain.Account
 	var lockedEnabled, readEnabled bool
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
@@ -94,7 +95,27 @@ func TestAccountRepository_InvoicingSwitch(t *testing.T) {
 		if on, err = accounts.SetInvoicingEnabled(ctx, q, tenant.AccountID, true); err != nil {
 			return err
 		}
-		if _, err = invoices.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID)); err != nil {
+		refused, err := invoices.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		if err != nil {
+			return err
+		}
+		if whilePending, err = accounts.GetByID(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
+		if err = invoices.MarkRejected(ctx, q, tenant.AccountID, tenant.BranchID, refused.ID,
+			domain.InvoiceRejectedError{Issues: []string{"10013: DocTipo"}}); err != nil {
+			return err
+		}
+		if afterRefusal, err = accounts.GetByID(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
+		pending, err := invoices.CreatePending(ctx, q, pendingInvoice(tenant, quoteID, versionID))
+		if err != nil {
+			return err
+		}
+		if _, err = invoices.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID,
+			domain.InvoiceAuthorization{Number: 23, CAE: "74123456789012",
+				CAEExpiresOn: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)}); err != nil {
 			return err
 		}
 		if locked, err = accounts.GetByIDForUpdate(ctx, q, tenant.AccountID); err != nil {
@@ -110,6 +131,10 @@ func TestAccountRepository_InvoicingSwitch(t *testing.T) {
 	}
 	if fresh.InvoicingEnabled || fresh.HasInvoices {
 		t.Fatalf("new account = %+v, want invoicing off and no invoices", fresh)
+	}
+	if whilePending.HasInvoices || afterRefusal.HasInvoices {
+		t.Fatalf("has_invoices = %v pending, %v refused, want false for both", whilePending.HasInvoices,
+			afterRefusal.HasInvoices)
 	}
 	if !on.InvoicingEnabled || !locked.InvoicingEnabled || !locked.HasInvoices {
 		t.Fatalf("after switching on and invoicing: returned = %+v, read = %+v", on, locked)

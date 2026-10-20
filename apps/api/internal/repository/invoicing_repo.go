@@ -85,6 +85,28 @@ func (r *InvoicingRepository) UpdateAccountFiscal(
 	return nil
 }
 
+// GetInvoiceOnPayment reads whether marking a sale paid offers its invoice ticked.
+func (r *InvoicingRepository) GetInvoiceOnPayment(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var on bool
+	err := q.QueryRow(ctx, `SELECT invoice_on_payment FROM account WHERE id = $1`, accountID).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return on, err
+}
+
+// UpdateInvoiceOnPayment sets whether marking a sale paid offers its invoice ticked.
+func (r *InvoicingRepository) UpdateInvoiceOnPayment(ctx context.Context, q Querier, accountID uuid.UUID, on bool) error {
+	tag, err := q.Exec(ctx, `UPDATE account SET invoice_on_payment = $2 WHERE id = $1`, accountID, on)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // ListBranchPointsOfSale lists every branch of the account with its point of sale, by name.
 func (r *InvoicingRepository) ListBranchPointsOfSale(
 	ctx context.Context, q Querier, accountID uuid.UUID,
