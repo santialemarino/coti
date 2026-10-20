@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { PublicQuoteActionError } from '@/lib/api/public-quotes';
 import { POST } from './route';
 
+vi.mock('@/lib/auth/customer-session', () => ({
+  getCustomerToken: async () => 'customer-session',
+}));
+
 vi.mock('@/lib/api/public-quotes', async (original) => ({
   ...(await original<typeof import('@/lib/api/public-quotes')>()),
   submitPublicQuoteAction: vi.fn(),
@@ -14,6 +18,7 @@ const { submitPublicQuoteAction } = await import('@/lib/api/public-quotes');
 function answer() {
   return new NextRequest('http://localhost/api/public-quote-action', {
     method: 'POST',
+    headers: { origin: 'http://localhost' },
     body: JSON.stringify({ token: 'tok-1', type: 'ACCEPT' }),
   });
 }

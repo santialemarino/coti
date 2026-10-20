@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -30,7 +31,7 @@ func NewInboundRoutingService(
 	return &InboundRoutingService{db: db, channels: channels}
 }
 
-// ResolveChannels maps external inbox identifiers to their account, branch, and concrete channel.
+// ResolveChannels returns available routes and ErrInboundDestinationInactive if any owner is inactive.
 func (s *InboundRoutingService) ResolveChannels(
 	ctx context.Context, channelType domain.ChannelType, identifiers []string,
 ) (map[string]domain.InboundChannelRoute, error) {
@@ -48,7 +49,7 @@ func (s *InboundRoutingService) ResolveChannels(
 
 	channels, err := s.channels.GetActiveByTypeAndIdentifiersCrossAccount(ctx, s.db.CrossAccount(),
 		channelType, normalized)
-	if err != nil {
+	if err != nil && !errors.Is(err, domain.ErrInboundDestinationInactive) {
 		return nil, err
 	}
 	routes := make(map[string]domain.InboundChannelRoute, len(channels))
@@ -62,7 +63,7 @@ func (s *InboundRoutingService) ResolveChannels(
 		}
 		routes[identifier] = route
 	}
-	return routes, nil
+	return routes, err
 }
 
 func normalizeInboundChannelIdentifiers(

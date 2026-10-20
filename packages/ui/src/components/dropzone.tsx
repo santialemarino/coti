@@ -8,6 +8,10 @@ import { buttonVariants } from './button';
 import { Spinner } from './spinner';
 
 interface DropzoneProps {
+  id?: string;
+  'aria-invalid'?: boolean | 'true' | 'false';
+  'aria-describedby'?: string;
+  'aria-required'?: boolean;
   /* Mirrors the file input's `accept`; the browser filter and the copy must agree. */
   accept: string;
   onFile: (file: File | undefined) => void;
@@ -44,6 +48,10 @@ interface DropzoneProps {
  * into a child element, so a boolean flickers off over the icon and the label.
  */
 function Dropzone({
+  id,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedBy,
+  'aria-required': ariaRequired,
   accept,
   onFile,
   title,
@@ -82,12 +90,18 @@ function Dropzone({
       <input
         ref={inputRef}
         type="file"
+        tabIndex={-1}
+        aria-hidden="true"
         accept={accept}
         disabled={locked}
         className="sr-only"
         onChange={(event) => onFile(event.target.files?.[0])}
       />
       <button
+        id={id}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        aria-required={ariaRequired}
         type="button"
         data-slot="dropzone"
         data-dragging={dragging || undefined}
@@ -114,6 +128,7 @@ function Dropzone({
           'hover:border-border-strong hover:bg-muted',
           'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
           'active:bg-surface-hover',
+          'aria-invalid:border-danger aria-invalid:focus-visible:border-danger aria-invalid:focus-visible:ring-danger/30',
           'data-[dragging]:border-primary data-[dragging]:bg-accent data-[dragging]:shadow-e3',
           'disabled:pointer-events-none disabled:opacity-60',
           className,

@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/shopspring/decimal"
@@ -31,9 +32,11 @@ import (
 	arcainvoice "github.com/santialemarino/coti/apps/api/internal/arca/invoicing"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/customeridentity"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/gmail"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	quotePDF "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
@@ -139,6 +142,7 @@ func run() error {
 	}
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
+	customerAuthService := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
 	quoteMailService := mailService
@@ -146,6 +150,7 @@ func run() error {
 		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
 			accountRepo, nil)
 	}
+	customerAuthService.WithIdentityProviders(repository.NewCustomerAuthRepository(), customeridentity.NewGoogle(cfg.CustomerAuth.GoogleClientID, cfg.CustomerAuth.GoogleClientSecret, cfg.CustomerAuth.GoogleTimeout), mailService)
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
@@ -195,12 +200,16 @@ func run() error {
 		WithPrices(productPriceRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
+		WithPublicContacts(repository.NewPublicRFQRepository(), rfqAttachmentService).
 		WithHandlerDecisions(handlerDecisionRepo).
 		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
 		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
+		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
+		cfg.RFQ, cfg.Storage.MaxFileSize)
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	var changeProposer domain.ChangeRequestHandler
@@ -218,6 +227,40 @@ func run() error {
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService)
+	var gmailHandler *handler.GmailHandler
+	var gmailWorker *services.GmailSyncWorker
+	var attachmentJobs *services.JobService
+	attachmentWake := make(chan struct{}, 1)
+	if cfg.Gmail.Enabled() {
+		oauth, err := gmail.NewOAuth(cfg.Gmail.ClientID, cfg.Gmail.ClientSecret, cfg.Gmail.RedirectURL,
+			cfg.Gmail.RequestTimeout, cfg.Gmail.MaxJSONBytes)
+		if err != nil {
+			return err
+		}
+		mailboxes := repository.NewGmailMailboxRepository()
+		gmailHandler = handler.NewGmailHandler(services.NewGmailAuthorizationService(db, mailboxes,
+			channelRepo, userRepo, oauth, channelSealer, cfg.Gmail.StateTTL,
+			cfg.Auth.RequireVerifiedEmail), cfg.Web.BackofficeURL)
+		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
+			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
+			WithRecordedCallback(func() {
+				select {
+				case attachmentWake <- struct{}{}:
+				default:
+				}
+			})
+		gmailWorker = services.NewGmailSyncWorker(db, mailboxes, channelSealer,
+			gmail.NewFactory(cfg.Gmail), services.NewEmailSyncService(intake), cfg.Gmail.PollInterval, log)
+		if providers.LanguageModelBound() {
+			reader := rfqAttachmentService.WithStoredReading(providers.Transcriber,
+				cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows)
+			attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
+				services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
+			if err != nil {
+				return err
+			}
+		}
+	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
@@ -240,19 +283,23 @@ func run() error {
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
-		WithWhatsAppCredentials(channelSealer)
+		WithWhatsAppCredentials(channelSealer).
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo)
+	quoteDeliveryService.WithClientAssociations(clientService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
 	rateLimit := deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)}
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health:       handler.NewHealthHandler(db),
-			Auth:         handler.NewAuthHandler(authService),
-			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			Health:         handler.NewHealthHandler(db),
+			Auth:           handler.NewAuthHandler(authService),
+			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuthService),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
@@ -264,6 +311,7 @@ func run() error {
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
 			Conversation:  handler.NewConversationHandler(conversationReviewService),
@@ -275,12 +323,13 @@ func run() error {
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
 				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
+			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuthService},
 		rateLimit,
 	)
 
@@ -298,9 +347,28 @@ func run() error {
 		defer close(tickerDone)
 		conversationTicker.Run(tickerCtx)
 	}()
+	var gmailDone chan struct{}
+	if gmailWorker != nil {
+		gmailDone = make(chan struct{})
+		go func() { defer close(gmailDone); gmailWorker.Run(tickerCtx) }()
+	}
+	var attachmentDone chan struct{}
+	if attachmentJobs != nil {
+		attachmentDone = make(chan struct{})
+		go func() {
+			defer close(attachmentDone)
+			runAttachmentWake(tickerCtx, attachmentWake, attachmentJobs, cfg.Gmail.PollInterval, cfg.Job.Timeout, log)
+		}()
+	}
 	defer func() {
 		stopTicker()
 		<-tickerDone
+		if gmailDone != nil {
+			<-gmailDone
+		}
+		if attachmentDone != nil {
+			<-attachmentDone
+		}
 	}()
 
 	serverErr := make(chan error, 1)
@@ -322,6 +390,34 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+func runAttachmentWake(ctx context.Context, wake chan struct{}, jobs *services.JobService,
+	interval, timeout time.Duration, log *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		}
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		run, err := jobs.Run(runCtx, "attachment-extraction")
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.ErrorContext(ctx, "immediate attachment extraction failed", slog.Any("error", err))
+		}
+		if err == nil && (run == nil || run.Scanned > 0) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(interval):
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
 }
 
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {

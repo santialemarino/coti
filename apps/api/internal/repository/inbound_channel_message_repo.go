@@ -22,6 +22,21 @@ func NewInboundChannelMessageRepository() *InboundChannelMessageRepository {
 	return &InboundChannelMessageRepository{}
 }
 
+// FindByExternalID finds the event already reserved for one branch and provider message.
+func (r *InboundChannelMessageRepository) FindByExternalID(ctx context.Context, q Querier,
+	accountID, branchID, channelID uuid.UUID, externalID string,
+) (*domain.InboundChannelMessage, error) {
+	message, err := scanInboundChannelMessage(q.QueryRow(ctx,
+		`SELECT `+inboundChannelMessageColumns+`
+		 FROM inbound_channel_message
+		 WHERE account_id = $1 AND branch_id = $2 AND channel_id = $3 AND external_message_id = $4`,
+		accountID, branchID, channelID, externalID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return message, err
+}
+
 // Reserve creates an inbound event, or returns the one an earlier delivery of the same provider
 // message reserved; a returned ID other than in.ID means this delivery is a retry.
 func (r *InboundChannelMessageRepository) Reserve(ctx context.Context, q Querier, accountID,

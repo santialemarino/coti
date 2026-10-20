@@ -76,6 +76,7 @@ type Config struct {
 	Server          ServerConfig
 	Database        DatabaseConfig
 	Auth            AuthConfig
+	CustomerAuth    CustomerAuthConfig
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -95,7 +96,68 @@ type Config struct {
 	Storage         StorageConfig
 	Channel         ChannelConfig
 	WhatsApp        WhatsAppConfig
+	Gmail           GmailConfig
 	ARCA            ARCASetupConfig
+}
+
+// GmailConfig holds the OAuth settings and limits for branch mailbox synchronization.
+type GmailConfig struct {
+	ClientID       string
+	ClientSecret   string
+	RedirectURL    string
+	RequestTimeout time.Duration
+	PollInterval   time.Duration
+	StateTTL       time.Duration
+	MaxRawBytes    int64
+	MaxJSONBytes   int64
+	MaxParts       int
+}
+
+// Enabled reports whether an OAuth client has been configured.
+func (g GmailConfig) Enabled() bool {
+	return g.ClientID != "" && g.ClientSecret != "" && g.RedirectURL != ""
+}
+
+func (g GmailConfig) problems() []string {
+	var problems []string
+	if g.ClientID != "" || g.ClientSecret != "" || g.RedirectURL != "" {
+		if g.ClientID == "" {
+			problems = append(problems, "GMAIL_OAUTH_CLIENT_ID is required")
+		}
+		if g.ClientSecret == "" {
+			problems = append(problems, "GMAIL_OAUTH_CLIENT_SECRET is required")
+		}
+		if g.RedirectURL == "" {
+			problems = append(problems, "GMAIL_OAUTH_REDIRECT_URL is required")
+		}
+		if g.RedirectURL != "" {
+			u, err := url.Parse(g.RedirectURL)
+			if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" &&
+				(u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) ||
+				u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				problems = append(problems, "GMAIL_OAUTH_REDIRECT_URL must be an HTTPS URL or a local HTTP URL")
+			}
+		}
+	}
+	if g.RequestTimeout <= 0 {
+		problems = append(problems, "GMAIL_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if g.PollInterval <= 0 {
+		problems = append(problems, "GMAIL_POLL_INTERVAL_SECONDS must be greater than zero")
+	}
+	if g.StateTTL <= 0 {
+		problems = append(problems, "GMAIL_OAUTH_STATE_TTL_MINUTES must be greater than zero")
+	}
+	if g.MaxRawBytes <= 0 {
+		problems = append(problems, "GMAIL_MAX_RAW_BYTES must be greater than zero")
+	}
+	if g.MaxJSONBytes <= g.MaxRawBytes {
+		problems = append(problems, "GMAIL_MAX_JSON_BYTES must exceed GMAIL_MAX_RAW_BYTES")
+	}
+	if g.MaxParts <= 0 {
+		problems = append(problems, "GMAIL_MAX_MIME_PARTS must be greater than zero")
+	}
+	return problems
 }
 
 // ARCASetupConfig protects homologation credentials and bounds external calls.
@@ -760,6 +822,7 @@ func Load() (*Config, error) {
 			MaxConnIdleTime: getDuration("DB_MAX_CONN_IDLE_MINUTES", 30*time.Minute, &problems),
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
+		CustomerAuth: loadCustomerAuth(&problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
@@ -929,6 +992,17 @@ func Load() (*Config, error) {
 			RequestTimeout:  getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
 			WebhookMaxBytes: int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
 		},
+		Gmail: GmailConfig{
+			ClientID:       getString("GMAIL_OAUTH_CLIENT_ID", ""),
+			ClientSecret:   getString("GMAIL_OAUTH_CLIENT_SECRET", ""),
+			RedirectURL:    getString("GMAIL_OAUTH_REDIRECT_URL", ""),
+			RequestTimeout: getDuration("GMAIL_REQUEST_TIMEOUT_SECONDS", 30*time.Second, &problems),
+			PollInterval:   getDuration("GMAIL_POLL_INTERVAL_SECONDS", 30*time.Second, &problems),
+			StateTTL:       getDuration("GMAIL_OAUTH_STATE_TTL_MINUTES", 10*time.Minute, &problems),
+			MaxRawBytes:    int64(getInt("GMAIL_MAX_RAW_BYTES", 50*1024*1024, &problems)),
+			MaxJSONBytes:   int64(getInt("GMAIL_MAX_JSON_BYTES", 72*1024*1024, &problems)),
+			MaxParts:       getInt("GMAIL_MAX_MIME_PARTS", 200, &problems),
+		},
 		ARCA: ARCASetupConfig{
 			EncryptionKey:  getBase64Key("ARCA_SETUP_ENCRYPTION_KEY", channelKeyLength, &problems),
 			Timeout:        getDuration("ARCA_SETUP_TIMEOUT_SECONDS", 10*time.Second, &problems),
@@ -1034,6 +1108,10 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 	problems = append(problems, cfg.WhatsApp.problems()...)
+	problems = append(problems, cfg.Gmail.problems()...)
+	if cfg.Gmail.Enabled() && len(cfg.Channel.EncryptionKey) == 0 {
+		problems = append(problems, "CHANNEL_CONFIG_ENCRYPTION_KEY is required when Gmail is configured")
+	}
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.

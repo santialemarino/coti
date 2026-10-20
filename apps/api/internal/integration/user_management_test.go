@@ -118,7 +118,8 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
-		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour},
+		Catalog:      config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 			InlinePipelineTimeout: 25 * time.Second,
@@ -168,6 +169,7 @@ func newEnvWithRFQProviders(
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil, mailService)
 	authTokenRepo := repository.NewAuthTokenRepository()
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
@@ -229,6 +231,11 @@ func newEnvWithRFQProviders(
 	}
 	rfqAttachmentService := services.NewRFQAttachmentService(db,
 		repository.NewRFQAttachmentRepository(), objectStorage.Storage, cfg.Storage, nil)
+	publicRFQRepo := repository.NewPublicRFQRepository()
+	rfqService.WithPublicContacts(publicRFQRepo, rfqAttachmentService)
+	publicRFQService := services.NewPublicRFQService(db, publicRFQRepo,
+		repository.NewInboundChannelMessageRepository(), rfqRepo, rfqAttachmentService,
+		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -242,10 +249,12 @@ func newEnvWithRFQProviders(
 	rateLimit := deliveryhttp.RateLimit{Limiter: limiter}
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
-			Health:       handler.NewHealthHandler(db),
-			Auth:         handler.NewAuthHandler(authService),
-			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			Health:         handler.NewHealthHandler(db),
+			Auth:           handler.NewAuthHandler(authService),
+			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuth),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
@@ -258,6 +267,7 @@ func newEnvWithRFQProviders(
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
 			Conversation: handler.NewConversationHandler(services.NewConversationReviewService(db,
@@ -270,7 +280,7 @@ func newEnvWithRFQProviders(
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
 			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuth},
 		rateLimit)
 
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
@@ -309,6 +319,9 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM customer_auth_challenge WHERE account_id=$1`,
+			`DELETE FROM customer_session WHERE account_id=$1`,
+			`DELETE FROM customer_identity WHERE account_id=$1`,
 			`DELETE FROM ai_usage WHERE account_id = $1`,
 			`DELETE FROM inbound_channel_message WHERE account_id = $1`,
 			`DELETE FROM quote_correction_memory_source WHERE account_id = $1`,

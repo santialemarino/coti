@@ -134,6 +134,7 @@ type RFQAttachmentResponse struct {
 	URL              string    `json:"url"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	CreatedAt        time.Time `json:"created_at"`
+	OriginalFilename *string   `json:"original_filename"`
 }
 
 // RFQAttachmentListResponse is returned by GET /v1/rfqs/{rfqId}/attachments.
@@ -145,8 +146,12 @@ type RFQAttachmentListResponse struct {
 // list item projection plus the full quote, version, items, alternatives, discounts,
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
+	PublicContact        *PublicRFQContactResponse                 `json:"public_contact,omitempty"`
+	PublicOriginalText   *string                                   `json:"public_original_text,omitempty"`
+	PublicAttachments    []RFQAttachmentResponse                   `json:"public_attachments,omitempty"`
 	Rfq                  RfqListItemResponse                       `json:"rfq"`
 	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`
+	InboundEmail         *string                                   `json:"inbound_email"`
 	Quote                *QuoteResponse                            `json:"quote"`
 	Version              *QuoteVersionResponse                     `json:"version"`
 	Items                []QuoteItemResponse                       `json:"items"`
@@ -197,6 +202,7 @@ type QuoteStatusChangeResponse struct {
 type QuoteSendTrackingResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	VersionID      uuid.UUID  `json:"version_id"`
+	OperationID    uuid.UUID  `json:"operation_id"`
 	Channel        string     `json:"channel"`
 	Destination    string     `json:"destination"`
 	Format         string     `json:"format"`

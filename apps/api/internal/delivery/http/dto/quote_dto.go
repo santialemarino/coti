@@ -110,12 +110,12 @@ type QuoteAlternativeApprovalRequest struct {
 	ApprovedBySeller *bool `json:"approved_by_seller" binding:"required"`
 }
 
-// QuoteSendRequest selects the optional email copy and validity override. WhatsApp and the
-// public webapp link are always included by the backend.
+// QuoteSendRequest selects delivery destinations and an optional validity override.
 type QuoteSendRequest struct {
-	RecipientPhone string                     `json:"recipient_phone" binding:"required"`
-	EmailDelivery  *QuoteEmailDeliveryRequest `json:"email_delivery"`
-	ExpiryDays     *int                       `json:"expiry_days"`
+	ClientAssociation *AssociateQuoteClientRequest `json:"client_association"`
+	RecipientPhone    string                       `json:"recipient_phone"`
+	EmailDelivery     *QuoteEmailDeliveryRequest   `json:"email_delivery"`
+	ExpiryDays        *int                         `json:"expiry_days"`
 }
 
 // QuoteEmailDeliveryRequest is the optional independent email destination.

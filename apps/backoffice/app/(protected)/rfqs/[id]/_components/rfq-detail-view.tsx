@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
@@ -21,12 +22,12 @@ import {
   setQuoteArchived,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
-import { ClientAssociationCard } from './client-association-card';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
 import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
+import { RfqEmailAttachments } from './rfq-email-attachments';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
 
@@ -65,10 +66,7 @@ export function RfqDetailView({
   const [unarchiving, startUnarchive] = useTransition();
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  // The sale's client: the quote's own, then whatever the association card changes it to.
-  const [clientId, setClientId] = useState<string | null | undefined>(
-    initialDetail.quote?.client_id,
-  );
+  const clientId = detail.quote?.client_id;
   const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
@@ -215,6 +213,10 @@ export function RfqDetailView({
     <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
 
+      {detail.rfq.channel.toLowerCase() === 'email' ? (
+        <RfqEmailAttachments rfqId={detail.rfq.id} branchId={branchId} />
+      ) : null}
+
       <QuoteDeliveryCard
         detail={detail}
         onSent={refreshDetail}
@@ -245,6 +247,8 @@ export function RfqDetailView({
 
       <RfqStatusTimeline detail={detail} />
 
+      {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
+
       {showFollowup ? (
         <Callout tone="followup" title={t('detail.callouts.followup.title')}>
           {detail.rfq.followup_flagged_at
@@ -260,13 +264,6 @@ export function RfqDetailView({
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId && !archived ? (
-            <ClientAssociationCard
-              quoteId={quoteId}
-              branchId={branchId}
-              onClientChange={setClientId}
-            />
-          ) : null}
           {quoteId ? (
             <InvoiceCard
               quoteId={quoteId}

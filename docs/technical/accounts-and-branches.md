@@ -29,8 +29,8 @@ its own transaction so the caller gets a precise `409` instead of a bare constra
 
 ## Every branch opens with its channels
 
-Both paths that create a branch — registration and `POST /v1/branches` — open three channels in the
-same transaction as the branch: MANUAL_ENTRY, WHATSAPP and EMAIL. **The manual-entry one is not
+Both paths that create a branch — registration and `POST /v1/branches` — open four channels in the
+same transaction as the branch: MANUAL_ENTRY, WHATSAPP, EMAIL and WEBAPP. **The manual-entry one is not
 optional**: `rfq.channel_id` is `NOT NULL`, and a counter, phone or unintegrated-messaging order has
 no other channel to point at. The other two are what a quote is delivered through, so a new branch
 can send one without first configuring anything.
@@ -189,10 +189,21 @@ uses that route for RFQ persistence and catalog matching. WhatsApp resolves Meta
 `phone_number_id` from its readable channel configuration, while email resolves the lower-cased
 mailbox in `channel.identifier`.
 
+An inbound destination is eligible only while the channel, its branch, and its account are active.
+The RFQ creation path checks those states again inside the tenant transaction before creating an RFQ.
+A batch naming an active channel on an inactive account or branch returns the available routes with
+`ErrInboundDestinationInactive`. The connector processes those routes idempotently and signals a
+retryable failure for the delivery. The provider's retry policy limits how long an unavailable
+destination can recover the delivery.
+
 Two partial global indexes make active external destinations unambiguous. They do not reduce the
 existing cardinality: a branch may still configure multiple WhatsApp numbers or mailboxes, provided
 each has a distinct external destination. `WEBAPP` uses its opaque delivery token and is resolved by
 the public delivery flow, not this inbox resolver.
+
+Public request intake resolves an active `WEBAPP` channel by its channel ID, checks its account
+and branch are active, then enters a tenant transaction. Customer declarations stay on the request;
+they never resolve or overwrite a client profile. See [Public RFQ intake](public-rfq-intake.md).
 
 #### Connector integration contract
 
@@ -207,7 +218,9 @@ calls:
    `Reply-To`.
 2. Use `domain.NormalizeInboundChannelIdentifier` when retrieving the returned route: email keys
    are trimmed and lower-cased; WhatsApp provider identifiers are trimmed but otherwise unchanged.
-   A missing route means no tenant work must be created.
+   A missing route means no tenant work must be created for that destination. If the resolver
+   reports an inactive destination, process the returned routes and signal a retryable failure to
+   the provider rather than acknowledging the unavailable destination as an unknown address.
 3. Pass the returned `InboundChannelRoute` unchanged to
    `RFQService.CreateInboundTextDraft` with an `InboundTextRFQDraftInput`. The input deliberately
    has no channel, branch or account field: an adapter must not accept, infer or construct any of
@@ -281,3 +294,7 @@ stays valid. `config.Load()` refuses a value of zero or less.
 `CHANNEL_CONFIG_ENCRYPTION_KEY` (no default) is 32 bytes of base64 — `openssl rand -base64 32` — and
 seals the credential fields of `channel.config`. Unset, storing a credential is refused; malformed,
 `config.Load()` refuses to start.
+
+Gmail intake binds an administrator-authorized mailbox to its branch channel instead of resolving a
+provider callback destination. It uses the same encryption key for mailbox credentials. See
+[Gmail intake](gmail-intake.md) for the authorization and synchronization flow.

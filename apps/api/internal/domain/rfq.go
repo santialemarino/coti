@@ -221,9 +221,13 @@ type TextRFQDraft struct {
 // RfqDetail is the full detail view projection of one RFQ plus its associated
 // quote data, items, and alternatives. This is what the detail endpoint returns.
 type RfqDetail struct {
-	Rfq RfqListItem
+	Rfq                RfqListItem
+	PublicContact      *PublicRFQContact
+	PublicOriginalText *string
+	PublicAttachments  []AttachmentLink
 	// InboundWhatsAppPhone is the sender that opened this WhatsApp RFQ, when available.
 	InboundWhatsAppPhone *string
+	InboundEmail         *string
 	Quote                *Quote
 	Version              *QuoteVersion
 	Items                []QuoteItem

@@ -27,6 +27,7 @@ function tracking(overrides: Partial<QuoteSendTrackingResponse>): QuoteSendTrack
   return {
     id: 'd-1',
     version_id: VERSION_ID,
+    operation_id: 'operation-1',
     channel: 'whatsapp',
     destination: '+5491155550101',
     format: 'link',
@@ -79,6 +80,7 @@ function makeDetail({
       archived_at: archived ? BASE_TIME : null,
     },
     inbound_whatsapp_phone: null,
+    inbound_email: null,
     quote: withQuote
       ? {
           id: QUOTE_ID,

@@ -64,12 +64,12 @@ func (r InboundChannelRoute) Tenant() Tenant {
 	return Tenant{AccountID: r.AccountID, BranchID: r.BranchID}
 }
 
-// Validate refuses incomplete routes and channel types without an external inbox.
+// Validate refuses incomplete routes and channel types without an external intake.
 func (r InboundChannelRoute) Validate() error {
 	if r.AccountID == uuid.Nil || r.BranchID == uuid.Nil || r.ChannelID == uuid.Nil {
 		return fmt.Errorf("%w: an inbound route needs account, branch, and channel IDs", ErrInvalidInput)
 	}
-	if r.ChannelType != ChannelTypeWhatsApp && r.ChannelType != ChannelTypeEmail {
+	if r.ChannelType != ChannelTypeWhatsApp && r.ChannelType != ChannelTypeEmail && r.ChannelType != ChannelTypeWebApp {
 		return fmt.Errorf("%w: %s has no external inbox route", ErrInvalidInput, r.ChannelType)
 	}
 	return nil

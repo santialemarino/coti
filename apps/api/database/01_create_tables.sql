@@ -76,7 +76,7 @@ CREATE TYPE discount_origin AS ENUM ('AUTOMATIC', 'AI_ADAPTATION', 'MANUAL_SELLE
 -- where the client came from — and is its own type for that reason.
 CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'MANUAL_ENTRY');
 CREATE TYPE client_origin AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'PHONE', 'WALK_IN');
-CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT');
+CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT', 'OTHER');
 CREATE TYPE attachment_processing_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 
 CREATE TYPE send_format AS ENUM ('WEBAPP_LINK', 'PDF', 'MESSAGE');
@@ -131,6 +131,8 @@ CREATE OR REPLACE FUNCTION app_current_account_id() RETURNS UUID
 -- =============================================================================
 
 CREATE TABLE account (
+  public_hostname VARCHAR(253) CONSTRAINT uq_account_public_hostname UNIQUE
+    CONSTRAINT ck_account_public_hostname CHECK (public_hostname = lower(public_hostname) AND public_hostname ~ '^[a-z0-9][a-z0-9.-]*[a-z0-9]$'),
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            VARCHAR(255) NOT NULL,
   legal_name      VARCHAR(255),
@@ -461,6 +463,30 @@ CREATE TABLE inbound_channel_message (
     CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
 );
 
+CREATE TABLE gmail_mailbox (
+  channel_id               UUID PRIMARY KEY REFERENCES channel(id),
+  account_id               UUID NOT NULL REFERENCES account(id),
+  branch_id                UUID NOT NULL REFERENCES branch(id),
+  email_address            TEXT NOT NULL,
+  refresh_token_ciphertext TEXT NOT NULL,
+  history_id               TEXT NOT NULL,
+  connected_at             TIMESTAMPTZ NOT NULL,
+  initial_sync_pending     BOOLEAN NOT NULL DEFAULT TRUE,
+  last_synced_at           TIMESTAMPTZ,
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE gmail_authorization_state (
+  state_hash          BYTEA PRIMARY KEY,
+  account_id          UUID NOT NULL REFERENCES account(id),
+  branch_id           UUID NOT NULL REFERENCES branch(id),
+  channel_id          UUID NOT NULL REFERENCES channel(id),
+  user_id             UUID NOT NULL REFERENCES app_user(id),
+  session_epoch       INTEGER NOT NULL,
+  verifier_ciphertext TEXT NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL
+);
+
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
 -- not a third entity.
 CREATE TABLE rfq (
@@ -495,7 +521,8 @@ CREATE TABLE rfq_attachment (
   processing_status     attachment_processing_status NOT NULL DEFAULT 'PENDING',
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   processing_started_at TIMESTAMPTZ,
-  processed_at          TIMESTAMPTZ
+  processed_at          TIMESTAMPTZ,
+  original_filename     TEXT
 );
 
 CREATE TABLE rfq_status_change (
@@ -768,6 +795,7 @@ CREATE TABLE quote_status_change (
 -- The link is issued per send and channel, not stored on quote. public_token is the
 -- webapp's only lookup key, so it is unique.
 CREATE TABLE quote_send (
+  client_association_hash VARCHAR(64) NOT NULL DEFAULT '',
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
   version_id      UUID NOT NULL,
@@ -1234,6 +1262,7 @@ CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
+CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
@@ -1395,7 +1424,8 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'inbound_channel_message', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'inbound_channel_message', 'gmail_mailbox', 'gmail_authorization_state',
+    'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
     'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
@@ -1549,3 +1579,58 @@ END;
 $$;
 CREATE TRIGGER trg_invoice_links BEFORE INSERT OR UPDATE OF kind, credited_invoice_id, replaces_invoice_id ON invoice
   FOR EACH ROW EXECUTE FUNCTION check_invoice_links();
+
+CREATE TABLE customer_identity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES account(id),
+  tax_id VARCHAR(11) NOT NULL CHECK (tax_id ~ '^[0-9]{11}$'),
+  password_hash TEXT,
+  google_subject VARCHAR(255),
+  recovery_email VARCHAR(255),
+  recovery_email_verified_at TIMESTAMPTZ,
+  name VARCHAR(255),
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  disabled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_customer_identity_scope UNIQUE (account_id, id),
+  CONSTRAINT ck_customer_identity_credential CHECK (password_hash IS NOT NULL OR google_subject IS NOT NULL)
+);
+CREATE UNIQUE INDEX uq_customer_identity_active_tax_id ON customer_identity(account_id, tax_id)
+  WHERE disabled_at IS NULL;
+
+CREATE TABLE customer_session (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES account(id),
+  customer_id UUID NOT NULL,
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (account_id, customer_id) REFERENCES customer_identity(account_id, id)
+);
+CREATE INDEX idx_customer_session_subject ON customer_session(account_id, customer_id);
+
+ALTER TABLE customer_identity ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_identity_account_isolation ON customer_identity
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
+ALTER TABLE customer_session ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_session_account_isolation ON customer_session
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
+CREATE UNIQUE INDEX uq_customer_google_subject ON customer_identity(account_id,google_subject) WHERE disabled_at IS NULL AND google_subject IS NOT NULL;
+CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP','VERIFY_EMAIL','RESET_PASSWORD');
+CREATE TABLE customer_auth_challenge (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ customer_id UUID,
+ purpose customer_auth_purpose NOT NULL,
+ token_hash VARCHAR(64) NOT NULL UNIQUE,
+ payload JSONB NOT NULL DEFAULT '{}',
+ expires_at TIMESTAMPTZ NOT NULL,
+ consumed_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,customer_id) REFERENCES customer_identity(account_id,id)
+);
+CREATE INDEX idx_customer_challenge_subject ON customer_auth_challenge(account_id,customer_id,purpose);
+ALTER TABLE customer_auth_challenge ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_auth_challenge_account_isolation ON customer_auth_challenge USING (account_id=app_current_account_id()) WITH CHECK (account_id=app_current_account_id());

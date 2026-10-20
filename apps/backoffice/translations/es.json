@@ -1140,6 +1140,14 @@
     "createdAt": "Creada el {date}"
   },
   "rfqs": {
+    "emailAttachments": {
+      "title": "Correo y archivos recibidos",
+      "download": "Descargar",
+      "unnamed": "Archivo adjunto",
+      "manualReview": "Revisar manualmente",
+      "refresh": "Actualizar enlaces",
+      "error": "No pudimos cargar los archivos. Intentá de nuevo."
+    },
     "title": "Pedidos",
     "greeting": "¡Hola, {name}!",
     "status": {
@@ -1530,11 +1538,12 @@
       "send": {
         "button": "Enviar cotización",
         "title": "Enviar cotización",
-        "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
+        "description": "Elegí cómo enviar la cotización al cliente. Cada mensaje incluye un enlace al detalle.",
+        "sendWhatsApp": "Enviar por WhatsApp",
         "phoneLabel": "WhatsApp del cliente",
         "phonePlaceholder": "Ingresá el celular",
         "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101.",
-        "alsoEmail": "Enviar también una copia por correo",
+        "alsoEmail": "Enviar por correo",
         "emailLabel": "Correo del cliente",
         "emailPlaceholder": "cliente@empresa.com",
         "summaryLabel": "Qué se envía",
@@ -1543,15 +1552,16 @@
         "summaryLink": "Incluye un enlace para que el cliente vea el detalle y responda.",
         "numberPending": "sin número",
         "cancel": "Cancelar",
-        "send": "Enviar",
+        "send": "Enviar cotización",
         "sending": "Enviando…",
         "successTitle": "Cotización enviada",
-        "successDescription": "El enlace ya llegó con el mensaje. Copialo o abrílo si necesitás reenviarlo.",
+        "successDescription": "Podés copiar el enlace o abrir la cotización.",
         "linkLabel": "Enlace de la cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "openQuote": "Abrir",
+        "visualizeOnline": "Visualizar online",
         "resend": "Enviar a otro destino",
         "done": "Listo",
         "toast": {
@@ -1571,7 +1581,24 @@
           "NOT_CONFIGURED": "El envío al cliente todavía no está configurado en esta cuenta.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
-        }
+        },
+        "clientTitle": "Cliente",
+        "clientExisting": "Seleccionar cliente",
+        "clientNew": "Crear cliente",
+        "clientChoose": "Seleccioná un cliente",
+        "clientTax": "CUIT/CUIL",
+        "clientName": "Nombre o razón social",
+        "clientEmail": "Email (opcional)",
+        "clientPhone": "Teléfono (opcional)",
+        "clientLoading": "Cargando clientes…",
+        "clientLoadFailed": "No se pudieron cargar los clientes. Cerrá el diálogo e intentá nuevamente.",
+        "clientInvalid": "Completá los datos del cliente.",
+        "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
+        "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
+        "clientNameRequired": "Ingresá el nombre o razón social.",
+        "clientEmailInvalid": "Ingresá un email válido.",
+        "clientPhoneInvalid": "Ingresá un teléfono válido.",
+        "clientTags": "Etiquetas"
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1692,6 +1719,15 @@
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
           "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
         }
+      },
+      "publicRequest": {
+        "title": "Datos del solicitante",
+        "taxId": "CUIT",
+        "name": "Nombre o razón social",
+        "email": "Email",
+        "phone": "Teléfono",
+        "original": "Pedido original",
+        "file": "Ver archivo del pedido"
       }
     }
   },
@@ -1893,6 +1929,12 @@
     },
     "reopen": {
       "action": "Reabrir"
+    },
+    "gmail": {
+      "connect": "Conectar Gmail de la sucursal",
+      "connected": "Conectamos la casilla de Google con la sucursal.",
+      "failed": "No pudimos conectar la casilla. Verificá que elegiste el correo de la sucursal e intentá de nuevo.",
+      "startFailed": "No pudimos iniciar la conexión con Google. Revisá la configuración de la sucursal e intentá de nuevo."
     },
     "empty": {
       "title": "Todavía no hay sucursales",

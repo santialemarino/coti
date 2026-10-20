@@ -110,9 +110,11 @@ export function formatRfqReference(quoteNumber: number | null | undefined): stri
 
 // Raw shape returned by GET /v1/rfqs/:rfqId — the detail view projection.
 export interface RfqDetailResponse {
+  publicRequest?: PublicRfqRequest;
   rfq: RfqListItem;
   // The E.164 sender of the inbound WhatsApp message, used only as the editable send default.
   inbound_whatsapp_phone: string | null;
+  inbound_email: string | null;
   quote: QuoteResponse | null;
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];
@@ -124,6 +126,43 @@ export interface RfqDetailResponse {
   changes_requested?: ChangeRequestDiff;
   client_actions?: ClientActionResponse[];
   conversation?: ConversationResponse;
+}
+
+interface PublicRfqDetailRaw extends RfqDetailResponse {
+  public_contact?: { tax_id: string; name: string; email: string; phone?: string };
+  public_original_text?: string;
+  public_attachments?: { id: string; url: string }[];
+}
+
+export interface PublicRfqRequest {
+  taxId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  originalText?: string;
+  attachments: { id: string; url: string }[];
+}
+
+export function mapRfqDetail(raw: PublicRfqDetailRaw): RfqDetailResponse {
+  const {
+    public_contact: contact,
+    public_original_text: originalText,
+    public_attachments: attachments,
+    ...detail
+  } = raw;
+  return {
+    ...detail,
+    publicRequest: contact
+      ? {
+          taxId: contact.tax_id,
+          name: contact.name,
+          email: contact.email,
+          phone: contact.phone,
+          originalText,
+          attachments: attachments ?? [],
+        }
+      : detail.publicRequest,
+  };
 }
 
 export interface QuoteResponse {
@@ -219,6 +258,7 @@ export interface QuoteStatusChangeResponse {
 export interface QuoteSendTrackingResponse {
   id: string;
   version_id: string;
+  operation_id: string;
   channel: string;
   destination: string;
   format: string;
@@ -256,10 +296,17 @@ export interface FileRfqDraftResponse {
   items: QuoteItemResponse[];
 }
 
-// Body of POST /v1/quotes/:quoteId/sends. WhatsApp and the public link always go; the email
-// copy is the optional one, so an absent email_delivery means "WhatsApp only".
+// Client identification for POST /v1/quotes/:quoteId/sends.
+export interface SendClientSelection {
+  taxId: string;
+  clientId?: string;
+  newClient?: { name: string; phone?: string; email?: string };
+  tagIds: string[];
+}
+
 export interface QuoteSendBody {
-  recipient_phone: string;
+  clientAssociation?: SendClientSelection;
+  recipient_phone?: string;
   email_delivery?: { address: string } | null;
   expiry_days?: number | null;
 }

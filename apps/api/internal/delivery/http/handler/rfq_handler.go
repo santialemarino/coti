@@ -850,9 +850,16 @@ func toRfqDetailResponse(
 	resp := dto.RfqDetailResponse{
 		Rfq:                  toListItemResponse(detail.Rfq),
 		InboundWhatsAppPhone: detail.InboundWhatsAppPhone,
+		InboundEmail:         detail.InboundEmail,
 		RFQHistory:           toRFQStatusChangeResponses(detail.RFQStatusChanges),
 		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
+	}
+	if contact := detail.PublicContact; contact != nil {
+		resp.PublicOriginalText = detail.PublicOriginalText
+		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
+		resp.PublicContact = &dto.PublicRFQContactResponse{TaxID: contact.TaxID, Name: contact.Name,
+			Email: contact.Email, Phone: contact.Phone}
 	}
 
 	if detail.Quote != nil {
@@ -1091,7 +1098,8 @@ func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrack
 	responses := make([]dto.QuoteSendTrackingResponse, 0, len(sends))
 	for _, send := range sends {
 		responses = append(responses, dto.QuoteSendTrackingResponse{
-			ID: send.ID, VersionID: send.VersionID, Channel: string(send.ChannelType),
+			ID: send.ID, VersionID: send.VersionID, OperationID: send.IdempotencyKey,
+			Channel:     string(send.ChannelType),
 			Destination: send.Destination, Format: string(send.Format),
 			TrackingStatus: string(send.TrackingStatus), PublicURL: send.PublicURL,
 			SentAt: send.SentAt, ExpiresAt: send.ExpiresAt, CreatedAt: send.CreatedAt,

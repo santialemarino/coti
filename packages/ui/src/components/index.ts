@@ -45,3 +45,5 @@ export * from './table-empty-row';
 export * from './textarea';
 export * from './toggle-group';
 export * from './tooltip';
+export * from './tax-id-input';
+export * from './phone-input';

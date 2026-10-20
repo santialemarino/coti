@@ -17,6 +17,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 	t.Helper()
 	known := []string{
 		"ENV", "LOG_LEVEL", "API_PORT",
+		"CUSTOMER_GOOGLE_CLIENT_ID", "CUSTOMER_GOOGLE_CLIENT_SECRET", "CUSTOMER_GOOGLE_LOCAL_ORIGIN", "CUSTOMER_GOOGLE_TIMEOUT_SECONDS", "CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES", "CUSTOMER_RECOVERY_TTL_MINUTES", "CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS", "CUSTOMER_ORDER_PAGE_SIZE",
+		"CUSTOMER_SESSION_TTL_DAYS", "CUSTOMER_MAX_FAILED_ATTEMPTS", "CUSTOMER_LOCKOUT_MINUTES", "CUSTOMER_PASSWORD_MIN_LENGTH",
 		"ARCA_SETUP_ENCRYPTION_KEY", "ARCA_SETUP_TIMEOUT_SECONDS", "ARCA_ENVIRONMENT",
 		"INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
 		"SERVER_READ_TIMEOUT_SECONDS", "SERVER_WRITE_TIMEOUT_SECONDS", "SERVER_SHUTDOWN_TIMEOUT_SECONDS",
@@ -68,6 +70,9 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CHANNEL_CONFIG_ENCRYPTION_KEY",
 		"WHATSAPP_APP_SECRET", "WHATSAPP_GRAPH_API_VERSION", "WHATSAPP_REQUEST_TIMEOUT_SECONDS",
 		"WHATSAPP_WEBHOOK_MAX_BYTES",
+		"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URL",
+		"GMAIL_REQUEST_TIMEOUT_SECONDS", "GMAIL_POLL_INTERVAL_SECONDS", "GMAIL_OAUTH_STATE_TTL_MINUTES",
+		"GMAIL_MAX_RAW_BYTES", "GMAIL_MAX_JSON_BYTES", "GMAIL_MAX_MIME_PARTS",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -255,6 +260,47 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
+	}
+}
+
+func TestLoad_GmailRequiresCompleteCredentialsAndAnEncryptionKey(t *testing.T) {
+	env := minimalEnv()
+	env["GMAIL_OAUTH_CLIENT_ID"] = "client"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "GMAIL_OAUTH_CLIENT_SECRET") ||
+		!strings.Contains(err.Error(), "GMAIL_OAUTH_REDIRECT_URL") {
+		t.Fatalf("incomplete Gmail configuration error = %v", err)
+	}
+	env["GMAIL_OAUTH_CLIENT_SECRET"] = "secret"
+	env["GMAIL_OAUTH_REDIRECT_URL"] = "https://api.example.test/v1/public/gmail/callback"
+	setEnv(t, env)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CHANNEL_CONFIG_ENCRYPTION_KEY") {
+		t.Fatalf("missing Gmail encryption key error = %v", err)
+	}
+}
+
+func TestLoad_GmailSettingsAreDistinct(t *testing.T) {
+	env := minimalEnv()
+	env["GMAIL_OAUTH_CLIENT_ID"] = "client"
+	env["GMAIL_OAUTH_CLIENT_SECRET"] = "secret"
+	env["GMAIL_OAUTH_REDIRECT_URL"] = "https://api.example.test/v1/public/gmail/callback"
+	env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	env["GMAIL_REQUEST_TIMEOUT_SECONDS"] = "15"
+	env["GMAIL_POLL_INTERVAL_SECONDS"] = "35"
+	env["GMAIL_OAUTH_STATE_TTL_MINUTES"] = "7"
+	env["GMAIL_MAX_RAW_BYTES"] = "2000"
+	env["GMAIL_MAX_JSON_BYTES"] = "4000"
+	env["GMAIL_MAX_MIME_PARTS"] = "30"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Gmail.Enabled() || cfg.Gmail.RequestTimeout != 15*time.Second ||
+		cfg.Gmail.PollInterval != 35*time.Second || cfg.Gmail.StateTTL != 7*time.Minute ||
+		cfg.Gmail.MaxRawBytes != 2000 || cfg.Gmail.MaxJSONBytes != 4000 || cfg.Gmail.MaxParts != 30 {
+		t.Fatalf("Gmail configuration = %+v", cfg.Gmail)
 	}
 }
 

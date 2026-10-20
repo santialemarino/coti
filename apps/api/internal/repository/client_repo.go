@@ -11,7 +11,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-const clientColumns = `id, account_id, name, phone, email, origin_channel, notes,
+const clientColumns = `id, account_id, name, phone, email, origin_channel, notes, tax_id,
 	created_at, updated_at`
 
 // ClientRepository owns account-scoped client profiles and their accepted-sale projection.
@@ -25,7 +25,7 @@ func (r *ClientRepository) ListSummaries(
 	ctx context.Context, q Querier, tenant domain.Tenant,
 ) ([]domain.ClientSummary, error) {
 	rows, err := q.Query(ctx, `SELECT client.id, client.account_id, client.name, client.phone,
-		client.email, client.origin_channel, client.notes, client.created_at, client.updated_at,
+		client.email, client.origin_channel, client.notes, client.tax_id, client.created_at, client.updated_at,
 		count(quote.id)::integer,
 		max(COALESCE(accepted.accepted_at, quote.updated_at))
 		FROM client
@@ -55,7 +55,7 @@ func (r *ClientRepository) ListSummaries(
 		var summary domain.ClientSummary
 		var origin *string
 		if err := rows.Scan(&summary.ID, &summary.AccountID, &summary.Name, &summary.Phone,
-			&summary.Email, &origin, &summary.Notes, &summary.CreatedAt, &summary.UpdatedAt,
+			&summary.Email, &origin, &summary.Notes, &summary.TaxID, &summary.CreatedAt, &summary.UpdatedAt,
 			&summary.AcceptedQuoteCount, &summary.LastAcceptedAt); err != nil {
 			return nil, err
 		}
@@ -146,16 +146,16 @@ func (r *ClientRepository) ListAcceptedSales(
 func (r *ClientRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID,
 	in domain.NewClient) (*domain.Client, error) {
 	return scanClient(q.QueryRow(ctx, `INSERT INTO client
-		(account_id, name, phone, email, origin_channel)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+clientColumns,
-		accountID, in.Name, in.Phone, in.Email, in.OriginChannel))
+		(account_id, name, phone, email, origin_channel, tax_id)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+clientColumns,
+		accountID, in.Name, in.Phone, in.Email, in.OriginChannel, in.TaxID))
 }
 
 func scanClient(row pgx.Row) (*domain.Client, error) {
 	var client domain.Client
 	var origin *string
 	err := row.Scan(&client.ID, &client.AccountID, &client.Name, &client.Phone, &client.Email,
-		&origin, &client.Notes, &client.CreatedAt, &client.UpdatedAt)
+		&origin, &client.Notes, &client.TaxID, &client.CreatedAt, &client.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

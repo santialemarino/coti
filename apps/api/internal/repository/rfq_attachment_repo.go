@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,7 +15,7 @@ import (
 )
 
 const rfqAttachmentColumns = `id, account_id, rfq_id, type, file_url, extracted_text,
-	processing_status, created_at, processed_at`
+	processing_status, created_at, processed_at, original_filename`
 
 // RFQAttachmentRepository owns persistence for the files an RFQ arrived with.
 type RFQAttachmentRepository struct{}
@@ -31,7 +32,7 @@ func (r *RFQAttachmentRepository) ListByRFQ(
 ) ([]domain.RFQAttachment, error) {
 	rows, err := q.Query(ctx,
 		`SELECT a.id, a.account_id, a.rfq_id, a.type, a.file_url, a.extracted_text,
-		        a.processing_status, a.created_at, a.processed_at
+		        a.processing_status, a.created_at, a.processed_at, a.original_filename
 		 FROM rfq_attachment a
 		 JOIN rfq r ON r.id = a.rfq_id
 		 WHERE a.account_id = $1 AND r.account_id = $1 AND r.branch_id = $2 AND a.rfq_id = $3
@@ -46,7 +47,7 @@ func (r *RFQAttachmentRepository) ListByRFQ(
 	for rows.Next() {
 		var a domain.RFQAttachment
 		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey,
-			&a.ExtractedText, &a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt); err != nil {
+			&a.ExtractedText, &a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt, &a.OriginalFilename); err != nil {
 			return nil, err
 		}
 		attachments = append(attachments, a)
@@ -61,13 +62,46 @@ func (r *RFQAttachmentRepository) Create(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, in domain.NewRFQAttachment,
 ) (*domain.RFQAttachment, error) {
 	return scanRFQAttachment(q.QueryRow(ctx,
-		`INSERT INTO rfq_attachment (id, account_id, rfq_id, type, file_url)
-		 SELECT $1, $2, $3, $4, $5
+		`INSERT INTO rfq_attachment (id, account_id, rfq_id, type, file_url, original_filename)
+		 SELECT $1, $2, $3, $4, $5, $7
 		 WHERE EXISTS (
 		     SELECT 1 FROM rfq WHERE id = $3 AND account_id = $2 AND branch_id = $6
 		 )
 		 RETURNING `+rfqAttachmentColumns,
-		in.ID, accountID, in.RFQID, in.Type, in.StorageKey, branchID))
+		in.ID, accountID, in.RFQID, in.Type, in.StorageKey, branchID, in.OriginalFilename))
+}
+
+// CreateInboundBatch records all original files of one incoming RFQ in the caller's transaction.
+func (r *RFQAttachmentRepository) CreateInboundBatch(ctx context.Context, q Querier,
+	accountID, branchID, rfqID uuid.UUID, attachments []domain.NewRetainedAttachment,
+) error {
+	if len(attachments) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(attachments)
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`INSERT INTO rfq_attachment
+		    (id, account_id, rfq_id, type, file_url, original_filename,
+		     processing_status, extracted_text, processed_at)
+		 SELECT item.id, $1, $3, item.type::attachment_type, item.storage_key,
+		        item.original_filename, item.status::attachment_processing_status,
+		        item.extracted_text,
+		        CASE WHEN item.status = 'PENDING' THEN NULL ELSE now() END
+		 FROM jsonb_to_recordset($4::jsonb) AS item(
+		      id uuid, type text, storage_key text, original_filename text,
+		      status text, extracted_text text)
+		 WHERE EXISTS (SELECT 1 FROM rfq WHERE id = $3 AND account_id = $1 AND branch_id = $2)`,
+		accountID, branchID, rfqID, data)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(attachments)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 /*
@@ -164,7 +198,7 @@ func (r *RFQAttachmentRepository) ListReadByRFQIDs(
 	}
 	rows, err := q.Query(ctx,
 		`SELECT a.id, a.account_id, a.rfq_id, a.type, a.file_url, a.extracted_text,
-		        a.processing_status, a.created_at, a.processed_at
+		        a.processing_status, a.created_at, a.processed_at, a.original_filename
 		   FROM rfq_attachment a
 		   JOIN unnest($1::uuid[], $2::uuid[]) AS wanted(rfq_id, account_id)
 		     ON a.rfq_id = wanted.rfq_id AND a.account_id = wanted.account_id
@@ -181,7 +215,7 @@ func (r *RFQAttachmentRepository) ListReadByRFQIDs(
 	for rows.Next() {
 		var a domain.RFQAttachment
 		if err := rows.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey,
-			&a.ExtractedText, &a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt); err != nil {
+			&a.ExtractedText, &a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt, &a.OriginalFilename); err != nil {
 			return nil, err
 		}
 		byRFQ[a.RFQID] = append(byRFQ[a.RFQID], a)
@@ -279,7 +313,7 @@ func (r *RFQAttachmentRepository) fillBranches(
 func scanRFQAttachment(row pgx.Row) (*domain.RFQAttachment, error) {
 	var a domain.RFQAttachment
 	err := row.Scan(&a.ID, &a.AccountID, &a.RFQID, &a.Type, &a.StorageKey, &a.ExtractedText,
-		&a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt)
+		&a.ProcessingStatus, &a.CreatedAt, &a.ProcessedAt, &a.OriginalFilename)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

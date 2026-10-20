@@ -14,7 +14,7 @@ import type {
   RfqRecord,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
-import { mapListItem } from '@/lib/api/rfqs';
+import { mapListItem, mapRfqDetail } from '@/lib/api/rfqs';
 
 interface CreateRfqBody {
   client_label?: string | null;
@@ -133,7 +133,7 @@ export async function fetchRfqDetail(id: string): Promise<RfqDetailResponse> {
     await throwApiError(response);
   }
 
-  return response.json() as Promise<RfqDetailResponse>;
+  return mapRfqDetail(await response.json());
 }
 
 /*
@@ -374,11 +374,26 @@ export async function sendQuote(
   quoteId: string,
   branchId: string,
   body: QuoteSendBody,
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<QuoteSendResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/sends`, {
     method: 'POST',
-    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': crypto.randomUUID() },
-    body: JSON.stringify(body),
+    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({
+      recipient_phone: body.recipient_phone,
+      email_delivery: body.email_delivery,
+      expiry_days: body.expiry_days,
+      ...(body.clientAssociation
+        ? {
+            client_association: {
+              tax_id: body.clientAssociation.taxId,
+              client_id: body.clientAssociation.clientId,
+              new_client: body.clientAssociation.newClient,
+              tag_ids: body.clientAssociation.tagIds,
+            },
+          }
+        : {}),
+    }),
     cache: 'no-store',
   });
 

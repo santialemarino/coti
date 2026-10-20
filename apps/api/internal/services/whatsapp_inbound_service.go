@@ -144,21 +144,23 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 		destinations = append(destinations, message.DestinationIdentifier)
 	}
 
-	routes, err := s.routes.ResolveChannels(ctx, domain.ChannelTypeWhatsApp, destinations)
-	if err != nil {
-		return err
+	routes, routingErr := s.routes.ResolveChannels(ctx, domain.ChannelTypeWhatsApp, destinations)
+	if routingErr != nil && !errors.Is(routingErr, domain.ErrInboundDestinationInactive) {
+		return routingErr
 	}
 	for _, message := range normalized {
 		route, found := routes[message.DestinationIdentifier]
 		if !found {
-			s.log.InfoContext(ctx, "whatsapp message ignored for an unconfigured destination")
+			if routingErr == nil {
+				s.log.InfoContext(ctx, "whatsapp message ignored for an unconfigured destination")
+			}
 			continue
 		}
 		if err := s.ingestOne(ctx, route, message); err != nil {
 			return err
 		}
 	}
-	return nil
+	return routingErr
 }
 
 func (s *WhatsAppInboundService) ingestOne(

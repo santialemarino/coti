@@ -143,10 +143,10 @@ func (h *QuoteHandler) GenerateRepresentation(c *gin.Context) {
 	c.JSON(status, toQuoteRepresentationResponse(*result))
 }
 
-// Send delivers a frozen quote through WhatsApp and, when requested, email.
+// Send delivers a frozen quote through the seller-selected channels.
 //
 //	@Summary		Send a quote to its client
-//	@Description	Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.
+//	@Description	Freezes the current seller-approved version, attempts each selected channel with a public webapp link, and moves QUOTED to SENT when at least one succeeds.
 //	@Tags			quotes
 //	@Accept			json
 //	@Produce		json
@@ -191,7 +191,7 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 		email = &request.EmailDelivery.Address
 	}
 	result, err := h.delivery.Send(c.Request.Context(), tenant, quoteID,
-		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone,
+		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone, ClientAssociation: fromSendClientRequest(request.ClientAssociation),
 			Email: email, ExpiryDays: request.ExpiryDays})
 	if err != nil {
 		Respond(c, err)
@@ -206,13 +206,16 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 
 // ResolvePublic reports whether a completed delivery token is active, expired or withdrawn.
 //
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
+//
 //	@Summary	Resolve a public quote delivery token
 //	@Tags		public quote sends
 //	@Produce	json
 //	@Param		token	path		string	true	"Public delivery token"
 //	@Success	200		{object}	dto.PublicQuoteSendResponse
 //	@Failure	404		{object}	dto.ErrorResponse
-//	@Router		/v1/public/quote-sends/{token} [get]
+//	@Router		/v1/customer/sites/{hostname}/quote-sends/{token} [get]
 func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	if h.delivery == nil {
 		Respond(c, domain.ErrNotFound)
@@ -240,6 +243,9 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 
 // RespondPublic records the customer's answer to a frozen quote and moves the quote when the
 // answer addresses the version it still shows.
+//
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
 //
 //	@Summary	Record a customer response on a public quote
 //	@Tags		public quote sends

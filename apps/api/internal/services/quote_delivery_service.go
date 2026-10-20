@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/mail"
-	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -121,25 +120,28 @@ type quotePublicDB interface {
 
 // QuoteDeliveryService freezes and delivers a seller-approved quote, then labels it post-commit.
 type QuoteDeliveryService struct {
-	db              quotePublicDB
-	sends           quoteDeliveryRepository
-	quotes          quoteDeliveryQuoteRepository
-	messages        quoteMessageWriter
-	channels        quoteDeliveryChannelRepository
-	branches        quoteDeliveryBranchRepository
-	prices          branchPriceReader
-	whatsapp        domain.QuoteWhatsAppSender
-	email           quoteEmailSender
-	evaluator       QuoteQualityEvaluator
-	representations quoteRepresentationEnsurer
-	actions         clientActionRecorder
-	sellers         quoteSellerReader
-	windows         changeRequestQueue
-	draftCarry      *draftCarry
-	webappURL       string
-	channelOpener   channelConfigOpener
-	now             func() time.Time
-	log             *slog.Logger
+	clients             quoteClientConfirmer
+	db                  quotePublicDB
+	sends               quoteDeliveryRepository
+	quotes              quoteDeliveryQuoteRepository
+	messages            quoteMessageWriter
+	channels            quoteDeliveryChannelRepository
+	branches            quoteDeliveryBranchRepository
+	prices              branchPriceReader
+	whatsapp            domain.QuoteWhatsAppSender
+	email               quoteEmailSender
+	evaluator           QuoteQualityEvaluator
+	representations     quoteRepresentationEnsurer
+	actions             clientActionRecorder
+	sellers             quoteSellerReader
+	windows             changeRequestQueue
+	draftCarry          *draftCarry
+	webappURL           string
+	customerHostnames   customerQuoteHostnameReader
+	customerLocalOrigin string
+	channelOpener       channelConfigOpener
+	now                 func() time.Time
+	log                 *slog.Logger
 }
 
 // WithWhatsAppCredentials makes encrypted channel credentials available only for delivery calls.
@@ -184,13 +186,16 @@ func (s *QuoteDeliveryService) Send(ctx context.Context, tenant domain.Tenant, q
 	if err := requireBranch(tenant, "a quote delivery"); err != nil {
 		return nil, err
 	}
+	if s.clients == nil {
+		return nil, domain.ErrNotConfigured
+	}
 	normalized, err := normalizeQuoteDeliveryInput(in)
 	if err != nil {
 		return nil, err
 	}
 	var result *domain.QuoteDeliveryResult
 	err = s.db.WithAdvisoryLock(ctx, strings.Join([]string{"quote-delivery",
-		tenant.AccountID.String(), quoteID.String(), normalized.IdempotencyKey.String()}, ":"),
+		tenant.AccountID.String(), quoteID.String()}, ":"),
 		func() error {
 			var sendErr error
 			result, sendErr = s.sendLocked(ctx, tenant, quoteID, normalized)
@@ -218,7 +223,13 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 	if version.ID != bundle.Representation.VersionID {
 		return nil, domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 	}
-	s.decorateURLs(prepared)
+	base, err := s.customerQuoteBase(ctx, tenant.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range prepared {
+		prepared[i].PublicURL = customerQuoteURL(base, prepared[i].PublicToken)
+	}
 	if complete(prepared) {
 		return replayResult(*quote, *version, prepared)
 	}
@@ -251,11 +262,18 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		if !anySuccess {
 			return nil
 		}
+		current, err := s.quotes.GetByIDForUpdate(commitCtx, q, tenant.AccountID, tenant.BranchID, quote.ID)
+		if err != nil {
+			return err
+		}
+		if err := s.clients.ConfirmForSend(commitCtx, q, tenant, *current, normalized.ClientAssociation); err != nil {
+			return err
+		}
 		if err := s.quotes.SetExpiry(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID, expiresAt); err != nil {
 			return err
 		}
-		current, err := s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
+		current, err = s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID)
 		if err != nil {
 			return err
@@ -310,13 +328,18 @@ func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q reposito
 	}
 	channels := make(map[uuid.UUID]uuid.UUID, len(sends))
 	for _, send := range sends {
-		channels[send.ID] = send.ChannelID
+		if send.ChannelType != domain.ChannelTypeWebApp {
+			channels[send.ID] = send.ChannelID
+		}
 	}
 	for _, outcome := range outcomes {
 		if outcome.Status != domain.SendTrackingStatusSent {
 			continue
 		}
-		channelID := channels[outcome.ID]
+		channelID, external := channels[outcome.ID]
+		if !external {
+			continue
+		}
 		if _, err := s.messages.Create(ctx, q, tenant.AccountID, tenant.BranchID,
 			domain.NewQuoteMessage{ID: uuid.New(), QuoteID: quoteID, ChannelID: &channelID,
 				AuthorType: domain.MessageAuthorSeller, AuthorUserID: &tenant.UserID, Body: body,
@@ -374,6 +397,12 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			return validateReplay(prepared, version.ID, in, validityDays)
 		}
 
+		if s.clients == nil {
+			return domain.ErrNotConfigured
+		}
+		if err := s.clients.ValidateForSend(ctx, q, tenant, *quote, in.ClientAssociation); err != nil {
+			return err
+		}
 		selected, err := s.selectedChannels(ctx, q, tenant, in)
 		if err != nil {
 			return err
@@ -381,6 +410,9 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		news := make([]domain.NewQuoteSend, 0, len(selected))
 		for _, selectedChannel := range selected {
 			destination := in.Phone
+			if selectedChannel.Type == domain.ChannelTypeWebApp {
+				destination = "customer-portal"
+			}
 			if selectedChannel.Type == domain.ChannelTypeEmail {
 				destination = *in.Email
 			}
@@ -391,7 +423,7 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			news = append(news, domain.NewQuoteSend{ID: uuid.New(), VersionID: version.ID,
 				ChannelID: selectedChannel.ID, IdempotencyKey: in.IdempotencyKey,
 				Destination: destination, PublicToken: token,
-				Format: domain.SendFormatWebAppLink, ValidityDays: validityDays})
+				Format: domain.SendFormatWebAppLink, ValidityDays: validityDays, ClientAssociationHash: sendClientFingerprint(in.ClientAssociation)})
 		}
 		prepared, err = s.sends.CreateBatch(ctx, q, tenant.AccountID, news)
 		return err
@@ -405,10 +437,14 @@ func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repositor
 	if err != nil {
 		return nil, err
 	}
-	types := []domain.ChannelType{domain.ChannelTypeWhatsApp}
+	types := make([]domain.ChannelType, 0, 2)
+	if in.Phone != "" {
+		types = append(types, domain.ChannelTypeWhatsApp)
+	}
 	if in.Email != nil {
 		types = append(types, domain.ChannelTypeEmail)
 	}
+	types = append(types, domain.ChannelTypeWebApp)
 	selected := make([]domain.Channel, 0, len(types))
 	for _, channelType := range types {
 		var channels []domain.Channel
@@ -488,7 +524,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 		go func(index int) {
 			defer wg.Done()
 			send := sends[index]
-			publicURL := s.publicURL(send.PublicToken)
+			publicURL := send.PublicURL
 			messageBody := strings.ReplaceAll(sellerSendBody, domain.QuotePublicURLPlaceholder,
 				publicURL)
 			if bundle != nil {
@@ -499,6 +535,8 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				Status: domain.SendTrackingStatusFailed}
 			var err error
 			switch send.ChannelType {
+			case domain.ChannelTypeWebApp:
+			// Publication is committed with the send outcome, without an external provider.
 			case domain.ChannelTypeWhatsApp:
 				var receipt *domain.DeliveryReceipt
 				message := domain.QuoteWhatsAppMessage{
@@ -662,8 +700,12 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if s.representations == nil {
 		return nil, domain.ErrNotConfigured
 	}
+	base, err := s.customerQuoteBase(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
 	result, err := s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
-		s.publicURL(send.PublicToken))
+		customerQuoteURL(base, send.PublicToken))
 	if err != nil {
 		return nil, err
 	}
@@ -827,9 +869,11 @@ func (s *QuoteDeliveryService) evaluateAfterCommit(ctx context.Context, tenant d
 
 func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeliveryInput, error) {
 	in.Phone = strings.TrimSpace(in.Phone)
-	if in.IdempotencyKey == uuid.Nil || !e164PhonePattern.MatchString(in.Phone) {
-		return in, fmt.Errorf("%w: idempotency key and E.164 recipient phone are required",
-			domain.ErrInvalidInput)
+	if in.IdempotencyKey == uuid.Nil || (in.Phone == "" && in.Email == nil) {
+		return in, fmt.Errorf("%w: idempotency key and a delivery destination are required", domain.ErrInvalidInput)
+	}
+	if in.Phone != "" && !e164PhonePattern.MatchString(in.Phone) {
+		return in, fmt.Errorf("%w: recipient phone must be E.164", domain.ErrInvalidInput)
 	}
 	if in.Email != nil {
 		trimmed := strings.TrimSpace(*in.Email)
@@ -843,6 +887,9 @@ func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeli
 		*in.ExpiryDays > maxQuoteValidityDays) {
 		return in, fmt.Errorf("%w: expiry_days must be between %d and %d",
 			domain.ErrInvalidInput, minQuoteValidityDays, maxQuoteValidityDays)
+	}
+	if err := normalizeSendClient(in.ClientAssociation); err != nil {
+		return in, err
 	}
 	return in, nil
 }
@@ -900,7 +947,10 @@ func statusForClientAction(action domain.ClientActionType) (domain.QuoteStatus, 
 
 func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,
 	in domain.QuoteDeliveryInput, validityDays int) error {
-	want := map[domain.ChannelType]string{domain.ChannelTypeWhatsApp: in.Phone}
+	want := map[domain.ChannelType]string{domain.ChannelTypeWebApp: "customer-portal"}
+	if in.Phone != "" {
+		want[domain.ChannelTypeWhatsApp] = in.Phone
+	}
 	if in.Email != nil {
 		want[domain.ChannelTypeEmail] = *in.Email
 	}
@@ -910,7 +960,7 @@ func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,
 	for _, send := range sends {
 		destination, ok := want[send.ChannelType]
 		if !ok || send.VersionID != versionID || send.Destination != destination ||
-			send.ValidityDays != validityDays {
+			send.ValidityDays != validityDays || send.ClientAssociationHash != sendClientFingerprint(in.ClientAssociation) {
 			return domain.WithCode(domain.CodeIdempotencyMismatch, domain.ErrConflict)
 		}
 	}
@@ -965,16 +1015,6 @@ func applyOutcomes(sends []domain.QuoteSend, outcomes []domain.QuoteSendOutcome)
 		sends[i].ProviderReference = outcome.ProviderReference
 		sends[i].SentAt = outcome.SentAt
 		sends[i].ExpiresAt = outcome.ExpiresAt
-	}
-}
-
-func (s *QuoteDeliveryService) publicURL(token string) string {
-	return s.webappURL + "/quotes/" + url.PathEscape(token)
-}
-
-func (s *QuoteDeliveryService) decorateURLs(sends []domain.QuoteSend) {
-	for i := range sends {
-		sends[i].PublicURL = s.publicURL(sends[i].PublicToken)
 	}
 }
 

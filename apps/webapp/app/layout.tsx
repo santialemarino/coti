@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: 'Coti',
   description: 'Review and respond to your quote.',
   applicationName: 'Coti',
+  referrer: 'no-referrer',
   robots: { index: false, follow: false },
 };
 

@@ -27,10 +27,36 @@ func (f *fakeInboundRoutingChannels) GetActiveByTypeAndIdentifiersCrossAccount(
 ) (map[string]domain.Channel, error) {
 	f.channelType = channelType
 	f.identifiers = append([]string(nil), identifiers...)
-	if f.err != nil {
-		return nil, f.err
+	return f.channels, f.err
+}
+
+func TestInboundRoutingService_ResolveChannels_ReturnsActiveRoutesAlongsideInactiveError(t *testing.T) {
+	t.Parallel()
+	accountID, branchID, channelID := uuid.New(), uuid.New(), uuid.New()
+	channels := &fakeInboundRoutingChannels{
+		channels: map[string]domain.Channel{"active@corralon.test": {
+			ID: channelID, AccountID: accountID, BranchID: branchID, Type: domain.ChannelTypeEmail,
+		}},
+		err: domain.ErrInboundDestinationInactive,
 	}
-	return f.channels, nil
+	service := NewInboundRoutingService(fakeInboundRoutingDB{}, channels)
+	routes, err := service.ResolveChannels(context.Background(), domain.ChannelTypeEmail,
+		[]string{"active@corralon.test", "closed@corralon.test"})
+	if !errors.Is(err, domain.ErrInboundDestinationInactive) {
+		t.Fatalf("ResolveChannels() = %v, want inactive destination", err)
+	}
+	if len(routes) != 1 || routes["active@corralon.test"].ChannelID != channelID ||
+		routes["active@corralon.test"].AccountID != accountID ||
+		routes["active@corralon.test"].BranchID != branchID {
+		t.Errorf("routes = %#v, want only the active route", routes)
+	}
+
+	channels.err = errors.New("repository unavailable")
+	routes, err = service.ResolveChannels(context.Background(), domain.ChannelTypeEmail,
+		[]string{"active@corralon.test"})
+	if !errors.Is(err, channels.err) || routes != nil {
+		t.Errorf("ResolveChannels() = %#v, %v, want no routes on repository failure", routes, err)
+	}
 }
 
 func TestInboundRoutingService_ResolveChannels_NormalizesAndReturnsConcreteRoutes(t *testing.T) {

@@ -79,7 +79,10 @@ instead of accepting an unsigned message.
 
 The callback is public but not tenant-authenticated. It resolves `metadata.phone_number_id` on the
 owner pool, then opens the tenant transaction for the exact account, branch, and channel. An
-unconfigured destination is acknowledged without creating tenant data.
+unconfigured destination is acknowledged without creating tenant data. A known active channel on an
+inactive account or branch makes the delivery return `500` so Meta can retry it. Messages for other
+active destinations in the same delivery are processed first and deduplicated on retry; recovery for
+the unavailable destination still depends on Meta's retry window.
 
 Only inbound text messages are materialized in this release. Their Meta message ID is retained in
 `inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, the original
@@ -178,7 +181,8 @@ not a client write: an inbound message neither creates nor updates a `client` re
 provider. For the selected branch's active WhatsApp channel, Coti opens that channel's encrypted
 credentials only in memory, posts a text message with the public quote link to Meta, and stores
 Meta's message ID as `provider_reference`. If Meta rejects the call, the individual delivery is
-recorded as `FAILED`; an email copy, when selected, still runs independently.
+recorded as `FAILED`; email, when selected, still runs independently. The seller can also send
+solely by email without selecting a WhatsApp destination.
 
 Use a dedicated test recipient added in Meta while the app is in development. A production number
 requires Meta's production registration and the usual business verification; the integration code

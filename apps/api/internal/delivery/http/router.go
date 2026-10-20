@@ -29,30 +29,34 @@ const mailScope = "mail"
 
 // Handlers carries every handler the router mounts.
 type Handlers struct {
-	Health        *handler.HealthHandler
-	Auth          *handler.AuthHandler
-	Password      *handler.PasswordHandler
-	Verification  *handler.VerificationHandler
-	User          *handler.UserHandler
-	Branch        *handler.BranchHandler
-	Rfq           *handler.RfqHandler
-	Channel       *handler.ChannelHandler
-	Product       *handler.ProductHandler
-	BranchCatalog *handler.BranchCatalogHandler
-	RFQ           *handler.RFQHandler
-	RFQAttachment *handler.RFQAttachmentHandler
-	Quote         *handler.QuoteHandler
-	Conversation  *handler.ConversationHandler
-	Client        *handler.ClientHandler
-	Account       *handler.AccountHandler
-	AccountLogo   *handler.BrandLogoHandler
-	Prices        *handler.ProductPriceHandler
-	CatalogImport *handler.CatalogImportHandler
-	Onboarding    *handler.OnboardingHandler
-	WhatsApp      *handler.WhatsAppWebhookHandler
-	ARCASetup     *handler.ARCASetupHandler
-	Invoice       *handler.InvoiceHandler
-	Promotion     *handler.PromotionHandler
+	Health         *handler.HealthHandler
+	Auth           *handler.AuthHandler
+	CustomerAuth   *handler.CustomerAuthHandler
+	CustomerOrders *handler.CustomerOrderHandler
+	Password       *handler.PasswordHandler
+	Verification   *handler.VerificationHandler
+	User           *handler.UserHandler
+	Branch         *handler.BranchHandler
+	Rfq            *handler.RfqHandler
+	Channel        *handler.ChannelHandler
+	Product        *handler.ProductHandler
+	BranchCatalog  *handler.BranchCatalogHandler
+	RFQ            *handler.RFQHandler
+	RFQAttachment  *handler.RFQAttachmentHandler
+	PublicRFQ      *handler.PublicRFQHandler
+	Quote          *handler.QuoteHandler
+	Conversation   *handler.ConversationHandler
+	Client         *handler.ClientHandler
+	Account        *handler.AccountHandler
+	AccountLogo    *handler.BrandLogoHandler
+	Prices         *handler.ProductPriceHandler
+	CatalogImport  *handler.CatalogImportHandler
+	Onboarding     *handler.OnboardingHandler
+	WhatsApp       *handler.WhatsAppWebhookHandler
+	Gmail          *handler.GmailHandler
+	ARCASetup      *handler.ARCASetupHandler
+	Invoice        *handler.InvoiceHandler
+	Promotion      *handler.PromotionHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -61,6 +65,7 @@ type Handlers struct {
 type Auth struct {
 	Verifier middleware.AccessVerifier
 	Resolver middleware.TenantResolver
+	Customer middleware.CustomerSessionVerifier
 }
 
 // RateLimit carries the counter and the identity reader the limiter counts by.
@@ -93,6 +98,34 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		return middleware.RateLimit(rl.Limiter, rateLimitOptions(cfg, rl, scope, max))
 	}
 
+	if h.CustomerAuth != nil && auth.Customer != nil {
+		customers := r.Group(apiPrefix+"/customer/sites/:hostname", limit("global", cfg.RateLimit.Global))
+		customers.Use(func(c *gin.Context) { c.Header("Cache-Control", "no-store") })
+		credentialBody := func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32768) }
+		customers.GET("/auth/google/options", h.CustomerAuth.GoogleOptions)
+		customers.POST("/auth/google/exchange", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.GoogleExchange)
+		customers.POST("/auth/google/complete", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.CompleteGoogle)
+		customers.POST("/auth/forgot-password", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.Forgot)
+		customers.POST("/auth/verify-email", credentialBody, limit("customer-verify", cfg.RateLimit.Credentials), h.CustomerAuth.VerifyEmail)
+		customers.POST("/auth/reset-password", credentialBody, limit("customer-reset", cfg.RateLimit.Credentials), h.CustomerAuth.Reset)
+		customers.POST("/auth/register", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.Register)
+		customers.POST("/auth/login", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.Login)
+		customers.Use(middleware.RequireCustomer(auth.Customer))
+		customers.GET("/me", h.CustomerAuth.Me)
+		customers.POST("/auth/logout", h.CustomerAuth.Logout)
+		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)
+		if h.PublicRFQ != nil {
+			customers.POST("/rfq-channels/:channelId/requests", limit("customer-rfq", cfg.RateLimit.AI), h.PublicRFQ.Create)
+		}
+		if h.CustomerOrders != nil {
+			customers.GET("/orders", h.CustomerOrders.List)
+			customers.GET("/orders/:rfqId", h.CustomerOrders.Get)
+			customers.GET("/quote-sends/:token/order", h.CustomerOrders.GetByToken)
+			customers.GET("/quote-sends/:token", h.CustomerOrders.AuthorizeDelivery, h.Quote.ResolvePublic)
+			customers.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global), h.CustomerOrders.AuthorizeDelivery, h.Quote.RespondPublic)
+		}
+	}
+
 	v1 := r.Group(apiPrefix,
 		limit("global", cfg.RateLimit.Global),
 		middleware.Authenticate(auth.Verifier, auth.Resolver))
@@ -102,6 +135,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 
 	public := v1.Group("/public")
+	if h.PublicRFQ != nil {
+		public.GET("/rfq-sites/:hostname", h.PublicRFQ.GetSite)
+		public.GET("/rfq-channels/:channelId", h.PublicRFQ.GetDestination)
+		public.POST("/rfq-channels/:channelId/requests", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
+	}
 	mail := limit(mailScope, cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
@@ -118,13 +156,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
-	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
-	// A public response is heavy on idempotency and race control, so it gets its own limit lane
-	// rather than sharing the generic public one.
-	// The quote-action lane shares a window with the generic public traffic but is keyed on its
-	// own label, so a flood of link clicks cannot starve the token GETs or vice versa.
-	public.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global),
-		h.Quote.RespondPublic)
+	if h.Gmail != nil {
+		public.GET("/gmail/callback", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Callback)
+	}
+	if h.CustomerAuth != nil {
+		public.GET("/quote-sends/:token/site", h.CustomerAuth.GetDeliverySite)
+	}
+	public.GET("/quote-sends/:token", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
+	public.POST("/quote-sends/:token/action", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
 
 	authed := v1.Group("", middleware.RequireTenant())
 
@@ -168,6 +207,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+	if h.Gmail != nil {
+		channelAdmin.POST("/:channelId/gmail/authorization", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Start)
+	}
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action
 	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of

@@ -31,30 +31,32 @@ type QuoteSend struct {
 	ChannelID   uuid.UUID
 	ChannelType ChannelType
 	// ChannelIdentifier is the branch mailbox or number the send went through, nil when unset.
-	ChannelIdentifier *string
-	IdempotencyKey    uuid.UUID
-	Destination       string
-	ProviderReference *string
-	PublicToken       string
-	PublicURL         string
-	Format            SendFormat
-	ValidityDays      int
-	SentAt            *time.Time
-	ExpiresAt         *time.Time
-	TrackingStatus    SendTrackingStatus
-	CreatedAt         time.Time
+	ChannelIdentifier     *string
+	IdempotencyKey        uuid.UUID
+	ClientAssociationHash string
+	Destination           string
+	ProviderReference     *string
+	PublicToken           string
+	PublicURL             string
+	Format                SendFormat
+	ValidityDays          int
+	SentAt                *time.Time
+	ExpiresAt             *time.Time
+	TrackingStatus        SendTrackingStatus
+	CreatedAt             time.Time
 }
 
 // NewQuoteSend is one pending channel attempt created before contacting a provider.
 type NewQuoteSend struct {
-	ID             uuid.UUID
-	VersionID      uuid.UUID
-	ChannelID      uuid.UUID
-	IdempotencyKey uuid.UUID
-	Destination    string
-	PublicToken    string
-	Format         SendFormat
-	ValidityDays   int
+	ClientAssociationHash string
+	ID                    uuid.UUID
+	VersionID             uuid.UUID
+	ChannelID             uuid.UUID
+	IdempotencyKey        uuid.UUID
+	Destination           string
+	PublicToken           string
+	Format                SendFormat
+	ValidityDays          int
 }
 
 // QuoteSendOutcome closes one pending channel attempt.
@@ -68,10 +70,11 @@ type QuoteSendOutcome struct {
 
 // QuoteDeliveryInput is the seller-approved delivery request.
 type QuoteDeliveryInput struct {
-	IdempotencyKey uuid.UUID
-	Phone          string
-	Email          *string
-	ExpiryDays     *int
+	ClientAssociation *AssociateQuoteClientInput
+	IdempotencyKey    uuid.UUID
+	Phone             string
+	Email             *string
+	ExpiryDays        *int
 }
 
 // QuoteDeliveryResult is the committed result of a delivery operation.

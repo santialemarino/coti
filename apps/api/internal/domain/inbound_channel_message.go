@@ -17,6 +17,27 @@ type InboundTextMessage struct {
 	Payload               []byte
 }
 
+// InboundEmailMessage carries one mailbox message and its original RFC 5322 bytes.
+type InboundEmailMessage struct {
+	ExternalMessageID     string
+	DestinationIdentifier string
+	SenderID              string
+	SenderLabel           string
+	Subject               string
+	Body                  string
+	Original              []byte
+	Attachments           []InboundEmailAttachment
+	ProviderReceivedAt    time.Time
+}
+
+// InboundEmailAttachment is one decoded MIME part of an incoming email.
+type InboundEmailAttachment struct {
+	Filename    string
+	ContentType string
+	Inline      bool
+	Content     []byte
+}
+
 // InboundChannelMessage retains a provider event and the RFQ or conversation message it became.
 // Exactly one of RFQID and QuoteMessageID is set.
 type InboundChannelMessage struct {

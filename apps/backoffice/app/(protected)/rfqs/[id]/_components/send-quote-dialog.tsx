@@ -1,8 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
-import { ExternalLinkIcon, MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
+import {
+  ExternalLinkIcon,
+  FileSymlinkIcon,
+  MailIcon,
+  MessageCircleIcon,
+  SendIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -31,29 +37,41 @@ import {
   type QuoteSendResponse,
   type QuoteSendTrackingResponse,
   type RfqDetailResponse,
+  type SendClientSelection,
 } from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { SendClientForm } from './send-client-form';
 
 interface Destinations {
   phone: string;
   email: string | null;
+  whatsapp: boolean;
 }
 
-/*
- * Where the previous send went, so a resend starts from it: the WhatsApp number and, when that send
- * also mailed a copy, the address. The phone falls back to the number the order arrived from.
- */
+// Each send's rows share an operation ID even when a version is sent more than once.
 export function previousDestinations(
   deliveries: QuoteSendTrackingResponse[],
   inboundPhone: string | null,
+  inboundEmail: string | null,
+  inboundChannel: string,
 ): Destinations {
   const latest = [...deliveries].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-  if (!latest) return { phone: inboundPhone ?? '', email: null };
-  const sameSend = deliveries.filter((delivery) => delivery.version_id === latest.version_id);
+  if (!latest) {
+    return {
+      phone: inboundPhone ?? '',
+      email: inboundChannel === 'email' ? (inboundEmail ?? '') : null,
+      whatsapp: inboundChannel !== 'email',
+    };
+  }
+  const sameSend = deliveries.filter((delivery) => delivery.operation_id === latest.operation_id);
   const whatsapp = sameSend.find((delivery) => delivery.channel === 'WHATSAPP');
   const email = sameSend.find((delivery) => delivery.channel === 'EMAIL');
-  return { phone: whatsapp?.destination ?? inboundPhone ?? '', email: email?.destination ?? null };
+  return {
+    phone: whatsapp?.destination ?? inboundPhone ?? '',
+    email: email?.destination ?? null,
+    whatsapp: !!whatsapp,
+  };
 }
 
 interface SendQuoteDialogProps {
@@ -69,11 +87,7 @@ interface SendQuoteDialogProps {
   branchMissesEmail?: boolean;
 }
 
-/*
- * Delivery of an approved quote. WhatsApp always carries the public link, and the email copy
- * is an independent extra rather than an alternative — the backend attempts each on its own
- * and reports both, so the dialog reports both too.
- */
+// Deliver an approved quote through the channels selected by the seller.
 export function SendQuoteDialog({
   detail,
   branchId,
@@ -88,16 +102,24 @@ export function SendQuoteDialog({
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
+  const [clientSelection, setClientSelection] = useState<SendClientSelection | null>(null);
   const [phone, setPhone] = useState('');
+  const [sendWhatsApp, setSendWhatsApp] = useState(true);
   const [alsoEmail, setAlsoEmail] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<QuoteSendResponse | null>(null);
+  const sendAttempt = useRef<{ payload: string; key: string } | null>(null);
 
   const quoteId = detail.quote?.id ?? null;
-  const phoneValid = isValidPhoneNumber(phone);
+  const phoneValid = !sendWhatsApp || isValidPhoneNumber(phone);
   const emailValid = !alsoEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canSend = !!quoteId && phoneValid && emailValid;
+  const canSend =
+    !!quoteId &&
+    (sendWhatsApp || alsoEmail) &&
+    phoneValid &&
+    emailValid &&
+    clientSelection !== null;
 
   // The sent URLs are the recovery surface for a message that never arrived, so the dialog holds
   // them until it closes rather than vanishing the moment the send returns.
@@ -109,9 +131,17 @@ export function SendQuoteDialog({
   function handleOpenChange(next: boolean) {
     if (sending) return;
     if (next) {
-      const previous = previousDestinations(detail.deliveries, detail.inbound_whatsapp_phone);
+      sendAttempt.current = null;
+      const previous = previousDestinations(
+        detail.deliveries,
+        detail.inbound_whatsapp_phone,
+        detail.inbound_email,
+        detail.rfq.channel,
+      );
       setResult(null);
-      setPhone(previous.phone);
+      setClientSelection(null);
+      setPhone(previous.phone || detail.publicRequest?.phone || '');
+      setSendWhatsApp(previous.whatsapp);
       setAlsoEmail(previous.email !== null);
       setEmail(previous.email ?? '');
     }
@@ -122,10 +152,16 @@ export function SendQuoteDialog({
     if (!quoteId || !canSend) return;
     setSending(true);
     try {
-      const result = await sendQuote(quoteId, branchId, {
-        recipient_phone: phone,
+      const body = {
+        ...(sendWhatsApp ? { recipient_phone: phone } : {}),
+        clientAssociation: clientSelection ?? undefined,
         email_delivery: alsoEmail ? { address: email.trim() } : null,
-      });
+      };
+      const payload = JSON.stringify(body);
+      const key =
+        sendAttempt.current?.payload === payload ? sendAttempt.current.key : crypto.randomUUID();
+      sendAttempt.current = { payload, key };
+      const result = await sendQuote(quoteId, branchId, body, key);
       reportOutcome(result.deliveries);
       setResult(result);
       await onSent();
@@ -170,7 +206,7 @@ export function SendQuoteDialog({
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
           <DialogHeader>
             <DialogTitle>{result ? t('successTitle') : t('title')}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className={result ? undefined : 'sr-only'}>
               {result ? t('successDescription') : t('description')}
             </DialogDescription>
           </DialogHeader>
@@ -188,20 +224,22 @@ export function SendQuoteDialog({
                   key={delivery.id}
                   className="flex flex-col p-3 gap-y-3 border border-border bg-sunken rounded-lg"
                 >
-                  <div className="flex flex-col gap-y-1">
-                    <span className="text-paragraph-xs-medium text-foreground-muted">
-                      {tChannel(delivery.channel.toLowerCase())}
-                    </span>
-                    <span className="text-paragraph-sm text-foreground">
-                      {delivery.destination}
-                    </span>
-                    <span
-                      aria-label={t('linkLabel')}
-                      className="text-paragraph-xs text-foreground-muted break-all"
-                    >
-                      {delivery.public_url}
-                    </span>
-                  </div>
+                  {delivery.channel.toLowerCase() !== 'webapp' && (
+                    <div className="flex flex-col gap-y-1">
+                      <span className="text-paragraph-xs-medium text-foreground-muted">
+                        {tChannel(delivery.channel.toLowerCase())}
+                      </span>
+                      <span className="text-paragraph-sm text-foreground">
+                        {delivery.destination}
+                      </span>
+                      <span
+                        aria-label={t('linkLabel')}
+                        className="text-paragraph-xs text-foreground-muted break-all"
+                      >
+                        {delivery.public_url}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex gap-x-2">
                     <CopyButton
                       value={delivery.public_url}
@@ -210,8 +248,16 @@ export function SendQuoteDialog({
                     />
                     <Button asChild variant="outline" size="sm">
                       <a href={delivery.public_url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLinkIcon className="size-3.5" />
-                        {t('openQuote')}
+                        {delivery.channel.toLowerCase() === 'webapp' ? (
+                          <FileSymlinkIcon aria-hidden="true" className="size-3.5" />
+                        ) : (
+                          <ExternalLinkIcon aria-hidden="true" className="size-3.5" />
+                        )}
+                        {t(
+                          delivery.channel.toLowerCase() === 'webapp'
+                            ? 'visualizeOnline'
+                            : 'openQuote',
+                        )}
                       </a>
                     </Button>
                   </div>
@@ -220,29 +266,58 @@ export function SendQuoteDialog({
             </div>
           ) : (
             <div className="flex flex-col gap-y-4">
-              <div className="flex flex-col gap-y-1.5">
-                <Label htmlFor="send-phone" required>
-                  <MessageCircleIcon aria-hidden="true" className="size-4 text-foreground-muted" />
-                  {t('phoneLabel')}
-                </Label>
-                <PhoneInput
-                  id="send-phone"
-                  value={phone}
-                  onChange={setPhone}
-                  placeholder={t('phonePlaceholder')}
-                  countryLabel={tPhone('country')}
-                  countrySearchPlaceholder={tPhone('countrySearch')}
-                  countryEmptyLabel={tPhone('countryEmpty')}
-                  landlineNotice={{
-                    message: tPhone('landline'),
-                    action: (mobile) => tPhone('useMobile', { number: mobile }),
-                  }}
-                  aria-describedby="send-phone-hint"
-                  autoFocus
+              {open && quoteId ? (
+                <SendClientForm
+                  quoteId={quoteId}
+                  branchId={branchId}
+                  disabled={sending}
+                  locked={
+                    detail.quote?.current_status === 'SENT' ||
+                    detail.deliveries.some((delivery) =>
+                      ['SENT', 'DELIVERED', 'VIEWED'].includes(delivery.tracking_status),
+                    )
+                  }
+                  onChange={setClientSelection}
                 />
-                <p id="send-phone-hint" className="text-paragraph-xs text-foreground-muted">
-                  {t('phoneHint')}
-                </p>
+              ) : null}
+              <div className="flex flex-col gap-y-2">
+                <label
+                  htmlFor="send-whatsapp"
+                  className="flex cursor-pointer items-center gap-x-2.5 text-paragraph-sm text-foreground"
+                >
+                  <Checkbox
+                    id="send-whatsapp"
+                    checked={sendWhatsApp}
+                    onCheckedChange={(checked) => setSendWhatsApp(checked === true)}
+                  />
+                  <MessageCircleIcon aria-hidden="true" className="size-4 text-foreground-muted" />
+                  {t('sendWhatsApp')}
+                </label>
+                {sendWhatsApp ? (
+                  <div className="flex flex-col gap-y-1.5">
+                    <Label htmlFor="send-phone" required>
+                      {t('phoneLabel')}
+                    </Label>
+                    <PhoneInput
+                      id="send-phone"
+                      value={phone}
+                      onChange={setPhone}
+                      placeholder={t('phonePlaceholder')}
+                      countryLabel={tPhone('country')}
+                      countrySearchPlaceholder={tPhone('countrySearch')}
+                      countryEmptyLabel={tPhone('countryEmpty')}
+                      landlineNotice={{
+                        message: tPhone('landline'),
+                        action: (mobile) => tPhone('useMobile', { number: mobile }),
+                      }}
+                      aria-describedby="send-phone-hint"
+                      autoFocus
+                    />
+                    <p id="send-phone-hint" className="text-paragraph-xs text-foreground-muted">
+                      {t('phoneHint')}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-col gap-y-2">
@@ -267,6 +342,7 @@ export function SendQuoteDialog({
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder={t('emailPlaceholder')}
                     aria-label={t('emailLabel')}
+                    autoFocus={!sendWhatsApp}
                   />
                 )}
                 {/* Said where it bites: the copy goes out, and its reply has nowhere to land. */}
@@ -291,7 +367,6 @@ export function SendQuoteDialog({
                     {fmt.currency(detail.version?.total ?? '0')}
                   </span>
                 </div>
-                <p className="pt-1 text-paragraph-xs text-foreground-muted">{t('summaryLink')}</p>
               </div>
             </div>
           )}
@@ -299,7 +374,14 @@ export function SendQuoteDialog({
           <DialogFooter>
             {result ? (
               <>
-                <Button type="button" variant="outline" onClick={() => setResult(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    sendAttempt.current = null;
+                    setResult(null);
+                  }}
+                >
                   {t('resend')}
                 </Button>
                 <Button type="button" onClick={() => handleOpenChange(false)}>
