@@ -116,7 +116,10 @@ func TestEmailQuoteFlow_UsesTheReceivingBranchCatalogPricesAndPromotions(t *test
 		if err != nil || retry != rfqID {
 			t.Fatalf("%s: retry = %s, %v, want %s", test.name, retry, err, rfqID)
 		}
-		if _, err := job.Run(ctx, e.db.CrossAccount()); err != nil {
+		if err := e.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
+			_, err := job.Run(ctx, q)
+			return err
+		}); err != nil {
 			t.Fatalf("%s: extract email: %v", test.name, err)
 		}
 		var quoteID, versionID, rfqBranch, quoteBranch, matchedProduct uuid.UUID
