@@ -195,11 +195,15 @@ Everything else is left alone:
 "Complete" is `domain.SaleComplete`, written again in the sweep's SQL: accepted, paid, no voucher
 pending in ARCA, and an issued invoice no credit note cancelled (in `ARCA_ENVIRONMENT` or
 production), «No requiere factura», or invoicing off for the account. A sale with an invoice in
-flight is never complete, so it is never swept.
+flight is never complete, so it is never swept. Turning an account's invoicing off therefore makes
+every paid accepted sale of it complete, and the next run archives the ones already quiet past the
+window.
 
 **What counts as activity is `quote.updated_at`.** Every write to the quote row moves it: a
-transition, a send, assigning the seller, associating the client, and unarchiving — so a quote the
-seller brings back starts a fresh window instead of being put away again on the next run. A line,
+transition, a send, assigning the seller, associating the client, ARCA authorizing an invoice or a
+credit note (`InvoiceService.markIssued` claims the row in the same transaction), and unarchiving —
+so a quote the seller brings back starts a fresh window instead of being put away again on the next
+run. A line,
 discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches it and
 holds its lock until the edit commits, so a quote being worked on is never idle and the sweep can
 never archive it between the edit's archive check and its write. US-41's

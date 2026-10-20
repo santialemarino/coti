@@ -306,6 +306,29 @@ func (e *env) closedSale(
 	return quoteID
 }
 
+// seedCreditNote records a credit note in status against the sale's invoice, straight on the owner
+// pool and dated with it.
+func (e *env) seedCreditNote(t *testing.T, sale invoicedSale, status domain.InvoiceStatus) {
+	t.Helper()
+	noteID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO invoice (id, account_id, branch_id, quote_id, quote_version_id, environment, kind, status,
+		                      invoice_type, point_of_sale, number, issued_on, cae, cae_expires_on, issuer_cuit,
+		                      receiver_name, receiver_doc_type, receiver_iva_condition, net_amount, exempt_amount,
+		                      vat_amount, total, currency, credited_invoice_id, created_at)
+		 SELECT $1, account_id, branch_id, quote_id, quote_version_id, environment, 'CREDIT_NOTE', $2,
+		        invoice_type, point_of_sale, CASE WHEN $2::invoice_status = 'ISSUED' THEN 24 END, issued_on,
+		        CASE WHEN $2::invoice_status = 'ISSUED' THEN '74123456789013' END,
+		        CASE WHEN $2::invoice_status = 'ISSUED' THEN issued_on + 10 END, issuer_cuit, receiver_name,
+		        receiver_doc_type, receiver_iva_condition, net_amount, exempt_amount, vat_amount, total,
+		        currency, id, created_at
+		 FROM invoice WHERE id = $3`, noteID, status, sale.invoiceID); err != nil {
+		t.Fatalf("seed the credit note: %v", err)
+	}
+	// Registered after the invoice's own teardown, so it runs first and frees the invoice.
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM invoice WHERE id = $1`, noteID) })
+}
+
 // Complete sales and rejected quotes are archived once quiet past the closed window; a sale still
 // waiting to be paid or invoiced, or with an invoice in flight, never is.
 func TestQuoteAutoArchive_ArchivesClosedOutcomesPastTheirOwnWindow(t *testing.T) {
@@ -323,44 +346,60 @@ func TestQuoteAutoArchive_ArchivesClosedOutcomesPastTheirOwnWindow(t *testing.T)
 	accepted := func(accountID, branchID uuid.UUID, by domain.AppUser) uuid.UUID {
 		return e.seedAcceptedSale(t, accountID, branchID, by).quoteID
 	}
-	invoiced := e.seedInvoicedSale(t, invoicingID, invoicingBranch, seller, domain.InvoiceStatusIssued)
-	e.closedSale(t, invoiced.quoteID, seller, true, false, closedQuiet)
-	pending := e.seedInvoicedSale(t, invoicingID, invoicingBranch, seller, domain.InvoiceStatusPending)
-	// Invoiced and paid, but the credit note cancelling that invoice still waits for ARCA.
-	// Its own account: an invoice number is unique per account and point of sale.
-	creditingID, creditingBranch := e.seedAccount(t, "Archivo cerradas nota")
-	e.setInvoicing(t, creditingID, true)
-	creditor := e.seedUser(t, creditingID, domain.UserRoleAdmin)
-	crediting := e.seedInvoicedSale(t, creditingID, creditingBranch, creditor, domain.InvoiceStatusIssued)
-	noteID := uuid.New()
-	if _, err := e.db.CrossAccount().Exec(ctx,
-		`INSERT INTO invoice (id, account_id, branch_id, quote_id, quote_version_id, environment, kind, status,
-		                      invoice_type, point_of_sale, issued_on, issuer_cuit, receiver_name,
-		                      receiver_doc_type, receiver_iva_condition, net_amount, exempt_amount, vat_amount,
-		                      total, currency, credited_invoice_id)
-		 VALUES ($1, $2, $3, $4, $5, 'HOMOLOGATION', 'CREDIT_NOTE', 'PENDING', 'B', 3, current_date,
-		         '30712345671', 'Obra Norte', 'NONE', 'FINAL_CONSUMER', 1000, 0, 210, 1210, 'ARS', $6)`,
-		noteID, creditingID, creditingBranch, crediting.quoteID, crediting.versionID,
-		crediting.invoiceID); err != nil {
-		t.Fatalf("seed the pending credit note: %v", err)
+	// An invoiced sale, paid, quiet as long as its invoice is old, each in an account of its own: an
+	// invoice number is unique per account and point of sale.
+	invoicedSale := func(name string, env string) (invoicedSale, domain.AppUser) {
+		accountID, branchID := e.seedAccount(t, name)
+		e.setInvoicing(t, accountID, true)
+		user := e.seedUser(t, accountID, domain.UserRoleAdmin)
+		sale := e.seedInvoicedSale(t, accountID, branchID, user, domain.InvoiceStatusIssued)
+		// An authorized invoice is immutable, so the fixture is aged with triggers off.
+		tx, err := e.db.AdminTx(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+			t.Fatalf("switch triggers off: %v", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE invoice SET environment = $2, issued_on = current_date - 70, created_at = now() - interval '70 days'
+			 WHERE id = $1`, sale.invoiceID, env); err != nil {
+			t.Fatalf("age the invoice: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		e.closedSale(t, sale.quoteID, user, true, false, closedQuiet)
+		return sale, user
 	}
-	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM invoice WHERE id = $1`, noteID) })
+	invoiced, _ := invoicedSale("Archivo cerradas facturada", "HOMOLOGATION")
+	production, _ := invoicedSale("Archivo cerradas producción", "PRODUCTION")
+	pending := e.seedInvoicedSale(t, invoicingID, invoicingBranch, seller, domain.InvoiceStatusPending)
+	// Paid, but its invoice is cancelled by a credit note: still waiting for ARCA, or issued and
+	// never invoiced again.
+	crediting, _ := invoicedSale("Archivo cerradas nota pendiente", "HOMOLOGATION")
+	e.seedCreditNote(t, crediting, domain.InvoiceStatusPending)
+	credited, _ := invoicedSale("Archivo cerradas nota emitida", "HOMOLOGATION")
+	e.seedCreditNote(t, credited, domain.InvoiceStatusIssued)
 
 	eligible := map[string]uuid.UUID{
 		"paid, invoice waived": e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, true, closedQuiet),
 		"paid, invoiced":       invoiced.quoteID,
-		"paid, invoicing off":  e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, true, false, closedQuiet),
-		"REJECTED":             e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, closedQuiet, nil, nil),
+		"paid, invoiced in production on a test server": production.quoteID,
+		"paid, invoicing off":                           e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, true, false, closedQuiet),
+		"REJECTED":                                      e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, closedQuiet, nil, nil),
 	}
 	left := map[string]uuid.UUID{
-		"REJECTED inside the closed window": e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, quiet, nil, nil),
-		"complete inside the closed window": e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, true, quiet),
-		"unpaid, invoice waived":            e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, false, true, closedQuiet),
-		"unpaid, invoicing off":             e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, false, false, closedQuiet),
-		"paid, waiting for its invoice":     e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, false, closedQuiet),
-		"paid, invoice pending in ARCA":     e.closedSale(t, pending.quoteID, seller, true, false, closedQuiet),
-		"paid, credit note pending in ARCA": e.closedSale(t, crediting.quoteID, creditor, true, false, closedQuiet),
-		"CHANGE_REQUESTED":                  e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusChangeRequested, closedQuiet, nil, nil),
+		"REJECTED inside the closed window":                              e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, quiet, nil, nil),
+		"complete inside the closed window":                              e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, true, quiet),
+		"unpaid, invoice waived":                                         e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, false, true, closedQuiet),
+		"unpaid, invoicing off":                                          e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, false, false, closedQuiet),
+		"paid, waiting for its invoice":                                  e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, false, closedQuiet),
+		"paid, invoice pending in ARCA":                                  e.closedSale(t, pending.quoteID, seller, true, false, closedQuiet),
+		"paid, credit note pending in ARCA":                              crediting.quoteID,
+		"paid, invoice cancelled by a credit note, never invoiced again": credited.quoteID,
+		"CHANGE_REQUESTED":                                               e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusChangeRequested, closedQuiet, nil, nil),
 	}
 
 	archiveJob := func(env domain.ARCAEnvironment) (*services.JobService, string) {

@@ -300,6 +300,14 @@ type fakeInvoiceQuotes struct {
 	items   []domain.QuoteItem
 	// waiverCleared counts the writes that took «No requiere factura» off the sale.
 	waiverCleared int
+	// touched counts the writes that recorded activity on the quote row.
+	touched int
+}
+
+func (f *fakeInvoiceQuotes) ClaimForEdit(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.Quote, error) {
+	f.touched++
+	quote := f.quote
+	return &quote, nil
 }
 
 func (f *fakeInvoiceQuotes) SetInvoiceWaived(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID) (*domain.Quote, error) {
@@ -445,6 +453,49 @@ func TestInvoiceService_IssueAuthorizesAndRecordsTheInvoice(t *testing.T) {
 	}
 	if want := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC); !req.Date.Equal(want) {
 		t.Fatalf("date = %s, want the day in Argentina", req.Date)
+	}
+}
+
+// Issuing is activity on the sale: an authorized voucher, first answer or read back, restarts the
+// inactivity the auto-archive measures, and a refusal does not.
+func TestInvoiceService_AnAuthorizedVoucherRestartsTheSalesInactivity(t *testing.T) {
+	t.Parallel()
+
+	issued := newInvoiceFixture(t)
+	invoice, err := issued.issue(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issued.quotes.touched != 1 {
+		t.Fatalf("issued: touched = %d, want the quote row touched once", issued.quotes.touched)
+	}
+	if _, err := issued.service.IssueCreditNote(context.Background(), issued.tenant, invoice.ID); err != nil {
+		t.Fatal(err)
+	}
+	if issued.quotes.touched != 2 {
+		t.Fatalf("credit note: touched = %d, want the quote row touched again", issued.quotes.touched)
+	}
+
+	adopted := newInvoiceFixture(t)
+	claimed := int64(7)
+	adopted.store.invoice = &domain.Invoice{ID: uuid.New(), Environment: domain.ARCAEnvironmentHomologation,
+		Status: domain.InvoiceStatusPending, QuoteVersionID: newVersionID(adopted), UpdatedAt: invoiceNow.Add(-time.Hour),
+		ClaimedNumber: &claimed, Receiver: domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"},
+		Amounts: domain.InvoiceAmounts{Total: dec("1210.00")}}
+	adopted.issuer.found = &domain.AuthorizedInvoice{Number: 7, CAE: "74000000000007",
+		DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786", Total: dec("1210.00")}
+	if _, err := adopted.issue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if adopted.quotes.touched != 1 {
+		t.Fatalf("read back: touched = %d, want the quote row touched once", adopted.quotes.touched)
+	}
+
+	refused := newInvoiceFixture(t)
+	refused.issuer.err = &domain.InvoiceRejectedError{Issues: []string{"10013: DocTipo invalido"}}
+	_, _ = refused.issue(context.Background())
+	if refused.quotes.touched != 0 {
+		t.Fatalf("rejected: touched = %d, want no activity recorded", refused.quotes.touched)
 	}
 }
 
