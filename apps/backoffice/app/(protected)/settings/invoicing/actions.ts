@@ -29,6 +29,26 @@ export interface InvoicingSettingsResult {
   error?: ApiErrorCode;
 }
 
+/*
+ * Whether the corralón invoices with Coti. It changes what every protected screen shows, so the whole
+ * layout is revalidated rather than this page alone.
+ */
+export async function setInvoicingEnabled(enabled: boolean): Promise<{ error?: ApiErrorCode }> {
+  await requireAdmin();
+  try {
+    await apiRequest({
+      path: '/v1/invoicing/enabled',
+      method: 'PUT',
+      branchScoped: false,
+      body: { enabled },
+    });
+    revalidatePath('/', 'layout');
+    return {};
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
+
 export async function updateInvoicingSettings(
   values: InvoicingSettingsValues,
 ): Promise<InvoicingSettingsResult> {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  setInvoicingEnabled,
   updateInvoicingSettings,
   updatePointsOfSale,
 } from '@/app/(protected)/settings/invoicing/actions';
@@ -141,5 +142,29 @@ describe('updatePointsOfSale', () => {
       ]),
     ).resolves.toEqual({ error: 'INVALID_BODY' });
     expect(apiRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('setInvoicingEnabled', () => {
+  // The switch changes what the whole shell shows, so every protected layout is re-read.
+  it('sends the switch and revalidates every screen', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({});
+    const { revalidatePath } = await import('next/cache');
+
+    await expect(setInvoicingEnabled(false)).resolves.toEqual({});
+
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/invoicing/enabled',
+      method: 'PUT',
+      branchScoped: false,
+      body: { enabled: false },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+  });
+
+  it('returns the code a refusal carries', async () => {
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INVOICE_PENDING', 409));
+
+    await expect(setInvoicingEnabled(false)).resolves.toEqual({ error: 'INVOICE_PENDING' });
   });
 });

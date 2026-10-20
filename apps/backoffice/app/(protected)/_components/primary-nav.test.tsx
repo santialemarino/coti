@@ -14,7 +14,7 @@ function ordersLink(pathname: string) {
   navigation.pathname = pathname;
   render(
     <NextIntlClientProvider locale="es" messages={messages}>
-      <PrimaryNav />
+      <PrimaryNav administration />
     </NextIntlClientProvider>,
   );
   return screen.getByRole('link', { name: messages.common.nav.orders });
@@ -45,7 +45,7 @@ describe('PrimaryNav', () => {
     navigation.pathname = ROUTES.rfqsDetail('r1');
     render(
       <NextIntlClientProvider locale="es" messages={messages}>
-        <PrimaryNav layout="tabs" />
+        <PrimaryNav administration layout="tabs" />
       </NextIntlClientProvider>,
     );
 
@@ -68,10 +68,29 @@ describe('PrimaryNav', () => {
     navigation.pathname = path;
     render(
       <NextIntlClientProvider locale="es" messages={messages}>
-        <PrimaryNav layout="tabs" />
+        <PrimaryNav administration layout="tabs" />
       </NextIntlClientProvider>,
     );
 
     expect(screen.getByRole('link', { current: 'page' }).textContent).toBe(label);
   });
+
+  // Off with no invoice ever issued, the history has nothing to show, so its section is not offered.
+  it.each(['bar', 'tabs'] as const)(
+    'leaves Administración out of the %s when told to',
+    (layout) => {
+      navigation.pathname = ROUTES.home;
+      render(
+        <NextIntlClientProvider locale="es" messages={messages}>
+          <PrimaryNav administration={false} layout={layout} />
+        </NextIntlClientProvider>,
+      );
+
+      expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+        messages.common.nav.orders,
+        messages.common.nav.clients,
+        messages.common.nav.reports,
+      ]);
+    },
+  );
 });

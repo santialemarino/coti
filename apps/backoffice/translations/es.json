@@ -404,7 +404,8 @@
     "ARCA_ENVIRONMENT_MISMATCH": "Esta factura se pidió en otro entorno de ARCA que el de la conexión actual, así que no se puede consultar desde acá.",
     "INVOICE_NOT_CREDITABLE": "Solo se anula con nota de crédito una factura autorizada por ARCA.",
     "INVOICE_ALREADY_CREDITED": "Esta factura ya está anulada por una nota de crédito.",
-    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla."
+    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
+    "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación."
   },
   "meta": {
     "home": {
@@ -1773,6 +1774,7 @@
     },
     "profile": {
       "description": "Datos de contacto, información fiscal, tags e historial comercial.",
+      "descriptionWithoutFiscal": "Datos de contacto, tags e historial comercial.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
@@ -2765,6 +2767,22 @@
       "errors": {
         "INVALID_INPUT": "Revisá los datos: algún valor no es válido.",
         "POINT_OF_SALE_TAKEN": "Dos sucursales no pueden compartir el mismo punto de venta."
+      },
+      "switch": {
+        "label": "Facturación electrónica",
+        "description": "Emití facturas electrónicas de ARCA desde Coti para las ventas aceptadas.",
+        "enabled": "Activamos la facturación electrónica. Conectá el CUIT con ARCA para empezar a facturar.",
+        "disabled": "Desactivamos la facturación electrónica. Las facturas emitidas siguen en Comprobantes.",
+        "confirm": {
+          "title": "Desactivar la facturación electrónica",
+          "description": "Se ocultan la factura de los pedidos aceptados, los datos fiscales de los clientes y la conexión con ARCA. Las facturas emitidas se siguen consultando en Comprobantes, y la conexión queda guardada por si la volvés a activar.",
+          "action": "Desactivar",
+          "pending": "Desactivando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Revisalas en Comprobantes y volvé a intentar cuando respondan."
+        }
       }
     },
     "card": {

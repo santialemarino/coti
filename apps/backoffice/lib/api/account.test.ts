@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getAccount } from '@/lib/api/account';
+import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 
 vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
 
@@ -15,6 +15,8 @@ function rawAccount(overrides: Record<string, unknown> = {}) {
     brand_logo_url: 'https://tucorralon.com/logo.png',
     brand_color: '#C2410C',
     preferred_lower_price_strategy: 'ADAPT_TO_REACH_DISCOUNT',
+    invoicing_enabled: true,
+    has_invoices: false,
     is_active: true,
     created_at: '2026-07-01T10:00:00Z',
     updated_at: '2026-07-02T10:00:00Z',
@@ -41,6 +43,8 @@ describe('getAccount', () => {
       brandLogoUrl: 'https://tucorralon.com/logo.png',
       brandColor: '#C2410C',
       preferredLowerPriceStrategy: 'ADAPT_TO_REACH_DISCOUNT',
+      invoicingEnabled: true,
+      hasInvoices: false,
     });
   });
 
@@ -81,5 +85,16 @@ describe('getAccount', () => {
     await getAccount();
 
     expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/account', branchScoped: false });
+  });
+});
+
+describe('showsInvoiceHistory', () => {
+  // Off hides invoicing, but invoices already issued are fiscal records and stay reachable.
+  it.each([
+    { invoicingEnabled: true, hasInvoices: false, shown: true },
+    { invoicingEnabled: false, hasInvoices: true, shown: true },
+    { invoicingEnabled: false, hasInvoices: false, shown: false },
+  ])('is $shown with the switch $invoicingEnabled and invoices $hasInvoices', (account) => {
+    expect(showsInvoiceHistory(account)).toBe(account.shown);
   });
 });

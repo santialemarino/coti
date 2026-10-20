@@ -24,6 +24,8 @@ const ACCOUNT = {
   brandLogoUrl: null,
   brandColor: '#C2410C',
   preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES' as const,
+  invoicingEnabled: false,
+  hasInvoices: false,
 };
 
 async function renderPage() {

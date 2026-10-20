@@ -35,6 +35,8 @@ interface RfqDetailViewProps {
   detail: RfqDetailResponse;
   /* Whether the order's branch has no mailbox for a customer's reply to reach. */
   branchMissesEmail?: boolean;
+  /* Whether the corralón invoices with Coti; off, an accepted order shows no invoice. */
+  invoicingEnabled: boolean;
 }
 
 // What the queue shows for the order's lines, recounted whenever this screen changes them.
@@ -48,6 +50,7 @@ function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCoun
 export function RfqDetailView({
   detail: initialDetail,
   branchMissesEmail = false,
+  invoicingEnabled,
 }: RfqDetailViewProps) {
   const router = useRouter();
   const fmt = useFormatters();
@@ -264,7 +267,7 @@ export function RfqDetailView({
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId ? (
+          {quoteId && invoicingEnabled ? (
             <InvoiceCard
               quoteId={quoteId}
               branchId={branchId}
