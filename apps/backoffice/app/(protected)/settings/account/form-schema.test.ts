@@ -10,6 +10,7 @@ const VALID: AccountValues = {
   taxId: '',
   brandLogoUrl: '',
   brandColor: '',
+  lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
 };
 
 function messagesFor(values: Partial<AccountValues>) {

@@ -39,6 +39,7 @@ const ACCOUNT: Account = {
   taxId: '30-71234567-1',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: '#C2410C',
+  preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -119,9 +120,29 @@ describe('AccountForm', () => {
         taxId: '',
         brandLogoUrl: '',
         brandColor: '',
+        lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
       },
       undefined,
       false,
+    );
+  });
+
+  // The stored choice is the one selected, and picking the other is what the save sends.
+  it('shows the stored lower-price strategy and sends the one picked', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ ok: true });
+    const view = renderForm();
+    const cheaper = view.getByRole('radio', {
+      name: copy.lowerPrice.FIND_CHEAPER_ALTERNATIVES.label,
+    });
+    const adapt = view.getByRole('radio', { name: copy.lowerPrice.ADAPT_TO_REACH_DISCOUNT.label });
+    expect(cheaper.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(adapt);
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(vi.mocked(updateAccount).mock.calls[0]?.[0].lowerPriceStrategy).toBe(
+      'ADAPT_TO_REACH_DISCOUNT',
     );
   });
 
@@ -140,6 +161,7 @@ describe('AccountForm', () => {
         taxId: '30712345671',
         brandLogoUrl: ACCOUNT.brandLogoUrl,
         brandColor: 'C2410C',
+        lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
       },
       undefined,
       false,

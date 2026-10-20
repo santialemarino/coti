@@ -28,6 +28,7 @@ import type {
 } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { shortUnit } from '@/lib/utils/units';
+import { HandlerRecipeNote } from './handler-recipe-note';
 import { RfqConversation } from './rfq-conversation';
 
 const CHANGE_TONES = {
@@ -125,7 +126,14 @@ function ChangedDiscount({ discount }: { discount: DiffDiscount }) {
         {t(`change.${change}`)}
       </Badge>
       <div className="flex flex-col min-w-0 gap-y-0.5 text-paragraph-sm text-foreground">
-        <span>{discount.name}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {discount.name}
+          {discount.requested?.origin === 'AI_ADAPTATION' ? (
+            <Badge tone="neutral" size="sm">
+              {t('adaptedDiscount')}
+            </Badge>
+          ) : null}
+        </span>
         <span className="text-paragraph-xs text-foreground-muted tabular-nums">
           <Moved from={amount(discount.original)} to={amount(discount.requested)} />
         </span>
@@ -224,6 +232,12 @@ export function RfqChangeRequestCard({
               </p>
             ) : null}
             {outcome ? <p className="text-paragraph-sm text-foreground-muted">{outcome}</p> : null}
+            {handler.seller_decision !== 'REJECTED' ? (
+              <HandlerRecipeNote
+                strategies={handler.strategies_tried}
+                adaptation={handler.adaptation}
+              />
+            ) : null}
           </div>
         ) : null}
 
