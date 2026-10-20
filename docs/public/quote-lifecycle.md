@@ -4,6 +4,9 @@ Coti keeps the full commercial outcome on the same quote. A customer can accept,
 changes from the public quote link. A seller can also record an acceptance or rejection received by
 phone, WhatsApp, or another channel from the order detail screen.
 
+After reviewing a quote, the seller can send its link by email, WhatsApp, or both. The original
+channel is selected by default when the order arrives through email or WhatsApp.
+
 A change request, from the link or as a WhatsApp reply to a sent quote, moves the quote to "Change
 requested" and opens one editable draft. Coti's AI reads the customer's messages and proposes the
 changes on that draft; prices and discounts are always computed by Coti's own rules, and the seller

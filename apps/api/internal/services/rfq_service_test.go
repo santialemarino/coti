@@ -2010,6 +2010,35 @@ func TestRFQService_GetDetail_RejectsMalformedInboundWhatsAppSender(t *testing.T
 	}
 }
 
+func TestRFQService_GetDetail_ProvidesValidatedInboundEmail(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sender string
+		want   string
+	}{
+		{name: "bare address", sender: " client@example.com ", want: "client@example.com"},
+		{name: "display name rejected", sender: "Client <client@example.com>"},
+		{name: "invalid address rejected", sender: "invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, rfq, _, _, _ := getDetailHarness()
+			rfq.Channel = "email"
+			h.inboundMessages.senderID = &tc.sender
+			detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+			if err != nil {
+				t.Fatalf("GetDetail returned %v", err)
+			}
+			if tc.want == "" && detail.InboundEmail != nil ||
+				tc.want != "" && (detail.InboundEmail == nil || *detail.InboundEmail != tc.want) {
+				t.Errorf("inbound email = %v, want %q", detail.InboundEmail, tc.want)
+			}
+			if len(h.inboundMessages.reads) != 1 || h.inboundMessages.reads[0] != testRFQID {
+				t.Errorf("inbound sender reads = %v, want [%v]", h.inboundMessages.reads, testRFQID)
+			}
+		})
+	}
+}
+
 func TestRFQService_GetDetail_CarriesTheCustomerResponses(t *testing.T) {
 	h, _, quote, _, _ := getDetailHarness()
 	comment := "El precio está bien, arrancamos la obra el lunes"

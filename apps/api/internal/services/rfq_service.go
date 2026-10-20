@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"net/url"
 	"strings"
 	"time"
@@ -318,6 +319,14 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			}
 			detail.InboundWhatsAppPhone = inboundWhatsAppPhone(senderID)
 		}
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeEmail)) {
+			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
+				rfq.BranchID, rfqID)
+			if senderErr != nil {
+				return senderErr
+			}
+			detail.InboundEmail = inboundEmailAddress(senderID)
+		}
 
 		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
 			rfq.BranchID, rfqID)
@@ -419,6 +428,18 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 		return nil, err
 	}
 	return detail, nil
+}
+
+func inboundEmailAddress(senderID *string) *string {
+	if senderID == nil {
+		return nil
+	}
+	address := strings.TrimSpace(*senderID)
+	parsed, err := mail.ParseAddress(address)
+	if err != nil || parsed.Address != address {
+		return nil
+	}
+	return &address
 }
 
 // inboundWhatsAppPhone adapts Meta's digits-only wa_id to the E.164 form delivery accepts.

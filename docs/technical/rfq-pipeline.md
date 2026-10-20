@@ -438,8 +438,11 @@ the queue does not already show.
 ## Client delivery
 
 `POST /v1/quotes/{quoteId}/sends` is the seller-owned transition from `QUOTED` to `SENT`.
-`Idempotency-Key` is a UUID. The body always names an E.164 WhatsApp destination, may add one
-email destination, and may override the branch validity with `expiry_days` from 1 through 365.
+`Idempotency-Key` is a UUID. The body selects at least one destination: an E.164 WhatsApp phone,
+an email address, or both. It may override the branch validity with `expiry_days` from 1 through 365.
+Each selected type requires exactly one active channel of that type in the quote's branch.
+The send dialog defaults to the inbound channel and offers the retained sender as an editable
+destination when available. Each tracking row's `operation_id` groups channels from the same send.
 The service first ensures the immutable representation bundle, then creates one `PENDING` `quote_send` per selected
 channel before calling a provider. WhatsApp and email run independently; at least one successful
 channel commits the transition and all selected outcomes are retained. Each channel receives its

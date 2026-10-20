@@ -143,10 +143,10 @@ func (h *QuoteHandler) GenerateRepresentation(c *gin.Context) {
 	c.JSON(status, toQuoteRepresentationResponse(*result))
 }
 
-// Send delivers a frozen quote through WhatsApp and, when requested, email.
+// Send delivers a frozen quote through the seller-selected channels.
 //
 //	@Summary		Send a quote to its client
-//	@Description	Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.
+//	@Description	Freezes the current seller-approved version, attempts each selected channel with a public webapp link, and moves QUOTED to SENT when at least one succeeds.
 //	@Tags			quotes
 //	@Accept			json
 //	@Produce		json

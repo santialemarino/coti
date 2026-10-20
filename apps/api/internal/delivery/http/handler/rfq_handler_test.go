@@ -330,6 +330,8 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	sentAt := changedAt.Add(5 * time.Minute)
 	expiresAt := changedAt.AddDate(0, 0, 7)
 	inboundWhatsAppPhone := "+5491155550101"
+	inboundEmail := "client@example.com"
+	operationID := uuid.New()
 
 	detail := domain.RfqDetail{
 		Rfq: domain.RfqListItem{
@@ -344,6 +346,7 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 			Total:       &totalStr,
 		},
 		InboundWhatsAppPhone: &inboundWhatsAppPhone,
+		InboundEmail:         &inboundEmail,
 		Quote: &domain.Quote{
 			ID: quoteID, RFQID: rfqID, BranchID: uuid.New(),
 			CurrentStatus: domain.QuoteStatusDraft,
@@ -380,7 +383,8 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 		}},
 		Deliveries: []domain.QuoteSend{{
 			ID: uuid.New(), VersionID: versionID, ChannelType: domain.ChannelTypeWhatsApp,
-			Destination: "+5491155550101", Format: domain.SendFormatWebAppLink,
+			IdempotencyKey: operationID,
+			Destination:    "+5491155550101", Format: domain.SendFormatWebAppLink,
 			PublicToken: "pub-token", PublicURL: "https://quotes.test/quotes/pub-token",
 			TrackingStatus: domain.SendTrackingStatusDelivered,
 			SentAt:         &sentAt, ExpiresAt: &expiresAt, CreatedAt: changedAt,
@@ -401,6 +405,12 @@ func TestToRfqDetailResponse_MapsAllFieldsFromDomainDetail(t *testing.T) {
 	if resp.InboundWhatsAppPhone == nil || *resp.InboundWhatsAppPhone != inboundWhatsAppPhone {
 		t.Errorf("inbound WhatsApp phone = %v, want %q", resp.InboundWhatsAppPhone,
 			inboundWhatsAppPhone)
+	}
+	if resp.InboundEmail == nil || *resp.InboundEmail != inboundEmail {
+		t.Errorf("inbound email = %v, want %q", resp.InboundEmail, inboundEmail)
+	}
+	if len(resp.Deliveries) != 1 || resp.Deliveries[0].OperationID != operationID {
+		t.Errorf("delivery operation = %+v, want %s", resp.Deliveries, operationID)
 	}
 	if resp.Quote == nil || resp.Quote.ID != quoteID {
 		t.Errorf("quote = %v, want %v", resp.Quote, quoteID)

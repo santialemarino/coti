@@ -224,6 +224,7 @@ type RfqDetail struct {
 	Rfq RfqListItem
 	// InboundWhatsAppPhone is the sender that opened this WhatsApp RFQ, when available.
 	InboundWhatsAppPhone *string
+	InboundEmail         *string
 	Quote                *Quote
 	Version              *QuoteVersion
 	Items                []QuoteItem

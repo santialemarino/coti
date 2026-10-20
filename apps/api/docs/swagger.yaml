@@ -1937,8 +1937,6 @@ definitions:
         type: integer
       recipient_phone:
         type: string
-    required:
-    - recipient_phone
     type: object
   dto.QuoteSendResponse:
     properties:
@@ -1968,6 +1966,8 @@ definitions:
       format:
         type: string
       id:
+        type: string
+      operation_id:
         type: string
       public_url:
         type: string
@@ -2163,6 +2163,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteDiscountResponse'
         type: array
+      inbound_email:
+        type: string
       inbound_whatsapp_phone:
         type: string
       items:
@@ -6443,9 +6445,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Freezes the current seller-approved version, always attempts WhatsApp
-        with a public webapp link, optionally attempts email independently, and moves
-        QUOTED to SENT when at least one selected channel succeeds.
+      description: Freezes the current seller-approved version, attempts each selected
+        channel with a public webapp link, and moves QUOTED to SENT when at least
+        one succeeds.
       parameters:
       - description: Active branch
         in: header

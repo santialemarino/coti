@@ -5667,7 +5667,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.",
+                "description": "Freezes the current seller-approved version, attempts each selected channel with a public webapp link, and moves QUOTED to SENT when at least one succeeds.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9921,9 +9921,6 @@ const docTemplate = `{
         },
         "dto.QuoteSendRequest": {
             "type": "object",
-            "required": [
-                "recipient_phone"
-            ],
             "properties": {
                 "email_delivery": {
                     "$ref": "#/definitions/dto.QuoteEmailDeliveryRequest"
@@ -9978,6 +9975,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "operation_id": {
                     "type": "string"
                 },
                 "public_url": {
@@ -10272,6 +10272,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.QuoteDiscountResponse"
                     }
+                },
+                "inbound_email": {
+                    "type": "string"
                 },
                 "inbound_whatsapp_phone": {
                     "type": "string"
