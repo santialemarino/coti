@@ -19,20 +19,23 @@ import {
 } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
+import { AdministrationViewSwitch } from '@/app/(protected)/administration/_components/administration-view-switch';
 import { InvoicePagination } from '@/app/(protected)/administration/_components/invoice-pagination';
+import { PendingInvoicesTable } from '@/app/(protected)/administration/_components/pending-invoices-table';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { ROUTES } from '@/config/routes';
 import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
-import { getInvoices } from '@/lib/api/invoices';
+import { getInvoices, getSalesAwaitingInvoice } from '@/lib/api/invoices';
 import { formatInvoiceNumber, isCredited, type Invoice } from '@/lib/api/invoicing';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
+import type { AdministrationView } from '@/lib/constants/administration';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
-// The API pages the history up to here; anything past it reads as the first page.
+// The API pages both views up to here; anything past it reads as the first page.
 const PAGE_MAX = 100000;
 
 const STATUS_TONE: Record<Invoice['status'] | 'CREDITED', 'success' | 'danger' | 'neutral'> = {
@@ -47,29 +50,40 @@ export const generateMetadata = () => generatePageMetadata('administration');
 export default async function AdministrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; view?: string }>;
 }) {
-  if (!showsInvoiceHistory(await getAccount())) notFound();
+  const account = await getAccount();
+  if (!showsInvoiceHistory(account)) notFound();
   const session = await getSession();
   const fmt = await getFormatters();
   const t = await getTranslations('invoicing.history');
+  const tPending = await getTranslations('invoicing.pending');
   const tInvoicing = await getTranslations('invoicing');
   const branches = await getBranches();
   const branchId = await getEffectiveBranchId(branches);
-  const requested = Number((await searchParams).page ?? '1');
+  const params = await searchParams;
+  // «Por facturar» exists only while the account invoices; without it the history is all there is.
+  const view: AdministrationView =
+    account.invoicingEnabled && params.view === 'pending' ? 'pending' : 'history';
+  const requested = Number(params.page ?? '1');
   const page =
     Number.isInteger(requested) && requested > 0 && requested <= PAGE_MAX ? requested : 1;
-  const result = await getInvoices(page);
-  const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const [history, pending] = await Promise.all([
+    view === 'history' ? getInvoices(page) : null,
+    view === 'pending' ? getSalesAwaitingInvoice(page) : null,
+  ]);
+  const result = history ?? pending;
+  const pageCount = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   // With every branch in view, each row says which one it belongs to.
   const showBranch = !branchId;
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
+  const heading = view === 'pending' ? tPending : t;
 
   return (
     <PageShell>
       <PageHeader
-        title={t('title')}
-        description={t(showBranch ? 'descriptionAll' : 'description')}
+        title={heading('title')}
+        description={heading(showBranch ? 'descriptionAll' : 'description')}
         actions={
           <>
             {session?.role === ADMIN_ROLE ? (
@@ -83,7 +97,10 @@ export default async function AdministrationPage({
           </>
         }
       />
-      {result.items.length === 0 ? (
+      {account.invoicingEnabled ? <AdministrationViewSwitch view={view} /> : null}
+      {pending ? (
+        <PendingInvoicesTable key={page} sales={pending.items} showBranch={showBranch} />
+      ) : !history || history.items.length === 0 ? (
         <EmptyState icon={ReceiptTextIcon} title={t(showBranch ? 'emptyAll' : 'empty')} />
       ) : (
         <Card className="py-0 gap-y-0 overflow-hidden">
@@ -101,7 +118,7 @@ export default async function AdministrationPage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.items.map((invoice) => {
+              {history.items.map((invoice) => {
                 // An issued invoice a credit note cancelled reads as cancelled, not as authorized.
                 const status = isCredited(invoice) ? 'CREDITED' : invoice.status;
                 const credited = invoice.creditedInvoice;
@@ -162,7 +179,7 @@ export default async function AdministrationPage({
       )}
       {pageCount > 1 ? (
         <div className="flex justify-center">
-          <InvoicePagination page={page} pageCount={pageCount} />
+          <InvoicePagination page={page} pageCount={pageCount} view={view} />
         </div>
       ) : null}
     </PageShell>

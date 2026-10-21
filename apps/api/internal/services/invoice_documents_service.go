@@ -21,6 +21,10 @@ type invoiceDocumentStore interface {
 	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID, int, int) ([]domain.Invoice, int, error)
 }
 
+type awaitingInvoiceStore interface {
+	ListAwaitingInvoice(context.Context, repository.Querier, domain.Tenant, domain.ARCAEnvironment, int, int) ([]domain.SaleAwaitingInvoice, int, error)
+}
+
 // List returns a bounded page of the fiscal records in the caller's branch reach: the active
 // branch, or every branch the caller may read when none is selected.
 func (s *InvoiceService) List(ctx context.Context, tenant domain.Tenant, page int) ([]domain.Invoice, int, error) {
@@ -35,12 +39,34 @@ func (s *InvoiceService) List(ctx context.Context, tenant domain.Tenant, page in
 	var total int
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		if invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchFilter(), 25, (page-1)*25); err != nil {
+		if invoices, total, err = store.List(ctx, q, tenant.AccountID, tenant.BranchFilter(), domain.InvoicePageSize, (page-1)*domain.InvoicePageSize); err != nil {
 			return err
 		}
 		return s.linkVouchers(ctx, q, tenant.AccountID, invoices)
 	})
 	return invoices, total, err
+}
+
+// ListAwaitingInvoice returns a bounded page of the accepted sales still waiting for an invoice in
+// the caller's branch and seller reach, paid first, and how many there are. It is empty while the
+// account does not invoice.
+func (s *InvoiceService) ListAwaitingInvoice(ctx context.Context, tenant domain.Tenant, page int) ([]domain.SaleAwaitingInvoice, int, error) {
+	if page < 1 || page > 100000 {
+		return nil, 0, domain.ErrInvalidInput
+	}
+	store, ok := s.store.(awaitingInvoiceStore)
+	if !ok {
+		return nil, 0, domain.ErrNotConfigured
+	}
+	var sales []domain.SaleAwaitingInvoice
+	var total int
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		sales, total, err = store.ListAwaitingInvoice(ctx, q, tenant, s.settings.Environment,
+			domain.InvoicePageSize, (page-1)*domain.InvoicePageSize)
+		return err
+	})
+	return sales, total, err
 }
 
 // GetByID returns a fiscal record through tenant and branch boundaries.

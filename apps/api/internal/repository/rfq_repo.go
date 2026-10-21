@@ -214,20 +214,26 @@ const rfqCurrentLineCounts = `LEFT JOIN LATERAL (
 const rfqClosureColumns = `q.paid_at, payer.name, q.invoice_waived_at, waiver.name,
 		        COALESCE(closure.invoiced, FALSE), COALESCE(closure.pending, FALSE), a.invoicing_enabled`
 
-// rfqClosureJoins names who closed the sale, whether an issued invoice no credit note cancelled
-// stands for it in the server's environment ($5) or in production, and whether any voucher of the
-// sale still waits for ARCA, in any environment.
-const rfqClosureJoins = `LEFT JOIN app_user payer ON payer.id = q.paid_by_user_id AND payer.account_id = r.account_id
+// rfqClosureJoins names who closed the sale beside its invoice facts.
+var rfqClosureJoins = `LEFT JOIN app_user payer ON payer.id = q.paid_by_user_id AND payer.account_id = r.account_id
 		 LEFT JOIN app_user waiver ON waiver.id = q.invoice_waived_by_user_id AND waiver.account_id = r.account_id
-		 LEFT JOIN LATERAL (
+		 ` + saleInvoiceFacts("$5")
+
+// saleInvoiceFacts joins, for the quote aliased q, whether an issued invoice no credit note cancelled
+// stands for it in the server's environment (bound at envParam) or in production (closure.invoiced),
+// and whether any voucher of the sale still waits for ARCA, in any environment (closure.pending).
+// envParam is always a literal placeholder, never a value.
+func saleInvoiceFacts(envParam string) string {
+	return `LEFT JOIN LATERAL (
 		   SELECT EXISTS (SELECT 1 FROM invoice i
 		     WHERE i.account_id = q.account_id AND i.branch_id = q.branch_id AND i.quote_id = q.id
 		       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
-		       AND (i.environment::text = $5 OR i.environment = 'PRODUCTION') AND NOT ` + invoiceCredited + `) AS invoiced,
+		       AND (i.environment::text = ` + envParam + ` OR i.environment = 'PRODUCTION') AND NOT ` + invoiceCredited + `) AS invoiced,
 		          EXISTS (SELECT 1 FROM invoice p
 		     WHERE p.account_id = q.account_id AND p.branch_id = q.branch_id AND p.quote_id = q.id
 		       AND p.status = 'PENDING') AS pending
 		 ) closure ON TRUE`
+}
 
 // ListByTenant returns the RFQ list the Backoffice dashboard consumes. needs_followup rows sort
 // first and the client display name falls back to rfq.client_label when no ficha client is linked.

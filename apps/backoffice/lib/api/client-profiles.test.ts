@@ -87,6 +87,7 @@ describe('client profile API mapping', () => {
             branch_name: 'Morón',
             total: '145184.00',
             accepted_at: '2026-09-22T12:00:00Z',
+            invoice_status: 'PENDING',
           },
         ],
       }).sales[0],
@@ -98,6 +99,7 @@ describe('client profile API mapping', () => {
       branchName: 'Morón',
       total: '145184.00',
       acceptedAt: '2026-09-22T12:00:00Z',
+      invoiceStatus: 'PENDING',
     });
   });
 

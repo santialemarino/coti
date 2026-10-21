@@ -15,6 +15,7 @@ import (
 // InvoiceService is the invoicing surface the handler needs.
 type InvoiceService interface {
 	List(context.Context, domain.Tenant, int) ([]domain.Invoice, int, error)
+	ListAwaitingInvoice(context.Context, domain.Tenant, int) ([]domain.SaleAwaitingInvoice, int, error)
 	DownloadPDF(context.Context, domain.Tenant, uuid.UUID) ([]byte, error)
 	Recover(context.Context, domain.Tenant, uuid.UUID) (*domain.Invoice, error)
 	GetSettings(ctx context.Context, tenant domain.Tenant) (*domain.InvoicingSettings, error)

@@ -311,8 +311,9 @@ server has no ARCA encryption key, whatever the account chose.
 The backoffice hides everything invoicing-related while it is off: the invoice card on an accepted
 order, «Facturar también» and «No requiere factura» when closing a sale, a product's IVA rate, the
 client's fiscal data, the setup notices and the ARCA guide (`/settings/invoicing/arca` redirects to
-`/settings/invoicing`, where the switch lives). «Administración», the invoice history, stays
-reachable while the account has invoices, since those are still readable.
+`/settings/invoicing`, where the switch lives) and «Por facturar», Administración's list of sales
+waiting for an invoice. «Comprobantes», the invoice history, stays reachable while the account has
+invoices, since those are still readable.
 
 `invoice_on_payment` is the account default for «Facturar también» when a sale is marked paid
 (false for every account). It is written through `PUT /v1/invoicing/settings` beside the other

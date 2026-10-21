@@ -32,3 +32,25 @@ func TestSaleComplete(t *testing.T) {
 		}
 	}
 }
+
+// A voucher waiting for ARCA wins over every other fact, then an invoice, then the waiver.
+func TestInvoiceStatusOf(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name    string
+		closure domain.SaleClosure
+		want    domain.SaleInvoiceStatus
+	}{
+		{"nothing yet", domain.SaleClosure{PaidAt: &now}, domain.SaleInvoiceStatusUninvoiced},
+		{"invoiced", domain.SaleClosure{Invoiced: true}, domain.SaleInvoiceStatusInvoiced},
+		{"waived", domain.SaleClosure{InvoiceWaivedAt: &now}, domain.SaleInvoiceStatusWaived},
+		{"pending", domain.SaleClosure{InvoicePending: true}, domain.SaleInvoiceStatusPending},
+		{"invoiced, a credit note pending", domain.SaleClosure{Invoiced: true, InvoicePending: true}, domain.SaleInvoiceStatusPending},
+		{"waived, then invoiced", domain.SaleClosure{Invoiced: true, InvoiceWaivedAt: &now}, domain.SaleInvoiceStatusInvoiced},
+	}
+	for _, tc := range cases {
+		if got := domain.InvoiceStatusOf(tc.closure); got != tc.want {
+			t.Errorf("%s: InvoiceStatusOf = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

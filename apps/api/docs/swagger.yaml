@@ -500,6 +500,16 @@ definitions:
         type: string
       branch_name:
         type: string
+      invoice_status:
+        description: |-
+          InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the
+          account invoices.
+        enum:
+        - INVOICED
+        - PENDING
+        - WAIVED
+        - UNINVOICED
+        type: string
       quote_id:
         type: string
       quote_number:
@@ -2604,6 +2614,42 @@ definitions:
       status:
         type: string
       work_type:
+        type: string
+    type: object
+  dto.SaleAwaitingInvoiceListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SaleAwaitingInvoiceResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.SaleAwaitingInvoiceResponse:
+    properties:
+      accepted_at:
+        type: string
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      client:
+        type: string
+      client_id:
+        type: string
+      paid_at:
+        type: string
+      quote_id:
+        type: string
+      quote_number:
+        type: integer
+      rfq_id:
+        type: string
+      total:
         type: string
     type: object
   dto.SaveOnboardingProgressRequest:
@@ -7779,6 +7825,44 @@ paths:
       summary: Unarchive a quote
       tags:
       - quotes
+  /v1/quotes/awaiting-invoice:
+    get:
+      description: Accepted, unarchived sales with no live invoice, no pending voucher
+        and no waiver, in the caller's branch and seller reach; empty while the account
+        does not invoice.
+      parameters:
+      - description: Active branch; omitted lists every branch the caller reaches
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SaleAwaitingInvoiceListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List sales awaiting an invoice
+      tags:
+      - invoicing
   /v1/rfqs:
     get:
       description: Returns the RFQ list scoped to the tenant and, when set, the active

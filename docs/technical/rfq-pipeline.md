@@ -30,6 +30,7 @@ files an order arrives with are stored beside it and are not read here — see
 | `DELETE` | `/v1/quotes/{id}/payment`          | Takes the paid mark back                                               |
 | `POST`   | `/v1/quotes/{id}/invoice-waiver`   | Marks an accepted sale as needing no invoice («No requiere factura»)   |
 | `DELETE` | `/v1/quotes/{id}/invoice-waiver`   | Puts the sale back to waiting for its invoice                          |
+| `GET`    | `/v1/quotes/awaiting-invoice`      | One page of the accepted sales still waiting for an invoice            |
 
 The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
@@ -706,6 +707,29 @@ order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_wai
 `sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
 Coti — never while any voucher of the sale still waits for ARCA, in either environment. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
 re-deriving fiscal state.
+
+### Sales awaiting an invoice («Por facturar»)
+
+`GET /v1/quotes/awaiting-invoice?page=N` lists the accepted, unarchived sales that nothing stands
+for yet: no issued invoice a credit note did not cancel (in this server's environment or in
+production), no voucher waiting for ARCA in any environment, and no «No requiere factura». A
+refused invoice, or one a credit note cancelled, leaves the sale on the list. While the account does
+not invoice with Coti the list is empty. **Paid sales come first, then the longest accepted**,
+dated by the latest `ACCEPTED` entry in `quote_status_change`: a paid sale is the one most ready to
+invoice, and among the rest the oldest has waited longest.
+
+It reads the same reach as the queue — the active branch, or every branch the caller reaches when
+`X-Branch-Id` is absent, and for a seller only the sales they own or nobody claimed — so the list
+never offers a sale its reader cannot open. Each row carries the quote and order ids, the number,
+the branch, the client (or the order's loose label), the total, the acceptance date and `paid_at`.
+It pages like the invoice history: `{items, total, page, page_size}`, 25 rows a page, a page
+outside 1–100000 refused with **422**. One count and one page query, the invoice facts read by
+lateral `EXISTS` subqueries rather than per row.
+
+The backoffice shows it as the «Por facturar» view of Administración, beside «Comprobantes», only
+while the account invoices (`?view=pending`; any other value, or the switch off, is the history).
+Each row offers «Facturar», through the same confirmation as the queue and the invoice card, and
+«No requiere factura», which takes the row off the list at once and reads the page again.
 
 ### Archiving a quote
 

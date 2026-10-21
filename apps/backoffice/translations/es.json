@@ -1839,7 +1839,14 @@
         "quote": "Cotización",
         "branch": "Sucursal",
         "date": "Aceptada",
-        "total": "Total"
+        "total": "Total",
+        "invoice": "Factura"
+      },
+      "invoiceStatuses": {
+        "INVOICED": "Facturada",
+        "PENDING": "Pendiente en ARCA",
+        "WAIVED": "No requiere factura",
+        "UNINVOICED": "Sin facturar"
       },
       "emptySales": {
         "title": "No hay ventas visibles",
@@ -3028,6 +3035,28 @@
       "branch": "Sucursal",
       "creditNoteType": "NC {type}",
       "credits": "Anula {type} {number}"
+    },
+    "views": {
+      "label": "Vista de administración",
+      "history": "Comprobantes",
+      "pending": "Por facturar"
+    },
+    "pending": {
+      "title": "Por facturar",
+      "description": "Las ventas aceptadas de esta sucursal que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "descriptionAll": "Las ventas aceptadas de las sucursales del corralón que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "empty": "No hay ventas esperando factura en esta sucursal.",
+      "emptyAll": "No hay ventas esperando factura en ninguna sucursal.",
+      "order": "Pedido",
+      "client": "Cliente",
+      "noClient": "Sin cliente",
+      "branch": "Sucursal",
+      "accepted": "Aceptada",
+      "total": "Total",
+      "payment": "Cobro",
+      "paid": "Cobrada",
+      "unpaid": "Sin cobrar",
+      "actions": "Acciones"
     },
     "testBadge": "Prueba"
   }
