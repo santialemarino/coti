@@ -43,6 +43,14 @@ quotation operations additionally enforce branch scope. PostgreSQL RLS remains e
 lists and details continue projecting accepted sales within the caller's branch and seller reach.
 Associating a client at SENT does not turn the quotation into an accepted sale.
 
+Each accepted sale on `GET /v1/clients/{id}` carries `invoice_status`, read in the same query as the
+sale: `PENDING` while any voucher waits for ARCA, otherwise `INVOICED` for an issued invoice no credit
+note cancelled (in this server's environment or in production), `WAIVED` for «No requiere factura»,
+and `UNINVOICED` for the rest. `domain.InvoiceStatusOf` is the one place that order lives. The
+backoffice shows it as a column of the profile's sales table only while the account invoices, and the
+whole row opens the order: the reference is the row's one link, stretched over the row, so a pointer
+anywhere on it and a single keyboard stop both reach the order.
+
 Tags retain their existing account-owned many-to-many model and replacement semantics. The send
 form preserves the chosen profile's current tags and allows selecting existing reusable tags.
 Profile tag editing and tag creation remain available through their existing endpoints.
