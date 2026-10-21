@@ -58,6 +58,19 @@ describe('RfqQueueProvider', () => {
     expect(screen.getByText('cola')).toBeTruthy();
   });
 
+  // The archive is the table filter's to ask for; every shell render would otherwise carry it.
+  it('reads the open queue without the archive, and the account beside it', async () => {
+    vi.mocked(apiRequest).mockClear();
+    await renderShell('SELLER', [{ id: 'b1' }]);
+
+    expect(
+      vi
+        .mocked(apiRequest)
+        .mock.calls.map(([request]) => request.path)
+        .sort(),
+    ).toEqual(['/v1/account', '/v1/rfqs']);
+  });
+
   // A failed read fails the queue screens alone; the rest of the shell must still render.
   it('fails only the queue screens when the queue cannot be read', async () => {
     vi.mocked(getSession).mockResolvedValue({ role: 'ADMIN', name: 'Ana', userId: 'u1' } as never);

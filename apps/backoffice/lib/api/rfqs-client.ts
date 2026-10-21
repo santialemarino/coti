@@ -109,9 +109,10 @@ export async function createFileRfqDraft(
   return response.json() as Promise<FileRfqDraftResponse>;
 }
 
-// The queue, archived orders included, read again from the browser.
-export async function fetchQueue(): Promise<RfqRecord[]> {
-  const response = await fetch('/api/rfqs', { method: 'GET', cache: 'no-store' });
+// The queue read again from the browser; archived orders come down only when asked for.
+export async function fetchQueue(includeArchived = false): Promise<RfqRecord[]> {
+  const path = includeArchived ? '/api/rfqs?include_archived=true' : '/api/rfqs';
+  const response = await fetch(path, { method: 'GET', cache: 'no-store' });
   if (!response.ok) {
     await throwApiError(response);
   }

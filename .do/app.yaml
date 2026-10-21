@@ -393,8 +393,9 @@ jobs:
         scope: RUN_TIME
         type: SECRET
 
-  # Puts away the quotes nobody has moved in QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS (Go default: 30). It
-  # only sets a flag the seller can clear, so once a day, at night, is enough.
+  # Puts away the quotes nobody has moved in QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS, and the complete sales
+  # and rejected quotes quiet for QUOTE_AUTO_ARCHIVE_CLOSED_DAYS (Go defaults: 30 each). It only sets
+  # a flag the seller can clear, so once a day, at night, is enough.
   - name: quote-auto-archive
     kind: SCHEDULED
     schedule:
@@ -412,6 +413,10 @@ jobs:
       - key: ENV
         scope: RUN_TIME
         value: production
+      # The API's own value: it decides which invoices close a sale.
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
       - key: DATABASE_ADMIN_URL
         scope: RUN_TIME
         type: SECRET

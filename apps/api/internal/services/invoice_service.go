@@ -60,6 +60,7 @@ type invoiceQuoteReader interface {
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
 	SetInvoiceWaived(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID) (*domain.Quote, error)
+	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 type invoiceDiscountReader interface {
@@ -646,14 +647,21 @@ func (s *InvoiceService) settle(
 	}
 }
 
-// markIssued records ARCA's authorization. An issued invoice ends «No requiere factura» in the same
-// transaction: the sale was invoiced after all.
+// markIssued records ARCA's authorization. Any authorized voucher is activity on the sale, so it
+// restarts the inactivity the auto-archive measures; an issued invoice also ends «No requiere
+// factura» in the same transaction: the sale was invoiced after all.
 func (s *InvoiceService) markIssued(
 	ctx context.Context, q repository.Querier, tenant domain.Tenant, id uuid.UUID, auth domain.InvoiceAuthorization,
 ) (*domain.Invoice, error) {
 	issued, err := s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, id, auth)
-	if err != nil || issued.Kind != domain.VoucherKindInvoice {
-		return issued, err
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, issued.BranchID, issued.QuoteID); err != nil {
+		return nil, err
+	}
+	if issued.Kind != domain.VoucherKindInvoice {
+		return issued, nil
 	}
 	if _, err := s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, issued.BranchID, issued.QuoteID, nil); err != nil {
 		return nil, err

@@ -120,6 +120,7 @@ function draftRecord(): RfqRecord {
     paidAt: null,
     invoiceWaivedAt: null,
     invoiced: false,
+    invoicePending: false,
     saleComplete: false,
   };
 }
@@ -179,6 +180,7 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       invoice_waived_at: null,
       invoice_waived_by: null,
       invoiced: false,
+      invoice_pending: false,
       sale_complete: false,
       archived_at: null,
     },

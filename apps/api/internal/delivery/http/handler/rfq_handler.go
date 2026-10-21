@@ -623,6 +623,7 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		InvoiceWaivedAt:   item.Closure.InvoiceWaivedAt,
 		InvoiceWaivedBy:   item.Closure.InvoiceWaivedBy,
 		Invoiced:          item.Closure.Invoiced,
+		InvoicePending:    item.Closure.InvoicePending,
 		SaleComplete:      item.SaleComplete(),
 	}
 }

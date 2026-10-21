@@ -41,6 +41,14 @@ describe('fetchQueue', () => {
     expect(record).toMatchObject({ id: 'r1', client: '', status: 'GENERATED', archived: true });
   });
 
+  it('asks for the archived orders only when told to', async () => {
+    answer(200, []);
+
+    await fetchQueue(true);
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/rfqs?include_archived=true');
+  });
+
   // The column keeps the last good list on a failure, which only works if a failure is not an
   // empty queue.
   it('throws on a refused read instead of answering an empty queue', async () => {

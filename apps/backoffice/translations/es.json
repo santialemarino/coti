@@ -1246,7 +1246,13 @@
       "groups": {
         "expand": "Mostrar todos",
         "collapse": "Mostrar menos",
-        "stackHint": "Mostrar los {count} pedidos de este estado"
+        "stackHint": "Mostrar los {count} pedidos de este estado",
+        "stacks": {
+          "TO_CLOSE": "Por cerrar",
+          "COMPLETED": "Completados"
+        },
+        "show": "Mostrar",
+        "hide": "Ocultar"
       },
       "empty": {
         "title": "Todavía no hay pedidos"
@@ -1268,6 +1274,20 @@
         "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
         "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
         "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
+      },
+      "closing": {
+        "MARK_PAID": "Marcar cobrado",
+        "UNMARK_PAID": "Desmarcar cobrado",
+        "INVOICE": "Facturar",
+        "WAIVE": "No requiere factura",
+        "UNWAIVE": "Requiere factura",
+        "labelled": "{action} el pedido {id}",
+        "menu": "Acciones del pedido {id}"
+      },
+      "archived": {
+        "loading": "Trayendo los pedidos archivados…",
+        "failed": "No pudimos traer los pedidos archivados.",
+        "retry": "Reintentar"
       }
     },
     "create": {
@@ -2860,7 +2880,11 @@
         "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede modificar: si hay un error, se anula con una nota de crédito.",
         "confirm": "Emitir factura",
         "confirming": "Emitiendo…",
-        "cancel": "Cancelar"
+        "cancel": "Cancelar",
+        "titlePending": "Emitir la factura",
+        "unavailable": "No pudimos leer la factura. Abrí el pedido para emitirla desde su tarjeta.",
+        "alreadyIssued": "Esta venta ya tiene una factura emitida o esperando la respuesta de ARCA.",
+        "blocked": "Todavía no se puede facturar: {reasons}. Abrí el pedido para resolverlo desde la tarjeta de la factura."
       },
       "rejected": {
         "title": "ARCA rechazó el último intento",

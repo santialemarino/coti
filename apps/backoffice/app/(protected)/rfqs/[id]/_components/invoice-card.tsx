@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
+import { IssueInvoiceDialog } from '@/app/(protected)/rfqs/_components/issue-invoice-dialog';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { SetupNotice } from '@/components/setup-notice';
@@ -45,7 +46,7 @@ import {
   type InvoicePreview,
   type InvoiceReceiver,
 } from '@/lib/api/invoicing';
-import { getInvoicePreview, issueCreditNote, issueInvoice } from '@/lib/api/invoicing-client';
+import { getInvoicePreview, issueCreditNote } from '@/lib/api/invoicing-client';
 import { setInvoiceWaived } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { isSetupIssue } from '@/lib/utils/setup-issues';
@@ -104,7 +105,6 @@ export function InvoiceCard({
   // ARCA's reasons from the attempt just made, until a reload carries them on the invoice itself.
   const [rejection, setRejection] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
-  const [issuing, startIssue] = useTransition();
   // ARCA's reasons for refusing the credit note just asked for, until a reload carries them.
   const [creditNoteRejection, setCreditNoteRejection] = useState<string[]>([]);
   const [confirmingCreditNote, setConfirmingCreditNote] = useState(false);
@@ -142,25 +142,18 @@ export function InvoiceCard({
     void load(true);
   }, [clientId, load, revision]);
 
-  function issue(confirmed: InvoicePreview) {
+  function markIssued(invoice: Invoice) {
+    latestRead.current++;
     setRejection([]);
-    startIssue(async () => {
-      try {
-        const invoice = await issueInvoice(quoteId, branchId, confirmed);
-        latestRead.current++;
-        setConfirming(false);
-        toast.success(t('issued', { type: invoice.type, number: invoiceNumberOf(invoice) }));
-        setPreview((current) => (current ? { ...current, invoice, issues: [] } : current));
-        // The button that opened the dialog is gone with the draft; focus lands on what replaced it.
-        requestAnimationFrame(() => headingRef.current?.focus());
-      } catch (cause) {
-        setConfirming(false);
-        const code = errorCodeOf(cause);
-        if (code === 'INVOICE_REJECTED' && cause instanceof ApiError) setRejection(cause.issues);
-        toast.error(message(code));
-        await reload();
-      }
-    });
+    setPreview((current) => (current ? { ...current, invoice, issues: [] } : current));
+    // The button that opened the dialog is gone with the draft; focus lands on what replaced it.
+    requestAnimationFrame(() => headingRef.current?.focus());
+  }
+
+  async function issueFailed(cause: unknown) {
+    const code = errorCodeOf(cause);
+    setRejection(code === 'INVOICE_REJECTED' && cause instanceof ApiError ? cause.issues : []);
+    await reload();
   }
 
   function creditNote(invoice: Invoice) {
@@ -337,46 +330,31 @@ export function InvoiceCard({
                   variant="outline"
                   pending={waiving}
                   pendingLabel={t('waiver.pending')}
-                  disabled={issuing}
                   onClick={() => setWaived(true)}
                 >
                   {t('waiver.action')}
                 </PendingButton>
                 {preview.issues.length === 0 ? (
-                  <PendingButton
+                  <Button
                     ref={issueButtonRef}
-                    pending={issuing}
-                    pendingLabel={t('issuing')}
                     disabled={waiving}
                     onClick={() => setConfirming(true)}
                   >
                     {t('issue', { type: preview.type })}
-                  </PendingButton>
+                  </Button>
                 ) : null}
               </div>
             ) : null}
 
-            <ConfirmDialog
+            <IssueInvoiceDialog
               open={confirming}
-              onOpenChange={(open) => !issuing && setConfirming(open)}
-              entity={preview}
-              tone="default"
-              title={t('confirm.title', { type: preview.type })}
-              description={(shown) =>
-                t('confirm.description', {
-                  type: shown.type,
-                  receiver: shown.receiver.name || t('finalConsumer'),
-                  total: fmt.currency(shown.amounts.total, shown.currency),
-                })
-              }
-              onConfirm={() => issue(preview)}
+              onOpenChange={setConfirming}
+              quoteId={quoteId}
+              branchId={branchId}
+              preview={preview}
+              onIssued={markIssued}
+              onFailed={issueFailed}
               onCloseAutoFocus={(event) => returnFocus(event, issueButtonRef)}
-              pending={issuing}
-              labels={{
-                confirm: t('confirm.confirm'),
-                pending: t('confirm.confirming'),
-                cancel: t('confirm.cancel'),
-              }}
             />
           </div>
         )}

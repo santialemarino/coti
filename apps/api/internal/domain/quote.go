@@ -81,8 +81,8 @@ func SaleComplete(status QuoteStatus, closure SaleClosure) bool {
 
 // AutoArchiveStatuses are the statuses the inactivity sweep archives: the stalls follow-up chases,
 // waiting on the seller (DRAFT, QUOTED) or on the client (SENT, only once its offer has lapsed). A
-// change request is a live demand from the client, and a closed quote is a record of the outcome,
-// so neither is put away unasked.
+// change request is a live demand from the client, so it is never put away unasked; closed outcomes
+// are swept on their own window.
 var AutoArchiveStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusSent}
 
 // ArchivedQuote is one quote the inactivity sweep archived, with the activity it went quiet after.
