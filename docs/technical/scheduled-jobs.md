@@ -203,13 +203,12 @@ window.
 transition, a send, assigning the seller, associating the client, ARCA authorizing an invoice or a
 credit note (`InvoiceService.markIssued` claims the row in the same transaction), and unarchiving —
 so a quote the seller brings back starts a fresh window instead of being put away again on the next
-run. A line,
-discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches it and
-holds its lock until the edit commits, so a quote being worked on is never idle and the sweep can
-never archive it between the edit's archive check and its write. US-41's
-follow-up flag is meant to read the same measure on a shorter threshold, so a quote is flagged
-before it is archived; because setting the flag writes the quote row too, that job has to compare
-against the time before its own write.
+run. A line, discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches
+it and holds its lock until the edit commits, so a quote being worked on is never idle and the sweep
+can never archive it between the edit's archive check and its write. US-41's follow-up flag is meant
+to read the same measure on a shorter threshold, so a quote is flagged before it is archived;
+because setting the flag writes the quote row too, that job has to compare against the time before
+its own write.
 
 **How it runs.** One statement archives up to `QUOTE_AUTO_ARCHIVE_BATCH_SIZE` quotes across every
 account and returns them; the run repeats until a batch comes back short, so a backlog clears in one

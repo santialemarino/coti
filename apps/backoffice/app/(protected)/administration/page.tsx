@@ -66,14 +66,21 @@ export default async function AdministrationPage({
   const view: AdministrationView =
     account.invoicingEnabled && params.view === 'pending' ? 'pending' : 'history';
   const requested = Number(params.page ?? '1');
-  const page =
-    Number.isInteger(requested) && requested > 0 && requested <= PAGE_MAX ? requested : 1;
-  const [history, pending] = await Promise.all([
-    view === 'history' ? getInvoices(page) : null,
-    view === 'pending' ? getSalesAwaitingInvoice(page) : null,
-  ]);
-  const result = history ?? pending;
-  const pageCount = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
+  let page = Number.isInteger(requested) && requested > 0 && requested <= PAGE_MAX ? requested : 1;
+  const load = (at: number) =>
+    Promise.all([
+      view === 'history' ? getInvoices(at) : null,
+      view === 'pending' ? getSalesAwaitingInvoice(at) : null,
+    ]);
+  let [history, pending] = await load(page);
+  const lastPage = (result: { total: number; pageSize: number } | null) =>
+    result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
+  // Clearing the last row of the last page leaves it empty: show the page that is now last.
+  if (page > lastPage(history ?? pending)) {
+    page = lastPage(history ?? pending);
+    [history, pending] = await load(page);
+  }
+  const pageCount = lastPage(history ?? pending);
   // With every branch in view, each row says which one it belongs to.
   const showBranch = !branchId;
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
