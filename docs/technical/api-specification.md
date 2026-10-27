@@ -118,6 +118,7 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `BRANCH_NOT_ACCESSIBLE`     | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them                                        |
 | `BRANCH_MAILBOX_REQUIRED`   | 422    | clearing the mailbox a configured email channel sends from                                                          |
 | `ACCOUNT_TAX_ID_REQUIRED`   | 422    | starting the ARCA connection for an account with no CUIT                                                            |
+| `TAX_ID_READ_ONLY`          | 422    | sending `tax_id` to a client's fiscal data: a client's CUIT comes only from their customer account                  |
 | `ARCA_CONNECTED`            | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`                              |
 | `INVOICE_PENDING`           | 409    | removing the ARCA connection, or switching invoicing off, while an invoice is still waiting for ARCA's answer       |
 | `ACCOUNT_INVOICING_OFF`     | 409    | previewing or issuing an invoice, or issuing a credit note, while the account has invoicing with Coti switched off  |

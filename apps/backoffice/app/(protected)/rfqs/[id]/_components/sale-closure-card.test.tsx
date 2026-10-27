@@ -40,6 +40,7 @@ const PREVIEW: InvoicePreview = {
   invoice: null,
   otherEnvironmentInvoice: null,
   creditedInvoice: null,
+  customerSignupUrl: null,
 };
 const ISSUED = { id: 'inv-1', status: 'ISSUED', type: 'B', pointOfSale: 3, number: 7 } as Invoice;
 

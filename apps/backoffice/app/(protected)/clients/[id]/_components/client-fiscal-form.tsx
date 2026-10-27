@@ -34,7 +34,7 @@ import { TaxIdInput } from '@/components/tax-id-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { updateClientFiscal } from '@/lib/api/clients-client';
 import { errorCodeOf } from '@/lib/api/errors';
-import { IVA_CONDITIONS, type ClientFiscal } from '@/lib/api/invoicing';
+import { formatCuit, IVA_CONDITIONS, type ClientFiscal } from '@/lib/api/invoicing';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { taxIdDigits } from '@/lib/utils/tax-id';
@@ -43,7 +43,11 @@ interface ClientFiscalFormProps {
   client: ClientFiscal;
 }
 
-// Fiscal identity belongs to the client profile and is shared by its orders.
+/*
+ * Fiscal identity belongs to the client profile and is shared by its orders. The CUIT is read-only:
+ * only the customer loads it, by creating their account. The DNI, a consumidor final's document,
+ * is the seller's to edit and never stands in for it.
+ */
 export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
   const t = useTranslations('clients.fiscal');
   const tConditions = useTranslations('invoicing.ivaConditions');
@@ -56,6 +60,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
     resolver: zodResolver(schema),
     defaultValues: valuesOf(client),
   });
+  const cuit = taxIdDigits(client.taxId ?? '');
 
   async function onSubmit(values: ClientFiscalValues) {
     try {
@@ -63,7 +68,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
       const saved = await updateClientFiscal(client.id, {
         address: values.address || undefined,
         legalName: values.legalName || undefined,
-        taxId: values.taxId || undefined,
+        dni: values.dni || undefined,
         ivaCondition: values.ivaCondition || undefined,
       });
       const name = saved.legalName ?? saved.name;
@@ -73,7 +78,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
     } catch (cause) {
       const code = errorCodeOf(cause);
       if (code === 'INVALID_TAX_ID') {
-        form.setError('taxId', { message: message(code) });
+        form.setError('dni', { message: message(code) });
         return;
       }
       form.setError('root', { message: message(code) });
@@ -135,21 +140,28 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                   </FormItem>
                 )}
               />
+              <dl className="flex flex-col gap-y-2">
+                <dt className="text-paragraph-sm-medium text-foreground">{t('cuit.label')}</dt>
+                <dd className="text-paragraph-sm text-foreground">
+                  {cuit ? formatCuit(cuit) : t('cuit.missing')}
+                </dd>
+                <dd className="text-paragraph-xs text-foreground-muted">{t('cuit.hint')}</dd>
+              </dl>
               <FormField
                 control={form.control}
-                name="taxId"
+                name="dni"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('taxId.label')}</FormLabel>
+                    <FormLabel>{t('dni.label')}</FormLabel>
                     <FormControl>
                       <TaxIdInput
-                        kind="cuit-or-dni"
+                        kind="dni"
                         disabled={form.formState.isSubmitting}
-                        placeholder={t('taxId.placeholder')}
+                        placeholder={t('dni.placeholder')}
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription>{t('taxId.hint')}</FormDescription>
+                    <FormDescription>{t('dni.hint')}</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -199,7 +211,7 @@ function valuesOf(client: ClientFiscal): ClientFiscalValues {
   return {
     address: client.address ?? '',
     legalName: client.legalName ?? '',
-    taxId: taxIdDigits(client.taxId ?? ''),
+    dni: taxIdDigits(client.dni ?? ''),
     ivaCondition: client.ivaCondition ?? '',
   };
 }

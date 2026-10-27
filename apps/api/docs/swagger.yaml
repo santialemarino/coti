@@ -424,6 +424,8 @@ definitions:
     properties:
       address:
         type: string
+      dni:
+        type: string
       id:
         type: string
       iva_condition:
@@ -433,6 +435,7 @@ definitions:
       name:
         type: string
       tax_id:
+        description: CUIT or CUIL, from the customer's account; read-only.
         type: string
     type: object
   dto.ClientListResponse:
@@ -1304,6 +1307,12 @@ definitions:
           CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
           environment, with that credit note: history, and what a new invoice follows.
       currency:
+        type: string
+      customer_signup_url:
+        description: |-
+          CustomerSignupURL is where the customer creates the account that carries their CUIT; present
+          only while the issues ask for the receiver's CUIT or document and the supplier has its own
+          customer site.
         type: string
       environment:
         description: Environment is where an invoice issued now would be authorized.
@@ -2900,6 +2909,11 @@ definitions:
       address:
         maxLength: 255
         type: string
+      dni:
+        description: DNI identifies a consumidor final, beside any CUIT the customer's
+          account carries.
+        maxLength: 32
+        type: string
       iva_condition:
         enum:
         - REGISTERED
@@ -2909,9 +2923,6 @@ definitions:
         type: string
       legal_name:
         maxLength: 255
-        type: string
-      tax_id:
-        maxLength: 32
         type: string
     type: object
   dto.UpdateDiscountRequest:
@@ -3950,8 +3961,9 @@ paths:
     put:
       consumes:
       - application/json
-      description: Replaces the client's legal name, CUIT or DNI (check digit verified)
-        and IVA condition; omitted fields clear.
+      description: Replaces the client's legal name, address, IVA condition and DNI;
+        omitted fields clear. A CUIT comes only from the customer's account, so tax_id
+        is refused.
       parameters:
       - description: Client id
         in: path
@@ -3984,7 +3996,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
-          description: INVALID_TAX_ID
+          description: INVALID_TAX_ID, TAX_ID_READ_ONLY
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:

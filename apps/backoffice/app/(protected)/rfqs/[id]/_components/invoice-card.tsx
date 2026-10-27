@@ -31,6 +31,7 @@ import {
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { IssueInvoiceDialog } from '@/app/(protected)/rfqs/_components/issue-invoice-dialog';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { SignupLinkDialog } from '@/app/(protected)/rfqs/[id]/_components/signup-link-dialog';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { SetupNotice } from '@/components/setup-notice';
 import { ROUTES } from '@/config/routes';
@@ -56,6 +57,8 @@ const RECEIVER_ISSUES = new Set([
   'RECEIVER_ID_REQUIRED',
   'RECEIVER_ADDRESS_REQUIRED',
 ]);
+// The gaps a CUIT closes, and only the customer loads one, by signing up.
+const SIGNUP_ISSUES = new Set(['RECEIVER_CUIT_REQUIRED', 'RECEIVER_ID_REQUIRED']);
 const NO_AMOUNT = '0.00';
 const DOC_NUMBER_FORMATS: Record<string, (digits: string) => string> = {
   CUIT: formatCuit,
@@ -303,9 +306,21 @@ export function InvoiceCard({
               isSetupIssue(issue) ? (
                 <SetupNotice key={issue} issue={issue} isAdmin={isAdmin} tone="info" />
               ) : (
-                <Callout key={issue} tone="info" title={t(`issues.${issue}.title`)}>
+                <Callout
+                  key={issue}
+                  tone="info"
+                  title={t(`issues.${issue}.title`)}
+                  action={
+                    SIGNUP_ISSUES.has(issue) && preview.customerSignupUrl ? (
+                      <SignupLinkDialog url={preview.customerSignupUrl} />
+                    ) : undefined
+                  }
+                >
                   {t(`issues.${issue}.body`)}
                   {RECEIVER_ISSUES.has(issue) && clientId === null ? ` ${t('noClient')}` : null}
+                  {SIGNUP_ISSUES.has(issue) && !preview.customerSignupUrl
+                    ? ` ${t('signup.noSite')}`
+                    : null}
                 </Callout>
               ),
             )}
