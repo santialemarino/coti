@@ -7,16 +7,21 @@ import {
   ArchiveRestoreIcon,
   Building2Icon,
   ClipboardListIcon,
+  EllipsisIcon,
+  FileXIcon,
   InboxIcon,
   LinkIcon,
   MailIcon,
   MessageCircleIcon,
   PlusIcon,
   RadioIcon,
+  ReceiptTextIcon,
   SearchXIcon,
   TagIcon,
+  Undo2Icon,
   UserPlusIcon,
   UsersIcon,
+  WalletIcon,
   XIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -40,6 +45,7 @@ import {
   RowActionButton,
   SearchInput,
   SortableTableHead,
+  Spinner,
   Table,
   TableBody,
   TableCaption,
@@ -63,6 +69,14 @@ import {
   STATUS_ORDER,
 } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
+import {
+  closingActions,
+  type ClosingAction,
+} from '@/app/(protected)/rfqs/_components/sale-closure';
+import {
+  SaleClosureDialogs,
+  type ClosingTarget,
+} from '@/app/(protected)/rfqs/_components/sale-closure-dialogs';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -72,7 +86,13 @@ import {
   type RfqRecord,
   type RfqStatus,
 } from '@/lib/api/rfqs';
-import { assignRfqSeller, setQuoteArchived, setRfqSeller } from '@/lib/api/rfqs-client';
+import {
+  assignRfqSeller,
+  setInvoiceWaived,
+  setQuoteArchived,
+  setQuotePaid,
+  setRfqSeller,
+} from '@/lib/api/rfqs-client';
 import { listSellers, type Seller } from '@/lib/api/sellers';
 import { useFormatters } from '@/lib/i18n/formatters';
 
@@ -288,20 +308,40 @@ function SellerCell({
   );
 }
 
+const CLOSING_ICON: Record<ClosingAction, typeof MailIcon> = {
+  MARK_PAID: WalletIcon,
+  UNMARK_PAID: Undo2Icon,
+  INVOICE: ReceiptTextIcon,
+  WAIVE: FileXIcon,
+  UNWAIVE: Undo2Icon,
+};
+
 interface RowActionsProps {
   rfq: RfqRecord;
   onArchive: (rfq: RfqRecord) => void;
   archiving: boolean;
+  // The closing actions that apply to the row; none outside an open accepted sale.
+  closing: ClosingAction[];
+  onClosing: (rfq: RfqRecord, action: ClosingAction) => void;
+  closingBusy: boolean;
 }
 
 /*
- * The row's own actions, inline rather than behind a menu. There is one of them: opening the order
- * is what clicking the row already does, and steering the owner lives in the seller cell, so a menu
- * here would be a lid over a single item.
+ * The row's own actions. Opening the order is what clicking the row already does, and steering the
+ * owner lives in the seller cell, so most rows have one action, inline. An accepted sale still open
+ * adds its closing actions, and with them the row's actions go behind a menu.
  */
-function RowActions({ rfq, onArchive, archiving }: RowActionsProps) {
+function RowActions({
+  rfq,
+  onArchive,
+  archiving,
+  closing,
+  onClosing,
+  closingBusy,
+}: RowActionsProps) {
   const t = useTranslations('rfqs');
   const archived = rfq.archived === true;
+  const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
 
   /*
    * Archivado is a flag on the quote, so an order that never produced one has nothing to archive.
@@ -309,6 +349,49 @@ function RowActions({ rfq, onArchive, archiving }: RowActionsProps) {
    * explanation would be unreachable exactly where it was needed.
    */
   if (rfq.quoteId === null) return null;
+
+  if (closing.length > 0) {
+    const menuLabel = t('list.closing.menu', { id: reference });
+    return (
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={menuLabel}
+                className="text-foreground-subtle hover:text-foreground"
+              >
+                <EllipsisIcon aria-hidden="true" className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{menuLabel}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end">
+          {closing.map((action) => {
+            const Icon = CLOSING_ICON[action];
+            return (
+              <DropdownMenuItem
+                key={action}
+                disabled={closingBusy}
+                onSelect={() => onClosing(rfq, action)}
+              >
+                <Icon aria-hidden="true" />
+                {t(`list.closing.${action}`)}
+              </DropdownMenuItem>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={archiving} onSelect={() => onArchive(rfq)}>
+            <ArchiveIcon aria-hidden="true" />
+            {t('list.actions.archive')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   return (
     <RowActionButton
@@ -334,8 +417,13 @@ export function RfqDashboard({
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
+  const tClosure = useTranslations('rfqs.detail.closure');
+  const tWaiver = useTranslations('invoicing.card.waiver');
   const message = useApiErrorMessage('rfqs');
-  const { userName, userId, isAdmin } = useRfqList();
+  const paidMessage = useApiErrorMessage('rfqs.detail.closure');
+  const waiverMessage = useApiErrorMessage('invoicing.card');
+  const { userName, userId, isAdmin, invoicingEnabled, archivedState, requestArchived, reload } =
+    useRfqList();
 
   const [records, setRecords] = useState<RfqRecord[]>(initialRecords);
   // Orders already being claimed, so a double-click cannot fire two claims.
@@ -402,10 +490,20 @@ export function RfqDashboard({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
 
+  // Rows whose closing write is in flight, and the sale a closing confirmation is open for.
+  const [closingRows, setClosingRows] = useState<ReadonlySet<string>>(new Set());
+  const [closingTarget, setClosingTarget] = useState<ClosingTarget | null>(null);
+
   // Any criterion change starts over at the first page, or a stale page number would point nowhere.
   useEffect(() => {
     setPage(1);
   }, [query, statusFilter, channelFilter, branchFilter, sellerFilter, sortBy, sortOrder]);
+
+  // The archive is not part of the queue the shell reads; the filter is what brings it down.
+  const wantsArchived = statusFilter.includes(ARCHIVED_FILTER);
+  useEffect(() => {
+    if (wantsArchived) requestArchived();
+  }, [requestArchived, wantsArchived]);
 
   /*
    * The branch column and its filter only exist while the header switcher is on "todas las
@@ -561,6 +659,40 @@ export function RfqDashboard({
   }
 
   /*
+   * A closing action from the row menu. Marking paid and invoicing confirm first; the rest are
+   * facts the same menu takes back, so they go straight through. The queue is read again after
+   * each, since closing a sale moves it between stacks.
+   */
+  async function closeSale(rfq: RfqRecord, action: ClosingAction) {
+    if (action === 'MARK_PAID' || action === 'INVOICE') {
+      setClosingTarget({ record: rfq, action });
+      return;
+    }
+    if (rfq.quoteId === null || closingRows.has(rfq.id)) return;
+    const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
+    setClosingRows((previous) => new Set(previous).add(rfq.id));
+    try {
+      if (action === 'UNMARK_PAID') {
+        await setQuotePaid(rfq.quoteId, false, rfq.branchId);
+        toast.success(tClosure('unmarkedPaid', { reference }));
+      } else {
+        await setInvoiceWaived(rfq.quoteId, action === 'WAIVE', rfq.branchId);
+        toast.success(tWaiver(action === 'WAIVE' ? 'waived' : 'restored', { reference }));
+      }
+      await reload();
+    } catch (error) {
+      const code = errorCodeOf(error);
+      toast.error(action === 'UNMARK_PAID' ? paidMessage(code) : waiverMessage(code));
+    } finally {
+      setClosingRows((previous) => {
+        const next = new Set(previous);
+        next.delete(rfq.id);
+        return next;
+      });
+    }
+  }
+
+  /*
    * Claim an unassigned order for the signed-in seller. The row only stamps the owner after the
    * backend confirms the claim, so a peer who took it first keeps the row intact and gets a toast.
    */
@@ -665,6 +797,8 @@ export function RfqDashboard({
     }
   }
 
+  const archiveNotice =
+    wantsArchived && (archivedState === 'loading' || archivedState === 'failed');
   const pageAllSelected = pageItems.length > 0 && pageItems.every((rfq) => selected.has(rfq.id));
   const pageSomeSelected = pageItems.some((rfq) => selected.has(rfq.id)) && !pageAllSelected;
 
@@ -702,9 +836,13 @@ export function RfqDashboard({
             <MultiCombobox
               options={STATUS_FILTER_VALUES.map((status) => ({
                 value: status,
-                label: `${status === ARCHIVED_FILTER ? t('status.ARCHIVED') : t(`status.${status}`)} (${
-                  statusCounts.get(status) ?? 0
-                })`,
+                // The archive is not counted until it has been read: zero would be a guess.
+                label:
+                  status === ARCHIVED_FILTER
+                    ? archivedState === 'loaded'
+                      ? `${t('status.ARCHIVED')} (${statusCounts.get(status) ?? 0})`
+                      : t('status.ARCHIVED')
+                    : `${t(`status.${status}`)} (${statusCounts.get(status) ?? 0})`,
               }))}
               values={statusFilter}
               onValuesChange={(values) => setStatusFilter(values as StatusFilterValue[])}
@@ -876,13 +1014,39 @@ export function RfqDashboard({
             </TableRow>
           </TableHeader>
           <TableBody>
+            {archiveNotice ? (
+              <TableRow>
+                <TableCell
+                  colSpan={BASE_COLUMN_COUNT + (showBranchColumn ? 1 : 0)}
+                  className="py-6 text-paragraph-sm text-foreground-muted"
+                >
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+                    {archivedState === 'loading' ? (
+                      <>
+                        <Spinner size="sm" />
+                        {t('list.archived.loading')}
+                      </>
+                    ) : (
+                      <>
+                        {t('list.archived.failed')}
+                        <Button variant="outline" size="sm" onClick={requestArchived}>
+                          {t('list.archived.retry')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : null}
             {filtered.length === 0 ? (
-              <TableEmptyRow
-                colSpan={BASE_COLUMN_COUNT + (showBranchColumn ? 1 : 0)}
-                icon={hasCriteria ? SearchXIcon : InboxIcon}
-                title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
-                description={hasCriteria ? t('list.noResults.description') : undefined}
-              />
+              archiveNotice ? null : (
+                <TableEmptyRow
+                  colSpan={BASE_COLUMN_COUNT + (showBranchColumn ? 1 : 0)}
+                  icon={hasCriteria ? SearchXIcon : InboxIcon}
+                  title={t(hasCriteria ? 'list.noResults.title' : 'list.empty.title')}
+                  description={hasCriteria ? t('list.noResults.description') : undefined}
+                />
+              )
             ) : (
               pageItems.map((rfq) => {
                 const ChannelIcon = CHANNEL_ICON[rfq.channel];
@@ -1004,6 +1168,9 @@ export function RfqDashboard({
                           rfq={rfq}
                           onArchive={toggleArchived}
                           archiving={archiving.has(rfq.id)}
+                          closing={closingActions(rfq, invoicingEnabled)}
+                          onClosing={closeSale}
+                          closingBusy={closingRows.has(rfq.id)}
                         />
                       </div>
                     </TableCell>
@@ -1036,6 +1203,11 @@ export function RfqDashboard({
           </div>
         ) : null}
       </Card>
+      <SaleClosureDialogs
+        target={closingTarget}
+        onClose={() => setClosingTarget(null)}
+        onDone={reload}
+      />
       <CreateRfqDialog
         open={createOpen}
         onOpenChange={setCreateOpen}

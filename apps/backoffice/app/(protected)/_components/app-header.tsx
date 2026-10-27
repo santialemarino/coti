@@ -30,6 +30,8 @@ const PROFILE_MENU_OFFSET = 14;
 
 interface AppHeaderProps {
   session: SessionUser;
+  // Whether the invoice history is offered among the sections.
+  showInvoiceHistory: boolean;
 }
 
 /* First letters of the first two words, which is what a two-slot avatar can show. */
@@ -43,7 +45,7 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export async function AppHeader({ session }: AppHeaderProps) {
+export async function AppHeader({ session, showInvoiceHistory }: AppHeaderProps) {
   const t = await getTranslations('common');
   const branches = await getBranches();
   const activeBranchId = await getEffectiveBranchId(branches);
@@ -66,7 +68,7 @@ export async function AppHeader({ session }: AppHeaderProps) {
         <Brand variant="wordmark" size="md" />
       </Link>
 
-      <PrimaryNav className="max-lg:hidden" />
+      <PrimaryNav administration={showInvoiceHistory} className="max-lg:hidden" />
 
       {/* `min-w-0` lets the branch picker give up width on the narrowest phones. */}
       <div className="ml-auto flex min-w-0 items-center gap-x-3">

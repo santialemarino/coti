@@ -1,3 +1,5 @@
+import type { HandlerStrategy } from '@/lib/constants/conversation';
+
 /*
  * The statuses a seller sees and reasons about. DRAFT is deliberately absent: it is an internal
  * quote_state while the RFQ is still GENERATED, never a visible business state (see
@@ -56,6 +58,16 @@ export interface RfqRecord {
   followupFlaggedAt: string | null;
   processing?: boolean;
   archived?: boolean;
+  // When the sale was marked paid; null while it is not.
+  paidAt: string | null;
+  // When it was marked as needing no invoice; null while it is not.
+  invoiceWaivedAt: string | null;
+  // Whether an issued invoice no credit note cancelled stands for the sale.
+  invoiced: boolean;
+  // Whether a voucher of the sale still waits for ARCA, so no second one is offered.
+  invoicePending: boolean;
+  // Accepted, paid, and invoiced or waived (or the account does not invoice), as the API derives it.
+  saleComplete: boolean;
 }
 
 // Raw shape returned by GET /v1/rfqs; mapListItem turns it into an RfqRecord.
@@ -77,6 +89,14 @@ export interface RfqListItem {
   needs_followup: boolean;
   followup_flagged_at: string | null;
   archived_at: string | null;
+  paid_at: string | null;
+  // The name of whoever marked the sale paid.
+  paid_by: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by: string | null;
+  invoiced: boolean;
+  invoice_pending: boolean;
+  sale_complete: boolean;
 }
 
 export function mapListItem(item: RfqListItem): RfqRecord {
@@ -98,6 +118,11 @@ export function mapListItem(item: RfqListItem): RfqRecord {
     needsFollowup: item.needs_followup,
     followupFlaggedAt: item.followup_flagged_at,
     archived: item.archived_at != null,
+    paidAt: item.paid_at,
+    invoiceWaivedAt: item.invoice_waived_at,
+    invoiced: item.invoiced,
+    invoicePending: item.invoice_pending,
+    saleComplete: item.sale_complete,
   };
 }
 
@@ -179,6 +204,10 @@ export interface QuoteResponse {
   followup_flagged_at: string | null;
   created_at: string;
   updated_at: string;
+  paid_at: string | null;
+  paid_by_user_id: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by_user_id: string | null;
 }
 
 export interface QuoteVersionResponse {
@@ -394,6 +423,7 @@ export interface DiffLine {
 export interface DiffDiscountSide {
   amount: string;
   suppressed: boolean;
+  origin: DiscountOrigin;
 }
 
 export interface DiffDiscount {
@@ -411,6 +441,25 @@ export type HandlerNoMatchReason =
   | 'PIPELINE_EXHAUSTED'
   | 'PROMOTION_NOT_EARNED';
 
+// One line the AI raised to reach a promotion; quantities and totals are decimal strings.
+export interface HandlerAdaptedLine {
+  item_id: string;
+  description: string;
+  from_quantity: string;
+  to_quantity: string;
+  promotion_id: string;
+  promotion_name: string;
+}
+
+// What reaching a promotion did to the draft. total_raised: the customer asked for that promotion
+// and reaching it costs more.
+export interface HandlerAdaptation {
+  lines: HandlerAdaptedLine[];
+  total_before: string;
+  total_after: string;
+  total_raised: boolean;
+}
+
 // The latest conversation handler decision on the draft: what the customer wrote and how the AI
 // read it.
 export interface HandlerDecisionNote {
@@ -419,6 +468,9 @@ export interface HandlerDecisionNote {
   outcome: 'APPLIED' | 'NO_MATCH';
   no_match_reason: HandlerNoMatchReason | null;
   seller_decision?: HandlerSellerDecision | null;
+  // The recipes run for a complex goal, in run order.
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
   created_at: string;
 }
 
@@ -444,6 +496,8 @@ export interface ConversationDecision {
   outcome: 'APPLIED' | 'NO_MATCH';
   no_match_reason: HandlerNoMatchReason | null;
   seller_decision: HandlerSellerDecision | null;
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
   decided_at: string | null;
   created_at: string;
 }

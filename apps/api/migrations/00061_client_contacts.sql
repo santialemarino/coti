@@ -1,5 +1,4 @@
 -- +goose Up
-ALTER TABLE app_user ADD CONSTRAINT uq_app_user_account_id UNIQUE(account_id,id);
 ALTER TABLE client ADD COLUMN merged_into UUID;
 ALTER TABLE client ADD CONSTRAINT fk_client_merge FOREIGN KEY (account_id,merged_into) REFERENCES client(account_id,id);
 ALTER TABLE client ADD CONSTRAINT ck_client_merge CHECK(merged_into IS NULL OR merged_into<>id);
@@ -74,7 +73,6 @@ CREATE TRIGGER seed_client_contacts AFTER INSERT ON client FOR EACH ROW EXECUTE 
 DROP TRIGGER seed_client_contacts ON client;
 DROP FUNCTION seed_client_contacts();
 DROP TABLE client_contact_observation;
-ALTER TABLE app_user DROP CONSTRAINT uq_app_user_account_id;
 DROP TABLE client_contact;
 DROP TYPE client_contact_review_status;
 DROP TYPE client_contact_source;

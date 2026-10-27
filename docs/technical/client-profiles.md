@@ -114,8 +114,8 @@ WhatsApp proof is unavailable until its supplier channel credentials and approve
 configured. Email uses the configured mail adapter. Local links use CUSTOMER_GOOGLE_LOCAL_ORIGIN
 when set; production uses the supplier's HTTPS hostname. Tests use fake mail/contact transports.
 
-Migration 00056 adds the supplier-scoped unique fiscal index. Migration 00057 creates contact
-collections and retained observations. Migration 00058 adds contact verification, a verified-live
+Migration 00060 adds the supplier-scoped unique fiscal index. Migration 00061 creates contact
+collections and retained observations. Migration 00062 adds contact verification, a verified-live
 unique index, challenges, onboarding outbox, composite channel scope and immutable-CUIT protection.
 Existing contacts are treated as trusted and merged sources are retired. Conflicting live contacts
 stop the migration without deleting or silently merging records. Migrations are executable; the
@@ -123,3 +123,61 @@ consolidated database schema is a reference only.
 
 Integration tests cover proof-gated history movement, registered-name precedence, immutable data,
 recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
+
+## Profiles and accepted sales
+
+Profiles and tags are account-scoped. Every repository access includes the account; request and
+quotation operations additionally enforce branch scope. PostgreSQL RLS remains enabled. Profile
+lists and details continue projecting accepted sales within the caller's branch and seller reach.
+Associating a client at SENT does not turn the quotation into an accepted sale.
+
+Each accepted sale on `GET /v1/clients/{id}` carries `invoice_status`, read in the same query as the
+sale: `PENDING` while any voucher waits for ARCA, otherwise `INVOICED` for an issued invoice no credit
+note cancelled (in this server's environment or in production), `WAIVED` for «No requiere factura»,
+and `UNINVOICED` for the rest. `domain.InvoiceStatusOf` is the one place that order lives. The
+backoffice shows it as a column of the profile's sales table only while the account invoices, and the
+whole row opens the order: the reference is the row's one link, stretched over the row, so a pointer
+anywhere on it and a single keyboard stop both reach the order.
+
+Tags retain their existing account-owned many-to-many model and replacement semantics. The send
+form preserves the chosen profile's current tags and allows selecting existing reusable tags.
+Profile tag editing and tag creation remain available through their existing endpoints.
+
+The backoffice maps API snake_case to camelCase in its fetch boundary. The send dialog uses the
+shared form controls, phone input, validation states, and semantic design tokens.
+
+## Fiscal data
+
+A profile's CUIT or CUIL comes from the customer, when they create their account on the supplier's
+webapp; neither the seller nor the AI loads, changes or deletes it. It lives in `client.tax_id`
+(11 digits). A consumidor final's DNI lives apart in `client.dni` (7 or 8 digits, not unique: one
+person may have several profiles). A DNI never makes a client registered — registered means a CUIT
+— and never substitutes for the CUIT required for invoicing.
+
+`PUT /v1/clients/{id}/fiscal` replaces the legal name, fiscal address, IVA condition and DNI, and an
+omitted field clears. It never writes `tax_id`:
+
+- A body that carries `tax_id` is refused with **422** `TAX_ID_READ_ONLY`, so a caller still sending
+  a CUIT learns it was not saved instead of reading a 200 as success.
+- `dni` accepts 7 or 8 digits (separators dropped); anything else, a CUIT included, is **422**
+  `INVALID_TAX_ID`.
+
+The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
+its own immutable copy of the registered receiver and their CUIT.
+
+Migration `00059_client_dni.sql` moved every 7–8 digit `tax_id` into `dni` and narrowed `tax_id` to
+11 digits. It refuses to run, naming the count, if any `tax_id` is neither shape: no route ever
+stored one, so such a value is hand-edited data for a person to settle rather than for the
+migration to guess at.
+
+Every invoice requires a registered customer's CUIT, including consumer-final invoices below
+`INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT`. A DNI cannot satisfy that requirement. While the preview
+(`GET /v1/quotes/{quoteId}/invoice`) reports `RECEIVER_CUIT_REQUIRED`, it also carries
+`customer_signup_url`: the supplier's customer sign-up page at `https://<public_hostname>/signup`,
+or under `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local stack. An account with no `public_hostname` gets
+no link, because customer sign-up resolves the supplier by its hostname; the card then says the
+customer site is not configured yet (see [public RFQ intake](public-rfq-intake.md)). With a link,
+the invoice card offers a copy dialog so the seller can send it through their own channel. The
+client detail also offers an explicit registration-link send through a configured contact channel.
+
+Quotation publication cannot assign a CUIT; it creates provisional profiles or selects existing ones.

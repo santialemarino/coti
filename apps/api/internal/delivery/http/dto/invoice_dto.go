@@ -13,6 +13,8 @@ type UpdateInvoicingSettingsRequest struct {
 	IVACondition     *string                      `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
 	PricesIncludeVAT bool                         `json:"prices_include_vat"`
 	Branches         []BranchPointOfSaleInput     `json:"branches" binding:"dive"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.
+	InvoiceOnPayment *bool `json:"invoice_on_payment"`
 }
 
 // UpdatePointsOfSaleRequest is the body for PUT /v1/invoicing/points-of-sale. Branches not listed
@@ -38,6 +40,8 @@ type InvoicingSettingsResponse struct {
 	PricesIncludeVAT bool                        `json:"prices_include_vat"`
 	Branches         []BranchPointOfSaleResponse `json:"branches"`
 	Credential       *ARCACredentialResponse     `json:"credential"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool `json:"invoice_on_payment"`
 }
 
 // BranchPointOfSaleResponse is one branch and its point of sale.
@@ -65,12 +69,16 @@ type IssueInvoiceRequest struct {
 	Total       string    `json:"total" binding:"required,numeric"`
 }
 
-// UpdateClientFiscalRequest is the body for PUT /v1/clients/:clientId/fiscal. Omitted fields clear.
+// UpdateClientFiscalRequest is the body for PUT /v1/clients/:clientId/fiscal. Omitted fields clear;
+// the CUIT is never touched.
 type UpdateClientFiscalRequest struct {
-	Address      *string `json:"address" binding:"omitempty,max=255"`
-	LegalName    *string `json:"legal_name" binding:"omitempty,max=255"`
-	TaxID        *string `json:"tax_id" binding:"omitempty,max=32"`
+	Address   *string `json:"address" binding:"omitempty,max=255"`
+	LegalName *string `json:"legal_name" binding:"omitempty,max=255"`
+	// DNI identifies a consumidor final, beside any CUIT the customer's account carries.
+	DNI          *string `json:"dni" binding:"omitempty,max=32"`
 	IVACondition *string `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
+	// TaxID is refused with TAX_ID_READ_ONLY: only the customer loads a CUIT, by creating an account.
+	TaxID *string `json:"tax_id" binding:"omitempty,max=32" swaggerignore:"true"`
 }
 
 // ClientFiscalResponse is a client's fiscal identity.
@@ -79,7 +87,8 @@ type ClientFiscalResponse struct {
 	ID           uuid.UUID `json:"id"`
 	Name         *string   `json:"name"`
 	LegalName    *string   `json:"legal_name"`
-	TaxID        *string   `json:"tax_id"`
+	TaxID        *string   `json:"tax_id"` // CUIT or CUIL, from the customer's account; read-only.
+	DNI          *string   `json:"dni"`
 	IVACondition *string   `json:"iva_condition"`
 }
 
@@ -166,6 +175,10 @@ type InvoicePreviewResponse struct {
 	// CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
 	// environment, with that credit note: history, and what a new invoice follows.
 	CreditedInvoice *InvoiceResponse `json:"credited_invoice"`
+	// CustomerSignupURL is where the customer creates the account that carries their CUIT; present
+	// only while the issues ask for the receiver's CUIT or document and the supplier has its own
+	// customer site.
+	CustomerSignupURL string `json:"customer_signup_url,omitempty"`
 }
 
 // InvoiceListResponse is a bounded page of branch-scoped fiscal records.
@@ -174,6 +187,28 @@ type InvoiceListResponse struct {
 	Total    int               `json:"total"`
 	Page     int               `json:"page"`
 	PageSize int               `json:"page_size"`
+}
+
+// SaleAwaitingInvoiceResponse is one accepted sale still waiting for an invoice.
+type SaleAwaitingInvoiceResponse struct {
+	QuoteID    uuid.UUID  `json:"quote_id"`
+	RFQID      uuid.UUID  `json:"rfq_id"`
+	Number     int64      `json:"quote_number"`
+	BranchID   uuid.UUID  `json:"branch_id"`
+	BranchName string     `json:"branch_name"`
+	ClientID   *uuid.UUID `json:"client_id"`
+	Client     string     `json:"client"`
+	Total      string     `json:"total"`
+	AcceptedAt time.Time  `json:"accepted_at"`
+	PaidAt     *time.Time `json:"paid_at"`
+}
+
+// SaleAwaitingInvoiceListResponse is returned by GET /v1/quotes/awaiting-invoice.
+type SaleAwaitingInvoiceListResponse struct {
+	Items    []SaleAwaitingInvoiceResponse `json:"items"`
+	Total    int                           `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"page_size"`
 }
 
 // InvoiceIssuerProfileRequest carries printable fiscal registration data.

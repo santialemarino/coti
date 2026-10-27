@@ -39,6 +39,8 @@ type UpdateAccountRequest struct {
 	// Confirms that a new tax_id removes the ARCA connection made with the old one; without it the
 	// change is refused with 409 ARCA_CONNECTED.
 	DisconnectARCA bool `json:"disconnect_arca"`
+	// What a request for a lower price tries first when the customer did not say; omitted keeps it.
+	PreferredLowerPriceStrategy *string `json:"preferred_lower_price_strategy" binding:"omitempty,oneof=FIND_CHEAPER_ALTERNATIVES ADAPT_TO_REACH_DISCOUNT"`
 }
 
 // AccountResponse is the corralón record the backoffice reads and edits.
@@ -49,9 +51,22 @@ type AccountResponse struct {
 	TaxID        *string   `json:"tax_id"`
 	BrandLogoURL *string   `json:"brand_logo_url"`
 	BrandColor   *string   `json:"brand_color"`
-	IsActive     bool      `json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.
+	PreferredLowerPriceStrategy string `json:"preferred_lower_price_strategy"`
+	// Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
+	InvoicingEnabled bool `json:"invoicing_enabled"`
+	// Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.
+	HasInvoices bool `json:"has_invoices"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool      `json:"invoice_on_payment"`
+	IsActive         bool      `json:"is_active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// SetInvoicingEnabledRequest is the body for PUT /v1/invoicing/enabled.
+type SetInvoicingEnabledRequest struct {
+	Enabled *bool `json:"enabled" binding:"required"`
 }
 
 // BrandLogoResponse is returned by POST /v1/account/logo.

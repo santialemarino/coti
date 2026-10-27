@@ -180,7 +180,8 @@ func run() error {
 	}
 	// The env var spells the deployment in lowercase; records store the native enum.
 	arcaEnvironment := domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment))
-	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer()).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
 		arca.NewSetupConnector(), arcaEnvironment)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
@@ -205,6 +206,7 @@ func run() error {
 		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
 		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
+		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
@@ -221,7 +223,7 @@ func run() error {
 	if providers.LanguageModelBound() {
 		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
 	}
-	batchChangeHandler := services.NewBatchChangeHandler(db, quoteRepo, quoteMessageRepo,
+	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
 		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
 			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
@@ -268,7 +270,8 @@ func run() error {
 		}
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
-		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo)
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
+		WithInvoicingSwitch(invoicingRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -292,7 +295,7 @@ func run() error {
 		WithWhatsAppCredentials(channelSealer).
 		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo)
+		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment)
 	quoteDeliveryService.WithClientAssociations(clientService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).

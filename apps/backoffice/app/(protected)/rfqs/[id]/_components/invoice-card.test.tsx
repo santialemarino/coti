@@ -7,6 +7,7 @@ import { ROUTES } from '@/config/routes';
 import { ApiError } from '@/lib/api/errors';
 import type { Invoice, InvoicePreview } from '@/lib/api/invoicing';
 import { getInvoicePreview, issueCreditNote, issueInvoice } from '@/lib/api/invoicing-client';
+import { setInvoiceWaived } from '@/lib/api/rfqs-client';
 import messages from '@/translations/es.json';
 import { InvoiceCard } from './invoice-card';
 
@@ -22,6 +23,7 @@ vi.mock('@/lib/api/invoicing-client', () => ({
   issueInvoice: vi.fn(),
   issueCreditNote: vi.fn(),
 }));
+vi.mock('@/lib/api/rfqs-client', () => ({ setInvoiceWaived: vi.fn() }));
 
 const QUOTE_ID = '20000000-0000-4000-8000-000000000031';
 const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
@@ -56,7 +58,10 @@ const READY: InvoicePreview = {
   invoice: null,
   otherEnvironmentInvoice: null,
   creditedInvoice: null,
+  customerSignupUrl: null,
 };
+
+const SIGNUP_URL = 'https://corralon.example.com/signup';
 
 const ISSUED: Invoice = {
   branchId: 'branch-1',
@@ -92,14 +97,29 @@ const CREDIT_NOTE: Invoice = {
   creditedInvoice: { id: ISSUED.id, type: 'A', pointOfSale: 3, number: 23, issuedOn: '2026-10-05' },
 };
 
-function cardWith(clientId: string | null) {
+const WAIVER = { at: '2026-10-20T15:00:00.000Z', by: 'Ana Pérez' };
+const onWaiverChanged = vi.fn(async () => undefined);
+
+function cardWith(
+  clientId: string | null,
+  waiver: { at: string; by: string | null } | null = null,
+  readOnly = false,
+) {
   return (
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <InvoiceCard quoteId={QUOTE_ID} branchId={BRANCH_ID} clientId={clientId} />
+      <InvoiceCard
+        quoteId={QUOTE_ID}
+        branchId={BRANCH_ID}
+        clientId={clientId}
+        readOnly={readOnly}
+        reference="#31"
+        waiver={waiver}
+        onWaiverChanged={onWaiverChanged}
+      />
     </NextIntlClientProvider>
   );
 }
@@ -202,6 +222,55 @@ describe('InvoiceCard', () => {
     expect(view.queryByRole('form')).toBeNull();
     expect(view.queryByRole('textbox')).toBeNull();
   });
+  it.each(['RECEIVER_CUIT_REQUIRED', 'RECEIVER_ID_REQUIRED'])(
+    'offers the sign-up link on %s and copies it from its dialog',
+    async (issue) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      vi.mocked(getInvoicePreview).mockResolvedValue({
+        ...READY,
+        issues: [issue],
+        customerSignupUrl: SIGNUP_URL,
+      });
+      const view = renderCard();
+
+      fireEvent.click(await view.findByRole('button', { name: card.signup.action }));
+      const dialog = within(await view.findByRole('dialog', { name: card.signup.title }));
+      expect(dialog.getByRole('group', { name: card.signup.linkLabel }).textContent).toContain(
+        SIGNUP_URL,
+      );
+      fireEvent.click(dialog.getByRole('button', { name: card.signup.copy }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(SIGNUP_URL));
+      expect(dialog.getByRole('status').textContent).toBe(card.signup.copied);
+      delete (navigator as { clipboard?: unknown }).clipboard;
+    },
+  );
+
+  it('offers no sign-up link where a CUIT would not unblock the invoice', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      issues: ['RECEIVER_ADDRESS_REQUIRED'],
+      customerSignupUrl: SIGNUP_URL,
+    });
+    const view = renderCard();
+
+    expect(await view.findByText(card.issues.RECEIVER_ADDRESS_REQUIRED.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.signup.action })).toBeNull();
+  });
+
+  it('says the customer site is missing instead of offering a link nobody could use', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      issues: ['RECEIVER_CUIT_REQUIRED'],
+      customerSignupUrl: null,
+    });
+    const view = renderCard();
+
+    expect(await view.findByText(new RegExp(card.signup.noSite))).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.signup.action })).toBeNull();
+  });
+
   it('keeps the ready client profile accessible for correcting invoice details', async () => {
     const view = renderCard();
     const link = await view.findByRole('link', { name: card.editClient });
@@ -475,7 +544,15 @@ describe('InvoiceCard on an archived sale', () => {
         messages={messages}
         timeZone="America/Argentina/Buenos_Aires"
       >
-        <InvoiceCard quoteId={QUOTE_ID} branchId={BRANCH_ID} clientId={CLIENT_ID} readOnly />
+        <InvoiceCard
+          quoteId={QUOTE_ID}
+          branchId={BRANCH_ID}
+          clientId={CLIENT_ID}
+          readOnly
+          reference="#31"
+          waiver={null}
+          onWaiverChanged={onWaiverChanged}
+        />
       </NextIntlClientProvider>,
     );
   }
@@ -505,5 +582,57 @@ describe('InvoiceCard on an archived sale', () => {
 
     expect(await view.findByText(card.pending.title)).toBeTruthy();
     expect(InvoiceRecoveryButton).not.toHaveBeenCalled();
+  });
+});
+
+describe('InvoiceCard «No requiere factura»', () => {
+  it('takes a sale out of the invoicing wait from its draft, blocked or not', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      issues: ['RECEIVER_CUIT_REQUIRED'],
+    });
+    vi.mocked(setInvoiceWaived).mockResolvedValue({} as never);
+    const view = render(cardWith(CLIENT_ID));
+
+    fireEvent.click(await view.findByRole('button', { name: card.waiver.action }));
+
+    await waitFor(() => expect(setInvoiceWaived).toHaveBeenCalledWith(QUOTE_ID, true, BRANCH_ID));
+    await waitFor(() => expect(onWaiverChanged).toHaveBeenCalledOnce());
+    expect(toast.success).toHaveBeenCalledWith(card.waiver.waived.replace('{reference}', '#31'));
+  });
+
+  it('shows who waived it instead of the draft, and undoes it', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue(READY);
+    vi.mocked(setInvoiceWaived).mockResolvedValue({} as never);
+    const view = render(cardWith(CLIENT_ID, WAIVER));
+
+    expect(await view.findByText(card.waiver.title)).toBeTruthy();
+    expect(view.getByText(/Ana Pérez/)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.issue.replace('{type}', 'A') })).toBeNull();
+
+    fireEvent.click(view.getByRole('button', { name: card.waiver.undo }));
+
+    await waitFor(() => expect(setInvoiceWaived).toHaveBeenCalledWith(QUOTE_ID, false, BRANCH_ID));
+    await waitFor(() => expect(onWaiverChanged).toHaveBeenCalledOnce());
+  });
+
+  // A live invoice refuses the waiver, so a pending one leaves nothing to offer.
+  it('offers no waiver while an invoice waits for ARCA', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      invoice: { ...ISSUED, status: 'PENDING', number: null, cae: null },
+    });
+    const view = render(cardWith(CLIENT_ID));
+
+    expect(await view.findByText(card.pending.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.waiver.action })).toBeNull();
+  });
+
+  it('keeps the waiver read-only on an archived sale', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue(READY);
+    const view = render(cardWith(CLIENT_ID, WAIVER, true));
+
+    expect(await view.findByText(card.waiver.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.waiver.undo })).toBeNull();
   });
 });

@@ -63,6 +63,10 @@ func (h *ChangeRequestHandler) Propose(ctx context.Context,
 		intent := domain.ChangeRequestIntent(*answer.Intent)
 		proposal.Intent = &intent
 	}
+	if answer.LowerPriceStrategy != nil {
+		strategy := domain.HandlerStrategy(*answer.LowerPriceStrategy)
+		proposal.LowerPriceStrategy = &strategy
+	}
 	for index, raw := range answer.IntentItemIDs {
 		id, parseErr := uuid.Parse(strings.TrimSpace(raw))
 		if parseErr != nil {
@@ -89,9 +93,9 @@ const changeRequestInstructions = `You interpret a customer request to revise a 
 customer_message holds the customer's new messages, oldest first, one per line. conversation_context holds earlier messages of the same conversation, from the customer (CLIENT), the seller (SELLER) or the system (SYSTEM); it is context only: never turn a context message into a change, and never repeat a change it shows was already requested.
 
 First choose the level:
-- ATOMIC: the customer states concrete changes. Return them as operations; intent is null and intent_item_ids is empty.
+- ATOMIC: the customer states concrete changes. Return them as operations; intent and lower_price_strategy are null and intent_item_ids is empty.
 - COMPLEX: the customer states a goal without saying how to reach it, and the goal is one of the intents below. Return no operations; the supplier's system reaches the goal itself.
-- NO_MATCH: the request is ambiguous, unsupported, asks about something other than materials, or cannot be tied to the supplied lines. Return no operations, a null intent and empty intent_item_ids. Acceptance, rejection, thanks, payment, delivery or stock questions are always NO_MATCH: never treat "dale", "acepto", "lo compro" or "no me interesa" as a change.
+- NO_MATCH: the request is ambiguous, unsupported, asks about something other than materials, or cannot be tied to the supplied lines. Return no operations, a null intent, a null lower_price_strategy and empty intent_item_ids. Acceptance, rejection, thanks, payment, delivery or stock questions are always NO_MATCH: never treat "dale", "acepto", "lo compro" or "no me interesa" as a change.
 
 ATOMIC operations:
 - ADD_ITEM: add a material that is not already a line. It needs requested_description and quantity. target_item_id and promotion_id must be null.
@@ -104,6 +108,7 @@ COMPLEX intents:
 - LOWER_TOTAL_PRICE: the customer finds the quote expensive or asks for a cheaper option without naming the change ("está caro", "¿no tenés algo más barato?").
 - IMPROVE_QUALITY: the customer asks for better or higher-end materials without naming them ("quiero algo de mejor calidad").
 intent_item_ids lists the supplied lines the customer tied the goal to; leave it empty when the goal is about the whole quote.
+lower_price_strategy is set only for LOWER_TOTAL_PRICE, and only when the customer says how they would rather pay less: ADAPT_TO_REACH_DISCOUNT when they would take more to earn a discount ("prefiero llevar más y que me hagas el descuento"), FIND_CHEAPER_ALTERNATIVES when they want cheaper brands or materials ("dame marcas más baratas"). Otherwise, and for every other level or intent, it is null.
 
 Use an item ID only when it appears in the supplied quote lines, and a promotion ID only when it appears in the supplied promotions. Do not infer a product, brand, measure, quantity, price, discount, stock, delivery promise, or material that the customer did not state. Never lower a quantity unless the customer asked for that quantity. Do not turn an unclear request into a change. One operation must not target the same item or the same promotion as another operation.
 
@@ -119,11 +124,12 @@ type changeRequestPayload struct {
 }
 
 type changeRequestAnswer struct {
-	Level          string                  `json:"level"`
-	Interpretation string                  `json:"interpretation"`
-	Intent         *string                 `json:"intent"`
-	IntentItemIDs  []string                `json:"intent_item_ids"`
-	Operations     []changeRequestAnswerOp `json:"operations"`
+	Level              string                  `json:"level"`
+	Interpretation     string                  `json:"interpretation"`
+	Intent             *string                 `json:"intent"`
+	IntentItemIDs      []string                `json:"intent_item_ids"`
+	LowerPriceStrategy *string                 `json:"lower_price_strategy"`
+	Operations         []changeRequestAnswerOp `json:"operations"`
 }
 
 type changeRequestAnswerOp struct {
@@ -183,7 +189,8 @@ func changeRequestSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"level", "interpretation", "intent", "intent_item_ids", "operations"},
+		"required": []string{"level", "interpretation", "intent", "intent_item_ids",
+			"lower_price_strategy", "operations"},
 		"properties": map[string]any{
 			"level": map[string]any{
 				"type": "string",
@@ -211,6 +218,16 @@ func changeRequestSchema() map[string]any {
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
 				"description": "IDs copied exactly from quote_items that a COMPLEX goal is about.",
+			},
+			"lower_price_strategy": map[string]any{
+				"anyOf": []any{
+					map[string]any{"type": "string", "enum": []string{
+						string(domain.HandlerStrategyFindCheaperAlternatives),
+						string(domain.HandlerStrategyAdaptToReachDiscount),
+					}},
+					map[string]any{"type": "null"},
+				},
+				"description": "How a LOWER_TOTAL_PRICE customer said they prefer to pay less, or null.",
 			},
 			"operations": map[string]any{
 				"type": "array",

@@ -15,17 +15,22 @@ files an order arrives with are stored beside it and are not read here — see
 
 ## Endpoints
 
-| Method | Path                               | What it does                                                           |
-| ------ | ---------------------------------- | ---------------------------------------------------------------------- |
-| `POST` | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
-| `POST` | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
-| `GET`  | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
-| `GET`  | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
-| `GET`  | `/v1/channels`                     | The active intake channels of the selected branch                      |
-| `POST` | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
-| `POST` | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
-| `POST` | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
-| `POST` | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
+| Method   | Path                               | What it does                                                           |
+| -------- | ---------------------------------- | ---------------------------------------------------------------------- |
+| `POST`   | `/v1/rfqs/text-drafts`             | Runs an order the seller pasted or typed through the pipeline          |
+| `POST`   | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
+| `GET`    | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
+| `GET`    | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
+| `GET`    | `/v1/channels`                     | The active intake channels of the selected branch                      |
+| `POST`   | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
+| `POST`   | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |
+| `POST`   | `/v1/quotes/{id}/transition`       | Records an offline acceptance or rejection reported by the seller      |
+| `POST`   | `/v1/quotes/{id}/reactivate`       | Reopens an accepted or rejected quote for resend or editing            |
+| `POST`   | `/v1/quotes/{id}/payment`          | Marks an accepted sale paid («Cobrado»), with who and when             |
+| `DELETE` | `/v1/quotes/{id}/payment`          | Takes the paid mark back                                               |
+| `POST`   | `/v1/quotes/{id}/invoice-waiver`   | Marks an accepted sale as needing no invoice («No requiere factura»)   |
+| `DELETE` | `/v1/quotes/{id}/invoice-waiver`   | Puts the sale back to waiting for its invoice                          |
+| `GET`    | `/v1/quotes/awaiting-invoice`      | One page of the accepted sales still waiting for an invoice            |
 
 The three that reach a model share **their own rate-limit allowance**, `RATE_LIMIT_AI_MAX` — the global one would let a single seller spend 300 generations a minute, and this is the first surface in the product billed per call. Valorization reaches no provider and spends nothing, so it stays on the global allowance.
 
@@ -533,21 +538,51 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
    the same draft.
 
-A `COMPLEX` goal runs a fixed recipe in the apply transaction, over the named lines or every line
-with a product, with quantities untouched:
+A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
+line with a product:
 
-| Intent              | Strategy recorded           | Each line becomes                                                             |
-| ------------------- | --------------------------- | ----------------------------------------------------------------------------- |
-| `LOWER_TOTAL_PRICE` | `FIND_CHEAPER_ALTERNATIVES` | its cheapest `ECONOMY` alternative the branch prices below its own unit price |
-| `IMPROVE_QUALITY`   | `IMPROVE_QUALITY`           | its cheapest `PREMIUM` alternative the branch prices                          |
+| Strategy                    | Runs for            | Each line in scope becomes                                                      |
+| --------------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| `FIND_CHEAPER_ALTERNATIVES` | `LOWER_TOTAL_PRICE` | its cheapest `ECONOMY` alternative the branch prices below its own unit price   |
+| `ADAPT_TO_REACH_DISCOUNT`   | `LOWER_TOTAL_PRICE` | the same line at the next threshold of a promotion it targets, if that is lower |
+| `IMPROVE_QUALITY`           | `IMPROVE_QUALITY`   | its cheapest `PREMIUM` alternative the branch prices                            |
 
 Only an active alternative sold in the base product's unit counts, and ties go to its name:
-`product_alternative` has no rank. The swaps are written as
-`REPLACE_ITEM` operations and priced at once at the branch price the recipe chose them by. A
-`LOWER_TOTAL_PRICE` result stands only if the engine's total after the sweep ends below the draft's
-own swept total; `IMPROVE_QUALITY` has no cap. An `ADD_DISCOUNT` needs nothing when the promotion is
-already applied, restores it when the seller suppressed it, and is refused when the quote does not
-earn it.
+`product_alternative` has no rank. The swaps are written as `REPLACE_ITEM` operations and priced at
+once at the branch price the recipe chose them by; quantities never change. `IMPROVE_QUALITY` has
+no cap.
+
+`ADAPT_TO_REACH_DISCOUNT` never adds a product and never lowers a quantity. A line's threshold is the
+least quantity above its own at which an in-force `PER_ITEM` promotion (a condition's
+`min_quantity`) or `QUANTITY_TIERED` one (the first tier, or the next one) targets the line's
+product, family or subgroup and earns a figure the line does not earn already. `ITEM_SET` and
+`ON_TOTAL` rules are never adapted to, and a promotion the seller suppressed on the draft is
+skipped. The lines are walked in draft order and each keeps the raise whose engine total, evaluated
+in memory on the swept state, is lowest — only if it is lower than what the walk had reached. The
+raises are written as `UPDATE_QUANTITY` operations, the draft is swept again, and the strategy
+stands only if that total ends strictly below the swept baseline. An engine application the raises
+earned (one on a raised line that was not live with the same figure before) is stored with origin
+`AI_ADAPTATION`.
+
+`LOWER_TOTAL_PRICE` runs its two strategies "first that works": the first one is the customer's
+wording (the model's optional `lower_price_strategy`, valid only with `COMPLEX` +
+`LOWER_TOTAL_PRICE`), else the account's `preferred_lower_price_strategy` (an admin setting on
+`PUT /v1/account`, default `FIND_CHEAPER_ALTERNATIVES`). A strategy with no lower total rolls its
+transaction back and the other runs on the untouched draft; when neither delivers, the no-match
+lists both in `strategies_tried`, in run order.
+
+An `ADD_DISCOUNT` needs nothing when the promotion is already applied and restores it when the
+seller suppressed it. A `PER_ITEM` or `QUANTITY_TIERED` promotion the quote does not earn is reached:
+every line it targets below its threshold is raised to the least quantity that earns it, kept only
+where the engine then applies that promotion on the line, and the total may rise — the customer
+asked for that promotion, and the seller reviews it. A line the same proposal requantified keeps the
+customer's quantity. The run records `ADAPT_TO_REACH_DISCOUNT` and the raises; an `ITEM_SET` or
+`ON_TOTAL` promotion, or one no raise earns, is refused with `PROMOTION_NOT_EARNED`.
+
+An `AI_ADAPTATION` application belongs to the engine like an `AUTOMATIC` one: the sweep recomputes
+its amount, keeps it (and its origin) while it is still earned and drops it when it is not, and the
+seller suppresses or restores it the same way. A draft cloned from a version carries it as a plain
+`AUTOMATIC` promotion, suppressed or not.
 
 The model never sets money: a requantified line keeps its unit price, a new or replaced line waits
 unpriced for the seller to accept materials (a recipe's swap is the exception, priced by the
@@ -560,11 +595,14 @@ quote does not earn, rolls the whole write back — atomic operations riding bes
 records a `NO_MATCH` with origin `PIPELINE_EXHAUSTED` and reason `PIPELINE_EXHAUSTED` or
 `PROMOTION_NOT_EARNED`. Every no-match finishes the batch `PROCESSED`, so nothing loops.
 `handler_decision.ai_proposal` stores
-`{outcome, no_match_origin, no_match_reason, interpretation, intent, strategies_tried, operations}`,
-and `draft_before` / `draft_after` the draft's lines and seller-controlled discounts (typed or
+`{outcome, no_match_origin, no_match_reason, interpretation, intent, strategies_tried,
+preferred_strategy, adaptation, operations}` — `adaptation` holding each raised line (from, to, the
+promotion it reached) and the engine totals before and after, which the detail's handler note and
+the conversation panel return to the seller —`,
+and `draft_before`/`draft_after`the draft's lines and seller-controlled discounts (typed or
 suppressed) around the change, without prices. A provider failure is retried like any other error,
-up to `CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE` for
-a refusal no retry can fix, `ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
+up to`CONVERSATION_MAX_ATTEMPTS`; a batch that fails records `failure_reason`: `UNPROCESSABLE`for
+a refusal no retry can fix,`ATTEMPTS_EXHAUSTED` for one that ran out of attempts.
 
 #### The seller's decision
 
@@ -588,7 +626,7 @@ quote; anything else answers `409 BATCH_NOT_RETRYABLE`.
 The RFQ detail's `changes_requested` compares the draft with the version the customer received:
 `lines` pairs each sent line with the draft line copied from it (by `source_item_id`, never by
 position) as `UNCHANGED`, `MODIFIED` or `REMOVED`, then the lines the draft added as `ADDED`;
-`discounts` pairs discounts by name the same way; `original_total` and `requested_total` close it.
+`discounts` pairs a promotion with the same promotion — a line one on the sent line its draft line was copied from — and anything else by name, each side carrying its `origin`; `original_total` and `requested_total` close it.
 `handler` carries the latest decision on the draft, and `client_messages` every message the customer
 sent since the version they answered was frozen. The backoffice shows them as one card: the
 customer's words, the reading and its outcome, and only the changed rows. `conversation` carries the whole
@@ -612,6 +650,11 @@ actions carry no internal user id, while seller actions credit the authenticated
 `POST /v1/quotes/{quoteId}/reactivate` is the only way out of either terminal state and always
 operates on the same quote:
 
+It refuses a sale that still stands as closed: **409** `QUOTE_ALREADY_INVOICED` while it has an
+invoice in flight or issued and not cancelled by a credit note, and **409** `QUOTE_ALREADY_PAID`
+while it is marked paid — the seller takes the mark back first. Reactivating clears «No requiere
+factura» in the same transaction: a reopened sale is a new sale to close.
+
 - `RESEND` moves the quote back to `QUOTED` and retains the current frozen version unchanged.
 - `EDIT` copies the frozen version into the next mutable version, resets alternative approvals,
   values products and alternatives at the branch's current prices, records the seller as author,
@@ -625,16 +668,87 @@ tracking view combines both histories chronologically without duplicating one ev
 Archiving remains an orthogonal flag: it can hide a quote in any lifecycle state, including
 `ACCEPTED` and `REJECTED`, and restoring it preserves that status.
 
+### Closing a sale: paid and «No requiere factura»
+
+Closing an accepted sale adds **facts, not statuses**: `quote.paid_at` / `paid_by_user_id` record
+«Cobrado» and `invoice_waived_at` / `invoice_waived_by_user_id` record «No requiere factura», each
+timestamp paired with its user by a CHECK and the user tied to the quote's account by a composite
+foreign key. Neither touches `current_status`, `quote_status_change`, the state×intention matrix or
+anything the conversation handler reads. Every write moves `quote.updated_at`, which is what the
+inactivity sweep measures.
+
+- `POST`/`DELETE /v1/quotes/{id}/payment` marks or unmarks the sale paid, by the caller, now. A
+  repeat of the state the quote is already in changes nothing, so a second mark keeps the first
+  author and time.
+- `POST`/`DELETE /v1/quotes/{id}/invoice-waiver` takes the sale out of the invoicing wait or puts it
+  back. Setting it is refused with **409** `ACCOUNT_INVOICING_OFF` while the account does not invoice
+  with Coti, and with **409** `QUOTE_ALREADY_INVOICED` while the sale has a pending invoice or an
+  issued one no credit note cancelled.
+- All four answer **409** `QUOTE_NOT_ACCEPTED` on a quote that is not accepted and
+  `QUOTE_ARCHIVED` on an archived one, and return the quote.
+
+**Paying never gates invoicing, and Coti never invoices on its own.** «Marcar cobrado» in the
+backoffice offers «Facturar también» with the invoice preview (type, receiver, total) in the same
+confirmation, ticked by default when the account's `invoice_on_payment` is on and shown only while
+invoicing is on and the sale has no live invoice; a preview that reports gaps disables it and names
+them. The paid mark is committed first and the invoice issued after it, as two requests: an
+invoice ARCA refuses leaves the sale paid, and the invoice card shows the refusal.
+
+**An issued invoice ends the waiver.** The transaction that records ARCA's authorization of an
+invoice — on the first answer or on reconciling a pending one — clears «No requiere factura» on the
+sale. A refused or released attempt leaves it as the seller set it. Reconciling adopts a pending
+invoice in the environment it was requested in, so one from the other environment still clears the
+waiver but does not count as invoiced here, and the sale reopens waiting for its invoice.
+
+**A complete sale is derived, never stored.** `GET /v1/rfqs` and `GET /v1/rfqs/{id}` carry, per
+order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_waived_by`, `invoiced`
+— an issued invoice no credit note cancelled, in this server's ARCA environment or in production —
+`invoice_pending` — a voucher still waiting for ARCA, so the queue offers no second one — and
+`sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with Coti —
+never while any voucher of the sale still waits for ARCA, in either environment.
+`domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
+re-deriving fiscal state.
+
+### Sales awaiting an invoice («Por facturar»)
+
+`GET /v1/quotes/awaiting-invoice?page=N` lists the accepted, unarchived sales that nothing stands
+for yet: no issued invoice a credit note did not cancel (in this server's environment or in
+production), no voucher waiting for ARCA in any environment, and no «No requiere factura». A
+refused invoice, or one a credit note cancelled, leaves the sale on the list. While the account does
+not invoice with Coti the list is empty. **Paid sales come first, then the longest accepted**,
+dated by the latest `ACCEPTED` entry in `quote_status_change`: a paid sale is the one most ready to
+invoice, and among the rest the oldest has waited longest.
+
+It reads the same reach as the queue — the active branch, or every branch the caller reaches when
+`X-Branch-Id` is absent, and for a seller only the sales they own or nobody claimed — so the list
+never offers a sale its reader cannot open. Each row carries the quote and order ids, the number,
+the branch, the sale's client — `quote.client_id`, set when it was sent, the same one the client
+profile files the sale under — or the order's loose label, the total, the acceptance date and
+`paid_at`.
+It pages like the invoice history: `{items, total, page, page_size}`, 25 rows a page, a page
+outside 1–100000 refused with **422**. One count and one page query, the invoice facts read by
+lateral `EXISTS` subqueries rather than per row.
+
+The backoffice shows it as the «Por facturar» view of Administración, beside «Comprobantes», only
+while the account invoices (`?view=pending`; any other value, or the switch off, is the history).
+Each row offers «Facturar», through the same confirmation as the queue and the invoice card, and
+«No requiere factura», which takes the row off the list at once and reads the page again; every
+read puts the server's list back as the only truth, so a waiver undone elsewhere shows its sale
+again. A page past the last one — the last row of the last page just invoiced or waived — shows the
+page that is now last instead of an empty list.
+
 ### Archiving a quote
 
 `quote.archived_at` is a flag beside the state machine, never a state. `POST
 /v1/quotes/{quoteId}/archive` sets it on a quote in any status and `POST .../unarchive` clears it;
 neither writes `quote_status_change`. The queue leaves archived quotes out unless
-`?include_archived=true` asks for them, and `idx_quote_expires` skips them.
+`?include_archived=true` asks for them, and `idx_quote_expires` skips them. The backoffice reads the
+queue without them and asks for them only while the table's «Archivado» filter is on.
 
 **Every edit on an archived quote answers `409 QUOTE_ARCHIVED`** until it is unarchived: lines and
 discounts, accepting materials, approving an alternative, a transition, reactivation, sending,
-generating the PDF, the client association and issuing the invoice. The guard is checked before the
+generating the PDF, the client association, issuing the invoice, and marking the sale paid or as
+needing no invoice (either way). The guard is checked before the
 status, so the refusal names the archive rather than a status the seller cannot see a reason for.
 Reads stay open, and so does recovering an invoice already in flight at ARCA (the backoffice shows
 the invoice card read-only and offers neither action until the quote is unarchived).
@@ -645,7 +759,8 @@ answer through the link is refused with `QUOTE_ARCHIVED`, which the webapp words
 longer available. A customer who already answered keeps seeing their answer.
 
 Quotes also archive themselves: the `quote-auto-archive` job puts away the ones nobody has moved in
-`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
+`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed — and the complete
+sales and rejected quotes quiet for `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
 
 ## Where the code lives
 

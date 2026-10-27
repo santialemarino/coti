@@ -37,6 +37,12 @@ const (
 	DiscountOriginManualSeller DiscountOrigin = "MANUAL_SELLER"
 )
 
+// EngineOwned reports whether the promotion engine earns the discount: an AUTOMATIC one, or one
+// earned because the AI raised quantities to reach it.
+func (o DiscountOrigin) EngineOwned() bool {
+	return o == DiscountOriginAutomatic || o == DiscountOriginAIAdaptation
+}
+
 // PromotionActionType is how a discount rule turns into money: a fixed amount or a
 // percentage over its scope base. SPECIAL_PRICE belongs to per-item promotion rules and
 // is never accepted from a seller-typed discount.

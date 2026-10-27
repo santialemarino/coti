@@ -10,8 +10,12 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-const accountColumns = `id, name, legal_name, tax_id, brand_logo_url, brand_color, is_active,
-	created_at, updated_at`
+// has_invoices counts only vouchers ARCA authorized, test ones included: a refused attempt is no
+// fiscal record to keep reachable.
+const accountColumns = `id, name, legal_name, tax_id, brand_logo_url, brand_color,
+	preferred_lower_price_strategy, invoicing_enabled,
+	EXISTS (SELECT 1 FROM invoice WHERE invoice.account_id = account.id AND invoice.status = 'ISSUED'),
+	invoice_on_payment, is_active, created_at, updated_at`
 
 // AccountRepository owns persistence for account.
 type AccountRepository struct{}
@@ -69,10 +73,29 @@ func (r *AccountRepository) Update(
 ) (*domain.Account, error) {
 	account, err := scanAccount(q.QueryRow(ctx,
 		`UPDATE account
-		 SET name = $2, legal_name = $3, tax_id = $4, brand_logo_url = $5, brand_color = $6
+		 SET name = $2, legal_name = $3, tax_id = $4, brand_logo_url = $5, brand_color = $6,
+		     preferred_lower_price_strategy = COALESCE($7::lower_price_strategy,
+		       preferred_lower_price_strategy)
 		 WHERE id = $1
 		 RETURNING `+accountColumns,
-		accountID, in.Name, in.LegalName, in.TaxID, in.BrandLogoURL, in.BrandColor))
+		accountID, in.Name, in.LegalName, in.TaxID, in.BrandLogoURL, in.BrandColor,
+		in.PreferredLowerPriceStrategy))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+// SetInvoicingEnabled turns invoicing with Coti on or off for the account.
+func (r *AccountRepository) SetInvoicingEnabled(
+	ctx context.Context, q Querier, accountID uuid.UUID, enabled bool,
+) (*domain.Account, error) {
+	account, err := scanAccount(q.QueryRow(ctx,
+		`UPDATE account SET invoicing_enabled = $2 WHERE id = $1 RETURNING `+accountColumns,
+		accountID, enabled))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -85,7 +108,8 @@ func (r *AccountRepository) Update(
 func scanAccount(row pgx.Row) (*domain.Account, error) {
 	var a domain.Account
 	if err := row.Scan(&a.ID, &a.Name, &a.LegalName, &a.TaxID, &a.BrandLogoURL, &a.BrandColor,
-		&a.IsActive, &a.CreatedAt, &a.UpdatedAt); err != nil {
+		&a.PreferredLowerPriceStrategy, &a.InvoicingEnabled, &a.HasInvoices, &a.InvoiceOnPayment, &a.IsActive,
+		&a.CreatedAt, &a.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &a, nil

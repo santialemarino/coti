@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { HEX_COLOR_DIGITS } from '@/lib/constants/brand';
+import { LOWER_PRICE_STRATEGIES } from '@/lib/constants/conversation';
 import { URL_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import {
   optionalTaxId,
@@ -28,6 +29,7 @@ export function accountSchema(t: SchemaText = rawText) {
       .string()
       .trim()
       .refine((raw) => raw === '' || HEX_COLOR_DIGITS.test(raw), t.field('brandColor.invalid')),
+    lowerPriceStrategy: z.enum(LOWER_PRICE_STRATEGIES),
   });
 }
 

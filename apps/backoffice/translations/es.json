@@ -392,6 +392,7 @@
     "ARCA_CREDENTIALS": "No pudimos usar el certificado: revisá que la clave privada sea la del certificado y que este tenga el CUIT.",
     "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna factura. Probá de nuevo en unos minutos.",
     "INVALID_TAX_ID": "Revisá el CUIT o DNI: el número no es válido.",
+    "TAX_ID_READ_ONLY": "El CUIT de un cliente lo carga el cliente al crear su cuenta.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
@@ -404,7 +405,10 @@
     "ARCA_ENVIRONMENT_MISMATCH": "Esta factura se pidió en otro entorno de ARCA que el de la conexión actual, así que no se puede consultar desde acá.",
     "INVOICE_NOT_CREDITABLE": "Solo se anula con nota de crédito una factura autorizada por ARCA.",
     "INVOICE_ALREADY_CREDITED": "Esta factura ya está anulada por una nota de crédito.",
-    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla."
+    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
+    "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
+    "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
   },
   "meta": {
     "home": {
@@ -1243,7 +1247,13 @@
       "groups": {
         "expand": "Mostrar todos",
         "collapse": "Mostrar menos",
-        "stackHint": "Mostrar los {count} pedidos de este estado"
+        "stackHint": "Mostrar los {count} pedidos de este estado",
+        "stacks": {
+          "TO_CLOSE": "Por cerrar",
+          "COMPLETED": "Completados"
+        },
+        "show": "Mostrar",
+        "hide": "Ocultar"
       },
       "empty": {
         "title": "Todavía no hay pedidos"
@@ -1265,6 +1275,20 @@
         "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
         "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
         "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
+      },
+      "closing": {
+        "MARK_PAID": "Marcar cobrado",
+        "UNMARK_PAID": "Desmarcar cobrado",
+        "INVOICE": "Facturar",
+        "WAIVE": "No requiere factura",
+        "UNWAIVE": "Requiere factura",
+        "labelled": "{action} el pedido {id}",
+        "menu": "Acciones del pedido {id}"
+      },
+      "archived": {
+        "loading": "Trayendo los pedidos archivados…",
+        "failed": "No pudimos traer los pedidos archivados.",
+        "retry": "Reintentar"
       }
     },
     "create": {
@@ -1506,7 +1530,7 @@
           },
           "origin": {
             "AUTOMATIC": "Promoción",
-            "AI_ADAPTATION": "Sugerido por IA"
+            "AI_ADAPTATION": "Por ajuste de la IA"
           },
           "toast": {
             "added": "Agregamos el descuento «{name}».",
@@ -1624,8 +1648,8 @@
             "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
-            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1633,6 +1657,7 @@
         "unchanged": "{count, plural, one {# ítem sin cambios} other {# ítems sin cambios}}",
         "total": "Total",
         "suppressed": "Suprimido",
+        "adaptedDiscount": "Por ajuste de la IA",
         "change": {
           "MODIFIED": "Modificado",
           "ADDED": "Agregado",
@@ -1640,6 +1665,16 @@
         },
         "conversation": "Conversación con el cliente",
         "rounds": "{count, plural, one {# ronda} other {# rondas}}"
+      },
+      "handlerRecipe": {
+        "raised": "Se subió {item} de {from} a {to} para alcanzar «{promotion}».",
+        "totalRaised": "El total sube de {before} a {after}: el cliente pidió esa promoción.",
+        "strategies": "Estrategias probadas: {list}.",
+        "strategy": {
+          "FIND_CHEAPER_ALTERNATIVES": "alternativas más baratas",
+          "ADAPT_TO_REACH_DISCOUNT": "ajuste de cantidades para alcanzar una promoción",
+          "IMPROVE_QUALITY": "alternativas de mejor calidad"
+        }
       },
       "conversation": {
         "title": "Conversación con el cliente",
@@ -1659,8 +1694,8 @@
             "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
-            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: no hay alternativas del catálogo que lo cumplan.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción."
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
           }
         },
         "sellerDecision": {
@@ -1718,7 +1753,8 @@
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
-          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura."
+          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura.",
+          "QUOTE_ALREADY_PAID": "Esta venta está cobrada y no se puede reactivar. Desmarcá el cobro en «Cierre de la venta» y volvé a intentar."
         }
       },
       "publicRequest": {
@@ -1729,6 +1765,37 @@
         "phone": "Teléfono",
         "original": "Pedido original",
         "file": "Ver archivo del pedido"
+      },
+      "closure": {
+        "title": "Cierre de la venta",
+        "unpaid": "Todavía no está cobrada.",
+        "paid": "Cobrada por {name} el {date}.",
+        "complete": "Venta completa",
+        "markPaid": "Marcar cobrado",
+        "unmarkPaid": "Desmarcar",
+        "unmarking": "Desmarcando…",
+        "markedPaid": "Marcamos el pedido {reference} como cobrado.",
+        "markedPaidAndInvoiced": "Marcamos el pedido {reference} como cobrado y emitimos la factura {type} {number}.",
+        "invoiceRejected": "Marcamos el cobro, pero ARCA rechazó la factura. Los motivos están en la tarjeta de la factura.",
+        "invoiceFailed": "Marcamos el cobro, pero la factura no se emitió. Volvé a intentarlo desde su tarjeta.",
+        "unmarkedPaid": "Desmarcamos el cobro del pedido {reference}.",
+        "dialog": {
+          "title": "Marcar como cobrado el pedido {reference}",
+          "description": "Registra que el cliente pagó, con tu nombre y la fecha. Se puede desmarcar después.",
+          "invoice": "Facturar también",
+          "invoiceHint": "Después de guardar el cobro, le pedimos a ARCA la factura {type} a {receiver} por {total}.",
+          "invoiceLoading": "Revisando la factura…",
+          "invoiceBlocked": "Todavía no se puede facturar: {reasons}. Resolvelo desde la tarjeta de la factura.",
+          "invoiceUnavailable": "No pudimos revisar la factura. Podés emitirla después desde su tarjeta.",
+          "invoiceWaived": "La venta está marcada como «No requiere factura». Para facturarla, deshacelo desde la tarjeta de la factura.",
+          "confirm": "Marcar cobrado",
+          "confirmAndInvoice": "Marcar cobrado y facturar",
+          "pending": "Guardando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "QUOTE_ARCHIVED": "La venta está archivada. Desarchivala antes de marcar el cobro."
+        }
       }
     }
   },
@@ -1763,6 +1830,7 @@
     },
     "profile": {
       "description": "Datos de contacto, información fiscal, tags e historial comercial.",
+      "descriptionWithoutFiscal": "Datos de contacto, tags e historial comercial.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
@@ -1773,7 +1841,14 @@
         "quote": "Cotización",
         "branch": "Sucursal",
         "date": "Aceptada",
-        "total": "Total"
+        "total": "Total",
+        "invoice": "Factura"
+      },
+      "invoiceStatuses": {
+        "INVOICED": "Facturada",
+        "PENDING": "Pendiente en ARCA",
+        "WAIVED": "No requiere factura",
+        "UNINVOICED": "Sin facturar"
       },
       "emptySales": {
         "title": "No hay ventas visibles",
@@ -1859,12 +1934,16 @@
         "label": "Razón social",
         "placeholder": "Ingresá la razón social"
       },
-      "taxId": {
-        "label": "CUIT o DNI",
-        "placeholder": "Ingresá el CUIT o DNI",
-        "hint": "El CUIT/CUIL se incorpora al crear la cuenta en la webapp y no se puede modificar.",
-        "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
-        "checkDigit": "El CUIT no es válido: revisá el último dígito."
+      "cuit": {
+        "label": "CUIT",
+        "missing": "Sin cargar",
+        "hint": "Lo carga el cliente al crear su cuenta."
+      },
+      "dni": {
+        "label": "DNI",
+        "placeholder": "Ingresá el DNI",
+        "hint": "Para un consumidor final sin CUIT. Formato: 12.345.678.",
+        "invalid": "Ingresá un DNI de 7 u 8 dígitos."
       },
       "ivaCondition": {
         "label": "Condición frente al IVA",
@@ -1880,7 +1959,8 @@
       },
       "description": "Se utilizan al emitir las facturas de este cliente.",
       "errors": {
-        "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
+        "INVALID_TAX_ID": "Revisá el DNI del cliente.",
+        "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
       }
     },
     "contactSuggestions": "Coincidencias pendientes",
@@ -2047,6 +2127,19 @@
       "placeholder": "C2410C",
       "pickerLabel": "Elegir color de marca",
       "invalid": "Ingresá un color hexadecimal válido."
+    },
+    "lowerPrice": {
+      "title": "Pedidos de un precio más bajo",
+      "label": "Qué prueba primero la IA",
+      "hint": "Si esa opción no baja el total, la IA prueba la otra. Si el cliente dice cómo prefiere pagar menos, se sigue lo que pide.",
+      "FIND_CHEAPER_ALTERNATIVES": {
+        "label": "Alternativas más baratas",
+        "hint": "Cambia productos por alternativas económicas del catálogo, sin tocar las cantidades."
+      },
+      "ADAPT_TO_REACH_DISCOUNT": {
+        "label": "Ajustar cantidades para alcanzar una promoción",
+        "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
+      }
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
@@ -2703,6 +2796,10 @@
         "hintOn": "Los precios ya incluyen el IVA. Por ejemplo, un ítem de {gross} se factura como {net} + {vat} de IVA.",
         "hintOff": "El IVA se suma al facturar. Por ejemplo, un ítem de {net} se factura como {net} + {vat} de IVA = {gross}."
       },
+      "invoiceOnPayment": {
+        "label": "Facturar al marcar cobrado",
+        "hint": "Al marcar una venta como cobrada, «Facturar también» aparece tildado. Igual se confirma cada factura."
+      },
       "profile": {
         "address": "Domicilio fiscal",
         "addressPlaceholder": "Ingresá el domicilio fiscal",
@@ -2748,6 +2845,7 @@
       "changes": {
         "ivaCondition": "la condición frente al IVA",
         "pricesIncludeVat": "si los precios incluyen IVA",
+        "invoiceOnPayment": "si se factura al marcar cobrado",
         "pointOfSale": "el punto de venta de {branches}",
         "pointsOfSale": "los puntos de venta de {count} sucursales",
         "profile": "los datos del emisor"
@@ -2755,6 +2853,24 @@
       "errors": {
         "INVALID_INPUT": "Revisá los datos: algún valor no es válido.",
         "POINT_OF_SALE_TAKEN": "Dos sucursales no pueden compartir el mismo punto de venta."
+      },
+      "switch": {
+        "label": "Facturación electrónica",
+        "description": "Emití facturas electrónicas de ARCA desde Coti para las ventas aceptadas.",
+        "enabled": "Activamos la facturación electrónica. Conectá el CUIT con ARCA para empezar a facturar.",
+        "enabledConnected": "Activamos la facturación electrónica con la conexión de ARCA que ya tenías.",
+        "disabled": "Desactivamos la facturación electrónica.",
+        "disabledWithInvoices": "Desactivamos la facturación electrónica. Las facturas emitidas siguen en Comprobantes.",
+        "confirm": {
+          "title": "Desactivar la facturación electrónica",
+          "description": "Se ocultan la factura de los pedidos aceptados, los datos fiscales de los clientes y la conexión con ARCA. Las facturas emitidas se siguen consultando en Comprobantes, y la conexión queda guardada por si la volvés a activar.",
+          "action": "Desactivar",
+          "pending": "Desactivando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Revisalas en Comprobantes y volvé a intentar cuando respondan."
+        }
       }
     },
     "card": {
@@ -2791,7 +2907,11 @@
         "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede modificar: si hay un error, se anula con una nota de crédito.",
         "confirm": "Emitir factura",
         "confirming": "Emitiendo…",
-        "cancel": "Cancelar"
+        "cancel": "Cancelar",
+        "titlePending": "Emitir la factura",
+        "unavailable": "No pudimos leer la factura. Abrí el pedido para emitirla desde su tarjeta.",
+        "alreadyIssued": "Esta venta ya tiene una factura emitida o esperando la respuesta de ARCA.",
+        "blocked": "Todavía no se puede facturar: {reasons}. Abrí el pedido para resolverlo desde la tarjeta de la factura."
       },
       "rejected": {
         "title": "ARCA rechazó el último intento",
@@ -2816,11 +2936,11 @@
         },
         "RECEIVER_CUIT_REQUIRED": {
           "title": "Falta el CUIT del cliente",
-          "body": "Cargá el CUIT del cliente desde su ficha para emitir este tipo de factura."
+          "body": "El cliente carga su CUIT al crear su cuenta. Enviale el link de registro para emitir este tipo de factura."
         },
         "RECEIVER_ID_REQUIRED": {
           "title": "Falta el documento del cliente",
-          "body": "Por el monto, ARCA pide identificar al cliente con su CUIT o DNI."
+          "body": "Por el monto, ARCA pide identificar al cliente. Cargá su DNI en su ficha o enviale el link de registro para que cargue su CUIT."
         },
         "QUOTE_TOTAL_MISMATCH": {
           "title": "Los descuentos superan algún ítem",
@@ -2836,6 +2956,17 @@
         }
       },
       "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
+      "signup": {
+        "action": "Enviar link de registro",
+        "title": "Link de registro",
+        "description": "Compartile este link al cliente para que cree su cuenta y cargue su CUIT.",
+        "linkLabel": "Link de registro",
+        "copy": "Copiar link",
+        "copied": "Link copiado",
+        "copyFailed": "No pudimos copiar el link. Seleccionalo y copialo a mano.",
+        "close": "Cerrar",
+        "noSite": "El corralón todavía no tiene su sitio de clientes, así que no hay link de registro para enviar. Pedile al equipo de Coti que lo configure."
+      },
       "errors": {
         "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
         "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",
@@ -2894,6 +3025,16 @@
         "downloadNote": "Descargar nota de crédito",
         "downloadInvoice": "Descargar factura anulada",
         "verify": "Verificar la nota de crédito en ARCA"
+      },
+      "waiver": {
+        "action": "No requiere factura",
+        "pending": "Guardando…",
+        "title": "No requiere factura",
+        "body": "Marcado por {name} el {date}. La venta ya no espera su factura.",
+        "undo": "Deshacer",
+        "undoing": "Deshaciendo…",
+        "waived": "El pedido {reference} ya no espera factura.",
+        "restored": "El pedido {reference} vuelve a esperar su factura."
       }
     },
     "history": {
@@ -2925,6 +3066,28 @@
       "branch": "Sucursal",
       "creditNoteType": "NC {type}",
       "credits": "Anula {type} {number}"
+    },
+    "views": {
+      "label": "Vista de administración",
+      "history": "Comprobantes",
+      "pending": "Por facturar"
+    },
+    "pending": {
+      "title": "Por facturar",
+      "description": "Las ventas aceptadas de esta sucursal que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "descriptionAll": "Las ventas aceptadas de las sucursales del corralón que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "empty": "No hay ventas esperando factura en esta sucursal.",
+      "emptyAll": "No hay ventas esperando factura en ninguna sucursal.",
+      "order": "Pedido",
+      "client": "Cliente",
+      "noClient": "Sin cliente",
+      "branch": "Sucursal",
+      "accepted": "Aceptada",
+      "total": "Total",
+      "payment": "Cobro",
+      "paid": "Cobrada",
+      "unpaid": "Sin cobrar",
+      "actions": "Acciones"
     },
     "testBadge": "Prueba"
   },

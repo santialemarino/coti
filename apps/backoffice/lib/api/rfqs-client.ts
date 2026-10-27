@@ -109,9 +109,10 @@ export async function createFileRfqDraft(
   return response.json() as Promise<FileRfqDraftResponse>;
 }
 
-// The queue, archived orders included, read again from the browser.
-export async function fetchQueue(): Promise<RfqRecord[]> {
-  const response = await fetch('/api/rfqs', { method: 'GET', cache: 'no-store' });
+// The queue read again from the browser; archived orders come down only when asked for.
+export async function fetchQueue(includeArchived = false): Promise<RfqRecord[]> {
+  const path = includeArchived ? '/api/rfqs?include_archived=true' : '/api/rfqs';
+  const response = await fetch(path, { method: 'GET', cache: 'no-store' });
   if (!response.ok) {
     await throwApiError(response);
   }
@@ -204,6 +205,36 @@ export async function setQuoteArchived(
   if (!response.ok) {
     await throwApiError(response);
   }
+}
+
+// Marks an accepted sale paid, or takes the mark back. A fact on the sale, never a status change.
+export async function setQuotePaid(
+  quoteId: string,
+  paid: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/payment`, {
+    method: paid ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
+}
+
+// Marks an accepted sale as needing no invoice, or puts it back to wait for one.
+export async function setInvoiceWaived(
+  quoteId: string,
+  waived: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/invoice-waiver`, {
+    method: waived ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
 }
 
 /*

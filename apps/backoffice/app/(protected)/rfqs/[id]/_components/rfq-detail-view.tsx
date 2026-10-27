@@ -14,7 +14,7 @@ import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/publi
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
-import { formatRfqReference, normalizeRfqStatus } from '@/lib/api/rfqs';
+import { formatRfqReference, mapListItem, normalizeRfqStatus } from '@/lib/api/rfqs';
 import {
   discardAIChanges,
   fetchRfqDetail,
@@ -30,11 +30,16 @@ import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqEmailAttachments } from './rfq-email-attachments';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
+import { SaleClosureCard } from './sale-closure-card';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
   /* Whether the order's branch has no mailbox for a customer's reply to reach. */
   branchMissesEmail?: boolean;
+  /* Whether the corralón invoices with Coti; off, an accepted order shows no invoice. */
+  invoicingEnabled: boolean;
+  /* Whether «Marcar cobrado» starts with «Facturar también» ticked. */
+  invoiceOnPayment?: boolean;
 }
 
 // What the queue shows for the order's lines, recounted whenever this screen changes them.
@@ -48,6 +53,8 @@ function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCoun
 export function RfqDetailView({
   detail: initialDetail,
   branchMissesEmail = false,
+  invoicingEnabled,
+  invoiceOnPayment = false,
 }: RfqDetailViewProps) {
   const router = useRouter();
   const fmt = useFormatters();
@@ -66,6 +73,8 @@ export function RfqDetailView({
   const [unarchiving, startUnarchive] = useTransition();
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  // Bumped when closing the sale may have issued its invoice, so the invoice card reads it again.
+  const [invoiceRevision, setInvoiceRevision] = useState(0);
   const clientId = detail.quote?.client_id;
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -95,6 +104,7 @@ export function RfqDetailView({
     rfqStatus,
     detail.rfq.archived_at != null,
   );
+  const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
   const statusKey = `${rfqStatus}:${quoteStatus}`;
   const shownStatusKey = useRef(statusKey);
 
@@ -128,7 +138,14 @@ export function RfqDetailView({
       setDetail(fresh);
       setItems(fresh.items);
       setDiscounts(fresh.discounts ?? []);
-      updateRecord(fresh.rfq.id, lineCounts(fresh.items));
+      const { paidAt, invoiceWaivedAt, invoiced, saleComplete } = mapListItem(fresh.rfq);
+      updateRecord(fresh.rfq.id, {
+        ...lineCounts(fresh.items),
+        paidAt,
+        invoiceWaivedAt,
+        invoiced,
+        saleComplete,
+      });
     } catch {
       // The mutation itself succeeded; a failed refetch must not look like the write died.
       toast.error(t('detail.items.toast.error'));
@@ -143,9 +160,13 @@ export function RfqDetailView({
     [detail.rfq.id, updateRecord],
   );
 
+  async function handleClosureChanged() {
+    await refreshDetail();
+    setInvoiceRevision((revision) => revision + 1);
+  }
+
   function handleUnarchive() {
     if (!quoteId) return;
-    const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
     startUnarchive(async () => {
       try {
         await setQuoteArchived(quoteId, false, branchId);
@@ -165,7 +186,6 @@ export function RfqDetailView({
 
   async function handleDiscard() {
     if (!quoteId) return;
-    const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
     setDiscarding(true);
     try {
       await discardAIChanges(quoteId, branchId);
@@ -265,11 +285,34 @@ export function RfqDetailView({
             {t('detail.callouts.accepted.description')}
           </Callout>
           {quoteId ? (
+            <SaleClosureCard
+              quoteId={quoteId}
+              branchId={branchId}
+              reference={reference}
+              paidAt={detail.rfq.paid_at}
+              paidBy={detail.rfq.paid_by}
+              saleComplete={detail.rfq.sale_complete}
+              invoicingEnabled={invoicingEnabled}
+              invoiceOnPayment={invoiceOnPayment}
+              invoiceWaived={detail.rfq.invoice_waived_at != null}
+              readOnly={archived}
+              onChanged={handleClosureChanged}
+            />
+          ) : null}
+          {quoteId && invoicingEnabled ? (
             <InvoiceCard
               quoteId={quoteId}
               branchId={branchId}
               clientId={clientId}
               readOnly={archived}
+              reference={reference}
+              waiver={
+                detail.rfq.invoice_waived_at
+                  ? { at: detail.rfq.invoice_waived_at, by: detail.rfq.invoice_waived_by }
+                  : null
+              }
+              onWaiverChanged={refreshDetail}
+              revision={invoiceRevision}
             />
           ) : null}
         </>

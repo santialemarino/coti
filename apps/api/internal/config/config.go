@@ -607,7 +607,10 @@ type QuoteArchiveConfig struct {
 	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
 	// (US-41) flags on the same measure, so this belongs above its threshold.
 	InactiveAfter time.Duration
-	BatchSize     int
+	// ClosedAfter is how long a closed outcome — a complete sale or a rejected quote — stays in the
+	// queue without a change before it is archived.
+	ClosedAfter time.Duration
+	BatchSize   int
 }
 
 // ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
@@ -954,6 +957,8 @@ func Load() (*Config, error) {
 		QuoteArchive: QuoteArchiveConfig{
 			InactiveAfter: getDuration("QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", 30*24*time.Hour,
 				&problems),
+			ClosedAfter: getDuration("QUOTE_AUTO_ARCHIVE_CLOSED_DAYS", 30*24*time.Hour,
+				&problems),
 			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
 		},
 		Conversation: ConversationConfig{
@@ -1210,6 +1215,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteArchive.InactiveAfter <= 0 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS must be greater than zero")
+	}
+	if cfg.QuoteArchive.ClosedAfter <= 0 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS must be greater than zero")
 	}
 	if cfg.QuoteArchive.BatchSize < 1 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")

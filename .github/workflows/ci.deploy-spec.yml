@@ -59,6 +59,33 @@ jobs:
             echo "$leaks"
             exit 1
           fi
+      # ARCA_ENVIRONMENT decides which invoices close a sale, and the spec repeats it on every
+      # component that reads it; one left behind would close sales the API still shows open.
+      - name: Every ARCA_ENVIRONMENT matches the API's
+        run: |
+          api=$(yq -r '.services[] | select(.name == "api") | .envs[] | select(.key == "ARCA_ENVIRONMENT") | .value' "$SPEC")
+          drift=$(API="$api" yq -r '
+            [.services[]?, .jobs[]?, .workers[]?]
+            | .[]
+            | .name as $component
+            | .envs[]? | select(.key == "ARCA_ENVIRONMENT" and .value != strenv(API))
+            | $component + "=" + (.value // "")' "$SPEC")
+          if [ -z "$api" ] || [ -n "$drift" ]; then
+            echo "Every ARCA_ENVIRONMENT must carry the api service's value (${api:-none}):"
+            echo "$drift"
+            exit 1
+          fi
+          # A component that reads it but drops the key falls back to the code default unnoticed.
+          for component in quote-auto-archive; do
+            found=$(NAME="$component" yq -r '
+              [.services[]?, .jobs[]?, .workers[]?]
+              | .[] | select(.name == strenv(NAME))
+              | .envs[]? | select(.key == "ARCA_ENVIRONMENT") | .key' "$SPEC")
+            if [ -z "$found" ]; then
+              echo "$component reads ARCA_ENVIRONMENT but the spec does not set it"
+              exit 1
+            fi
+          done
       # All three Dockerfiles build with the repository root as their context, so a component
       # pointed anywhere else fails at its first COPY — and a renamed Dockerfile only surfaces as a
       # failed deploy.

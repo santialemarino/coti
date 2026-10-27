@@ -85,6 +85,28 @@ func (r *InvoicingRepository) UpdateAccountFiscal(
 	return nil
 }
 
+// GetInvoiceOnPayment reads whether marking a sale paid offers its invoice ticked.
+func (r *InvoicingRepository) GetInvoiceOnPayment(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var on bool
+	err := q.QueryRow(ctx, `SELECT invoice_on_payment FROM account WHERE id = $1`, accountID).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return on, err
+}
+
+// UpdateInvoiceOnPayment sets whether marking a sale paid offers its invoice ticked.
+func (r *InvoicingRepository) UpdateInvoiceOnPayment(ctx context.Context, q Querier, accountID uuid.UUID, on bool) error {
+	tag, err := q.Exec(ctx, `UPDATE account SET invoice_on_payment = $2 WHERE id = $1`, accountID, on)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // ListBranchPointsOfSale lists every branch of the account with its point of sale, by name.
 func (r *InvoicingRepository) ListBranchPointsOfSale(
 	ctx context.Context, q Querier, accountID uuid.UUID,
@@ -176,9 +198,9 @@ func (r *InvoicingRepository) GetClientFiscal(
 ) (*domain.ClientFiscal, error) {
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
-		`SELECT id, name, legal_name, tax_id, iva_condition, fiscal_address
+		`SELECT id, name, legal_name, tax_id, dni, iva_condition, fiscal_address
 		 FROM client WHERE account_id = $1 AND id = $2 AND merged_into IS NULL`, accountID, clientID,
-	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
+	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.DNI, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -188,20 +210,18 @@ func (r *InvoicingRepository) GetClientFiscal(
 	return &c, nil
 }
 
-// UpdateClientFiscal replaces a client's fiscal identity and returns it.
+// UpdateClientFiscal replaces a client's legal name, IVA condition, address and DNI and returns the
+// fiscal identity. It never writes tax_id: a CUIT comes only from the customer's account.
 func (r *InvoicingRepository) UpdateClientFiscal(
 	ctx context.Context, q Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate,
 ) (*domain.ClientFiscal, error) {
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
-		`UPDATE client SET legal_name = $3, tax_id = $4, iva_condition = $5, fiscal_address = $6
+		`UPDATE client SET legal_name = $3, dni = $4, iva_condition = $5, fiscal_address = $6
 		 WHERE account_id = $1 AND id = $2 AND merged_into IS NULL
-		 RETURNING id, name, legal_name, tax_id, iva_condition, fiscal_address`,
-		accountID, clientID, in.LegalName, in.TaxID, in.IVACondition, in.Address,
-	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
-	if isUniqueViolation(err, "uq_client_account_tax_id") {
-		return nil, domain.ErrConflict
-	}
+		 RETURNING id, name, legal_name, tax_id, dni, iva_condition, fiscal_address`,
+		accountID, clientID, in.LegalName, in.DNI, in.IVACondition, in.Address,
+	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.DNI, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -306,15 +326,26 @@ func (r *InvoicingRepository) HasPendingInvoice(ctx context.Context, q Querier, 
 	return pending, err
 }
 
-// LockAccountForShare holds the account row until the transaction ends, so a CUIT change or an ARCA
-// disconnect waits for an invoice being held under the current credential.
-func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) error {
-	var id uuid.UUID
-	err := q.QueryRow(ctx, `SELECT id FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&id)
+// InvoicingEnabled reports whether the account invoices with Coti.
+func (r *InvoicingRepository) InvoicingEnabled(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var enabled bool
+	err := q.QueryRow(ctx, `SELECT invoicing_enabled FROM account WHERE id = $1`, accountID).Scan(&enabled)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
-	return err
+	return enabled, err
+}
+
+// LockAccountForShare holds the account row until the transaction ends, so a CUIT change, an ARCA
+// disconnect or switching invoicing off waits for an invoice being held. It returns whether the
+// account invoices with Coti, read under that lock.
+func (r *InvoicingRepository) LockAccountForShare(ctx context.Context, q Querier, accountID uuid.UUID) (bool, error) {
+	var enabled bool
+	err := q.QueryRow(ctx, `SELECT invoicing_enabled FROM account WHERE id = $1 FOR SHARE`, accountID).Scan(&enabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return enabled, err
 }
 
 // GetLatestByQuote returns the quote's newest invoice made in env, still pending anywhere, or issued

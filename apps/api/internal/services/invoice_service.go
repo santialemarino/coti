@@ -24,10 +24,13 @@ type invoicingStore interface {
 	ClaimRecovery(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID, before time.Time) (bool, error)
 	GetAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID) (*domain.AccountFiscal, error)
 	UpdateAccountFiscal(ctx context.Context, q repository.Querier, accountID uuid.UUID, condition *domain.IVACondition, pricesIncludeVAT bool) error
+	GetInvoiceOnPayment(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
+	UpdateInvoiceOnPayment(ctx context.Context, q repository.Querier, accountID uuid.UUID, on bool) error
 	ListBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID) ([]domain.BranchPointOfSale, error)
 	GetBranchPointOfSale(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*int, error)
 	UpdateBranchPointsOfSale(ctx context.Context, q repository.Querier, accountID uuid.UUID, points map[uuid.UUID]*int) error
-	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) error
+	InvoicingEnabled(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
+	LockAccountForShare(ctx context.Context, q repository.Querier, accountID uuid.UUID) (bool, error)
 	GetClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID) (*domain.ClientFiscal, error)
 	UpdateClientFiscal(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
 	VATRatesByProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]domain.VATRate, error)
@@ -56,6 +59,8 @@ type invoiceQuoteReader interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
+	SetInvoiceWaived(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID) (*domain.Quote, error)
+	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 type invoiceDiscountReader interface {
@@ -93,6 +98,7 @@ type InvoiceService struct {
 	now       func() time.Time
 	renderer  domain.InvoicePDFRenderer
 	logos     invoiceLogoReader
+	portal    customerPortal
 }
 
 // NewInvoiceService builds the invoicing use cases.
@@ -112,6 +118,12 @@ func NewInvoiceService(
 		sealer: sealer, settings: settings, now: now}
 }
 
+// WithCustomerPortal lets a preview point the seller at the supplier's customer sign-up page.
+func (s *InvoiceService) WithCustomerPortal(reader customerQuoteHostnameReader, localOrigin string) *InvoiceService {
+	s.portal = customerPortal{hostnames: reader, localOrigin: localOrigin}
+	return s
+}
+
 // --- Settings ---
 
 // GetSettings returns the account's invoicing setup.
@@ -123,6 +135,9 @@ func (s *InvoiceService) GetSettings(ctx context.Context, tenant domain.Tenant) 
 			return err
 		}
 		settings.Account = *account
+		if settings.InvoiceOnPayment, err = s.store.GetInvoiceOnPayment(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		if settings.Branches, err = s.store.ListBranchPointsOfSale(ctx, q, tenant.AccountID); err != nil {
 			return err
 		}
@@ -163,6 +178,11 @@ func (s *InvoiceService) UpdateSettings(
 		if err := s.store.UpdateAccountFiscal(ctx, q, tenant.AccountID, in.IVACondition, in.PricesIncludeVAT); err != nil {
 			return err
 		}
+		if in.InvoiceOnPayment != nil {
+			if err := s.store.UpdateInvoiceOnPayment(ctx, q, tenant.AccountID, *in.InvoiceOnPayment); err != nil {
+				return err
+			}
+		}
 		return s.savePointsOfSale(ctx, q, tenant.AccountID, in.PointsOfSale)
 	})
 	if err != nil {
@@ -200,23 +220,30 @@ func (s *InvoiceService) GetClientFiscal(
 	return client, err
 }
 
-// UpdateClientFiscal changes optional fiscal data without changing the immutable CUIT/CUIL.
-func (s *InvoiceService) UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error) {
+// UpdateClientFiscal replaces a client's legal name, address, IVA condition and DNI; a CUIT on file
+// stays as the customer loaded it. The DNI is 7 or 8 digits; separators are dropped.
+func (s *InvoiceService) UpdateClientFiscal(
+	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate,
+) (*domain.ClientFiscal, error) {
 	if in.IVACondition != nil && !in.IVACondition.Valid() {
-		return nil, domain.ErrInvalidInput
+		return nil, fmt.Errorf("%w: unknown IVA condition %q", domain.ErrInvalidInput, *in.IVACondition)
 	}
 	in.Address = trimmedOrNil(in.Address)
 	in.LegalName = trimmedOrNil(in.LegalName)
+	if in.DNI != nil {
+		switch digits := domain.DigitsOnly(*in.DNI); {
+		case digits == "":
+			in.DNI = nil
+		case len(digits) == 7, len(digits) == 8:
+			in.DNI = &digits
+		default:
+			return nil, domain.WithCode(domain.CodeInvalidTaxID,
+				fmt.Errorf("%w: %q is not a DNI", domain.ErrInvalidInput, *in.DNI))
+		}
+	}
 	var client *domain.ClientFiscal
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		existing, err := s.store.GetClientFiscal(ctx, q, tenant.AccountID, clientID)
-		if err != nil {
-			return err
-		}
-		if in.TaxID != nil && (existing.TaxID == nil || domain.DigitsOnly(*in.TaxID) != *existing.TaxID) {
-			return domain.WithCode(domain.CodeInvalidTaxID, domain.ErrInvalidInput)
-		}
-		in.TaxID = existing.TaxID
+		var err error
 		client, err = s.store.UpdateClientFiscal(ctx, q, tenant.AccountID, clientID, in)
 		return err
 	})
@@ -235,11 +262,24 @@ func (s *InvoiceService) Preview(
 	}
 	var preview *domain.InvoicePreview
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if err := s.requireInvoicingOn(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		draft, err := s.draft(ctx, q, tenant, quoteID)
 		if err != nil {
 			return err
 		}
 		preview = &draft.preview
+		if !lacksReceiverIdentity(preview.Issues) {
+			return nil
+		}
+		origin, err := s.portal.siteOrigin(ctx, q, tenant.AccountID)
+		if err != nil {
+			return err
+		}
+		if origin != "" {
+			preview.CustomerSignupURL = customerSignupURL(origin)
+		}
 		return nil
 	})
 	return preview, err
@@ -258,6 +298,9 @@ func (s *InvoiceService) Issue(
 	var creds, recovery domain.ARCACredentials
 	var stale *domain.Invoice
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if err := s.requireInvoicingOn(ctx, q, tenant.AccountID); err != nil {
+			return err
+		}
 		var err error
 		if draft, err = s.draft(ctx, q, tenant, quoteID); err != nil {
 			return err
@@ -339,6 +382,22 @@ func (s *InvoiceService) Issue(
 		},
 	})
 	return s.settle(detached, tenant, *pending, auth, issueErr)
+}
+
+// errAccountInvoicingOff refuses issuing for an account that does not invoice with Coti.
+var errAccountInvoicingOff = domain.WithCode(domain.CodeAccountInvoicingOff,
+	fmt.Errorf("%w: the account does not invoice with Coti", domain.ErrConflict))
+
+// requireInvoicingOn refuses when the account switched invoicing with Coti off.
+func (s *InvoiceService) requireInvoicingOn(ctx context.Context, q repository.Querier, accountID uuid.UUID) error {
+	enabled, err := s.store.InvoicingEnabled(ctx, q, accountID)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return errAccountInvoicingOff
+	}
+	return nil
 }
 
 // invoiceDraft is a preview with what issuing it needs on top.
@@ -496,10 +555,14 @@ func (s *InvoiceService) hold(ctx context.Context, tenant domain.Tenant, draft i
 		if err != nil {
 			return err
 		}
-		// Taken before the draft is rebuilt, so a CUIT change or disconnect either waits for this
-		// invoice or has already landed and makes the draft stale.
-		if err := s.store.LockAccountForShare(ctx, q, tenant.AccountID); err != nil {
+		// Taken before the draft is rebuilt, so a CUIT change, a disconnect or switching invoicing off
+		// either waits for this invoice or has already landed and refuses it.
+		enabled, err := s.store.LockAccountForShare(ctx, q, tenant.AccountID)
+		if err != nil {
 			return err
+		}
+		if !enabled {
+			return errAccountInvoicingOff
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, draft.quote.ID)
 		if err != nil {
@@ -577,7 +640,7 @@ func (s *InvoiceService) settle(
 		var issued *domain.Invoice
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
-			issued, err = s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, *auth)
+			issued, err = s.markIssued(ctx, q, tenant, pending.ID, *auth)
 			return err
 		})
 		return issued, err
@@ -600,6 +663,28 @@ func (s *InvoiceService) settle(
 	}
 }
 
+// markIssued records ARCA's authorization. Any authorized voucher is activity on the sale, so it
+// restarts the inactivity the auto-archive measures; an issued invoice also ends «No requiere
+// factura» in the same transaction: the sale was invoiced after all.
+func (s *InvoiceService) markIssued(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, id uuid.UUID, auth domain.InvoiceAuthorization,
+) (*domain.Invoice, error) {
+	issued, err := s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, id, auth)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, issued.BranchID, issued.QuoteID); err != nil {
+		return nil, err
+	}
+	if issued.Kind != domain.VoucherKindInvoice {
+		return issued, nil
+	}
+	if _, err := s.quotes.SetInvoiceWaived(ctx, q, tenant.AccountID, issued.BranchID, issued.QuoteID, nil); err != nil {
+		return nil, err
+	}
+	return issued, nil
+}
+
 // reconcile reads back the number a pending invoice of unknown outcome claimed: ARCA's invoice there
 // is adopted when it is this one, otherwise nothing was authorized and the hold is released.
 func (s *InvoiceService) reconcile(
@@ -618,7 +703,7 @@ func (s *InvoiceService) reconcile(
 		var issued *domain.Invoice
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
-			issued, err = s.store.MarkIssued(ctx, q, tenant.AccountID, tenant.BranchID, pending.ID, domain.InvoiceAuthorization{
+			issued, err = s.markIssued(ctx, q, tenant, pending.ID, domain.InvoiceAuthorization{
 				Number: found.Number, CAE: found.CAE, CAEExpiresOn: found.CAEExpiresOn,
 			})
 			return err

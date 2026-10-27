@@ -9,6 +9,7 @@ import {
   type InvoicingSettingsValues,
 } from '@/app/(protected)/settings/invoicing/form-schema';
 import { ROUTES } from '@/config/routes';
+import { getARCASetup } from '@/lib/api/arca-setup';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 import {
@@ -27,6 +28,44 @@ import { rawText } from '@/lib/forms/validators';
 export interface InvoicingSettingsResult {
   settings?: InvoicingSettings;
   error?: ApiErrorCode;
+}
+
+export interface InvoicingSwitchResult {
+  error?: ApiErrorCode;
+  // What the confirmation has to name: issued invoices kept, or an ARCA connection taken up again.
+  hasInvoices?: boolean;
+  arcaConnected?: boolean;
+}
+
+/*
+ * Whether the corralón invoices with Coti. It changes what every protected screen shows, so the whole
+ * layout is revalidated rather than this page alone.
+ */
+export async function setInvoicingEnabled(enabled: boolean): Promise<InvoicingSwitchResult> {
+  await requireAdmin();
+  let account: { has_invoices: boolean };
+  try {
+    account = await apiRequest<{ has_invoices: boolean }>({
+      path: '/v1/invoicing/enabled',
+      method: 'PUT',
+      branchScoped: false,
+      body: { enabled },
+    });
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+  revalidatePath('/', 'layout');
+  return { hasInvoices: account.has_invoices, arcaConnected: enabled && (await arcaConnected()) };
+}
+
+// A connection that cannot be read reads as none, which only words the toast as the safer advice.
+async function arcaConnected(): Promise<boolean> {
+  try {
+    const setup = await getARCASetup();
+    return setup.hasCertificate && !setup.reconnectRequired;
+  } catch {
+    return false;
+  }
 }
 
 export async function updateInvoicingSettings(
@@ -61,6 +100,7 @@ function settingsBody(values: InvoicingSettingsOutput) {
     },
     iva_condition: values.ivaCondition,
     prices_include_vat: values.pricesIncludeVat,
+    invoice_on_payment: values.invoiceOnPayment,
     branches: pointsOfSaleBody(values.branches),
   };
 }

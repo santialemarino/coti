@@ -47,12 +47,83 @@ type Quote struct {
 	FollowupFlaggedAt *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// PaidAt and PaidByUserID record «Cobrado» on an accepted sale: a fact, not a status.
+	PaidAt       *time.Time
+	PaidByUserID *uuid.UUID
+	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
+	InvoiceWaivedAt       *time.Time
+	InvoiceWaivedByUserID *uuid.UUID
+}
+
+// SaleClosure is what has closed an accepted sale so far, with who did it. It is derived, never
+// stored as a status.
+type SaleClosure struct {
+	PaidAt          *time.Time
+	PaidBy          *string // the user's name.
+	InvoiceWaivedAt *time.Time
+	InvoiceWaivedBy *string
+	// Invoiced is whether an issued invoice no credit note cancelled closes the sale here.
+	Invoiced bool
+	// InvoicePending is whether a voucher waits for ARCA's answer, in any environment.
+	InvoicePending bool
+	// InvoicingEnabled is the account switch; an account that does not invoice needs no invoice.
+	InvoicingEnabled bool
+}
+
+// SaleComplete reports whether a sale in status is fully closed: accepted, paid, and invoiced or
+// waived, or with invoicing off for the account. A voucher still waiting for ARCA keeps it open.
+func SaleComplete(status QuoteStatus, closure SaleClosure) bool {
+	if status != QuoteStatusAccepted || closure.PaidAt == nil || closure.InvoicePending {
+		return false
+	}
+	return closure.Invoiced || closure.InvoiceWaivedAt != nil || !closure.InvoicingEnabled
+}
+
+// SaleInvoiceStatus is where a sale stands with its invoice, derived from its closure.
+type SaleInvoiceStatus string
+
+const (
+	SaleInvoiceStatusInvoiced   SaleInvoiceStatus = "INVOICED"
+	SaleInvoiceStatusPending    SaleInvoiceStatus = "PENDING"
+	SaleInvoiceStatusWaived     SaleInvoiceStatus = "WAIVED"
+	SaleInvoiceStatusUninvoiced SaleInvoiceStatus = "UNINVOICED"
+)
+
+// InvoiceStatusOf reads a sale's invoice status. A voucher waiting for ARCA wins, since it holds the
+// sale open whatever else stands for it.
+func InvoiceStatusOf(closure SaleClosure) SaleInvoiceStatus {
+	switch {
+	case closure.InvoicePending:
+		return SaleInvoiceStatusPending
+	case closure.Invoiced:
+		return SaleInvoiceStatusInvoiced
+	case closure.InvoiceWaivedAt != nil:
+		return SaleInvoiceStatusWaived
+	}
+	return SaleInvoiceStatusUninvoiced
+}
+
+// InvoicePageSize is how many rows one page of the invoicing lists holds.
+const InvoicePageSize = 25
+
+// SaleAwaitingInvoice is an accepted, unarchived sale nothing invoices, waives or holds yet.
+type SaleAwaitingInvoice struct {
+	QuoteID     uuid.UUID
+	RFQID       uuid.UUID
+	Number      int64
+	BranchID    uuid.UUID
+	BranchName  string
+	ClientID    *uuid.UUID
+	ClientLabel string
+	Total       decimal.Decimal
+	AcceptedAt  time.Time
+	PaidAt      *time.Time
 }
 
 // AutoArchiveStatuses are the statuses the inactivity sweep archives: the stalls follow-up chases,
 // waiting on the seller (DRAFT, QUOTED) or on the client (SENT, only once its offer has lapsed). A
-// change request is a live demand from the client, and a closed quote is a record of the outcome,
-// so neither is put away unasked.
+// change request is a live demand from the client, so it is never put away unasked; closed outcomes
+// are swept on their own window.
 var AutoArchiveStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusSent}
 
 // ArchivedQuote is one quote the inactivity sweep archived, with the activity it went quiet after.

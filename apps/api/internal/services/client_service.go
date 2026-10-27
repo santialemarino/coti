@@ -28,7 +28,7 @@ type clientProfileRepository interface {
 	FindByContacts(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		phone, email *string) ([]domain.Client, error)
 	ListAcceptedSales(ctx context.Context, q repository.Querier, tenant domain.Tenant,
-		clientID uuid.UUID) ([]domain.ClientSale, error)
+		clientID uuid.UUID, env domain.ARCAEnvironment) ([]domain.ClientSale, error)
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		in domain.NewClient) (*domain.Client, error)
 }
@@ -73,6 +73,8 @@ type ClientService struct {
 	quotes  clientQuoteRepository
 	rfqs    clientRFQRepository
 	sends   clientSendRepository
+	// invoicingEnv is the ARCA environment whose invoices close a sale.
+	invoicingEnv domain.ARCAEnvironment
 }
 
 // NewClientService builds the client profile use cases.
@@ -82,6 +84,12 @@ func NewClientService(
 ) *ClientService {
 	return &ClientService{db: db, clients: clients, tags: tags, quotes: quotes, rfqs: rfqs,
 		sends: sends}
+}
+
+// WithInvoicingEnvironment sets the ARCA environment whose invoices close a sale.
+func (s *ClientService) WithInvoicingEnvironment(env domain.ARCAEnvironment) *ClientService {
+	s.invoicingEnv = env
+	return s
 }
 
 // ListClients returns account profiles with activity constrained to the caller's sales reach.
@@ -125,7 +133,7 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
-		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID)
+		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID, s.invoicingEnv)
 		if err != nil {
 			return err
 		}

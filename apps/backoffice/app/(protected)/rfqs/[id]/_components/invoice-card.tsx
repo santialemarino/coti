@@ -29,7 +29,9 @@ import {
   TableRow,
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
+import { IssueInvoiceDialog } from '@/app/(protected)/rfqs/_components/issue-invoice-dialog';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { SignupLinkDialog } from '@/app/(protected)/rfqs/[id]/_components/signup-link-dialog';
 import { InvoiceRecoveryButton } from '@/components/invoice-recovery-button';
 import { SetupNotice } from '@/components/setup-notice';
 import { ROUTES } from '@/config/routes';
@@ -45,7 +47,8 @@ import {
   type InvoicePreview,
   type InvoiceReceiver,
 } from '@/lib/api/invoicing';
-import { getInvoicePreview, issueCreditNote, issueInvoice } from '@/lib/api/invoicing-client';
+import { getInvoicePreview, issueCreditNote } from '@/lib/api/invoicing-client';
+import { setInvoiceWaived } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { isSetupIssue } from '@/lib/utils/setup-issues';
 
@@ -54,6 +57,8 @@ const RECEIVER_ISSUES = new Set([
   'RECEIVER_ID_REQUIRED',
   'RECEIVER_ADDRESS_REQUIRED',
 ]);
+// The gaps a CUIT closes, and only the customer loads one, by signing up.
+const SIGNUP_ISSUES = new Set(['RECEIVER_CUIT_REQUIRED', 'RECEIVER_ID_REQUIRED']);
 const NO_AMOUNT = '0.00';
 const DOC_NUMBER_FORMATS: Record<string, (digits: string) => string> = {
   CUIT: formatCuit,
@@ -67,6 +72,14 @@ interface InvoiceCardProps {
   clientId: string | null | undefined;
   // An archived sale shows its invoice and draft but offers no issue or recovery until unarchived.
   readOnly?: boolean;
+  // The order reference the confirmations name.
+  reference: string;
+  // «No requiere factura», with who marked it; null while the sale waits for its invoice.
+  waiver: { at: string; by: string | null } | null;
+  // Runs after the waiver is set or undone, so the screen re-reads the sale.
+  onWaiverChanged: () => Promise<void>;
+  // Bumped when something outside the card changed the invoice, so it reads it again.
+  revision?: number;
 }
 
 /*
@@ -74,7 +87,16 @@ interface InvoiceCardProps {
  * gap that stops it. Issuing is always a person's confirmed decision — it cannot be undone, only
  * cancelled by a credit note, after which the sale can be invoiced again.
  */
-export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: InvoiceCardProps) {
+export function InvoiceCard({
+  quoteId,
+  branchId,
+  clientId,
+  readOnly = false,
+  reference,
+  waiver,
+  onWaiverChanged,
+  revision = 0,
+}: InvoiceCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.card');
   const tInvoicing = useTranslations('invoicing');
@@ -86,11 +108,11 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
   // ARCA's reasons from the attempt just made, until a reload carries them on the invoice itself.
   const [rejection, setRejection] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
-  const [issuing, startIssue] = useTransition();
   // ARCA's reasons for refusing the credit note just asked for, until a reload carries them.
   const [creditNoteRejection, setCreditNoteRejection] = useState<string[]>([]);
   const [confirmingCreditNote, setConfirmingCreditNote] = useState(false);
   const [creditNoting, startCreditNote] = useTransition();
+  const [waiving, startWaive] = useTransition();
 
   // Only the newest read may land: a slower, older one would put back a receiver or a button
   // the seller has already moved past.
@@ -121,27 +143,20 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
   // The client is part of what the invoice says, so a change of client is a new preview.
   useEffect(() => {
     void load(true);
-  }, [clientId, load]);
+  }, [clientId, load, revision]);
 
-  function issue(confirmed: InvoicePreview) {
+  function markIssued(invoice: Invoice) {
+    latestRead.current++;
     setRejection([]);
-    startIssue(async () => {
-      try {
-        const invoice = await issueInvoice(quoteId, branchId, confirmed);
-        latestRead.current++;
-        setConfirming(false);
-        toast.success(t('issued', { type: invoice.type, number: invoiceNumberOf(invoice) }));
-        setPreview((current) => (current ? { ...current, invoice, issues: [] } : current));
-        // The button that opened the dialog is gone with the draft; focus lands on what replaced it.
-        requestAnimationFrame(() => headingRef.current?.focus());
-      } catch (cause) {
-        setConfirming(false);
-        const code = errorCodeOf(cause);
-        if (code === 'INVOICE_REJECTED' && cause instanceof ApiError) setRejection(cause.issues);
-        toast.error(message(code));
-        await reload();
-      }
-    });
+    setPreview((current) => (current ? { ...current, invoice, issues: [] } : current));
+    // The button that opened the dialog is gone with the draft; focus lands on what replaced it.
+    requestAnimationFrame(() => headingRef.current?.focus());
+  }
+
+  async function issueFailed(cause: unknown) {
+    const code = errorCodeOf(cause);
+    setRejection(code === 'INVOICE_REJECTED' && cause instanceof ApiError ? cause.issues : []);
+    await reload();
   }
 
   function creditNote(invoice: Invoice) {
@@ -172,6 +187,19 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
     });
   }
 
+  function setWaived(waived: boolean) {
+    startWaive(async () => {
+      try {
+        await setInvoiceWaived(quoteId, waived, branchId);
+        toast.success(t(waived ? 'waiver.waived' : 'waiver.restored', { reference }));
+        await onWaiverChanged();
+        requestAnimationFrame(() => headingRef.current?.focus());
+      } catch (cause) {
+        toast.error(message(errorCodeOf(cause)));
+      }
+    });
+  }
+
   // A closed dialog hands focus back to the button that opened it, or to the card once that is gone.
   function returnFocus(event: Event, opener: React.RefObject<HTMLButtonElement | null>) {
     event.preventDefault();
@@ -192,13 +220,13 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
           <CardTitle>
             {issued
               ? t('issuedTitle', { type: issued.type, number: invoiceNumberOf(issued) })
-              : preview
+              : preview && !waiver
                 ? t('draftTitle', { type: preview.type })
                 : t('title')}
           </CardTitle>
           {testInvoice ? <Badge tone="outline">{tInvoicing('testBadge')}</Badge> : null}
         </div>
-        {preview && !issued ? <CardDescription>{t('draftHint')}</CardDescription> : null}
+        {preview && !issued && !waiver ? <CardDescription>{t('draftHint')}</CardDescription> : null}
         {testInvoice ? <CardDescription>{t('testNote')}</CardDescription> : null}
       </CardHeader>
       <CardContent>
@@ -226,6 +254,26 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
               creditNoteButtonRef={creditNoteButtonRef}
             />
           </div>
+        ) : waiver && preview.invoice?.status !== 'PENDING' ? (
+          <Callout
+            tone="info"
+            title={t('waiver.title')}
+            action={
+              readOnly ? undefined : (
+                <PendingButton
+                  variant="outline"
+                  size="sm"
+                  pending={waiving}
+                  pendingLabel={t('waiver.undoing')}
+                  onClick={() => setWaived(false)}
+                >
+                  {t('waiver.undo')}
+                </PendingButton>
+              )
+            }
+          >
+            {t('waiver.body', { name: waiver.by ?? '', date: fmt.date(waiver.at) })}
+          </Callout>
         ) : (
           <div className="flex flex-col gap-y-4">
             {preview.creditedInvoice ? (
@@ -258,9 +306,21 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
               isSetupIssue(issue) ? (
                 <SetupNotice key={issue} issue={issue} isAdmin={isAdmin} tone="info" />
               ) : (
-                <Callout key={issue} tone="info" title={t(`issues.${issue}.title`)}>
+                <Callout
+                  key={issue}
+                  tone="info"
+                  title={t(`issues.${issue}.title`)}
+                  action={
+                    SIGNUP_ISSUES.has(issue) && preview.customerSignupUrl ? (
+                      <SignupLinkDialog url={preview.customerSignupUrl} />
+                    ) : undefined
+                  }
+                >
                   {t(`issues.${issue}.body`)}
                   {RECEIVER_ISSUES.has(issue) && clientId === null ? ` ${t('noClient')}` : null}
+                  {SIGNUP_ISSUES.has(issue) && !preview.customerSignupUrl
+                    ? ` ${t('signup.noSite')}`
+                    : null}
                 </Callout>
               ),
             )}
@@ -279,40 +339,37 @@ export function InvoiceCard({ quoteId, branchId, clientId, readOnly = false }: I
             ) : null}
             <AmountsTable amounts={preview.amounts} currency={preview.currency} />
 
-            {!readOnly && preview.issues.length === 0 && preview.invoice?.status !== 'PENDING' ? (
-              <div className="flex justify-end">
+            {!readOnly && preview.invoice?.status !== 'PENDING' ? (
+              <div className="flex flex-wrap justify-end gap-2">
                 <PendingButton
-                  ref={issueButtonRef}
-                  pending={issuing}
-                  pendingLabel={t('issuing')}
-                  onClick={() => setConfirming(true)}
+                  variant="outline"
+                  pending={waiving}
+                  pendingLabel={t('waiver.pending')}
+                  onClick={() => setWaived(true)}
                 >
-                  {t('issue', { type: preview.type })}
+                  {t('waiver.action')}
                 </PendingButton>
+                {preview.issues.length === 0 ? (
+                  <Button
+                    ref={issueButtonRef}
+                    disabled={waiving}
+                    onClick={() => setConfirming(true)}
+                  >
+                    {t('issue', { type: preview.type })}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
 
-            <ConfirmDialog
+            <IssueInvoiceDialog
               open={confirming}
-              onOpenChange={(open) => !issuing && setConfirming(open)}
-              entity={preview}
-              tone="default"
-              title={t('confirm.title', { type: preview.type })}
-              description={(shown) =>
-                t('confirm.description', {
-                  type: shown.type,
-                  receiver: shown.receiver.name || t('finalConsumer'),
-                  total: fmt.currency(shown.amounts.total, shown.currency),
-                })
-              }
-              onConfirm={() => issue(preview)}
+              onOpenChange={setConfirming}
+              quoteId={quoteId}
+              branchId={branchId}
+              preview={preview}
+              onIssued={markIssued}
+              onFailed={issueFailed}
               onCloseAutoFocus={(event) => returnFocus(event, issueButtonRef)}
-              pending={issuing}
-              labels={{
-                confirm: t('confirm.confirm'),
-                pending: t('confirm.confirming'),
-                cancel: t('confirm.cancel'),
-              }}
             />
           </div>
         )}

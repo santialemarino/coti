@@ -618,6 +618,13 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		ArchivedAt:        item.ArchivedAt,
 		NeedsFollowup:     item.NeedsFollowup,
 		FollowupFlaggedAt: item.FollowupFlaggedAt,
+		PaidAt:            item.Closure.PaidAt,
+		PaidBy:            item.Closure.PaidBy,
+		InvoiceWaivedAt:   item.Closure.InvoiceWaivedAt,
+		InvoiceWaivedBy:   item.Closure.InvoiceWaivedBy,
+		Invoiced:          item.Closure.Invoiced,
+		InvoicePending:    item.Closure.InvoicePending,
+		SaleComplete:      item.SaleComplete(),
 	}
 }
 
@@ -921,7 +928,9 @@ func toConversationResponse(conversation domain.Conversation) dto.ConversationRe
 		if review := entry.Decision; review != nil {
 			decision := dto.ConversationDecisionResponse{Interpretation: review.Interpretation,
 				Outcome: string(review.Outcome), DecidedAt: review.DecidedAt,
-				CreatedAt: review.CreatedAt}
+				StrategiesTried: toStrategyNames(review.StrategiesTried),
+				Adaptation:      toHandlerAdaptationResponse(review.Adaptation),
+				CreatedAt:       review.CreatedAt}
 			if review.NoMatchReason != nil {
 				reason := string(*review.NoMatchReason)
 				decision.NoMatchReason = &reason
@@ -999,7 +1008,33 @@ func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeReques
 		}
 		resp.Handler = &dto.HandlerDecisionResponse{ClientInput: note.ClientInput,
 			Interpretation: note.Interpretation, Outcome: string(note.Outcome),
-			NoMatchReason: reason, SellerDecision: seller, CreatedAt: note.CreatedAt}
+			NoMatchReason: reason, SellerDecision: seller,
+			StrategiesTried: toStrategyNames(note.StrategiesTried),
+			Adaptation:      toHandlerAdaptationResponse(note.Adaptation), CreatedAt: note.CreatedAt}
+	}
+	return resp
+}
+
+func toStrategyNames(strategies []domain.HandlerStrategy) []string {
+	names := make([]string, 0, len(strategies))
+	for _, strategy := range strategies {
+		names = append(names, string(strategy))
+	}
+	return names
+}
+
+func toHandlerAdaptationResponse(adaptation *domain.HandlerAdaptation) *dto.HandlerAdaptationResponse {
+	if adaptation == nil {
+		return nil
+	}
+	resp := &dto.HandlerAdaptationResponse{TotalBefore: adaptation.TotalBefore,
+		TotalAfter: adaptation.TotalAfter, TotalRaised: adaptation.TotalRaised,
+		Lines: make([]dto.HandlerAdaptedLineResponse, 0, len(adaptation.Lines))}
+	for _, line := range adaptation.Lines {
+		resp.Lines = append(resp.Lines, dto.HandlerAdaptedLineResponse{ItemID: line.ItemID,
+			Description: line.Description, FromQuantity: line.FromQuantity,
+			ToQuantity: line.ToQuantity, PromotionID: line.PromotionID,
+			PromotionName: line.PromotionName})
 	}
 	return resp
 }
@@ -1016,7 +1051,8 @@ func toDiffDiscountSideResponse(side *domain.DiffDiscountSide) *dto.DiffDiscount
 	if side == nil {
 		return nil
 	}
-	return &dto.DiffDiscountSideResponse{Amount: side.Amount, Suppressed: side.Suppressed}
+	return &dto.DiffDiscountSideResponse{Amount: side.Amount, Suppressed: side.Suppressed,
+		Origin: string(side.Origin)}
 }
 
 func toQuoteDiscountResponse(discount domain.QuoteDiscount) dto.QuoteDiscountResponse {

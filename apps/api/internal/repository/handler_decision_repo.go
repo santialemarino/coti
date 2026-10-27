@@ -26,6 +26,8 @@ func (r *HandlerDecisionRepository) ListReviewsByQuote(ctx context.Context, q Qu
 		        COALESCE(decision.ai_interpretation, ''),
 		        decision.ai_proposal::jsonb ->> 'outcome',
 		        decision.ai_proposal::jsonb ->> 'no_match_reason',
+		        decision.ai_proposal::jsonb -> 'strategies_tried',
+		        decision.ai_proposal::jsonb -> 'adaptation',
 		        decision.seller_decision, decision.decided_at, decision.created_at
 		 FROM handler_decision decision
 		 JOIN quote_version version
@@ -43,9 +45,15 @@ func (r *HandlerDecisionRepository) ListReviewsByQuote(ctx context.Context, q Qu
 		var batchID uuid.UUID
 		var review domain.HandlerDecisionReview
 		var outcome *string
+		var strategies, adaptation []byte
 		if err := rows.Scan(&batchID, &review.VersionID, &review.Interpretation, &outcome,
-			&review.NoMatchReason,
+			&review.NoMatchReason, &strategies, &adaptation,
 			&review.SellerDecision, &review.DecidedAt, &review.CreatedAt); err != nil {
+			return nil, err
+		}
+		var err error
+		if review.StrategiesTried, review.Adaptation, err = decodeRecipeTrace(strategies,
+			adaptation); err != nil {
 			return nil, err
 		}
 		review.Outcome = domain.HandlerOutcomeApplied
@@ -96,20 +104,26 @@ func (r *HandlerDecisionRepository) GetLatestByVersionID(ctx context.Context, q 
 ) (*domain.HandlerDecisionNote, error) {
 	var note domain.HandlerDecisionNote
 	var outcome *string
+	var strategies, adaptation []byte
 	err := q.QueryRow(ctx,
 		`SELECT COALESCE(client_input, ''), COALESCE(ai_interpretation, ''),
 		        ai_proposal::jsonb ->> 'outcome', ai_proposal::jsonb ->> 'no_match_reason',
+		        ai_proposal::jsonb -> 'strategies_tried', ai_proposal::jsonb -> 'adaptation',
 		        seller_decision, created_at
 		 FROM handler_decision
 		 WHERE account_id = $1 AND quote_version_id = $2
 		 ORDER BY created_at DESC, id DESC
 		 LIMIT 1`,
 		accountID, versionID).Scan(&note.ClientInput, &note.Interpretation, &outcome,
-		&note.NoMatchReason, &note.SellerDecision, &note.CreatedAt)
+		&note.NoMatchReason, &strategies, &adaptation, &note.SellerDecision, &note.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+	if note.StrategiesTried, note.Adaptation, err = decodeRecipeTrace(strategies,
+		adaptation); err != nil {
 		return nil, err
 	}
 	note.Outcome = domain.HandlerOutcomeApplied
@@ -117,6 +131,25 @@ func (r *HandlerDecisionRepository) GetLatestByVersionID(ctx context.Context, q 
 		note.Outcome = domain.HandlerOutcome(*outcome)
 	}
 	return &note, nil
+}
+
+// decodeRecipeTrace reads the strategies a run tried and its adaptation from ai_proposal; a key
+// the run never wrote comes back as SQL NULL.
+func decodeRecipeTrace(strategies, adaptation []byte,
+) ([]domain.HandlerStrategy, *domain.HandlerAdaptation, error) {
+	var tried []domain.HandlerStrategy
+	if len(strategies) > 0 {
+		if err := json.Unmarshal(strategies, &tried); err != nil {
+			return nil, nil, err
+		}
+	}
+	var adapted *domain.HandlerAdaptation
+	if len(adaptation) > 0 {
+		if err := json.Unmarshal(adaptation, &adapted); err != nil {
+			return nil, nil, err
+		}
+	}
+	return tried, adapted, nil
 }
 
 // Create records an AI proposal before a seller accepts, edits, or rejects it. A batch, when named,

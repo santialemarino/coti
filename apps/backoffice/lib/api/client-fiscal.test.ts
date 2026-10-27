@@ -10,6 +10,7 @@ const raw = {
   name: 'Eduardo',
   legal_name: 'Obra SA',
   tax_id: '30701234568',
+  dni: '28123456',
   address: 'San Martin 123',
   iva_condition: 'REGISTERED',
 };
@@ -22,6 +23,7 @@ describe('client fiscal boundary', () => {
       name: 'Eduardo',
       legalName: 'Obra SA',
       taxId: '30701234568',
+      dni: '28123456',
       address: 'San Martin 123',
       ivaCondition: 'REGISTERED',
     });
@@ -33,7 +35,7 @@ describe('client fiscal boundary', () => {
     try {
       const saved = await updateClientFiscal('c1', {
         legalName: 'Obra SA',
-        taxId: '30701234568',
+        dni: '28123456',
         address: 'San Martin 123',
         ivaCondition: 'REGISTERED',
       });
@@ -44,7 +46,7 @@ describe('client fiscal boundary', () => {
           body: JSON.stringify({
             address: 'San Martin 123',
             legal_name: 'Obra SA',
-            tax_id: '30701234568',
+            dni: '28123456',
             iva_condition: 'REGISTERED',
           }),
         }),

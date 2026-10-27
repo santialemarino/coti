@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
@@ -17,9 +17,13 @@ import {
   FormLabel,
   FormMessage,
   FormRootMessage,
+  Hint,
   InlineLink,
   Input,
+  Label,
   PendingButton,
+  RadioGroup,
+  RadioGroupItem,
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
@@ -31,6 +35,7 @@ import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
 import { formatCuit } from '@/lib/api/invoicing';
+import { LOWER_PRICE_STRATEGIES } from '@/lib/constants/conversation';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { taxIdDigits } from '@/lib/utils/tax-id';
@@ -55,8 +60,10 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       taxId: taxIdDigits(account.taxId ?? ''),
       brandLogoUrl: account.brandLogoUrl ?? '',
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
+      lowerPriceStrategy: account.preferredLowerPriceStrategy,
     },
   });
+  const strategyFieldId = useId();
   const [logo, setLogo] = useState<File | null>();
   // The values a CUIT change is waiting on while the caller decides about the ARCA connection.
   const [confirming, setConfirming] = useState<AccountValues | null>(null);
@@ -186,6 +193,48 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
               label={t('brandColor.label')}
               placeholder={t('brandColor.placeholder')}
               pickerLabel={t('brandColor.pickerLabel')}
+            />
+          </section>
+
+          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+            <h2 className="text-heading-6">{t('lowerPrice.title')}</h2>
+
+            <FormField
+              control={form.control}
+              name="lowerPriceStrategy"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('lowerPrice.label')}</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      aria-label={t('lowerPrice.label')}
+                      className="gap-y-3"
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      {LOWER_PRICE_STRATEGIES.map((strategy) => (
+                        <div key={strategy} className="flex items-start gap-x-2.5">
+                          <RadioGroupItem
+                            id={`${strategyFieldId}-${strategy}`}
+                            value={strategy}
+                            className="mt-0.5"
+                          />
+                          <div className="flex flex-col gap-y-0.5">
+                            <Label
+                              htmlFor={`${strategyFieldId}-${strategy}`}
+                              className="cursor-pointer"
+                            >
+                              {t(`lowerPrice.${strategy}.label`)}
+                            </Label>
+                            <Hint>{t(`lowerPrice.${strategy}.hint`)}</Hint>
+                          </div>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </FormControl>
+                  <FormDescription>{t('lowerPrice.hint')}</FormDescription>
+                </FormItem>
+              )}
             />
           </section>
         </div>

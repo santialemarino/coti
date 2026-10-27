@@ -54,6 +54,7 @@ export interface InvoicingSettingsRaw {
   iva_condition: string | null;
   prices_include_vat: boolean;
   branches: InvoicingBranchRaw[] | null;
+  invoice_on_payment: boolean;
 }
 
 interface VatAmountRaw {
@@ -123,6 +124,7 @@ export interface InvoicePreviewRaw {
   invoice: InvoiceRaw | null;
   other_environment_invoice?: InvoiceRaw | null;
   credited_invoice?: InvoiceRaw | null;
+  customer_signup_url?: string;
 }
 
 export interface ClientFiscalRaw {
@@ -131,6 +133,7 @@ export interface ClientFiscalRaw {
   name: string | null;
   legal_name: string | null;
   tax_id: string | null;
+  dni?: string | null;
   iva_condition: string | null;
 }
 
@@ -150,6 +153,8 @@ export interface InvoicingSettings {
   ivaCondition: IvaCondition | null;
   pricesIncludeVat: boolean;
   branches: InvoicingBranch[];
+  // Whether «Marcar cobrado» starts with «Facturar también» ticked.
+  invoiceOnPayment: boolean;
 }
 
 export interface VatAmount {
@@ -229,6 +234,8 @@ export interface InvoicePreview {
   otherEnvironmentInvoice: Invoice | null;
   // The newest invoice of the sale a credit note cancelled here, with that note: history.
   creditedInvoice: Invoice | null;
+  // The supplier's customer sign-up page, while the invoice waits on the buyer's CUIT or document.
+  customerSignupUrl: string | null;
 }
 
 export interface ClientFiscal {
@@ -236,7 +243,9 @@ export interface ClientFiscal {
   id: string;
   name: string | null;
   legalName: string | null;
+  // The CUIT or CUIL, only ever from the customer's account.
   taxId: string | null;
+  dni: string | null;
   ivaCondition: IvaCondition | null;
 }
 
@@ -259,6 +268,7 @@ export function mapInvoicingSettings(raw: InvoicingSettingsRaw): InvoicingSettin
     taxId: raw.tax_id,
     ivaCondition: ivaConditionOf(raw.iva_condition),
     pricesIncludeVat: raw.prices_include_vat,
+    invoiceOnPayment: raw.invoice_on_payment,
     branches: (raw.branches ?? []).map((branch) => ({
       branchId: branch.branch_id,
       name: branch.name,
@@ -347,6 +357,7 @@ export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
       ? mapInvoice(raw.other_environment_invoice)
       : null,
     creditedInvoice: raw.credited_invoice ? mapInvoice(raw.credited_invoice) : null,
+    customerSignupUrl: raw.customer_signup_url || null,
   };
 }
 
@@ -357,6 +368,7 @@ export function mapClientFiscal(raw: ClientFiscalRaw): ClientFiscal {
     name: raw.name,
     legalName: raw.legal_name,
     taxId: raw.tax_id,
+    dni: raw.dni ?? null,
     ivaCondition: ivaConditionOf(raw.iva_condition),
   };
 }

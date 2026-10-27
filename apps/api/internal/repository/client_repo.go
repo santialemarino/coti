@@ -97,29 +97,32 @@ func (r *ClientRepository) FindByContacts(
 	return clients, rows.Err()
 }
 
-// ListAcceptedSales returns a client's accepted quotes inside the caller's branch and seller reach.
+// ListAcceptedSales returns a client's accepted quotes inside the caller's branch and seller reach,
+// each with its invoice facts as a server in env reads them.
 func (r *ClientRepository) ListAcceptedSales(
-	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID,
+	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID, env domain.ARCAEnvironment,
 ) ([]domain.ClientSale, error) {
-	rows, err := q.Query(ctx, `SELECT quote.id, quote.rfq_id, quote.number, quote.branch_id,
+	rows, err := q.Query(ctx, `SELECT q.id, q.rfq_id, q.number, q.branch_id,
 		branch.name, version.total,
-		COALESCE(accepted.accepted_at, quote.updated_at)
-		FROM quote
-		JOIN branch ON branch.account_id = quote.account_id AND branch.id = quote.branch_id
-		JOIN quote_version version ON version.account_id = quote.account_id
-		  AND version.id = quote.current_version_id
+		COALESCE(accepted.accepted_at, q.updated_at),
+		q.paid_at, q.invoice_waived_at, closure.invoiced, closure.pending
+		FROM quote q
+		JOIN branch ON branch.account_id = q.account_id AND branch.id = q.branch_id
+		JOIN quote_version version ON version.account_id = q.account_id
+		  AND version.id = q.current_version_id
 		LEFT JOIN LATERAL (
 		  SELECT max(change.changed_at) AS accepted_at
 		  FROM quote_status_change change
-		  WHERE change.account_id = quote.account_id AND change.quote_id = quote.id
+		  WHERE change.account_id = q.account_id AND change.quote_id = q.id
 		    AND change.new_status = 'ACCEPTED'
 		) accepted ON TRUE
-		WHERE quote.account_id = $1 AND quote.client_id = $2
-		  AND quote.current_status = 'ACCEPTED'
-		  AND ($3::uuid[] IS NULL OR quote.branch_id = ANY($3::uuid[]))
-		  AND ($4::uuid IS NULL OR quote.seller_id = $4 OR quote.seller_id IS NULL)
-		ORDER BY COALESCE(accepted.accepted_at, quote.updated_at) DESC, quote.id`,
-		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant))
+		`+saleInvoiceFacts("$5")+`
+		WHERE q.account_id = $1 AND q.client_id = $2
+		  AND q.current_status = 'ACCEPTED'
+		  AND ($3::uuid[] IS NULL OR q.branch_id = ANY($3::uuid[]))
+		  AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)
+		ORDER BY COALESCE(accepted.accepted_at, q.updated_at) DESC, q.id`,
+		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant), env)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +133,8 @@ func (r *ClientRepository) ListAcceptedSales(
 		var sale domain.ClientSale
 		var total decimal.Decimal
 		if err := rows.Scan(&sale.QuoteID, &sale.RFQID, &sale.Number, &sale.BranchID,
-			&sale.BranchName, &total, &sale.AcceptedAt); err != nil {
+			&sale.BranchName, &total, &sale.AcceptedAt, &sale.Closure.PaidAt,
+			&sale.Closure.InvoiceWaivedAt, &sale.Closure.Invoiced, &sale.Closure.InvoicePending); err != nil {
 			return nil, err
 		}
 		sale.Total = total

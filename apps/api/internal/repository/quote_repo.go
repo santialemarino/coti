@@ -16,7 +16,8 @@ import (
 
 const quoteColumns = `id, account_id, number, branch_id, client_id, rfq_id, seller_id,
 	current_version_id, current_status, expires_at, archived_at, needs_followup,
-	followup_flagged_at, created_at, updated_at`
+	followup_flagged_at, created_at, updated_at, paid_at, paid_by_user_id, invoice_waived_at,
+	invoice_waived_by_user_id`
 
 const quoteVersionColumns = `id, account_id, quote_id, author_id, version_number, currency, total,
 	is_immutable, frozen_at, comment, created_at`
@@ -234,6 +235,44 @@ func (r *QuoteRepository) ClaimForEdit(
 		accountID, branchID, quoteID))
 }
 
+// SetPaid marks the quote paid by userID now, or clears the mark when userID is nil. A quote
+// already in the asked state is returned untouched, so a repeat neither moves updated_at nor
+// rewrites who marked it.
+func (r *QuoteRepository) SetPaid(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET paid_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END, paid_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (paid_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
+}
+
+// SetInvoiceWaived records «No requiere factura» by userID now, or clears it when userID is nil.
+// A quote already in the asked state is returned untouched.
+func (r *QuoteRepository) SetInvoiceWaived(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET invoice_waived_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END,
+		     invoice_waived_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (invoice_waived_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
+}
+
 // ArchiveInactiveCrossAccount archives up to limit quotes, across every account, that sit in one of
 // statuses and whose row has not changed since before; a SENT one also needs its offer to have
 // lapsed by now, so a live link is never withdrawn. Inactivity is quote.updated_at, which every
@@ -265,6 +304,58 @@ func (r *QuoteRepository) ArchiveInactiveCrossAccount(
 		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
 		           quote.current_status, stale.updated_at`,
 		names, before, limit, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	archived := make([]domain.ArchivedQuote, 0)
+	for rows.Next() {
+		var quote domain.ArchivedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		archived = append(archived, quote)
+	}
+	return archived, rows.Err()
+}
+
+// ArchiveClosedCrossAccount archives up to limit closed outcomes, across every account, whose row
+// has not changed since before: a REJECTED quote, or an ACCEPTED sale complete as
+// domain.SaleComplete defines it, with an invoice counted in env or in production. It runs on a
+// scheduled job's owner connection.
+func (r *QuoteRepository) ArchiveClosedCrossAccount(
+	ctx context.Context, q Querier, env domain.ARCAEnvironment, before time.Time, limit int,
+) ([]domain.ArchivedQuote, error) {
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH closed AS (
+		   SELECT q.id, q.updated_at FROM quote q
+		   JOIN account a ON a.id = q.account_id
+		   WHERE q.archived_at IS NULL
+		     AND q.updated_at < $1
+		     AND (q.current_status = 'REJECTED'
+		          OR (q.current_status = 'ACCEPTED' AND q.paid_at IS NOT NULL
+		              AND NOT EXISTS (SELECT 1 FROM invoice p
+		                WHERE p.account_id = q.account_id AND p.quote_id = q.id AND p.status = 'PENDING')
+		              AND (q.invoice_waived_at IS NOT NULL OR NOT a.invoicing_enabled
+		                   OR EXISTS (SELECT 1 FROM invoice i
+		                     WHERE i.account_id = q.account_id AND i.quote_id = q.id
+		                       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
+		                       AND (i.environment::text = $3 OR i.environment = 'PRODUCTION')
+		                       AND NOT `+invoiceCredited+`))))
+		   ORDER BY q.updated_at, q.id
+		   LIMIT $2
+		   FOR UPDATE OF q SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET archived_at = now()
+		 FROM closed
+		 WHERE quote.id = closed.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, closed.updated_at`,
+		before, limit, string(env))
 	if err != nil {
 		return nil, err
 	}
@@ -1073,7 +1164,8 @@ func scanQuote(row pgx.Row) (*domain.Quote, error) {
 	err := row.Scan(&quote.ID, &quote.AccountID, &quote.Number, &quote.BranchID, &quote.ClientID, &quote.RFQID,
 		&quote.SellerID, &quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
 		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt, &quote.CreatedAt,
-		&quote.UpdatedAt)
+		&quote.UpdatedAt, &quote.PaidAt, &quote.PaidByUserID, &quote.InvoiceWaivedAt,
+		&quote.InvoiceWaivedByUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

@@ -8,6 +8,7 @@ import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
 import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
 import { ROUTES } from '@/config/routes';
+import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { getOnboarding } from '@/lib/api/onboarding';
 import { getSelectedBranchId } from '@/lib/auth/branch';
@@ -25,9 +26,10 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (mustVerifyEmail(session)) redirect(ROUTES.verifyEmail);
 
   const isAdmin = session.role === ADMIN_ROLE;
-  const [branches, onboarding] = await Promise.all([
+  const [branches, onboarding, account] = await Promise.all([
     getBranches(),
     isAdmin ? getOnboarding() : null,
+    getAccount(),
   ]);
   // A cookie naming a branch the caller no longer reaches makes every scoped read answer 403; a
   // layout cannot write cookies, so a route handler drops it.
@@ -53,7 +55,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="flex flex-col min-h-screen">
-      <AppHeader session={session} />
+      <AppHeader session={session} showInvoiceHistory={showsInvoiceHistory(account)} />
       <RfqQueueProvider>
         {/* Below lg the tab bar covers the bottom of the screen, so the page ends above it. */}
         <div className="flex flex-1 items-stretch max-lg:pb-16">
@@ -68,7 +70,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         data-slot="tab-bar"
         className="h-16 bg-background/85 border-t border-border backdrop-blur fixed inset-x-0 bottom-0 z-40 [view-transition-name:shell-tabs] lg:hidden"
       >
-        <PrimaryNav layout="tabs" />
+        <PrimaryNav administration={showsInvoiceHistory(account)} layout="tabs" />
       </div>
     </div>
   );

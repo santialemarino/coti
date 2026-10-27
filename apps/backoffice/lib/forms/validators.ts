@@ -46,15 +46,16 @@ export function optionalText(t: SchemaText, max = TEXT_FIELD_MAX_LENGTH) {
  * An optional CUIT or DNI, settled to its digits so the API receives one canonical form. Only an
  * eleven-digit value has a check digit to fail, so a wrong length reports the length alone.
  */
-export function optionalTaxId(t: SchemaText, kind: TaxIdKind) {
-  return z
+export function optionalTaxId(t: SchemaText, kind: TaxIdKind, key = 'taxId') {
+  const digits = z
     .string()
     .transform(taxIdDigits)
-    .refine((digits) => digits === '' || hasTaxIdLength(digits, kind), t.field('taxId.invalid'))
-    .refine(
-      (digits) => !hasTaxIdLength(digits, kind) || hasValidCuitCheckDigit(digits),
-      t.field('taxId.checkDigit'),
-    );
+    .refine((value) => value === '' || hasTaxIdLength(value, kind), t.field(`${key}.invalid`));
+  if (kind === 'dni') return digits;
+  return digits.refine(
+    (value) => !hasTaxIdLength(value, kind) || hasValidCuitCheckDigit(value),
+    t.field(`${key}.checkDigit`),
+  );
 }
 
 // The cap mirrors what the API stores; a longer address is refused here rather than as a 400.

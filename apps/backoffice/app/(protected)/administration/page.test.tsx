@@ -25,15 +25,35 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth/branch', () => ({ getEffectiveBranchId: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
-vi.mock('@/lib/api/invoices', () => ({ getInvoices: vi.fn() }));
+vi.mock('@/lib/api/invoices', () => ({ getInvoices: vi.fn(), getSalesAwaitingInvoice: vi.fn() }));
+vi.mock('@/app/(protected)/administration/_components/pending-invoices-table', () => ({
+  PendingInvoicesTable: ({
+    sales,
+    showBranch,
+  }: {
+    sales: { quoteId: string }[];
+    showBranch: boolean;
+  }) => (
+    <div data-testid="pending-table" data-show-branch={String(showBranch)}>
+      {sales.map((sale) => sale.quoteId).join(',')}
+    </div>
+  ),
+}));
+vi.mock('@/lib/api/account', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/account')>()),
+  getAccount: vi.fn(),
+}));
 
 const { getSession } = await import('@/lib/auth/session');
 const { getEffectiveBranchId } = await import('@/lib/auth/branch');
 const { getBranches } = await import('@/lib/api/branches');
-const { getInvoices } = await import('@/lib/api/invoices');
+const { getInvoices, getSalesAwaitingInvoice } = await import('@/lib/api/invoices');
+const { getAccount } = await import('@/lib/api/account');
 const { default: AdministrationPage } = await import('@/app/(protected)/administration/page');
 
 const copy = messages.invoicing.history;
+const pendingCopy = messages.invoicing.pending;
+const views = messages.invoicing.views;
 
 function invoice(overrides: Partial<Invoice>): Invoice {
   return {
@@ -61,18 +81,34 @@ function invoice(overrides: Partial<Invoice>): Invoice {
   };
 }
 
-async function renderPage(branchId: string | undefined, items: Invoice[], total = items.length) {
+async function renderPage(
+  branchId: string | undefined,
+  items: Invoice[],
+  total = items.length,
+  searchParams: { page?: string; view?: string } = {},
+) {
   vi.mocked(getEffectiveBranchId).mockResolvedValue(branchId);
   vi.mocked(getInvoices).mockResolvedValue({ items, total, page: 1, pageSize: 25 });
   render(
     <NextIntlClientProvider locale="es" messages={messages}>
-      {await AdministrationPage({ searchParams: Promise.resolve({}) })}
+      {await AdministrationPage({ searchParams: Promise.resolve(searchParams) })}
     </NextIntlClientProvider>,
   );
 }
 
+async function renderPending(branchId: string | undefined, total = 2, page?: string) {
+  vi.mocked(getSalesAwaitingInvoice).mockResolvedValue({
+    items: [{ quoteId: 'q1' }, { quoteId: 'q2' }] as never,
+    total,
+    page: 1,
+    pageSize: 25,
+  });
+  await renderPage(branchId, [], 0, { view: 'pending', page });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled: true, hasInvoices: true } as never);
   vi.mocked(getSession).mockResolvedValue({ role: 'ADMIN' } as never);
   vi.mocked(getBranches).mockResolvedValue([
     { id: 'moron', name: 'Morón' },
@@ -164,5 +200,98 @@ describe('AdministrationPage', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(within(rows[0]!).getByText(messages.invoicing.testBadge)).toBeTruthy();
     expect(within(rows[1]!).queryByText(messages.invoicing.testBadge)).toBeNull();
+  });
+});
+
+describe('AdministrationPage «Por facturar»', () => {
+  it('offers both views, with the history chosen by default', async () => {
+    await renderPage('moron', []);
+    const group = screen.getByRole('radiogroup', { name: views.label });
+    expect(
+      within(group).getByRole('radio', { name: views.history }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(
+      within(group).getByRole('radio', { name: views.pending }).getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(getSalesAwaitingInvoice).not.toHaveBeenCalled();
+  });
+
+  it('lists the sales awaiting an invoice in their own view', async () => {
+    await renderPending(undefined);
+
+    expect(screen.getByRole('heading', { level: 1, name: pendingCopy.title })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: views.pending }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    const table = screen.getByTestId('pending-table');
+    expect(table.textContent).toBe('q1,q2');
+    expect(table.getAttribute('data-show-branch')).toBe('true');
+    expect(getSalesAwaitingInvoice).toHaveBeenCalledWith(1);
+    expect(getInvoices).not.toHaveBeenCalled();
+  });
+
+  it('pages the view on its own count and drops the Sucursal column inside one branch', async () => {
+    await renderPending('moron', 60, '2');
+    expect(screen.getByTestId('pending-table').getAttribute('data-show-branch')).toBe('false');
+    expect(getSalesAwaitingInvoice).toHaveBeenCalledWith(2);
+    expect(screen.getByRole('navigation', { name: messages.common.pagination.label })).toBeTruthy();
+  });
+
+  // Invoicing the only row of the last page leaves that page empty while sales remain before it.
+  it('falls back to the page that is now last once the requested one is gone', async () => {
+    vi.mocked(getSalesAwaitingInvoice)
+      .mockResolvedValueOnce({ items: [], total: 26, page: 3, pageSize: 25 })
+      .mockResolvedValueOnce({
+        items: [{ quoteId: 'q26' }] as never,
+        total: 26,
+        page: 2,
+        pageSize: 25,
+      });
+    await renderPage('moron', [], 0, { view: 'pending', page: '3' });
+
+    expect(getSalesAwaitingInvoice).toHaveBeenNthCalledWith(2, 2);
+    expect(screen.getByTestId('pending-table').textContent).toBe('q26');
+    const pagination = screen.getByRole('navigation', { name: messages.common.pagination.label });
+    expect(within(pagination).getByRole('button', { current: 'page' }).textContent).toBe('2');
+  });
+});
+
+describe('AdministrationPage with invoicing off', () => {
+  // With invoicing off nothing waits for an invoice, so only the history is left.
+  it('shows neither the switch nor «Por facturar», even when asked for it', async () => {
+    vi.mocked(getAccount).mockResolvedValue({
+      invoicingEnabled: false,
+      hasInvoices: true,
+    } as never);
+
+    await renderPage('moron', [invoice({})], 1, { view: 'pending' });
+
+    expect(screen.queryByRole('radiogroup', { name: views.label })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: copy.title })).toBeTruthy();
+    expect(getSalesAwaitingInvoice).not.toHaveBeenCalled();
+    expect(screen.getByText('Obra Norte')).toBeTruthy();
+  });
+
+  // Nothing was ever issued, so there is no history to show and the section does not exist.
+  it('is not found when the account never invoiced', async () => {
+    vi.mocked(getAccount).mockResolvedValue({
+      invoicingEnabled: false,
+      hasInvoices: false,
+    } as never);
+
+    await expect(AdministrationPage({ searchParams: Promise.resolve({}) })).rejects.toThrow();
+    expect(getInvoices).not.toHaveBeenCalled();
+  });
+
+  // Issued invoices are fiscal records: switching invoicing off never hides them.
+  it('still lists the invoices already issued', async () => {
+    vi.mocked(getAccount).mockResolvedValue({
+      invoicingEnabled: false,
+      hasInvoices: true,
+    } as never);
+
+    await renderPage('moron', [invoice({})]);
+
+    expect(screen.getByText('Obra Norte')).toBeTruthy();
   });
 });

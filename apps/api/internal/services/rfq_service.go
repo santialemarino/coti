@@ -26,8 +26,8 @@ type rfqRepository interface {
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
 	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
-	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant, includeArchived bool) ([]domain.RfqListItem, error)
-	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant, includeArchived bool, env domain.ARCAEnvironment) ([]domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, env domain.ARCAEnvironment) (*domain.RfqListItem, error)
 	AssignSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
 	SetSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
@@ -184,6 +184,9 @@ type RFQService struct {
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
 	webappURL string
+	// invoicingEnv is where this server invoices; only an invoice issued there or in production
+	// closes a sale.
+	invoicingEnv domain.ARCAEnvironment
 	// transcriber and attachments are only needed by the file intake, which refuses when
 	// either is unbound rather than making the text pipeline depend on them.
 	transcriber domain.Transcriber
@@ -275,6 +278,12 @@ func (s *RFQService) WithWebAppURL(webappURL string) *RFQService {
 	return s
 }
 
+// WithInvoicingEnvironment sets the ARCA environment whose invoices close a sale.
+func (s *RFQService) WithInvoicingEnvironment(env domain.ARCAEnvironment) *RFQService {
+	s.invoicingEnv = env
+	return s
+}
+
 // NewRFQService builds an RFQService.
 func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
@@ -303,7 +312,7 @@ func (s *RFQService) List(
 	var items []domain.RfqListItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		items, err = s.rfqs.ListByTenant(ctx, q, tenant, includeArchived)
+		items, err = s.rfqs.ListByTenant(ctx, q, tenant, includeArchived, s.invoicingEnv)
 		return err
 	}); err != nil {
 		return nil, err
@@ -315,7 +324,7 @@ func (s *RFQService) List(
 func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
 	var detail *domain.RfqDetail
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID, s.invoicingEnv)
 		if rfqErr != nil {
 			return rfqErr
 		}
@@ -540,7 +549,7 @@ func (s *RFQService) SetSeller(
 	}
 	var quote *domain.Quote
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		item, err := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
+		item, err := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID, s.invoicingEnv)
 		if err != nil {
 			return err
 		}
@@ -611,6 +620,10 @@ func (s *RFQService) buildChangeRequestDiff(
 		tenant.AccountID, previous.ID)
 	if discountsErr != nil {
 		return discountsErr
+	}
+	if linkErr := s.attachDiscountItemIDs(ctx, q, tenant.AccountID, previous.ID,
+		frozenDiscounts); linkErr != nil {
+		return linkErr
 	}
 	diff := domain.BuildChangeRequestDiff(version.Comment, domain.ChangeRequestSnapshot{
 		Items: frozenItems, Discounts: frozenDiscounts, Total: previous.Total,
@@ -980,7 +993,7 @@ func (s *RFQService) UpdateDiscount(
 		fresh, freshErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID, discountID)
 		// A restored application the sweep no longer earns is gone: the restore is refused instead.
 		if errors.Is(freshErr, domain.ErrNotFound) &&
-			existing.Origin == domain.DiscountOriginAutomatic {
+			existing.Origin.EngineOwned() {
 			return domain.WithCode(domain.CodeDiscountNotApplicable, domain.ErrConflict)
 		}
 		if freshErr != nil {

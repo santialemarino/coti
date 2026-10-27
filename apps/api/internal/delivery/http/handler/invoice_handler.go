@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ import (
 // InvoiceService is the invoicing surface the handler needs.
 type InvoiceService interface {
 	List(context.Context, domain.Tenant, int) ([]domain.Invoice, int, error)
+	ListAwaitingInvoice(context.Context, domain.Tenant, int) ([]domain.SaleAwaitingInvoice, int, error)
 	DownloadPDF(context.Context, domain.Tenant, uuid.UUID) ([]byte, error)
 	Recover(context.Context, domain.Tenant, uuid.UUID) (*domain.Invoice, error)
 	GetSettings(ctx context.Context, tenant domain.Tenant) (*domain.InvoicingSettings, error)
@@ -89,7 +91,7 @@ func (h *InvoiceHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	in := domain.InvoicingSettingsUpdate{PricesIncludeVAT: body.PricesIncludeVAT,
-		PointsOfSale: make(map[uuid.UUID]*int, len(body.Branches))}
+		PointsOfSale: make(map[uuid.UUID]*int, len(body.Branches)), InvoiceOnPayment: body.InvoiceOnPayment}
 	if body.Profile != nil {
 		in.Profile = &domain.InvoiceIssuerProfile{Address: body.Profile.Address, GrossIncomeRegistration: body.Profile.GrossIncomeRegistration, ActivityStartedOn: body.Profile.ActivityStartedOn}
 	}
@@ -174,10 +176,10 @@ func (h *InvoiceHandler) GetClientFiscal(c *gin.Context) {
 	c.JSON(http.StatusOK, toClientFiscalResponse(*client))
 }
 
-// UpdateClientFiscal replaces a client's legal name, tax id and IVA condition.
+// UpdateClientFiscal replaces a client's legal name, address, IVA condition and DNI; never a CUIT.
 //
 //	@Summary		Update a client's fiscal data
-//	@Description	Replaces the client's legal name, CUIT or DNI (check digit verified) and IVA condition; omitted fields clear.
+//	@Description	Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.
 //	@Tags			clients
 //	@Accept			json
 //	@Produce		json
@@ -188,7 +190,7 @@ func (h *InvoiceHandler) GetClientFiscal(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		422			{object}	dto.ErrorResponse	"INVALID_TAX_ID"
+//	@Failure		422			{object}	dto.ErrorResponse	"INVALID_TAX_ID, TAX_ID_READ_ONLY"
 //	@Router			/v1/clients/{clientId}/fiscal [put]
 func (h *InvoiceHandler) UpdateClientFiscal(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -204,7 +206,13 @@ func (h *InvoiceHandler) UpdateClientFiscal(c *gin.Context) {
 		RespondBindError(c, err)
 		return
 	}
-	in := domain.ClientFiscalUpdate{Address: body.Address, LegalName: body.LegalName, TaxID: body.TaxID}
+	// Refused rather than dropped, so a caller still sending a CUIT never reads a 200 as saved.
+	if body.TaxID != nil {
+		Respond(c, domain.WithCode(domain.CodeTaxIDReadOnly,
+			fmt.Errorf("%w: a client's CUIT comes only from their customer account", domain.ErrInvalidInput)))
+		return
+	}
+	in := domain.ClientFiscalUpdate{Address: body.Address, LegalName: body.LegalName, DNI: body.DNI}
 	if body.IVACondition != nil {
 		condition := domain.IVACondition(*body.IVACondition)
 		in.IVACondition = &condition
@@ -335,6 +343,7 @@ func toInvoicingSettingsResponse(s domain.InvoicingSettings) dto.InvoicingSettin
 		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: string(s.Environment), LegalName: s.Account.LegalName,
 		TaxID: s.Account.TaxID, IVACondition: conditionString(s.Account.IVACondition),
 		PricesIncludeVAT: s.Account.PricesIncludeVAT, Branches: make([]dto.BranchPointOfSaleResponse, 0, len(s.Branches)),
+		InvoiceOnPayment: s.InvoiceOnPayment,
 	}
 	for _, b := range s.Branches {
 		response.Branches = append(response.Branches, dto.BranchPointOfSaleResponse{
@@ -353,7 +362,7 @@ func toARCACredentialResponse(s domain.ARCACredentialStatus) dto.ARCACredentialR
 
 func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
 	return dto.ClientFiscalResponse{Address: c.Address, ID: c.ID, Name: c.Name, LegalName: c.LegalName, TaxID: c.TaxID,
-		IVACondition: conditionString(c.IVACondition)}
+		DNI: c.DNI, IVACondition: conditionString(c.IVACondition)}
 }
 
 func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {
@@ -361,6 +370,7 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 		Environment: string(p.Environment), IssuerCUIT: p.IssuerCUIT,
 		Fingerprint: p.Fingerprint, VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
 		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
+		CustomerSignupURL: p.CustomerSignupURL,
 	}
 	if p.Invoice != nil {
 		invoice := toInvoiceResponse(*p.Invoice)

@@ -43,6 +43,7 @@ export function invoicingSettingsSchema(t: SchemaText = rawText) {
     .object({
       ivaCondition: z.union([z.enum(ISSUER_IVA_CONDITIONS), z.literal('')]),
       pricesIncludeVat: z.boolean(),
+      invoiceOnPayment: z.boolean(),
       address: requiredText(t, 'profile.addressRequired', ADDRESS_MAX_LENGTH),
       grossIncomeKind: z.enum(GROSS_INCOME_KINDS),
       grossIncomeNumber: z.string().transform(normalizeGrossIncomeNumber),

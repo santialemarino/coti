@@ -72,6 +72,19 @@ type RfqListItemResponse struct {
 	NeedsFollowup bool       `json:"needs_followup"`
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.
 	FollowupFlaggedAt *time.Time `json:"followup_flagged_at"`
+	// PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.
+	PaidAt *time.Time `json:"paid_at"`
+	PaidBy *string    `json:"paid_by"`
+	// InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.
+	InvoiceWaivedAt *time.Time `json:"invoice_waived_at"`
+	InvoiceWaivedBy *string    `json:"invoice_waived_by"`
+	// Invoiced is whether an issued invoice no credit note cancelled stands for the sale.
+	Invoiced bool `json:"invoiced"`
+	// InvoicePending is whether a voucher of the sale still waits for ARCA's answer.
+	InvoicePending bool `json:"invoice_pending"`
+	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
+	// account does not invoice with Coti.
+	SaleComplete bool `json:"sale_complete"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
@@ -257,12 +270,15 @@ type ConversationMessageResponse struct {
 
 // ConversationDecisionResponse is the handler's run on a batch and the seller's decision on it.
 type ConversationDecisionResponse struct {
-	Interpretation string     `json:"interpretation"`
-	Outcome        string     `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string    `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
-	SellerDecision *string    `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
-	DecidedAt      *time.Time `json:"decided_at"`
-	CreatedAt      time.Time  `json:"created_at"`
+	Interpretation string  `json:"interpretation"`
+	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
+	// StrategiesTried are the recipes run for a complex goal, in run order.
+	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
+	Adaptation      *HandlerAdaptationResponse `json:"adaptation"`
+	DecidedAt       *time.Time                 `json:"decided_at"`
+	CreatedAt       time.Time                  `json:"created_at"`
 }
 
 // ClientMessageResponse is one message the customer wrote, as received.
@@ -274,12 +290,35 @@ type ClientMessageResponse struct {
 // HandlerDecisionResponse is the latest conversation handler decision on the draft: what the
 // customer wrote, how the AI read it, and why it was left to the seller when it was.
 type HandlerDecisionResponse struct {
-	ClientInput    string    `json:"client_input"`
-	Interpretation string    `json:"interpretation"`
-	Outcome        string    `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string   `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
-	SellerDecision *string   `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
-	CreatedAt      time.Time `json:"created_at"`
+	ClientInput    string  `json:"client_input"`
+	Interpretation string  `json:"interpretation"`
+	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
+	// StrategiesTried are the recipes run for a complex goal, in run order.
+	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
+	Adaptation      *HandlerAdaptationResponse `json:"adaptation"`
+	CreatedAt       time.Time                  `json:"created_at"`
+}
+
+// HandlerAdaptationResponse is the quantities the AI raised to reach a promotion, with the totals
+// the engine computed before and after. Quantities and totals are decimal strings.
+type HandlerAdaptationResponse struct {
+	Lines       []HandlerAdaptedLineResponse `json:"lines"`
+	TotalBefore string                       `json:"total_before"`
+	TotalAfter  string                       `json:"total_after"`
+	// TotalRaised is true when the customer asked for the promotion and reaching it costs more.
+	TotalRaised bool `json:"total_raised"`
+}
+
+// HandlerAdaptedLineResponse is one line raised to reach a promotion.
+type HandlerAdaptedLineResponse struct {
+	ItemID        uuid.UUID `json:"item_id"`
+	Description   string    `json:"description"`
+	FromQuantity  string    `json:"from_quantity"`
+	ToQuantity    string    `json:"to_quantity"`
+	PromotionID   uuid.UUID `json:"promotion_id"`
+	PromotionName string    `json:"promotion_name"`
 }
 
 // DiffLineResponse is one compared line: the sent side, the draft side, or both.
@@ -298,7 +337,7 @@ type DiffLineItemResponse struct {
 	UnitPrice   *string `json:"unit_price"`
 }
 
-// DiffDiscountResponse is one discount of the comparison, paired by name.
+// DiffDiscountResponse is one discount of the comparison, paired by promotion, else by name.
 type DiffDiscountResponse struct {
 	Change    string                    `json:"change" enums:"UNCHANGED,MODIFIED,ADDED,REMOVED"`
 	Name      string                    `json:"name"`
@@ -310,6 +349,7 @@ type DiffDiscountResponse struct {
 type DiffDiscountSideResponse struct {
 	Amount     string `json:"amount"`
 	Suppressed bool   `json:"suppressed"`
+	Origin     string `json:"origin" enums:"AUTOMATIC,AI_ADAPTATION,MANUAL_SELLER"`
 }
 
 // QuoteDiscountResponse is one discount application on the quote's current version.

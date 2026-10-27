@@ -168,7 +168,7 @@ func TestInvoiceTypeFor(t *testing.T) {
 	}
 }
 
-func TestInvoiceReceiver_DocumentFollowsTheTaxIDLength(t *testing.T) {
+func TestInvoiceReceiver_NamesTheCUITElseTheDNI(t *testing.T) {
 	t.Parallel()
 	registered := domain.IVAConditionRegistered
 	cuit, dni := "30712345678", "28123456"
@@ -181,9 +181,15 @@ func TestInvoiceReceiver_DocumentFollowsTheTaxIDLength(t *testing.T) {
 		t.Fatalf("company receiver = %+v", company)
 	}
 
-	person := invoiceReceiver(&domain.ClientFiscal{Name: &name, TaxID: &dni}, "")
-	if person.DocType != domain.ReceiverDocDNI || person.IVACondition != domain.IVAConditionFinalConsumer {
+	person := invoiceReceiver(&domain.ClientFiscal{Name: &name, DNI: &dni}, "")
+	if person.DocType != domain.ReceiverDocDNI || person.DocNumber != dni || person.IVACondition != domain.IVAConditionFinalConsumer {
 		t.Fatalf("person receiver = %+v", person)
+	}
+
+	// The CUIT wins when a profile carries both.
+	both := invoiceReceiver(&domain.ClientFiscal{Name: &name, TaxID: &cuit, DNI: &dni}, "")
+	if both.DocType != domain.ReceiverDocCUIT || both.DocNumber != cuit {
+		t.Fatalf("receiver with both = %+v", both)
 	}
 
 	walkIn := invoiceReceiver(nil, "Mostrador")

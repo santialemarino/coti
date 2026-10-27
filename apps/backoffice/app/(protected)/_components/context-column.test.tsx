@@ -48,6 +48,11 @@ const ORDER: RfqRecord = {
   status: 'QUOTED',
   needsFollowup: false,
   followupFlaggedAt: null,
+  paidAt: null,
+  invoiceWaivedAt: null,
+  invoiced: false,
+  invoicePending: false,
+  saleComplete: false,
 };
 
 const PENDING_SETUP: Onboarding = {

@@ -90,11 +90,16 @@ on that line.
 
 `quote_discount.origin` says who decided a discount:
 
-| Origin          | Written by                      | Seller can                                       |
-| --------------- | ------------------------------- | ------------------------------------------------ |
-| `AUTOMATIC`     | the sweep                       | suppress and restore; not edit                   |
-| `MANUAL_SELLER` | `POST /v1/quotes/:id/discounts` | edit and delete                                  |
-| `AI_ADAPTATION` | the AI adaptation strategy      | suppress and restore; never touched by the sweep |
+| Origin          | Written by                                         | Seller can                     |
+| --------------- | -------------------------------------------------- | ------------------------------ |
+| `AUTOMATIC`     | the sweep                                          | suppress and restore; not edit |
+| `MANUAL_SELLER` | `POST /v1/quotes/:id/discounts`                    | edit and delete                |
+| `AI_ADAPTATION` | the sweep, on a line the AI raised to reach a rule | suppress and restore; not edit |
+
+`AI_ADAPTATION` only marks why the application exists: the sweep earns it like an `AUTOMATIC` one,
+recomputing its amount, keeping the row and its origin while it is still earned and dropping it when
+it is not. A draft cloned from the version carries it as `AUTOMATIC`
+([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)).
 
 A suppressed application stays on the version (`suppressed_by_seller = true`) and the sweep does not
 re-apply it: a line application is identified by promotion and line, a set or total one by

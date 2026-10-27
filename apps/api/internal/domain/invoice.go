@@ -395,15 +395,17 @@ type ClientFiscal struct {
 	ID           uuid.UUID
 	Name         *string
 	LegalName    *string
-	TaxID        *string // digits only.
+	TaxID        *string // CUIT or CUIL, digits only; only the customer's account sets it.
+	DNI          *string // a consumidor final's DNI, digits only.
 	IVACondition *IVACondition
 }
 
-// ClientFiscalUpdate replaces a client's fiscal data; a nil field clears it.
+// ClientFiscalUpdate replaces a client's fiscal data; a nil field clears it. A CUIT is never part of
+// it: only the customer loads one, by creating their account.
 type ClientFiscalUpdate struct {
 	Address      *string
 	LegalName    *string
-	TaxID        *string
+	DNI          *string
 	IVACondition *IVACondition
 }
 
@@ -422,6 +424,8 @@ type InvoicingSettings struct {
 	Account     AccountFiscal
 	Branches    []BranchPointOfSale
 	Credential  *ARCACredentialStatus
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool
 }
 
 // InvoicingSettingsUpdate replaces the account's fiscal settings and the given branches' points of sale.
@@ -430,6 +434,8 @@ type InvoicingSettingsUpdate struct {
 	IVACondition     *IVACondition
 	PricesIncludeVAT bool
 	PointsOfSale     map[uuid.UUID]*int
+	// InvoiceOnPayment is left as it is when nil.
+	InvoiceOnPayment *bool
 }
 
 // InvoicePreview is the invoice an accepted quote would produce, with whatever stops it.
@@ -451,6 +457,9 @@ type InvoicePreview struct {
 	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment:
 	// history to show, never a hold on this one.
 	OtherEnvironmentInvoice *Invoice
+	// CustomerSignupURL is the supplier's customer sign-up page, set only while the receiver lacks
+	// the CUIT or document the invoice needs and the supplier has a customer site of its own.
+	CustomerSignupURL string
 }
 
 // DigitsOnly drops every character that is not a decimal digit.

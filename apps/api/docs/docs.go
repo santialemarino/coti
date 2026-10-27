@@ -1380,7 +1380,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replaces the client's legal name, CUIT or DNI (check digit verified) and IVA condition; omitted fields clear.",
+                "description": "Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1435,7 +1435,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "INVALID_TAX_ID",
+                        "description": "INVALID_TAX_ID, TAX_ID_READ_ONLY",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3059,6 +3059,69 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/enabled": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Off refuses issuing invoices and credit notes; issued ones stay readable and the ARCA setup is kept. Turning it off is refused with 409 INVOICE_PENDING while an invoice waits for ARCA.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Switch invoicing with Coti on or off",
+                "parameters": [
+                    {
+                        "description": "Switch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetInvoicingEnabledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -5822,6 +5885,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/awaiting-invoice": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepted, unarchived sales with no live invoice, no pending voucher and no waiver, in the caller's branch and seller reach; empty while the account does not invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "List sales awaiting an invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted lists every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SaleAwaitingInvoiceListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/accept-materials": {
             "post": {
                 "security": [
@@ -6559,6 +6679,134 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/invoice-waiver": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Takes the accepted sale out of the invoicing wait. Refused while invoicing is off or the sale has a live invoice; issuing an invoice later clears it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale as needing no invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED, QUOTE_ARCHIVED, ACCOUNT_INVOICING_OFF or QUOTE_ALREADY_INVOICED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The accepted sale waits for its invoice again.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Undo «No requiere factura»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/items": {
             "post": {
                 "security": [
@@ -6960,6 +7208,134 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "BATCH_NOT_RETRYABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/payment": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records who marked the accepted sale paid and when. A fact, not a status; repeating it keeps the first mark. Paying never issues an invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale paid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the paid mark of an accepted sale; a paid sale is reopened only after this.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Unmark a paid sale",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -8630,8 +9006,20 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "has_invoices": {
+                    "description": "Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
+                },
+                "invoicing_enabled": {
+                    "description": "Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.",
+                    "type": "boolean"
                 },
                 "is_active": {
                     "type": "boolean"
@@ -8640,6 +9028,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "preferred_lower_price_strategy": {
+                    "description": "FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.",
                     "type": "string"
                 },
                 "tax_id": {
@@ -9210,6 +9602,9 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
+                "dni": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -9223,6 +9618,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tax_id": {
+                    "description": "CUIT or CUIL, from the customer's account; read-only.",
                     "type": "string"
                 }
             }
@@ -9326,6 +9722,16 @@ const docTemplate = `{
                 },
                 "branch_name": {
                     "type": "string"
+                },
+                "invoice_status": {
+                    "description": "InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the\naccount invoices.",
+                    "type": "string",
+                    "enum": [
+                        "INVOICED",
+                        "PENDING",
+                        "WAIVED",
+                        "UNINVOICED"
+                    ]
                 },
                 "quote_id": {
                     "type": "string"
@@ -9612,6 +10018,9 @@ const docTemplate = `{
         "dto.ConversationDecisionResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -9646,6 +10055,18 @@ const docTemplate = `{
                         "REJECTED",
                         "MANUAL_OVERRIDE"
                     ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
                 }
             }
         },
@@ -10359,6 +10780,14 @@ const docTemplate = `{
                 "amount": {
                     "type": "string"
                 },
+                "origin": {
+                    "type": "string",
+                    "enum": [
+                        "AUTOMATIC",
+                        "AI_ADAPTATION",
+                        "MANUAL_SELLER"
+                    ]
+                },
                 "suppressed": {
                     "type": "boolean"
                 }
@@ -10446,9 +10875,56 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.HandlerAdaptationResponse": {
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.HandlerAdaptedLineResponse"
+                    }
+                },
+                "total_after": {
+                    "type": "string"
+                },
+                "total_before": {
+                    "type": "string"
+                },
+                "total_raised": {
+                    "description": "TotalRaised is true when the customer asked for the promotion and reaching it costs more.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.HandlerAdaptedLineResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "from_quantity": {
+                    "type": "string"
+                },
+                "item_id": {
+                    "type": "string"
+                },
+                "promotion_id": {
+                    "type": "string"
+                },
+                "promotion_name": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.HandlerDecisionResponse": {
             "type": "object",
             "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
                 "client_input": {
                     "type": "string"
                 },
@@ -10483,6 +10959,18 @@ const docTemplate = `{
                         "REJECTED",
                         "MANUAL_OVERRIDE"
                     ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
                 }
             }
         },
@@ -10576,6 +11064,10 @@ const docTemplate = `{
                     ]
                 },
                 "currency": {
+                    "type": "string"
+                },
+                "customer_signup_url": {
+                    "description": "CustomerSignupURL is where the customer creates the account that carries their CUIT; present\nonly while the issues ask for the receiver's CUIT or document and the supplier has its own\ncustomer site.",
                     "type": "string"
                 },
                 "environment": {
@@ -10753,6 +11245,10 @@ const docTemplate = `{
                         "HOMOLOGATION",
                         "PRODUCTION"
                     ]
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
                 },
                 "iva_condition": {
                     "type": "string"
@@ -11951,11 +12447,25 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».",
+                    "type": "string"
+                },
+                "invoice_waived_by_user_id": {
+                    "type": "string"
+                },
                 "needs_followup": {
                     "type": "boolean"
                 },
                 "number": {
                     "type": "integer"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidByUserID record «Cobrado» on an accepted sale; null while it is not paid.",
+                    "type": "string"
+                },
+                "paid_by_user_id": {
+                    "type": "string"
                 },
                 "rfq_id": {
                     "type": "string"
@@ -12422,11 +12932,33 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "invoice_pending": {
+                    "description": "InvoicePending is whether a voucher of the sale still waits for ARCA's answer.",
+                    "type": "boolean"
+                },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.",
+                    "type": "string"
+                },
+                "invoice_waived_by": {
+                    "type": "string"
+                },
+                "invoiced": {
+                    "description": "Invoiced is whether an issued invoice no credit note cancelled stands for the sale.",
+                    "type": "boolean"
+                },
                 "item_count": {
                     "type": "integer"
                 },
                 "needs_followup": {
                     "type": "boolean"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.",
+                    "type": "string"
+                },
+                "paid_by": {
+                    "type": "string"
                 },
                 "quote_id": {
                     "type": "string"
@@ -12437,6 +12969,10 @@ const docTemplate = `{
                 "review_count": {
                     "description": "ReviewCount is how many of the current version's lines matching left for the seller.",
                     "type": "integer"
+                },
+                "sale_complete": {
+                    "description": "SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the\naccount does not invoice with Coti.",
+                    "type": "boolean"
                 },
                 "seller": {
                     "type": "string"
@@ -12480,6 +13016,61 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "work_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SaleAwaitingInvoiceResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "client": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "paid_at": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "total": {
                     "type": "string"
                 }
             }
@@ -12555,6 +13146,17 @@ const docTemplate = `{
                 },
                 "stock": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SetInvoicingEnabledRequest": {
+            "type": "object",
+            "required": [
+                "enabled"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12755,6 +13357,14 @@ const docTemplate = `{
                     "maxLength": 255,
                     "minLength": 1
                 },
+                "preferred_lower_price_strategy": {
+                    "description": "What a request for a lower price tries first when the customer did not say; omitted keeps it.",
+                    "type": "string",
+                    "enum": [
+                        "FIND_CHEAPER_ALTERNATIVES",
+                        "ADAPT_TO_REACH_DISCOUNT"
+                    ]
+                },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 255
@@ -12813,6 +13423,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
+                "dni": {
+                    "description": "DNI identifies a consumidor final, beside any CUIT the customer's account carries.",
+                    "type": "string",
+                    "maxLength": 32
+                },
                 "iva_condition": {
                     "type": "string",
                     "enum": [
@@ -12825,10 +13440,6 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
-                },
-                "tax_id": {
-                    "type": "string",
-                    "maxLength": 32
                 }
             }
         },
@@ -12913,6 +13524,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.BranchPointOfSaleInput"
                     }
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.",
+                    "type": "boolean"
                 },
                 "iva_condition": {
                     "type": "string",

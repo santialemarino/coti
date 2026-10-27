@@ -234,6 +234,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
 	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
+	quotes.POST("/:quoteId/payment", h.Quote.MarkPaid)
+	quotes.DELETE("/:quoteId/payment", h.Quote.UnmarkPaid)
+	quotes.POST("/:quoteId/invoice-waiver", h.Quote.WaiveInvoice)
+	quotes.DELETE("/:quoteId/invoice-waiver", h.Quote.RestoreInvoiceWait)
 	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
 	quotes.PUT("/:quoteId/client-association", h.Client.AssociateQuote)
 	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
@@ -248,6 +252,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		verified.GET("/invoices/:invoiceId/pdf", h.Invoice.DownloadPDF)
 		verified.POST("/invoices/:invoiceId/recover", h.Invoice.Recover)
 		verified.POST("/invoices/:invoiceId/credit-note", h.Invoice.IssueCreditNote)
+		quotes.GET("/awaiting-invoice", h.Invoice.ListAwaitingInvoice)
 		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
 		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
 	}
@@ -321,6 +326,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.GET("/promotions/:promotionId", h.Promotion.Get)
 	admin.POST("/promotions", h.Promotion.Create)
 	admin.PUT("/promotions/:promotionId", h.Promotion.Replace)
+	admin.PUT("/invoicing/enabled", h.Account.SetInvoicingEnabled)
 	if h.Invoice != nil {
 		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
 		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)

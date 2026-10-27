@@ -3,6 +3,8 @@ import { getTranslations } from 'next-intl/server';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { ARCAConnectionCard } from '@/app/(protected)/settings/invoicing/_components/arca-connection-card';
 import { InvoicingSettingsForm } from '@/app/(protected)/settings/invoicing/_components/invoicing-settings-form';
+import { InvoicingSwitchCard } from '@/app/(protected)/settings/invoicing/_components/invoicing-switch-card';
+import { getAccount } from '@/lib/api/account';
 import { getARCASetup } from '@/lib/api/arca-setup';
 import { getInvoicingSettings } from '@/lib/api/invoicing-settings';
 import { requireAdmin } from '@/lib/auth/session';
@@ -15,19 +17,30 @@ export const generateMetadata = () => generatePageMetadata('invoicingSettings');
 export default async function InvoicingSettingsPage() {
   await requireAdmin();
   const t = await getTranslations('invoicing.settings');
-  const [settings, setup] = await Promise.all([getInvoicingSettings(), getARCASetup()]);
-  const state = arcaConnectionState(
-    setup,
-    settings.branches,
-    new Date().toISOString(),
-    ARCA_CERTIFICATE_RENEWAL_DAYS,
-  );
+  const account = await getAccount();
+  // Off, the connection and the fiscal data are not even read: the switch is the whole page.
+  const [settings, setup] = account.invoicingEnabled
+    ? await Promise.all([getInvoicingSettings(), getARCASetup()])
+    : [null, null];
 
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} description={t('description')} />
-      <ARCAConnectionCard setup={setup} state={state} />
-      <InvoicingSettingsForm settings={settings} />
+      <InvoicingSwitchCard enabled={account.invoicingEnabled} />
+      {settings && setup ? (
+        <>
+          <ARCAConnectionCard
+            setup={setup}
+            state={arcaConnectionState(
+              setup,
+              settings.branches,
+              new Date().toISOString(),
+              ARCA_CERTIFICATE_RENEWAL_DAYS,
+            )}
+          />
+          <InvoicingSettingsForm settings={settings} />
+        </>
+      ) : null}
     </main>
   );
 }

@@ -79,6 +79,8 @@ const (
 	CodeQuoteAlreadyInvoiced ErrorCode = "QUOTE_ALREADY_INVOICED"
 	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
 	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"
+	// A client's CUIT comes only from the customer's own account, so no staff route writes one.
+	CodeTaxIDReadOnly        ErrorCode = "TAX_ID_READ_ONLY"
 	CodeInvoicingUnavailable ErrorCode = "INVOICING_UNAVAILABLE"
 	// The account's CUIT is what ARCA is connected with: it is required to connect and locked
 	// while connected.
@@ -93,6 +95,13 @@ const (
 	CodeInvoiceNotCreditable   ErrorCode = "INVOICE_NOT_CREDITABLE"
 	CodeInvoiceAlreadyCredited ErrorCode = "INVOICE_ALREADY_CREDITED"
 	CodeCreditNoteInProgress   ErrorCode = "CREDIT_NOTE_IN_PROGRESS"
+	// The account switched invoicing with Coti off, so nothing new is issued; the server key is
+	// INVOICING_DISABLED.
+	CodeAccountInvoicingOff ErrorCode = "ACCOUNT_INVOICING_OFF"
+	// A paid sale is reopened only after its paid mark is removed.
+	CodeQuoteAlreadyPaid ErrorCode = "QUOTE_ALREADY_PAID"
+	// Closing a sale (paid, no invoice needed) applies only to an accepted quote.
+	CodeQuoteNotAccepted ErrorCode = "QUOTE_NOT_ACCEPTED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

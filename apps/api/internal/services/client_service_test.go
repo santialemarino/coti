@@ -59,7 +59,7 @@ func (f *fakeClientProfiles) FindByContacts(_ context.Context, _ repository.Quer
 }
 
 func (f *fakeClientProfiles) ListAcceptedSales(
-	context.Context, repository.Querier, domain.Tenant, uuid.UUID,
+	context.Context, repository.Querier, domain.Tenant, uuid.UUID, domain.ARCAEnvironment,
 ) ([]domain.ClientSale, error) {
 	return f.acceptedSales, nil
 }

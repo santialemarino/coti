@@ -58,13 +58,13 @@ func (f *fakeRfqRepoManual) ListStatusChanges(
 }
 
 func (f *fakeRfqRepoManual) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool, _ domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	return f.listItems, nil
 }
 
 func (f *fakeRfqRepoManual) GetByRFQID(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, _ domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in manual fake")
 }
@@ -597,13 +597,13 @@ func (f *fakeRFQs) ListStatusChanges(
 }
 
 func (f *fakeRFQs) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool, _ domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in pipeline fake")
 }
 
 func (f *fakeRFQs) GetByRFQID(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, _ domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
 	if f.rfqByIDErr != nil {
 		return nil, f.rfqByIDErr

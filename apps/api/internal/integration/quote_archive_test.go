@@ -17,6 +17,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
 )
@@ -192,9 +193,11 @@ func TestQuoteAutoArchive_ArchivesOnlyTheStallsQuietPastTheThreshold(t *testing.
 	alreadyBoxed := e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, idle,
 		&boxedBefore, nil)
 
+	// The closed window is longer than the idle REJECTED quote has waited, so it is left for now.
 	job := services.NewQuoteAutoArchiveJob(repository.NewQuoteRepository(),
-		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, BatchSize: 2},
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, ClosedAfter: 60 * 24 * time.Hour,
+			BatchSize: 2},
+		domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	jobs := e.jobService(t, job)
 	e.dropRuns(t, job.Name())
 
@@ -279,10 +282,227 @@ func (e *env) backdateQuote(t *testing.T, quoteID uuid.UUID, idleFor time.Durati
 func (e *env) autoArchiveJobs(t *testing.T) (*services.JobService, string) {
 	t.Helper()
 	job := services.NewQuoteAutoArchiveJob(repository.NewQuoteRepository(),
-		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, BatchSize: 100},
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+		config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, ClosedAfter: 30 * 24 * time.Hour,
+			BatchSize: 100},
+		domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	e.dropRuns(t, job.Name())
 	return e.jobService(t, job), job.Name()
+}
+
+// closedSale accepts a sale and records its closing facts straight on the row, then makes it look
+// idle for idleFor.
+func (e *env) closedSale(
+	t *testing.T, quoteID uuid.UUID, by domain.AppUser, paid, waived bool, idleFor time.Duration,
+) uuid.UUID {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote SET paid_at = CASE WHEN $2 THEN now() END,
+		                  paid_by_user_id = CASE WHEN $2 THEN $4::uuid END,
+		                  invoice_waived_at = CASE WHEN $3 THEN now() END,
+		                  invoice_waived_by_user_id = CASE WHEN $3 THEN $4::uuid END
+		 WHERE id = $1`, quoteID, paid, waived, by.ID); err != nil {
+		t.Fatalf("close the sale: %v", err)
+	}
+	e.backdateQuote(t, quoteID, idleFor)
+	return quoteID
+}
+
+// seedCreditNote records a credit note in status against the sale's invoice, straight on the owner
+// pool and dated with it.
+func (e *env) seedCreditNote(t *testing.T, sale invoicedSale, status domain.InvoiceStatus) {
+	t.Helper()
+	noteID := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`INSERT INTO invoice (id, account_id, branch_id, quote_id, quote_version_id, environment, kind, status,
+		                      invoice_type, point_of_sale, number, issued_on, cae, cae_expires_on, issuer_cuit,
+		                      receiver_name, receiver_doc_type, receiver_iva_condition, net_amount, exempt_amount,
+		                      vat_amount, total, currency, credited_invoice_id, created_at)
+		 SELECT $1, account_id, branch_id, quote_id, quote_version_id, environment, 'CREDIT_NOTE', $2,
+		        invoice_type, point_of_sale, CASE WHEN $2::invoice_status = 'ISSUED' THEN 24 END, issued_on,
+		        CASE WHEN $2::invoice_status = 'ISSUED' THEN '74123456789013' END,
+		        CASE WHEN $2::invoice_status = 'ISSUED' THEN issued_on + 10 END, issuer_cuit, receiver_name,
+		        receiver_doc_type, receiver_iva_condition, net_amount, exempt_amount, vat_amount, total,
+		        currency, id, created_at
+		 FROM invoice WHERE id = $3`, noteID, status, sale.invoiceID); err != nil {
+		t.Fatalf("seed the credit note: %v", err)
+	}
+	// Registered after the invoice's own teardown, so it runs first and frees the invoice.
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM invoice WHERE id = $1`, noteID) })
+}
+
+// authorizingARCA stands in for ARCA: it authorizes every voucher at number.
+type authorizingARCA struct{ number int64 }
+
+func (a authorizingARCA) Issue(ctx context.Context, _ domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
+	if err := req.Claim(ctx, a.number); err != nil {
+		return nil, err
+	}
+	return &domain.InvoiceAuthorization{Number: a.number, CAE: "74123456789013", CAEExpiresOn: req.Date.AddDate(0, 0, 10)}, nil
+}
+
+func (authorizingARCA) Authorized(context.Context, domain.ARCACredentials, string, domain.VoucherType, int, int64) (*domain.AuthorizedInvoice, error) {
+	return nil, nil
+}
+
+// A credit note authorized on an archived sale is activity on it: the quote's updated_at moves, so the
+// sweep measures its quiet from the correction, and the sale stays archived.
+func TestQuoteArchive_ACreditNoteOnAnArchivedSaleTouchesIt(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Archivo nota de crédito")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	e.setInvoicing(t, accountID, true)
+	sale := e.seedInvoicedSale(t, accountID, branchID, admin, domain.InvoiceStatusIssued)
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM invoice WHERE credited_invoice_id = $1`, sale.invoiceID)
+	})
+
+	sealer, err := secrets.NewAESGCM(make([]byte, secrets.KeyLength))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedKey, err := sealer.Seal(accountID.String() + ":key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.exec(t, `INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key, certificate, certificate_expires_at)
+	           VALUES ($1, 'HOMOLOGATION', '30712345671', 'csr', $2, 'certificate', now() + interval '1 year')`,
+		accountID, sealedKey)
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM arca_setup WHERE account_id = $1`, accountID) })
+
+	archivedAt := time.Now().Add(-48 * time.Hour).UTC().Truncate(time.Microsecond)
+	e.archiveQuote(t, sale.quoteID, archivedAt)
+	e.backdateQuote(t, sale.quoteID, 48*time.Hour)
+
+	invoices := services.NewInvoiceService(e.db, repository.NewInvoicingRepository(), repository.NewQuoteRepository(),
+		repository.NewQuoteDiscountRepository(), authorizingARCA{number: 24}, sealer,
+		services.InvoiceSettings{Enabled: true, Environment: domain.ARCAEnvironmentHomologation,
+			IssueTimeout: time.Minute, ReconcileAfter: time.Hour}, nil, nil)
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: admin.ID, Role: domain.UserRoleAdmin}
+	note, err := invoices.IssueCreditNote(ctx, tenant, sale.invoiceID)
+	if err != nil || note.Status != domain.InvoiceStatusIssued {
+		t.Fatalf("credit note = %+v, err = %v, want it issued on the archived sale", note, err)
+	}
+
+	var updatedAt time.Time
+	var archived *time.Time
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT updated_at, archived_at FROM quote WHERE id = $1`,
+		sale.quoteID).Scan(&updatedAt, &archived); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(updatedAt) > time.Hour {
+		t.Fatalf("updated_at = %s, want it moved to the credit note's authorization", updatedAt)
+	}
+	if archived == nil || !archived.Equal(archivedAt) {
+		t.Fatalf("archived_at = %v, want the sale still archived at %s", archived, archivedAt)
+	}
+}
+
+// Complete sales and rejected quotes are archived once quiet past the closed window; a sale still
+// waiting to be paid or invoiced, or with an invoice in flight, never is.
+func TestQuoteAutoArchive_ArchivesClosedOutcomesPastTheirOwnWindow(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	invoicingID, invoicingBranch := e.seedAccount(t, "Archivo cerradas")
+	cashID, cashBranch := e.seedAccount(t, "Archivo cerradas sin factura")
+	e.setInvoicing(t, invoicingID, true)
+	e.setInvoicing(t, cashID, false)
+	seller := e.seedUser(t, invoicingID, domain.UserRoleAdmin)
+	cashier := e.seedUser(t, cashID, domain.UserRoleAdmin)
+	// Past the 30-day stall window, inside the 60-day closed one; and past both.
+	quiet, closedQuiet := 40*24*time.Hour, 70*24*time.Hour
+
+	accepted := func(accountID, branchID uuid.UUID, by domain.AppUser) uuid.UUID {
+		return e.seedAcceptedSale(t, accountID, branchID, by).quoteID
+	}
+	// An invoiced sale, paid, quiet as long as its invoice is old, each in an account of its own: an
+	// invoice number is unique per account and point of sale.
+	invoicedSale := func(name string, env string) (invoicedSale, domain.AppUser) {
+		accountID, branchID := e.seedAccount(t, name)
+		e.setInvoicing(t, accountID, true)
+		user := e.seedUser(t, accountID, domain.UserRoleAdmin)
+		sale := e.seedInvoicedSale(t, accountID, branchID, user, domain.InvoiceStatusIssued)
+		// An authorized invoice is immutable, so the fixture is aged with triggers off.
+		tx, err := e.db.AdminTx(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+			t.Fatalf("switch triggers off: %v", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE invoice SET environment = $2, issued_on = current_date - 70, created_at = now() - interval '70 days'
+			 WHERE id = $1`, sale.invoiceID, env); err != nil {
+			t.Fatalf("age the invoice: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		e.closedSale(t, sale.quoteID, user, true, false, closedQuiet)
+		return sale, user
+	}
+	invoiced, _ := invoicedSale("Archivo cerradas facturada", "HOMOLOGATION")
+	production, _ := invoicedSale("Archivo cerradas producción", "PRODUCTION")
+	pending := e.seedInvoicedSale(t, invoicingID, invoicingBranch, seller, domain.InvoiceStatusPending)
+	// Paid, but its invoice is cancelled by a credit note: still waiting for ARCA, or issued and
+	// never invoiced again.
+	crediting, _ := invoicedSale("Archivo cerradas nota pendiente", "HOMOLOGATION")
+	e.seedCreditNote(t, crediting, domain.InvoiceStatusPending)
+	credited, _ := invoicedSale("Archivo cerradas nota emitida", "HOMOLOGATION")
+	e.seedCreditNote(t, credited, domain.InvoiceStatusIssued)
+
+	eligible := map[string]uuid.UUID{
+		"paid, invoice waived": e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, true, closedQuiet),
+		"paid, invoiced":       invoiced.quoteID,
+		"paid, invoiced in production on a test server": production.quoteID,
+		"paid, invoicing off":                           e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, true, false, closedQuiet),
+		"REJECTED":                                      e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, closedQuiet, nil, nil),
+	}
+	left := map[string]uuid.UUID{
+		"REJECTED inside the closed window":                              e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusRejected, quiet, nil, nil),
+		"complete inside the closed window":                              e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, true, quiet),
+		"unpaid, invoice waived":                                         e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, false, true, closedQuiet),
+		"unpaid, invoicing off":                                          e.closedSale(t, accepted(cashID, cashBranch, cashier), cashier, false, false, closedQuiet),
+		"paid, waiting for its invoice":                                  e.closedSale(t, accepted(invoicingID, invoicingBranch, seller), seller, true, false, closedQuiet),
+		"paid, invoice pending in ARCA":                                  e.closedSale(t, pending.quoteID, seller, true, false, closedQuiet),
+		"paid, credit note pending in ARCA":                              crediting.quoteID,
+		"paid, invoice cancelled by a credit note, never invoiced again": credited.quoteID,
+		"CHANGE_REQUESTED":                                               e.seedIdleQuote(t, invoicingID, invoicingBranch, domain.QuoteStatusChangeRequested, closedQuiet, nil, nil),
+	}
+
+	archiveJob := func(env domain.ARCAEnvironment) (*services.JobService, string) {
+		job := services.NewQuoteAutoArchiveJob(repository.NewQuoteRepository(),
+			config.QuoteArchiveConfig{InactiveAfter: 30 * 24 * time.Hour, ClosedAfter: 60 * 24 * time.Hour,
+				BatchSize: 100},
+			env, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		e.dropRuns(t, job.Name())
+		return e.jobService(t, job), job.Name()
+	}
+
+	// A server on production counts no test invoice, so that sale still waits for one.
+	jobs, name := archiveJob(domain.ARCAEnvironmentProduction)
+	if _, err := jobs.Run(ctx, name); err != nil {
+		t.Fatalf("Run() on production = %v, want no error", err)
+	}
+	if at := e.archivedAtOf(t, invoiced.quoteID); at != nil {
+		t.Errorf("test invoice on a production server: archived at %v, want it left alone", at)
+	}
+
+	jobs, name = archiveJob(domain.ARCAEnvironmentHomologation)
+	if _, err := jobs.Run(ctx, name); err != nil {
+		t.Fatalf("Run() = %v, want no error", err)
+	}
+	for name, id := range eligible {
+		if e.archivedAtOf(t, id) == nil {
+			t.Errorf("%s: not archived, want it archived", name)
+		}
+	}
+	for name, id := range left {
+		if at := e.archivedAtOf(t, id); at != nil {
+			t.Errorf("%s: archived at %v, want it left alone", name, at)
+		}
+	}
 }
 
 // Editing a draft's lines is activity: a quote a seller is working on is never swept as idle.

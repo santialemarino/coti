@@ -14,6 +14,10 @@ function renderStep(taxId: string | null) {
     taxId,
     brandLogoUrl: null,
     brandColor: null,
+    preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+    invoicingEnabled: false,
+    hasInvoices: false,
+    invoiceOnPayment: false,
   };
   render(
     <NextIntlClientProvider locale="es" messages={messages}>

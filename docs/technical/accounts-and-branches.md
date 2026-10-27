@@ -272,7 +272,11 @@ anything naming the corralón needs it; `PUT /v1/account` replaces it and is adm
 carries no account id — it writes whatever the session resolved.
 
 **Replaces, so an omitted optional field is cleared.** That is how a corralón removes a logo it no
-longer wants on its quotes. A name that is blank once trimmed is refused with 422.
+longer wants on its quotes. A name that is blank once trimmed is refused with 422. The one
+exception is `preferred_lower_price_strategy` (`FIND_CHEAPER_ALTERNATIVES`, the default, or
+`ADAPT_TO_REACH_DISCOUNT`): it cannot be empty, so omitting it keeps the stored one. It is the
+strategy the conversation handler runs first for a lower total when the customer did not say
+([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)).
 
 The brand pair (`brand_logo_url`, `brand_color`) is what the client webapp renders a quote with, and
 both carry a format because a malformed one breaks a screen the corralón cannot see: the logo must be
@@ -280,6 +284,42 @@ an absolute URL, and the colour hexadecimal with three, four, six or eight digit
 (`#C2410C`). Either one malformed is a 400. `settings/account` in the backoffice mirrors both shapes
 exactly rather than narrowing them — a form stricter than the column cannot show an account its own
 stored value back.
+
+### Invoicing with Coti
+
+`invoicing_enabled` says whether the corralón invoices with Coti, and `has_invoices` whether ARCA ever
+authorized a voucher for it — an issued invoice or credit note, test-environment ones included,
+since «Comprobantes» lists those too with their «Prueba» mark; a pending or refused attempt is no
+fiscal record and does not count. Both are read-only on the record, so every member — sellers
+included — reads them from `GET /v1/account`. `PUT /v1/invoicing/enabled` (`{"enabled": bool}`, admin-only) is
+the one write. It is not part of `PUT /v1/account`, which replaces the whole record, so flipping a
+switch would otherwise have to resend the name and the brand.
+
+- **Off** refuses previewing or issuing an invoice and issuing a credit note with **409**
+  `ACCOUNT_INVOICING_OFF`. Listing invoices, downloading a PDF and recovering an invoice still
+  waiting for ARCA stay open: they are fiscal records. ARCA setup, invoicing settings and points of
+  sale stay open too, so the configuration survives a flip.
+- **Turning it off is refused** with **409** `INVOICE_PENDING` while any invoice is waiting for
+  ARCA's answer. It takes the account row `FOR UPDATE`; issuing reads the switch under the
+  `FOR SHARE` lock it takes before writing a pending invoice, so the two cannot interleave.
+- **On** connects nothing; it only reveals the ARCA connection and the invoicing settings.
+
+The migration that added it started it on for accounts with an `arca_setup` row or any invoice, and
+off for every other account. A new account starts off. `INVOICING_DISABLED` is a different thing: the
+server has no ARCA encryption key, whatever the account chose.
+
+The backoffice hides everything invoicing-related while it is off: the invoice card on an accepted
+order, «Facturar también» and «No requiere factura» when closing a sale, a product's IVA rate, the
+client's fiscal data, the setup notices and the ARCA guide (`/settings/invoicing/arca` redirects to
+`/settings/invoicing`, where the switch lives) and «Por facturar», Administración's list of sales
+waiting for an invoice. «Comprobantes», the invoice history, stays reachable while the account has
+invoices, since those are still readable.
+
+`invoice_on_payment` is the account default for «Facturar también» when a sale is marked paid
+(false for every account). It is written through `PUT /v1/invoicing/settings` beside the other
+invoicing settings — omitted, it keeps its value — and read back there and, for sellers, on
+`GET /v1/account`. It only pre-ticks the box: every invoice is still confirmed by a person. See
+[rfq-pipeline.md](rfq-pipeline.md#closing-a-sale-paid-and-no-requiere-factura).
 
 ## Identity
 

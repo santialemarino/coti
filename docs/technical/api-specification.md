@@ -118,12 +118,17 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `BRANCH_NOT_ACCESSIBLE`     | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them                                        |
 | `BRANCH_MAILBOX_REQUIRED`   | 422    | clearing the mailbox a configured email channel sends from                                                          |
 | `ACCOUNT_TAX_ID_REQUIRED`   | 422    | starting the ARCA connection for an account with no CUIT                                                            |
+| `TAX_ID_READ_ONLY`          | 422    | sending `tax_id` to a client's fiscal data: a client's CUIT comes only from their customer account                  |
 | `ARCA_CONNECTED`            | 409    | changing the account's CUIT while ARCA is connected with it, without `disconnect_arca`                              |
-| `INVOICE_PENDING`           | 409    | removing the ARCA connection while an invoice is still waiting for ARCA's answer                                    |
+| `INVOICE_PENDING`           | 409    | removing the ARCA connection, or switching invoicing off, while an invoice is still waiting for ARCA's answer       |
+| `ACCOUNT_INVOICING_OFF`     | 409    | previewing or issuing an invoice, or issuing a credit note, while the account has invoicing with Coti switched off  |
 | `ARCA_ENVIRONMENT_MISMATCH` | 409    | installing a certificate, or reading back a pending invoice, with an ARCA connection made for the other environment |
 | `INVOICE_NOT_CREDITABLE`    | 409    | asking for a credit note for anything but an issued invoice                                                         |
 | `INVOICE_ALREADY_CREDITED`  | 409    | asking for a credit note for an invoice an issued credit note already cancelled                                     |
 | `CREDIT_NOTE_IN_PROGRESS`   | 409    | asking for a credit note while the invoice's previous one is still waiting for ARCA's answer                        |
+| `QUOTE_ALREADY_INVOICED`    | 409    | reactivating, or marking as needing no invoice, a sale with a pending invoice or an issued one not credited         |
+| `QUOTE_ALREADY_PAID`        | 409    | reactivating a sale still marked paid                                                                               |
+| `QUOTE_NOT_ACCEPTED`        | 409    | marking paid or as needing no invoice, either way, a quote that is not accepted                                     |
 
 `AI_UNAVAILABLE` is the **503** whose status says "come back later":
 no AI provider is bound, or the one that is could not answer. A request the provider _rejected_ is

@@ -1,3 +1,6 @@
+// Where an accepted sale stands with its invoice; a waiting voucher wins over the rest.
+export type SaleInvoiceStatus = 'INVOICED' | 'PENDING' | 'WAIVED' | 'UNINVOICED';
+
 export interface ClientTagRaw {
   id: string;
   name: string;
@@ -38,6 +41,7 @@ export interface ClientSaleRaw {
   branch_name: string;
   total: string;
   accepted_at: string;
+  invoice_status: SaleInvoiceStatus;
 }
 
 export interface ClientProfileRaw {
@@ -95,6 +99,7 @@ export interface ClientSale {
   branchName: string;
   total: string;
   acceptedAt: string;
+  invoiceStatus: SaleInvoiceStatus;
 }
 
 export interface ClientProfile {
@@ -176,6 +181,7 @@ export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
       branchName: sale.branch_name,
       total: sale.total,
       acceptedAt: sale.accepted_at,
+      invoiceStatus: sale.invoice_status,
     })),
   };
 }

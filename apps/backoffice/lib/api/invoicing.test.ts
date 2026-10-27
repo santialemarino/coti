@@ -36,12 +36,14 @@ describe('invoicing API mapping', () => {
         iva_condition: 'REGISTERED',
         prices_include_vat: true,
         branches: [{ branch_id: 'b1', name: 'Centro', is_active: false, point_of_sale: 3 }],
+        invoice_on_payment: true,
       }),
     ).toEqual({
       legalName: 'Corralón del Sur SRL',
       taxId: '30711111112',
       ivaCondition: 'REGISTERED',
       pricesIncludeVat: true,
+      invoiceOnPayment: true,
       branches: [{ branchId: 'b1', name: 'Centro', isActive: false, pointOfSale: 3 }],
     });
   });
@@ -53,10 +55,30 @@ describe('invoicing API mapping', () => {
       iva_condition: 'SOMETHING_NEW',
       prices_include_vat: false,
       branches: null,
+      invoice_on_payment: false,
     });
 
     expect(settings.ivaCondition).toBeNull();
     expect(settings.branches).toEqual([]);
+  });
+
+  it('maps the sign-up page a preview offers while the buyer lacks a CUIT', () => {
+    const preview = mapInvoicePreview({
+      environment: 'PRODUCTION',
+      issuer_cuit: '30711111112',
+      fingerprint: 'a'.repeat(64),
+      version_id: 'v-1',
+      type: 'A',
+      point_of_sale: 3,
+      receiver: RECEIVER,
+      amounts: AMOUNTS,
+      currency: 'ARS',
+      issues: ['RECEIVER_CUIT_REQUIRED'],
+      invoice: null,
+      customer_signup_url: 'https://corralon.example.com/signup',
+    });
+
+    expect(preview.customerSignupUrl).toBe('https://corralon.example.com/signup');
   });
 
   it('maps a preview and the invoice it already has', () => {
@@ -117,6 +139,7 @@ describe('invoicing API mapping', () => {
       issues: [],
       otherEnvironmentInvoice: null,
       creditedInvoice: null,
+      customerSignupUrl: null,
       invoice: {
         id: 'inv-1',
         branchId: 'b1',
@@ -263,6 +286,7 @@ describe('invoicing API mapping', () => {
         name: 'Horizonte',
         legal_name: 'Constructora Horizonte SA',
         tax_id: '30701234568',
+        dni: '28123456',
         iva_condition: 'MONOTRIBUTO',
       }),
     ).toEqual({
@@ -270,6 +294,7 @@ describe('invoicing API mapping', () => {
       name: 'Horizonte',
       legalName: 'Constructora Horizonte SA',
       taxId: '30701234568',
+      dni: '28123456',
       ivaCondition: 'MONOTRIBUTO',
     });
   });
