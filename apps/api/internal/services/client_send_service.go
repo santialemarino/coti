@@ -26,6 +26,9 @@ func (s *QuoteDeliveryService) WithClientAssociations(clients quoteClientConfirm
 
 // ValidateForSend checks the seller's selection before any delivery provider is contacted.
 func (s *ClientService) ValidateForSend(ctx context.Context, q repository.Querier, tenant domain.Tenant, quote domain.Quote, in *domain.AssociateQuoteClientInput) error {
+	if err := normalizeSendClient(in); err != nil {
+		return err
+	}
 	if err := requireUnarchived(quote); err != nil {
 		return err
 	}
@@ -40,12 +43,12 @@ func (s *ClientService) ValidateForSend(ctx context.Context, q repository.Querie
 		if err != nil {
 			return err
 		}
-		if client.TaxID == nil || !domain.ValidCUIT(*client.TaxID) {
-			return fmt.Errorf("%w: the client needs a CUIT/CUIL", domain.ErrInvalidInput)
+		if client.Name == nil || (client.Phone == nil && client.Email == nil) {
+			return fmt.Errorf("%w: the client needs a full name and a contact", domain.ErrInvalidInput)
 		}
 		return nil
 	}
-	if !domain.ValidCUIT(in.TaxID) || (in.ClientID == nil) == (in.New == nil) {
+	if (in.TaxID != "" && !domain.ValidCUIT(in.TaxID)) || (in.ClientID == nil) == (in.New == nil) {
 		return domain.ErrInvalidInput
 	}
 	if quote.ClientID != nil && (in.ClientID == nil || *quote.ClientID != *in.ClientID) {
@@ -65,8 +68,16 @@ func (s *ClientService) ValidateForSend(ctx context.Context, q repository.Querie
 		if err != nil {
 			return err
 		}
-		if client.TaxID != nil && *client.TaxID != in.TaxID {
+		if in.TaxID != "" && (client.TaxID == nil || *client.TaxID != in.TaxID) {
 			return fmt.Errorf("%w: the selected client's CUIT/CUIL differs", domain.ErrInvalidInput)
+		}
+	} else if in.New != nil {
+		matches, err := s.clients.FindByContacts(ctx, q, tenant.AccountID, in.New.Phone, in.New.Email)
+		if err != nil {
+			return err
+		}
+		if len(matches) > 0 {
+			return fmt.Errorf("%w: select the existing contact profile", domain.ErrConflict)
 		}
 	}
 	tags, err := s.tags.GetByIDs(ctx, q, tenant.AccountID, in.TagIDs)
@@ -93,9 +104,7 @@ func (s *ClientService) ConfirmForSend(ctx context.Context, q repository.Querier
 	var clientID uuid.UUID
 	if in.ClientID != nil {
 		clientID = *in.ClientID
-		if err := s.clients.SetMissingTaxID(ctx, q, tenant.AccountID, clientID, in.TaxID); err != nil {
-			return err
-		}
+
 	} else {
 		client, err := s.clients.Create(ctx, q, tenant.AccountID, *in.New)
 		if err != nil {
@@ -117,11 +126,13 @@ func normalizeSendClient(in *domain.AssociateQuoteClientInput) error {
 		return nil
 	}
 	in.TaxID = domain.NormalizeTaxID(in.TaxID)
-	if !domain.ValidCUIT(in.TaxID) || (in.ClientID == nil) == (in.New == nil) {
-		return fmt.Errorf("%w: select one client and a valid CUIT/CUIL", domain.ErrInvalidInput)
+	if (in.TaxID != "" && !domain.ValidCUIT(in.TaxID)) || (in.ClientID == nil) == (in.New == nil) {
+		return fmt.Errorf("%w: select one client", domain.ErrInvalidInput)
 	}
 	if in.New != nil {
-		in.New.TaxID = &in.TaxID
+		if in.TaxID != "" || in.New.TaxID != nil {
+			return domain.ErrInvalidInput
+		}
 		if err := normalizeNewClient(in.New); err != nil {
 			return err
 		}

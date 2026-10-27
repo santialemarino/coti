@@ -9,6 +9,12 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+The customer portal includes authenticated request history and commercial profiles. Registration
+requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
+without CUIT. Customers verify new contacts before claiming their earlier requests and manage a
+separate optional recovery email from **My data**. See [Client profiles](docs/technical/client-profiles.md)
+for identity rules, migrations, contact delivery configuration and recovery separation.
+
 ## Stack
 
 | Layer            | Technology                                             |

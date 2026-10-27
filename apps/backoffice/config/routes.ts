@@ -14,6 +14,7 @@ export const ROUTES = {
   rfqs: '/rfqs',
   rfqsDetail: (id: string) => `/rfqs/${id}`,
   clients: '/clients',
+  clientSuggestions: '/clients/suggestions',
   clientDetail: (id: string) => `/clients/${id}`,
   reports: '/reports',
   administration: '/administration',

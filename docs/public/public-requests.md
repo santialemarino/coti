@@ -16,8 +16,10 @@ Email and phone are optional. Their authenticated CUIT/CUIL is already filled an
 changed in the request form. They choose between writing an order and uploading one image, PDF,
 spreadsheet, audio recording or text file. The receipt screen confirms durable reception.
 
-The seller receives the original request and its customer declarations. This flow does not create,
-merge or modify commercial client profiles. The seller confirms the client association while sending the quotation.
+The seller receives the original request and its customer declarations. Authenticated declarations
+can create or enrich the customer's own commercial profile. The seller confirms the request's
+client association while sending the quotation. Customers can manage their optional phones and
+emails from **My data**, independently of their sign-in and recovery credentials.
 
 Customers can consult and answer seller-sent quotations from their history or an existing delivery
 link; both open the same authenticated detail. Internal quotation drafts remain private. When

@@ -1611,7 +1611,7 @@
         "clientNew": "Crear cliente",
         "clientChoose": "Seleccioná un cliente",
         "clientTax": "CUIT/CUIL",
-        "clientName": "Nombre o razón social",
+        "clientName": "Nombre y apellido",
         "clientEmail": "Email (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
@@ -1622,7 +1622,8 @@
         "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá un email válido.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
-        "clientTags": "Etiquetas"
+        "clientTags": "Etiquetas",
+        "clientContactRequired": "Ingresá al menos un teléfono o un email."
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1961,6 +1962,19 @@
         "INVALID_TAX_ID": "Revisá el DNI del cliente.",
         "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
       }
+    },
+    "contactSuggestions": "Coincidencias pendientes",
+    "registration": {
+      "title": "Solicitar que complete sus datos",
+      "confirm": "Se enviará a {contact} un enlace para crear su cuenta o ingresar y completar sus datos.",
+      "send": "Enviar enlace",
+      "sending": "Enviando…",
+      "cancel": "Cancelar",
+      "whatsapp": "Solicitar datos por WhatsApp",
+      "email": "Solicitar datos por email",
+      "selectBranch": "Elegí una sucursal para enviar el enlace",
+      "sent": "Enviamos el enlace al cliente.",
+      "failed": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
     }
   },
   "reports": {
@@ -3076,5 +3090,30 @@
       "actions": "Acciones"
     },
     "testBadge": "Prueba"
+  },
+  "clientContactSuggestions": {
+    "title": "Coincidencias de clientes",
+    "pending": "{count, plural, =0 {Sin coincidencias pendientes} one {# coincidencia pendiente} other {# coincidencias pendientes}}",
+    "empty": "No hay coincidencias pendientes",
+    "unknown": "Cliente sin nombre",
+    "review": "Revisar",
+    "reviewTitle": "Revisar coincidencia",
+    "taxId": "CUIT/CUIL declarado",
+    "incoming": "Contacto de entrada",
+    "candidate": "Ficha candidata",
+    "absent": "Sin datos",
+    "original": "Mensaje original",
+    "associate": "Asociar contacto",
+    "separate": "Mantener separado",
+    "merge": "Revisar fusión",
+    "confirm": "Confirmar",
+    "decisionDescription": "Confirmá tu decisión sobre {value}. Los datos recibidos se conservarán.",
+    "mergeDescription": "Se incorporarán los contactos y las asociaciones de la ficha de origen a la ficha candidata. Se conservará el registro de origen y el mensaje recibido de {value}.",
+    "saving": "Guardando…",
+    "cancel": "Cancelar",
+    "retry": "Reintentar",
+    "loadError": "No pudimos cargar las coincidencias.",
+    "resolveError": "No pudimos resolver la coincidencia. Revisá tus permisos o volvé a cargar la página.",
+    "verificationRequired": "La asociación se realiza cuando el cliente confirma el contacto desde Mis datos."
   }
 }

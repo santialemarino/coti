@@ -198,6 +198,8 @@ func newEnvWithRFQProviders(
 	rfqRepo := repository.NewRFQRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientRepo := repository.NewClientRepository()
+	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
+	customerAuth.WithClientProfiles(contactService)
 	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {
@@ -247,7 +249,7 @@ func newEnvWithRFQProviders(
 	rfqService.WithPublicContacts(publicRFQRepo, rfqAttachmentService)
 	publicRFQService := services.NewPublicRFQService(db, publicRFQRepo,
 		repository.NewInboundChannelMessageRepository(), rfqRepo, rfqAttachmentService,
-		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize)
+		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize).WithContacts(contactService)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -264,6 +266,7 @@ func newEnvWithRFQProviders(
 			Health:         handler.NewHealthHandler(db),
 			Auth:           handler.NewAuthHandler(authService),
 			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuth),
+			ClientContacts: handler.NewClientContactHandler(contactService),
 			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
 			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
@@ -332,6 +335,11 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM client_contact_challenge WHERE account_id=$1`,
+			`DELETE FROM client_contact_outbox WHERE account_id=$1`,
+			`DELETE FROM client_contact_observation WHERE account_id=$1`,
+			`DELETE FROM client_contact WHERE account_id=$1`,
+			`UPDATE client SET merged_into=NULL WHERE account_id=$1`,
 			`DELETE FROM customer_auth_challenge WHERE account_id=$1`,
 			`DELETE FROM customer_session WHERE account_id=$1`,
 			`DELETE FROM customer_identity WHERE account_id=$1`,

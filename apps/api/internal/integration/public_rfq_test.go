@@ -131,7 +131,7 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 		(SELECT count(*) FROM client WHERE account_id = $1)`, accountID).Scan(&rfqCount, &quoteCount, &clientCount); err != nil {
 		t.Fatal(err)
 	}
-	if rfqCount != 1 || quoteCount != 1 || clientCount != 0 {
+	if rfqCount != 1 || quoteCount != 1 || clientCount != 1 {
 		t.Fatalf("RFQs=%d quotes=%d clients=%d", rfqCount, quoteCount, clientCount)
 	}
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)

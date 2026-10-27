@@ -85,9 +85,9 @@ func (r *CustomerAuthRepository) GetSession(ctx context.Context, q Querier, acco
 // CreateIdentity registers credentials without associating preexisting RFQs or client profiles.
 func (r *CustomerAuthRepository) CreateIdentity(ctx context.Context, q Querier, in domain.CustomerIdentity) (*domain.CustomerIdentity, error) {
 	identity, err := scanCustomerIdentity(q.QueryRow(ctx, `INSERT INTO customer_identity
-  (id, account_id, tax_id, password_hash, recovery_email) VALUES ($1,$2,$3,$4,$5)
+  (id, account_id, tax_id, password_hash, recovery_email, name) VALUES ($1,$2,$3,$4,$5,$6)
   ON CONFLICT (account_id, tax_id) WHERE disabled_at IS NULL DO NOTHING RETURNING `+customerIdentityColumns,
-		in.ID, in.AccountID, in.TaxID, in.PasswordHash, in.RecoveryEmail))
+		in.ID, in.AccountID, in.TaxID, in.PasswordHash, in.RecoveryEmail, in.Name))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, domain.ErrConflict
 	}

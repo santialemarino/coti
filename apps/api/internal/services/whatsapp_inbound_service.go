@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -57,6 +58,7 @@ type whatsAppInboundRFQCreator interface {
 // WhatsAppInboundService turns verified WhatsApp messages into idempotent inbound RFQ drafts, or
 // into client messages on the live quote conversation their sender continues.
 type WhatsAppInboundService struct {
+	contacts      inboundContactRecorder
 	db            whatsAppInboundDB
 	routes        whatsAppInboundRouter
 	messages      whatsAppInboundMessageStore
@@ -159,6 +161,11 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 		if err := s.ingestOne(ctx, route, message); err != nil {
 			return err
 		}
+		if completer, ok := s.contacts.(inboundContactCompleter); ok {
+			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+")); err != nil {
+				return err
+			}
+		}
 	}
 	return routingErr
 }
@@ -179,16 +186,35 @@ func (s *WhatsAppInboundService) ingestOne(
 				Payload:            message.Payload,
 				ProviderReceivedAt: message.ProviderReceivedAt,
 			}
-			joined, err := s.joinConversation(ctx, q, route, message)
-			if err != nil {
-				return err
+			var pending *uuid.UUID
+			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && declaredNamePattern.MatchString(strings.TrimSpace(message.Body)) {
+				var err error
+				pending, err = resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"))
+				if err != nil {
+					return err
+				}
 			}
-			if joined != nil {
-				in.QuoteMessageID = &joined.ID
+			if pending != nil {
+				in.RFQID = pending
+				var payload map[string]any
+				if err := json.Unmarshal(in.Payload, &payload); err != nil {
+					return err
+				}
+				payload["contact_name_reply"] = true
+				in.Payload, _ = json.Marshal(payload)
 			} else {
-				rfqID := uuid.New()
-				in.RFQID = &rfqID
+				joined, err := s.joinConversation(ctx, q, route, message)
+				if err != nil {
+					return err
+				}
+				if joined != nil {
+					in.QuoteMessageID = &joined.ID
+				} else {
+					rfqID := uuid.New()
+					in.RFQID = &rfqID
+				}
 			}
+			var err error
 			reserved, err = s.messages.Reserve(ctx, q, route.AccountID, route.BranchID,
 				route.ChannelID, in)
 			if err != nil {
@@ -198,12 +224,19 @@ func (s *WhatsAppInboundService) ingestOne(
 			if reserved.ID != in.ID {
 				return errInboundAlreadyReserved
 			}
+			if s.contacts != nil {
+				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, declaredClientData(message.Body))
+			}
 			return nil
 		})
 		if err != nil && !errors.Is(err, errInboundAlreadyReserved) {
 			return err
 		}
-		if reserved.RFQID == nil {
+		var payload struct {
+			NameReply bool `json:"contact_name_reply"`
+		}
+		_ = json.Unmarshal(reserved.Payload, &payload)
+		if reserved.RFQID == nil || payload.NameReply {
 			return nil
 		}
 		_, err = s.rfqs.CreateInboundTextDraftForMessage(ctx, route,

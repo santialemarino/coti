@@ -51,6 +51,7 @@ type publicRFQEnvelope struct {
 
 // PublicRFQService retains customer requests through an active branch WEBAPP channel.
 type PublicRFQService struct {
+	contacts     customerContactRecorder
 	db           publicRFQDB
 	destinations publicRFQDestinations
 	messages     whatsAppInboundMessageStore
@@ -246,5 +247,15 @@ func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.Custo
 		return domain.ErrForbidden
 	}
 	in.Contact.TaxID = p.TaxID
-	return s.Create(ctx, channelID, in)
+	in.Contact, err = in.Contact.Normalize()
+	if err != nil {
+		return err
+	}
+	if err := s.Create(ctx, channelID, in); err != nil {
+		return err
+	}
+	if s.contacts != nil {
+		return s.contacts.RecordCustomer(ctx, p, destination.Route, in.RequestID, in.Contact)
+	}
+	return nil
 }

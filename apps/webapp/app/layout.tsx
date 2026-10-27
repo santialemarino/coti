@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 
+import { Toaster } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
 import { inter, poppins } from '@/lib/fonts';
 
@@ -35,7 +36,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html className={cn(inter.variable, poppins.variable)} lang={locale}>
       <body className="min-h-screen bg-body-background font-sans text-paragraph text-foreground antialiased">
-        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider messages={messages}>
+          {children}
+          <Toaster />
+        </NextIntlClientProvider>
       </body>
     </html>
   );

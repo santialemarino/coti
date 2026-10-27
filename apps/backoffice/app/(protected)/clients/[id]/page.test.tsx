@@ -21,6 +21,9 @@ vi.mock('@/lib/api/clients', () => ({
   getClientFiscal: vi.fn(),
 }));
 vi.mock('@/app/(protected)/_components/page-header', () => ({ PageHeader: () => null }));
+vi.mock('@/app/(protected)/clients/[id]/_components/client-registration-link', () => ({
+  ClientRegistrationLink: () => null,
+}));
 vi.mock('@/components/back-link', () => ({ BackLink: () => null }));
 vi.mock('@/app/(protected)/clients/[id]/_components/client-tag-editor', () => ({
   ClientTagEditor: () => null,

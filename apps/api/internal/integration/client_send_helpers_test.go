@@ -13,7 +13,7 @@ import (
 func (e *env) seedKnownDeliveryClient(t *testing.T, tenant domain.Tenant, quoteID, rfqID uuid.UUID) {
 	t.Helper()
 	clientID := uuid.New()
-	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO client(id,account_id,name,tax_id) VALUES($1,$2,'Known customer','20123456786')`, clientID, tenant.AccountID); err != nil {
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `INSERT INTO client(id,account_id,name,tax_id,email) VALUES($1,$2,'Known customer','20123456786','known@example.test') ON CONFLICT(account_id,tax_id) WHERE tax_id IS NOT NULL DO UPDATE SET tax_id=excluded.tax_id RETURNING id`, clientID, tenant.AccountID).Scan(&clientID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE quote SET client_id=$2 WHERE id=$1`, quoteID, clientID); err != nil {

@@ -1,3 +1,4 @@
+import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import { z } from 'zod';
 
 import { isValidCuit } from '@repo/ui/lib';
@@ -23,10 +24,17 @@ export function customerAuthSchema(
       password: z.string(),
       confirmation: z.string(),
       email: z.string(),
+      name: z.string().optional(),
+      phone: z.string().optional(),
     })
     .superRefine((values, ctx) => {
       const add = (path: keyof typeof values, key: string, params?: Record<string, number>) =>
         ctx.addIssue({ code: 'custom', path: [path], message: message(key, params) });
+      if (['signup', 'google'].includes(mode) && !values.name?.trim()) add('name', 'nameRequired');
+      if (mode === 'signup' && !values.email.trim() && !values.phone?.trim())
+        add('email', 'contactRequired');
+      if (mode === 'signup' && values.phone && !isValidPhoneNumber(values.phone))
+        add('phone', 'phoneInvalid');
       if (
         ['login', 'signup', 'forgot', 'google', 'linkGoogle'].includes(mode) &&
         (!isValidCuit(values.taxId) || values.taxId === '00000000000')

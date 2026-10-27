@@ -43,12 +43,18 @@ interface PublicRfqFormProps {
   channelId: string;
   destination: PublicRfqDestination;
   taxId?: string;
+  contact?: { name: string; email: string; phone: string };
 }
 type Step = 'contact' | 'order' | 'received';
 const CONTACT_FIELDS = ['taxId', 'name', 'email', 'phone'] as const;
 const FILE_ERRORS = new Set(['FILE_TOO_LARGE', 'UNSUPPORTED_FILE_TYPE', 'LEGACY_EXCEL_FILE']);
 
-export function PublicRfqForm({ channelId, destination, taxId }: PublicRfqFormProps) {
+export function PublicRfqForm({
+  channelId,
+  destination,
+  taxId,
+  contact: initialContact,
+}: PublicRfqFormProps) {
   const t = useTranslations('rfq');
   const shared = useTranslations('common.form.errors');
   const fmt = useFormatters();
@@ -86,7 +92,7 @@ export function PublicRfqForm({ channelId, destination, taxId }: PublicRfqFormPr
   };
   const form = useForm<PublicRfqValues>({
     ...FORM_VALIDATION,
-    defaultValues: { ...EMPTY_PUBLIC_RFQ, taxId: taxId ?? '' },
+    defaultValues: { ...EMPTY_PUBLIC_RFQ, ...initialContact, taxId: taxId ?? '' },
     resolver,
   });
   const mode = form.watch('mode');

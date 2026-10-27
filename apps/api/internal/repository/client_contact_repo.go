@@ -1,0 +1,200 @@
+package repository
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+)
+
+// ClientContactRepository persists commercial contacts and retained ingress observations.
+type ClientContactRepository struct{}
+
+// NewClientContactRepository builds the commercial contacts repository.
+func NewClientContactRepository() *ClientContactRepository { return &ClientContactRepository{} }
+
+// List returns contacts for a batch of account-owned profiles.
+func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error) {
+	rows, err := q.Query(ctx, `SELECT client_id,id,kind,value,is_primary,verified_at IS NOT NULL FROM client_contact WHERE account_id=$1 AND client_id=ANY($2) ORDER BY kind,is_primary DESC,created_at,id`, accountID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[uuid.UUID][]domain.ClientContact)
+	for rows.Next() {
+		var id uuid.UUID
+		var c domain.ClientContact
+		if err := rows.Scan(&id, &c.ID, &c.Kind, &c.Value, &c.Primary, &c.Verified); err != nil {
+			return nil, err
+		}
+		result[id] = append(result[id], c)
+	}
+	return result, rows.Err()
+}
+
+// ListObservations reads pending suggestions within the staff caller's branch reach.
+func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
+	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at FROM client_contact_observation o LEFT JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING' ORDER BY o.created_at,o.id`, tenant.AccountID, tenant.BranchFilter())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]domain.ContactObservation, 0)
+	for rows.Next() {
+		var o domain.ContactObservation
+		if err := rows.Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.CandidateName, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, o)
+	}
+	return result, rows.Err()
+}
+
+// GetObservation locks one suggestion inside the staff caller's branch reach.
+func (r *ClientContactRepository) GetObservation(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID) (*domain.ContactObservation, error) {
+	var o domain.ContactObservation
+	err := q.QueryRow(ctx, `SELECT id,branch_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status,created_at FROM client_contact_observation WHERE account_id=$1 AND id=$2 AND ($3::uuid[] IS NULL OR branch_id=ANY($3)) FOR UPDATE`, tenant.AccountID, id, tenant.BranchFilter()).Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return &o, err
+}
+
+// FindProfiles returns exact fiscal or contact candidates without associating records.
+func (r *ClientContactRepository) FindProfiles(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, kind domain.ChannelType, value string) ([]domain.Client, error) {
+	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND (tax_id=NULLIF($2,'') OR id IN (SELECT client_id FROM client_contact WHERE account_id=$1 AND kind=$3 AND verified_at IS NOT NULL AND CASE WHEN kind='EMAIL' THEN lower(btrim(value)) ELSE regexp_replace(value,'[^0-9+]','','g') END=$4)) ORDER BY id`, accountID, taxID, kind, value)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]domain.Client, 0)
+	for rows.Next() {
+		c, err := scanClient(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *c)
+	}
+	return result, rows.Err()
+}
+
+// HasAssociations checks whether enriching a fiscal identifier could expose earlier requests.
+func (r *ClientContactRepository) HasAssociations(ctx context.Context, q Querier, accountID, clientID uuid.UUID) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rfq WHERE account_id=$1 AND client_id=$2) OR EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND client_id=$2)`, accountID, clientID).Scan(&found)
+	return found, err
+}
+
+// HasPendingForTaxID reports only whether the authenticated customer's profile needs review.
+func (r *ClientContactRepository) HasPendingForTaxID(ctx context.Context, q Querier, accountID uuid.UUID, taxID string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND tax_id=$2 AND status='PENDING')`, accountID, taxID).Scan(&found)
+	return found, err
+}
+
+// HasObservation prevents a replay from restoring a contact the customer later removed.
+func (r *ClientContactRepository) HasObservation(ctx context.Context, q Querier, accountID, messageID uuid.UUID) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND message_id=$2)`, accountID, messageID).Scan(&found)
+	return found, err
+}
+
+// PriorSeparation recognizes a seller's earlier decision for the same declared contact.
+func (r *ClientContactRepository) PriorSeparation(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, kind domain.ChannelType, value string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND tax_id=$2 AND kind=$3 AND value=$4 AND status='SEPARATE')`, accountID, taxID, kind, value).Scan(&found)
+	return found, err
+}
+
+// CreateObservation records the original declaration once per incoming contact and message.
+func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Querier, accountID, messageID uuid.UUID, o domain.ContactObservation) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,message_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status) VALUES($1,$2,$3,$4,$5::uuid,$6::varchar(11),$7::channel_type,$8::varchar(255),$9,$10,CASE WHEN $11::client_contact_review_status='PENDING' AND EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND branch_id=$2 AND candidate_client_id IS NOT DISTINCT FROM $5::uuid AND tax_id IS NOT DISTINCT FROM $6::varchar(11) AND kind=$7::channel_type AND value=$8::varchar(255) AND status='PENDING') THEN 'RECORDED'::client_contact_review_status ELSE $11::client_contact_review_status END) ON CONFLICT(account_id,message_id,kind,value) DO NOTHING`, accountID, o.BranchID, messageID, o.SourceClientID, o.CandidateClientID, o.TaxID, o.Kind, o.Value, o.Name, o.Original, o.Status)
+	return err
+}
+
+// Save replaces a contact collection and synchronizes legacy primary projections atomically.
+func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID, clientID uuid.UUID, contacts []domain.ClientContact, source string) error {
+	type wire struct {
+		Kind    domain.ChannelType `json:"kind"`
+		Value   string             `json:"value"`
+		Primary bool               `json:"primary"`
+	}
+	data := make([]wire, 0, len(contacts))
+	for _, c := range contacts {
+		data = append(data, wire{c.Kind, c.Value, c.Primary})
+	}
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_primary=FALSE WHERE account_id=$1 AND client_id=$2`, accountID, clientID); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`, accountID, clientID, payload); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
+	return err
+}
+
+// UpdateName changes only the commercial name of an account-owned profile.
+func (r *ClientContactRepository) UpdateName(ctx context.Context, q Querier, accountID, clientID uuid.UUID, name string) error {
+	_, err := q.Exec(ctx, `UPDATE client SET name=NULLIF($3,'') WHERE account_id=$1 AND id=$2`, accountID, clientID, name)
+	return err
+}
+
+// AttachSource retains the independently created profile behind a discarded match.
+func (r *ClientContactRepository) AttachSource(ctx context.Context, q Querier, accountID, id, clientID uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_observation SET source_client_id=$3 WHERE account_id=$1 AND id=$2`, accountID, id, clientID)
+	return err
+}
+
+// Decide retains the seller and outcome without deleting the original observation.
+func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID, status string) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5))`, tenant.AccountID, id, status, tenant.UserID, tenant.BranchFilter())
+	return err
+}
+
+// Lock acquires account-scoped identity keys in a stable order within the caller's transaction.
+func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID uuid.UUID, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || key,0)) FROM (SELECT DISTINCT unnest($2::text[]) AS key ORDER BY key) AS locks`, accountID.String(), keys)
+	return err
+}
+
+// Merge preserves the source profile while moving its commercial associations to the target.
+func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant domain.Tenant, source, target uuid.UUID) error {
+	var allowed bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client s JOIN client t ON t.account_id=s.account_id AND t.id=$3 WHERE s.account_id=$1 AND s.id=$2 AND s.id<>t.id AND s.merged_into IS NULL AND t.merged_into IS NULL AND s.tax_id IS NULL) AND NOT EXISTS(SELECT 1 FROM rfq WHERE account_id=$1 AND client_id=$2 AND ($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4)))) AND NOT EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND client_id=$2 AND (($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4))) OR ($5::uuid IS NOT NULL AND seller_id IS NOT NULL AND seller_id<>$5)))`, tenant.AccountID, source, target, tenant.BranchFilter(), sellerParam(tenant)).Scan(&allowed)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return domain.ErrForbidden
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now() WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `INSERT INTO client_tag(account_id,client_id,tag_id) SELECT account_id,$3,tag_id FROM client_tag WHERE account_id=$1 AND client_id=$2 ON CONFLICT(client_id,tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE quote SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE notification SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `UPDATE client SET merged_into=$3 WHERE account_id=$1 AND id=$2`, tenant.AccountID, source, target)
+	return err
+}

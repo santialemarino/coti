@@ -209,9 +209,14 @@ func run() error {
 		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
+	customerAuthService.WithClientProfiles(contactService)
+	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
+	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin)
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
-		cfg.RFQ, cfg.Storage.MaxFileSize)
+		cfg.RFQ, cfg.Storage.MaxFileSize).WithContacts(contactService)
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	var changeProposer domain.ChangeRequestHandler
@@ -228,7 +233,7 @@ func run() error {
 		cfg.Conversation.TickerInterval, log)
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
-		WithConversations(conversationService)
+		WithConversations(conversationService).WithContacts(contactService)
 	var gmailHandler *handler.GmailHandler
 	var gmailWorker *services.GmailSyncWorker
 	var attachmentJobs *services.JobService
@@ -245,6 +250,7 @@ func run() error {
 			cfg.Auth.RequireVerifiedEmail), cfg.Web.BackofficeURL)
 		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
 			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
+			WithContacts(contactService).
 			WithRecordedCallback(func() {
 				select {
 				case attachmentWake <- struct{}{}:
@@ -317,13 +323,14 @@ func run() error {
 			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
-			Conversation:  handler.NewConversationHandler(conversationReviewService),
-			Client:        handler.NewClientHandler(clientService),
-			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
-			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
-			Account:       handler.NewAccountHandler(accountService),
-			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
-			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			Conversation:   handler.NewConversationHandler(conversationReviewService),
+			Client:         handler.NewClientHandler(clientService),
+			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
+			Prices:         handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			CatalogImport:  handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
+			Account:        handler.NewAccountHandler(accountService),
+			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
+			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
 				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
 			Gmail:     gmailHandler,

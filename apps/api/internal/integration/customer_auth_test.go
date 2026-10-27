@@ -18,7 +18,7 @@ func (e *env) registerCustomer(t *testing.T, accountID uuid.UUID, taxID, email s
 	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE account SET public_hostname=$2 WHERE id=$1`, accountID, hostname); err != nil {
 		t.Fatal(err)
 	}
-	response := e.do(t, request{method: http.MethodPost, path: "/v1/customer/sites/" + hostname + "/auth/register", body: map[string]any{"tax_id": taxID, "password": "Customer-pass123!", "recovery_email": email}})
+	response := e.do(t, request{method: http.MethodPost, path: "/v1/customer/sites/" + hostname + "/auth/register", body: map[string]any{"tax_id": taxID, "password": "Customer-pass123!", "recovery_email": email, "name": "Juan Perez", "contacts": []map[string]any{{"kind": "EMAIL", "value": "customer" + taxID + "@example.test", "primary": true}}}})
 	var login struct {
 		Token string `json:"session_token"`
 	}
@@ -139,4 +139,60 @@ func (e *env) customerMailedToken(t *testing.T, path string) string {
 	}
 	token, _, _ := strings.Cut(after, "\n")
 	return strings.TrimSpace(token)
+}
+
+func TestCustomerRecoveryEmailSelfServiceIsScopedAndInvalidatesPreviousCapabilities(t *testing.T) {
+	e := newEnv(t)
+	accountID, _ := e.seedAccount(t, "Recovery settings")
+	host, token := e.registerCustomer(t, accountID, "20123456786", "")
+	base := "/v1/customer/sites/" + host + "/auth"
+	setting := base + "/recovery-email"
+	if rec := e.do(t, request{method: http.MethodPut, path: setting, body: map[string]any{"email": "attacker@example.test"}}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous recovery mutation: %d", rec.Code)
+	}
+	update := func(email string) {
+		t.Helper()
+		rec := e.do(t, request{method: http.MethodPut, path: setting, token: token, body: map[string]any{"email": email}})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("recovery update: %d %s", rec.Code, rec.Body)
+		}
+	}
+	update("recovery@example.test")
+	proof := e.customerMailedToken(t, "/verify-email")
+	rec := e.do(t, request{method: http.MethodGet, path: setting, token: token})
+	var state struct {
+		Email    *string
+		Verified bool
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || state.Email == nil || *state.Email != "recovery@example.test" || state.Verified {
+		t.Fatalf("pending: %s", rec.Body)
+	}
+	if rec := e.do(t, request{method: http.MethodPost, path: base + "/verify-email", body: map[string]any{"token": proof}}); rec.Code != http.StatusNoContent {
+		t.Fatalf("proof: %d %s", rec.Code, rec.Body)
+	}
+	if rec := e.do(t, request{method: http.MethodPost, path: base + "/forgot-password", body: map[string]any{"tax_id": "20123456786", "email": "recovery@example.test"}}); rec.Code != http.StatusNoContent {
+		t.Fatalf("forgot: %d", rec.Code)
+	}
+	reset := e.customerMailedToken(t, "/reset-password")
+	update("replacement@example.test")
+	replacement := e.customerMailedToken(t, "/verify-email")
+	if rec := e.do(t, request{method: http.MethodPost, path: base + "/reset-password", body: map[string]any{"token": reset, "password": "Replacement-pass123!"}}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("old reset survived change: %d", rec.Code)
+	}
+	update("")
+	if rec := e.do(t, request{method: http.MethodPost, path: base + "/verify-email", body: map[string]any{"token": replacement}}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("removed email proof accepted: %d", rec.Code)
+	}
+	otherAccount, _ := e.seedAccount(t, "Other recovery supplier")
+	otherHost, _ := e.registerCustomer(t, otherAccount, "20123456786", "")
+	if rec := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + otherHost + "/auth/recovery-email", token: token, body: map[string]any{"email": "foreign@example.test"}}); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("cross supplier update: %d", rec.Code)
+	}
+	var contacts int
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM client_contact WHERE account_id=$1 AND value IN ('recovery@example.test','replacement@example.test')`, accountID).Scan(&contacts); err != nil || contacts != 0 {
+		t.Fatalf("recovery leaked into commercial contacts: %d %v", contacts, err)
+	}
 }

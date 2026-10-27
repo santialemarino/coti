@@ -136,8 +136,7 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 	}
 }
 
-// The preview offers the supplier's sign-up page exactly when the invoice waits on the buyer's CUIT,
-// and an invoice B below the identification threshold goes to an unidentified buyer as before.
+// Every invoice requires a registered customer's CUIT, including consumer-final invoices below the threshold.
 func TestClientFiscal_PreviewOffersSignupOnlyWhenACUITIsMissing(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -179,8 +178,14 @@ func TestClientFiscal_PreviewOffersSignupOnlyWhenACUITIsMissing(t *testing.T) {
 	}
 
 	issues, url := preview()
-	if slices.Contains(issues, "RECEIVER_ID_REQUIRED") || slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") || url != "" {
-		t.Fatalf("B below the threshold: issues = %v, url = %q, want no receiver issue and no link", issues, url)
+	if !slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") || url != "https://registro.example.com/signup" {
+		t.Fatalf("B below the threshold: issues = %v, url = %q, want CUIT required and signup link", issues, url)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client SET dni = '28123456' WHERE id = $1`, clientID); err != nil {
+		t.Fatal(err)
+	}
+	if issues, url = preview(); !slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") || url != "https://registro.example.com/signup" {
+		t.Fatalf("B with only DNI: issues = %v, url = %q, want CUIT required and signup link", issues, url)
 	}
 
 	if _, err := e.db.CrossAccount().Exec(ctx,
@@ -235,6 +240,10 @@ func TestClientFiscal_MigrationSplitsTheDNIFromTheCUIT(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	// Reconstruct migration 59's predecessor before replaying its data conversion.
+	if _, err := tx.Exec(ctx, `DROP TRIGGER protect_client_tax_id ON client`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := tx.Exec(ctx, `UPDATE client SET dni = '28123456' WHERE id = $1`, withDNI); err != nil {
 		t.Fatal(err)
 	}

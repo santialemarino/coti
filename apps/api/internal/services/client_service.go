@@ -21,7 +21,6 @@ const (
 type clientProfileRepository interface {
 	GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error)
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
-	SetMissingTaxID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	ListSummaries(ctx context.Context, q repository.Querier,
 		tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID,
@@ -304,8 +303,8 @@ func normalizeNewClient(client *domain.NewClient) error {
 	client.Name = normalizedOptional(client.Name)
 	client.Phone = normalizedOptional(client.Phone)
 	client.Email = normalizedOptional(client.Email)
-	if client.Name == nil && client.Phone == nil && client.Email == nil {
-		return fmt.Errorf("%w: a client needs a name, phone or email", domain.ErrInvalidInput)
+	if client.Name == nil || (client.Phone == nil && client.Email == nil) {
+		return fmt.Errorf("%w: a client needs a full name and at least one contact", domain.ErrInvalidInput)
 	}
 	if client.Name != nil && utf8.RuneCountInString(*client.Name) > maxClientNameLength {
 		return fmt.Errorf("%w: client name exceeds %d characters", domain.ErrInvalidInput,
