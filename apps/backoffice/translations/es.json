@@ -1958,8 +1958,77 @@
     }
   },
   "reports": {
-    "placeholderTitle": "Reportes",
-    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+    "title": "Reportes",
+    "description": "Actividad de pedidos y cotizaciones en el período.",
+    "descriptionAll": "Actividad de pedidos y cotizaciones de todas las sucursales en el período.",
+    "filters": {
+      "from": "Desde",
+      "to": "Hasta",
+      "apply": "Aplicar",
+      "reset": "Restablecer",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
+      "invalidPeriod": "No pudimos generar el reporte con ese período. Revisá las fechas o probá con un rango más corto."
+    },
+    "empty": {
+      "title": "No hay actividad en el período",
+      "description": "Probá con otro rango de fechas."
+    },
+    "kpis": {
+      "rfqs": "Pedidos recibidos",
+      "sent": "Cotizaciones enviadas",
+      "accepted": "Cotizaciones aceptadas",
+      "conversion": "Tasa de conversión",
+      "acceptedAmount": "Importe aceptado",
+      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "responseTime": "Tiempo de respuesta"
+    },
+    "conversionDetail": "{accepted} aceptadas · {sent} enviadas",
+    "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
+    "duration": {
+      "seconds": "{count, plural, one {# segundo} other {# segundos}}",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "hoursMinutes": "{hours} h {minutes} min"
+    },
+    "noDataShort": "—",
+    "status": {
+      "title": "Cotizaciones por estado",
+      "empty": "Todavía no hay cotizaciones en el período."
+    },
+    "timeline": {
+      "title": "Envíos y aceptaciones",
+      "sent": "Enviadas",
+      "accepted": "Aceptadas",
+      "date": "Fecha",
+      "aria": "Envíos y aceptaciones por día entre {from} y {to}"
+    },
+    "products": {
+      "title": "Productos más pedidos",
+      "empty": "Todavía no hay productos en el período.",
+      "name": "Producto",
+      "requests": "Pedidos",
+      "unnamed": "Sin nombre"
+    },
+    "clients": {
+      "title": "Clientes por importe aceptado",
+      "empty": "Todavía no hay clientes aceptados en el período.",
+      "name": "Cliente",
+      "acceptedAmount": "Importe aceptado",
+      "unnamed": "Sin cliente"
+    },
+    "ai": {
+      "title": "Coincidencias automáticas",
+      "empty": "Todavía no hay generaciones de IA en el período.",
+      "matched": "{matched} de {total} líneas",
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "branches": {
+      "title": "Pedidos por sucursal",
+      "name": "Sucursal",
+      "rfqs": "Pedidos"
+    }
   },
   "catalog": {
     "title": "Catálogo",

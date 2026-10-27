@@ -1284,10 +1284,12 @@ CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
+CREATE INDEX idx_rfq_account_branch_received ON rfq(account_id, branch_id, received_at);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
 CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
+CREATE INDEX idx_quote_account_branch_created ON quote(account_id, branch_id, created_at);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
@@ -1295,6 +1297,10 @@ CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, 
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
 CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
+CREATE INDEX idx_quote_ai_generation_account_quote_created ON quote_ai_generation(account_id, quote_id, created_at DESC);
+CREATE INDEX idx_quote_status_change_report ON quote_status_change(account_id, new_status, changed_at, quote_id) WHERE new_status IN ('SENT', 'ACCEPTED');
+CREATE INDEX idx_quote_send_report ON quote_send(account_id, version_id, sent_at DESC) WHERE tracking_status IN ('SENT', 'DELIVERED', 'VIEWED');
+CREATE INDEX idx_client_action_report ON client_action(account_id, version_id, created_at DESC) WHERE type = 'ACCEPT';
 CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);
 CREATE INDEX idx_quote_quality_evaluation_account_generation ON quote_quality_evaluation(account_id, generation_id);
 CREATE INDEX idx_quote_quality_difference_account_evaluation ON quote_quality_difference(account_id, evaluation_id);

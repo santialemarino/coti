@@ -60,6 +60,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
 		"RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"REPORTS_MAX_RANGE_DAYS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
 		"QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", "QUOTE_LOGO_MAX_SIZE_BYTES",
@@ -145,6 +146,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 165*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
+	}
+	if cfg.Reports.MaxRangeDays != 366 {
+		t.Errorf("Reports.MaxRangeDays = %d, want 366", cfg.Reports.MaxRangeDays)
 	}
 	if cfg.QuoteCorrection.SimilarityPercent != 80 ||
 		cfg.QuoteCorrection.MaxPatternsPerAccount != 1000 ||
@@ -784,6 +788,16 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a pipeline bounded at nothing",
 			mutate:  func(e map[string]string) { e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "0" },
 			wantSub: "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero",
+		},
+		{
+			name:    "a report period bounded at nothing",
+			mutate:  func(e map[string]string) { e["REPORTS_MAX_RANGE_DAYS"] = "0" },
+			wantSub: "REPORTS_MAX_RANGE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a report period past the configured ceiling",
+			mutate:  func(e map[string]string) { e["REPORTS_MAX_RANGE_DAYS"] = "3661" },
+			wantSub: "REPORTS_MAX_RANGE_DAYS must not exceed 3660",
 		},
 		{
 			// Allowed to outlast the response budget, the pipeline's answer is cut off while it

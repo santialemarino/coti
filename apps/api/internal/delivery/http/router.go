@@ -57,6 +57,7 @@ type Handlers struct {
 	ARCASetup      *handler.ARCASetupHandler
 	Invoice        *handler.InvoiceHandler
 	Promotion      *handler.PromotionHandler
+	Report         *handler.SellerReportHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -246,6 +247,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		quotes.GET("/awaiting-invoice", h.Invoice.ListAwaitingInvoice)
 		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
 		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
+	}
+	if h.Report != nil {
+		verified.GET("/reports", h.Report.Get)
 	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)

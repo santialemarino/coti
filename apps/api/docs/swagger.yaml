@@ -2691,6 +2691,138 @@ definitions:
           $ref: '#/definitions/dto.SellerResponse'
         type: array
     type: object
+  dto.SellerReportAIMatchResponse:
+    properties:
+      confidence:
+        $ref: '#/definitions/dto.SellerReportConfidenceResponse'
+      matched:
+        type: integer
+      rate:
+        type: string
+      total:
+        type: integer
+    type: object
+  dto.SellerReportBranchResponse:
+    properties:
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      rfqs:
+        type: integer
+    type: object
+  dto.SellerReportClientResponse:
+    properties:
+      accepted_amount:
+        type: string
+      client_id:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.SellerReportConfidenceResponse:
+    properties:
+      high:
+        type: integer
+      low:
+        type: integer
+      medium:
+        type: integer
+    type: object
+  dto.SellerReportKPIsResponse:
+    properties:
+      accepted_amount:
+        type: string
+      conversion_rate:
+        type: string
+      quotes_accepted:
+        type: integer
+      quotes_sent:
+        type: integer
+      response_time:
+        $ref: '#/definitions/dto.SellerReportResponseTimeResponse'
+      rfqs_received:
+        type: integer
+    type: object
+  dto.SellerReportProductResponse:
+    properties:
+      name:
+        type: string
+      product_id:
+        type: string
+      requests:
+        type: integer
+    type: object
+  dto.SellerReportRangeResponse:
+    properties:
+      from:
+        type: string
+      to:
+        type: string
+    type: object
+  dto.SellerReportResponse:
+    properties:
+      ai_match:
+        $ref: '#/definitions/dto.SellerReportAIMatchResponse'
+      branches:
+        items:
+          $ref: '#/definitions/dto.SellerReportBranchResponse'
+        type: array
+      kpis:
+        $ref: '#/definitions/dto.SellerReportKPIsResponse'
+      quotes_by_status:
+        items:
+          $ref: '#/definitions/dto.SellerReportStatusResponse'
+        type: array
+      range:
+        $ref: '#/definitions/dto.SellerReportRangeResponse'
+      scope:
+        $ref: '#/definitions/dto.SellerReportScopeResponse'
+      timeline:
+        items:
+          $ref: '#/definitions/dto.SellerReportTimelineResponse'
+        type: array
+      top_clients:
+        items:
+          $ref: '#/definitions/dto.SellerReportClientResponse'
+        type: array
+      top_products:
+        items:
+          $ref: '#/definitions/dto.SellerReportProductResponse'
+        type: array
+    type: object
+  dto.SellerReportResponseTimeResponse:
+    properties:
+      average_seconds:
+        type: integer
+      median_seconds:
+        type: integer
+      sample:
+        type: integer
+    type: object
+  dto.SellerReportScopeResponse:
+    properties:
+      branch_id:
+        type: string
+      multi_branch:
+        type: boolean
+    type: object
+  dto.SellerReportStatusResponse:
+    properties:
+      count:
+        type: integer
+      status:
+        type: string
+    type: object
+  dto.SellerReportTimelineResponse:
+    properties:
+      accepted:
+        type: integer
+      date:
+        type: string
+      sent:
+        type: integer
+    type: object
   dto.SellerResponse:
     properties:
       id:
@@ -7863,6 +7995,51 @@ paths:
       summary: List sales awaiting an invoice
       tags:
       - invoicing
+  /v1/reports:
+    get:
+      description: Returns audited order and quote metrics for the caller's branch
+        and seller reach.
+      parameters:
+      - description: Active branch; omitted reports on every branch the caller reaches
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: First day, YYYY-MM-DD; defaults to 30 days ago
+        in: query
+        name: from
+        type: string
+      - description: Last day, YYYY-MM-DD; defaults to today
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SellerReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get seller report
+      tags:
+      - reports
   /v1/rfqs:
     get:
       description: Returns the RFQ list scoped to the tenant and, when set, the active

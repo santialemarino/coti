@@ -32,6 +32,7 @@ const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 const maxBranchExpiryDays = 365
+const maxReportRangeDays = 3660
 
 // Environment is the deployment environment the process runs in.
 type Environment string
@@ -81,6 +82,7 @@ type Config struct {
 	AI              AIConfig
 	Web             WebConfig
 	Catalog         CatalogConfig
+	Reports         ReportsConfig
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
@@ -688,6 +690,22 @@ type CatalogConfig struct {
 	CorrectionSimilarityPercent int
 }
 
+// ReportsConfig bounds the period one seller report may cover.
+type ReportsConfig struct {
+	// MaxRangeDays is the widest inclusive calendar-day range a report query accepts.
+	MaxRangeDays int
+}
+
+func (r ReportsConfig) problems() []string {
+	if r.MaxRangeDays <= 0 {
+		return []string{"REPORTS_MAX_RANGE_DAYS must be greater than zero"}
+	}
+	if r.MaxRangeDays > maxReportRangeDays {
+		return []string{"REPORTS_MAX_RANGE_DAYS must not exceed 3660"}
+	}
+	return nil
+}
+
 // StorageConfig holds the object storage settings and file limits. The bucket coordinates are
 // read whichever provider is selected and demanded only under spaces, so a checkout with no
 // object store still boots.
@@ -906,6 +924,9 @@ func Load() (*Config, error) {
 			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 0, &problems),
 			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
+		Reports: ReportsConfig{
+			MaxRangeDays: getInt("REPORTS_MAX_RANGE_DAYS", 366, &problems),
+		},
 		Storage: StorageConfig{
 			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
 			Dir:             getString("STORAGE_LOCAL_DIR", "./.storage"),
@@ -1111,6 +1132,7 @@ func Load() (*Config, error) {
 
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
+	problems = append(problems, cfg.Reports.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 	problems = append(problems, cfg.WhatsApp.problems()...)
 	problems = append(problems, cfg.Gmail.problems()...)

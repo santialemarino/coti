@@ -330,6 +330,11 @@ func run() error {
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
+			Report: handler.NewSellerReportHandler(services.NewSellerReportService(db,
+				repository.NewSellerReportRepository(), services.SellerReportSettings{
+					MaxRangeDays:   cfg.Reports.MaxRangeDays,
+					HighConfidence: highConfidence,
+				})),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuthService},
 		rateLimit,
