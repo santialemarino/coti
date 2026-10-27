@@ -362,7 +362,7 @@ func toARCACredentialResponse(s domain.ARCACredentialStatus) dto.ARCACredentialR
 
 func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
 	return dto.ClientFiscalResponse{Address: c.Address, ID: c.ID, Name: c.Name, LegalName: c.LegalName, TaxID: c.TaxID,
-		IVACondition: conditionString(c.IVACondition)}
+		DNI: c.DNI, IVACondition: conditionString(c.IVACondition)}
 }
 
 func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {

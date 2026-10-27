@@ -118,7 +118,7 @@ func (f *fakeInvoicingStore) GetClientFiscal(context.Context, repository.Querier
 
 func (f *fakeInvoicingStore) UpdateClientFiscal(_ context.Context, _ repository.Querier, _ uuid.UUID, id uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error) {
 	f.fiscalUpdate = &in
-	return &domain.ClientFiscal{ID: id, LegalName: in.LegalName, TaxID: in.DNI, IVACondition: in.IVACondition}, nil
+	return &domain.ClientFiscal{ID: id, LegalName: in.LegalName, DNI: in.DNI, IVACondition: in.IVACondition}, nil
 }
 
 func (f *fakeInvoicingStore) VATRatesByProductIDs(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID]domain.VATRate, error) {
@@ -656,7 +656,7 @@ func TestInvoiceService_UpdateClientFiscalTakesOnlyADNI(t *testing.T) {
 
 	client, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
 		domain.ClientFiscalUpdate{DNI: &dni})
-	if err != nil || *client.TaxID != "28123456" {
+	if err != nil || client.DNI == nil || *client.DNI != "28123456" {
 		t.Fatalf("client = %+v, err = %v, want the DNI stored as digits", client, err)
 	}
 	f.store.fiscalUpdate = nil
@@ -676,7 +676,7 @@ func TestInvoiceService_PreviewInvoicesAnUnidentifiedBuyerBelowTheThreshold(t *t
 	f := newInvoiceFixture(t)
 	final := domain.IVAConditionFinalConsumer
 	f.store.client = &domain.ClientFiscal{IVACondition: &final}
-	f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "", "https://app.example.com")
+	f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "")
 
 	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
 
@@ -707,13 +707,41 @@ func TestInvoiceService_PreviewOffersTheSignupLinkWhenTheReceiverLacksACUIT(t *t
 			f.store.rates = map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne}
 			f.quotes.items = []domain.QuoteItem{invoiceLine(&product, tc.total)}
 			f.quotes.version.Total = dec(tc.total)
-			f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "", "https://app.example.com")
+			f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "")
 
 			preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
 
 			if err != nil || !containsString(preview.Issues, tc.issue) || preview.CustomerSignupURL != "https://corralon.example.com/signup" {
 				t.Fatalf("issues = %v, url = %q, err = %v, want %s with the supplier's sign-up page",
 					preview.Issues, preview.CustomerSignupURL, err, tc.issue)
+			}
+		})
+	}
+}
+
+// Sign-up resolves the supplier by its own hostname, so without one there is no page to send.
+func TestInvoiceService_PreviewOffersNoSignupLinkWithoutACustomerSite(t *testing.T) {
+	t.Parallel()
+	registered := domain.IVAConditionRegistered
+	name, address := "Obra SA", "Main 123"
+	cases := []struct {
+		name, localOrigin, want string
+	}{
+		{"no hostname", "", ""},
+		{"a local stack", "http://localhost:3001/", "http://localhost:3001/signup"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newInvoiceFixture(t)
+			f.store.client = &domain.ClientFiscal{Name: &name, Address: &address, IVACondition: &registered}
+			f.service.WithCustomerPortal(fakeCustomerHostnames{}, tc.localOrigin)
+
+			preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+
+			if err != nil || !containsString(preview.Issues, invoiceIssueReceiverCUIT) || preview.CustomerSignupURL != tc.want {
+				t.Fatalf("issues = %v, url = %q, err = %v, want RECEIVER_CUIT_REQUIRED with url %q",
+					preview.Issues, preview.CustomerSignupURL, err, tc.want)
 			}
 		})
 	}

@@ -395,7 +395,8 @@ type ClientFiscal struct {
 	ID           uuid.UUID
 	Name         *string
 	LegalName    *string
-	TaxID        *string // digits only.
+	TaxID        *string // CUIT or CUIL, digits only; only the customer's account sets it.
+	DNI          *string // a consumidor final's DNI, digits only.
 	IVACondition *IVACondition
 }
 
@@ -404,7 +405,7 @@ type ClientFiscal struct {
 type ClientFiscalUpdate struct {
 	Address      *string
 	LegalName    *string
-	DNI          *string // a consumidor final's DNI; ignored by the store while a CUIT is on file.
+	DNI          *string
 	IVACondition *IVACondition
 }
 
@@ -457,7 +458,7 @@ type InvoicePreview struct {
 	// history to show, never a hold on this one.
 	OtherEnvironmentInvoice *Invoice
 	// CustomerSignupURL is the supplier's customer sign-up page, set only while the receiver lacks
-	// the CUIT or document the invoice needs.
+	// the CUIT or document the invoice needs and the supplier has a customer site of its own.
 	CustomerSignupURL string
 }
 

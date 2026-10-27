@@ -119,8 +119,8 @@ func NewInvoiceService(
 }
 
 // WithCustomerPortal lets a preview point the seller at the supplier's customer sign-up page.
-func (s *InvoiceService) WithCustomerPortal(reader customerQuoteHostnameReader, localOrigin, webappURL string) *InvoiceService {
-	s.portal = customerPortal{hostnames: reader, localOrigin: localOrigin, fallback: webappURL}
+func (s *InvoiceService) WithCustomerPortal(reader customerQuoteHostnameReader, localOrigin string) *InvoiceService {
+	s.portal = customerPortal{hostnames: reader, localOrigin: localOrigin}
 	return s
 }
 
@@ -273,12 +273,12 @@ func (s *InvoiceService) Preview(
 		if !lacksReceiverIdentity(preview.Issues) {
 			return nil
 		}
-		base, err := s.portal.base(ctx, q, tenant.AccountID)
+		origin, err := s.portal.siteOrigin(ctx, q, tenant.AccountID)
 		if err != nil {
 			return err
 		}
-		if base != "" {
-			preview.CustomerSignupURL = customerSignupURL(base)
+		if origin != "" {
+			preview.CustomerSignupURL = customerSignupURL(origin)
 		}
 		return nil
 	})

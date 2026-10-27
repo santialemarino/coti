@@ -198,13 +198,11 @@ func invoiceReceiver(client *domain.ClientFiscal, fallbackName string) domain.In
 	if client.IVACondition != nil {
 		receiver.IVACondition = *client.IVACondition
 	}
-	if client.TaxID != nil {
-		switch digits := *client.TaxID; {
-		case len(digits) == 11:
-			receiver.DocType, receiver.DocNumber = domain.ReceiverDocCUIT, digits
-		case len(digits) >= 7 && len(digits) <= 8:
-			receiver.DocType, receiver.DocNumber = domain.ReceiverDocDNI, digits
-		}
+	switch {
+	case client.TaxID != nil && *client.TaxID != "":
+		receiver.DocType, receiver.DocNumber = domain.ReceiverDocCUIT, *client.TaxID
+	case client.DNI != nil && *client.DNI != "":
+		receiver.DocType, receiver.DocNumber = domain.ReceiverDocDNI, *client.DNI
 	}
 	return receiver
 }

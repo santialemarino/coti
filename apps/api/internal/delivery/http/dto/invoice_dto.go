@@ -70,15 +70,15 @@ type IssueInvoiceRequest struct {
 }
 
 // UpdateClientFiscalRequest is the body for PUT /v1/clients/:clientId/fiscal. Omitted fields clear;
-// a CUIT on file is never touched.
+// the CUIT is never touched.
 type UpdateClientFiscalRequest struct {
 	Address   *string `json:"address" binding:"omitempty,max=255"`
 	LegalName *string `json:"legal_name" binding:"omitempty,max=255"`
-	// DNI identifies a consumidor final; it is ignored while the client has a CUIT.
+	// DNI identifies a consumidor final, beside any CUIT the customer's account carries.
 	DNI          *string `json:"dni" binding:"omitempty,max=32"`
 	IVACondition *string `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
 	// TaxID is refused with TAX_ID_READ_ONLY: only the customer loads a CUIT, by creating an account.
-	TaxID *string `json:"tax_id" swaggerignore:"true"`
+	TaxID *string `json:"tax_id" binding:"omitempty,max=32" swaggerignore:"true"`
 }
 
 // ClientFiscalResponse is a client's fiscal identity.
@@ -87,7 +87,8 @@ type ClientFiscalResponse struct {
 	ID           uuid.UUID `json:"id"`
 	Name         *string   `json:"name"`
 	LegalName    *string   `json:"legal_name"`
-	TaxID        *string   `json:"tax_id"`
+	TaxID        *string   `json:"tax_id"` // CUIT or CUIL, from the customer's account; read-only.
+	DNI          *string   `json:"dni"`
 	IVACondition *string   `json:"iva_condition"`
 }
 
@@ -175,7 +176,8 @@ type InvoicePreviewResponse struct {
 	// environment, with that credit note: history, and what a new invoice follows.
 	CreditedInvoice *InvoiceResponse `json:"credited_invoice"`
 	// CustomerSignupURL is where the customer creates the account that carries their CUIT; present
-	// only while the issues ask for the receiver's CUIT or document.
+	// only while the issues ask for the receiver's CUIT or document and the supplier has its own
+	// customer site.
 	CustomerSignupURL string `json:"customer_signup_url,omitempty"`
 }
 

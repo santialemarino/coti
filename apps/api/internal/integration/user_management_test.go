@@ -235,7 +235,7 @@ func newEnvWithRFQProviders(
 		quoteDiscountRepo, nil, arcaSealer, services.InvoiceSettings{Environment: domain.ARCAEnvironmentHomologation,
 			UnidentifiedMax: decimal.NewFromInt(10_000_000)},
 		nil, nil, invoicepdf.NewInvoiceRenderer()).
-		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin, cfg.Web.WebAppURL)
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 
 	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
 	if err != nil {

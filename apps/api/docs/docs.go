@@ -9001,6 +9001,9 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
+                "dni": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -9014,6 +9017,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tax_id": {
+                    "description": "CUIT or CUIL, from the customer's account; read-only.",
                     "type": "string"
                 }
             }
@@ -10275,7 +10279,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "customer_signup_url": {
-                    "description": "CustomerSignupURL is where the customer creates the account that carries their CUIT; present\nonly while the issues ask for the receiver's CUIT or document.",
+                    "description": "CustomerSignupURL is where the customer creates the account that carries their CUIT; present\nonly while the issues ask for the receiver's CUIT or document and the supplier has its own\ncustomer site.",
                     "type": "string"
                 },
                 "environment": {
@@ -12616,7 +12620,7 @@ const docTemplate = `{
                     "maxLength": 255
                 },
                 "dni": {
-                    "description": "DNI identifies a consumidor final; it is ignored while the client has a CUIT.",
+                    "description": "DNI identifies a consumidor final, beside any CUIT the customer's account carries.",
                     "type": "string",
                     "maxLength": 32
                 },

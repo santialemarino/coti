@@ -424,6 +424,8 @@ definitions:
     properties:
       address:
         type: string
+      dni:
+        type: string
       id:
         type: string
       iva_condition:
@@ -433,6 +435,7 @@ definitions:
       name:
         type: string
       tax_id:
+        description: CUIT or CUIL, from the customer's account; read-only.
         type: string
     type: object
   dto.ClientListResponse:
@@ -1308,7 +1311,8 @@ definitions:
       customer_signup_url:
         description: |-
           CustomerSignupURL is where the customer creates the account that carries their CUIT; present
-          only while the issues ask for the receiver's CUIT or document.
+          only while the issues ask for the receiver's CUIT or document and the supplier has its own
+          customer site.
         type: string
       environment:
         description: Environment is where an invoice issued now would be authorized.
@@ -2906,8 +2910,8 @@ definitions:
         maxLength: 255
         type: string
       dni:
-        description: DNI identifies a consumidor final; it is ignored while the client
-          has a CUIT.
+        description: DNI identifies a consumidor final, beside any CUIT the customer's
+          account carries.
         maxLength: 32
         type: string
       iva_condition:

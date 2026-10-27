@@ -43,18 +43,27 @@ func (s *QuoteDeliveryService) customerQuoteBase(ctx context.Context, accountID 
 	return base, err
 }
 
-// base is the portal's origin for the account; q is only read when a hostname has to be looked up.
+// base is the portal's origin for the account, or the shared webapp when it has no site of its own.
 func (p customerPortal) base(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, error) {
+	origin, err := p.siteOrigin(ctx, q, accountID)
+	if err != nil || origin != "" {
+		return origin, err
+	}
+	return strings.TrimRight(p.fallback, "/"), nil
+}
+
+// siteOrigin is the account's own customer site, empty when it has none: sign-up resolves the
+// supplier by hostname, so the shared webapp cannot register anyone. q is read only for a lookup.
+func (p customerPortal) siteOrigin(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, error) {
 	if p.localOrigin != "" {
 		return strings.TrimRight(p.localOrigin, "/"), nil
 	}
-	fallback := strings.TrimRight(p.fallback, "/")
 	if p.hostnames == nil {
-		return fallback, nil
+		return "", nil
 	}
 	hostname, err := p.hostnames.GetCustomerHostname(ctx, q, accountID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return fallback, nil
+		return "", nil
 	}
 	if err != nil {
 		return "", err

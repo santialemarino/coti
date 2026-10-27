@@ -198,9 +198,9 @@ func (r *InvoicingRepository) GetClientFiscal(
 ) (*domain.ClientFiscal, error) {
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
-		`SELECT id, name, legal_name, tax_id, iva_condition, fiscal_address
+		`SELECT id, name, legal_name, tax_id, dni, iva_condition, fiscal_address
 		 FROM client WHERE account_id = $1 AND id = $2`, accountID, clientID,
-	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
+	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.DNI, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -210,19 +210,18 @@ func (r *InvoicingRepository) GetClientFiscal(
 	return &c, nil
 }
 
-// UpdateClientFiscal replaces a client's fiscal identity and returns it. A CUIT on file is kept; the
-// DNI only ever replaces a DNI or nothing.
+// UpdateClientFiscal replaces a client's legal name, IVA condition, address and DNI and returns the
+// fiscal identity. It never writes tax_id: a CUIT comes only from the customer's account.
 func (r *InvoicingRepository) UpdateClientFiscal(
 	ctx context.Context, q Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate,
 ) (*domain.ClientFiscal, error) {
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
-		`UPDATE client SET legal_name = $3, iva_condition = $5, fiscal_address = $6,
-		   tax_id = CASE WHEN char_length(tax_id) = 11 THEN tax_id ELSE $4 END
+		`UPDATE client SET legal_name = $3, dni = $4, iva_condition = $5, fiscal_address = $6
 		 WHERE account_id = $1 AND id = $2
-		 RETURNING id, name, legal_name, tax_id, iva_condition, fiscal_address`,
+		 RETURNING id, name, legal_name, tax_id, dni, iva_condition, fiscal_address`,
 		accountID, clientID, in.LegalName, in.DNI, in.IVACondition, in.Address,
-	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
+	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.DNI, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

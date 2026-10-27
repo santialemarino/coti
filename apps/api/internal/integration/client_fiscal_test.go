@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -17,12 +19,12 @@ import (
 
 // clientFiscalRow is what the client row holds after a request, read on the owner pool.
 type clientFiscalRow struct {
-	legalName, taxID, ivaCondition, address *string
+	legalName, taxID, dni, ivaCondition, address *string
 }
 
 func (r clientFiscalRow) String() string {
-	return fmt.Sprintf("{legal_name: %s, tax_id: %s, iva_condition: %s, address: %s}",
-		text(r.legalName), text(r.taxID), text(r.ivaCondition), text(r.address))
+	return fmt.Sprintf("{legal_name: %s, tax_id: %s, dni: %s, iva_condition: %s, address: %s}",
+		text(r.legalName), text(r.taxID), text(r.dni), text(r.ivaCondition), text(r.address))
 }
 
 // text reads a nullable column for a failure message.
@@ -48,8 +50,8 @@ func (e *env) clientFiscal(t *testing.T, clientID uuid.UUID) clientFiscalRow {
 	t.Helper()
 	var row clientFiscalRow
 	if err := e.db.CrossAccount().QueryRow(context.Background(),
-		`SELECT legal_name, tax_id, iva_condition::text, fiscal_address FROM client WHERE id = $1`, clientID,
-	).Scan(&row.legalName, &row.taxID, &row.ivaCondition, &row.address); err != nil {
+		`SELECT legal_name, tax_id, dni, iva_condition::text, fiscal_address FROM client WHERE id = $1`, clientID,
+	).Scan(&row.legalName, &row.taxID, &row.dni, &row.ivaCondition, &row.address); err != nil {
 		t.Fatalf("read client: %v", err)
 	}
 	return row
@@ -82,6 +84,10 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 	if rec.Code != http.StatusOK || row.taxID == nil || *row.taxID != cuit {
 		t.Fatalf("status = %d, tax_id = %v, want 200 and the CUIT on file kept", rec.Code, text(row.taxID))
 	}
+	// The DNI has its own column, so it sits beside the CUIT rather than replacing it.
+	if row.dni == nil || *row.dni != "28123456" {
+		t.Fatalf("dni = %v, want it stored beside the CUIT", text(row.dni))
+	}
 	if row.legalName == nil || *row.legalName != "Obra Norte SA" || row.ivaCondition == nil || *row.ivaCondition != "REGISTERED" ||
 		row.address == nil || *row.address != "Av. Siempreviva 742" {
 		t.Fatalf("row = %s, want the other fiscal fields saved", row.String())
@@ -90,8 +96,8 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 	if rec = e.do(t, request{method: http.MethodPut, path: path(withCUIT), token: token, body: map[string]any{}}); rec.Code != http.StatusOK {
 		t.Fatalf("empty body: status = %d, body = %s", rec.Code, rec.Body)
 	}
-	if row = e.clientFiscal(t, withCUIT); row.taxID == nil || *row.taxID != cuit || row.legalName != nil {
-		t.Fatalf("after an empty body tax_id = %v, legal_name = %v, want the CUIT kept and the rest cleared", text(row.taxID), text(row.legalName))
+	if row = e.clientFiscal(t, withCUIT); row.taxID == nil || *row.taxID != cuit || row.legalName != nil || row.dni != nil {
+		t.Fatalf("after an empty body row = %s, want the CUIT kept and the rest cleared", row.String())
 	}
 
 	// A consumidor final's DNI stays the seller's to load and clear.
@@ -99,8 +105,14 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 		body: map[string]any{"dni": "28.123.456"}}); rec.Code != http.StatusOK {
 		t.Fatalf("dni: status = %d, body = %s", rec.Code, rec.Body)
 	}
-	if row = e.clientFiscal(t, without); row.taxID == nil || *row.taxID != "28123456" {
-		t.Fatalf("tax_id = %v, want the DNI stored", text(row.taxID))
+	if row = e.clientFiscal(t, without); row.dni == nil || *row.dni != "28123456" || row.taxID != nil {
+		t.Fatalf("row = %s, want the DNI stored in dni and no CUIT", row.String())
+	}
+	// A DNI is not a key: a second profile of the same person keeps the same one.
+	twin := e.seedFiscalClient(t, accountID, nil)
+	if rec = e.do(t, request{method: http.MethodPut, path: path(twin), token: token,
+		body: map[string]any{"dni": "28123456"}}); rec.Code != http.StatusOK {
+		t.Fatalf("same DNI on a second profile: status = %d, body = %s", rec.Code, rec.Body)
 	}
 	rec = e.do(t, request{method: http.MethodPut, path: path(without), token: token, body: map[string]any{"dni": "20123456786"}})
 	if rec.Code != http.StatusUnprocessableEntity || errorCode(t, rec) != string(domain.CodeInvalidTaxID) {
@@ -109,8 +121,8 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 	if rec = e.do(t, request{method: http.MethodPut, path: path(without), token: token, body: map[string]any{}}); rec.Code != http.StatusOK {
 		t.Fatalf("clear: status = %d", rec.Code)
 	}
-	if row = e.clientFiscal(t, without); row.taxID != nil {
-		t.Fatalf("tax_id = %v, want the DNI cleared", text(row.taxID))
+	if row = e.clientFiscal(t, without); row.dni != nil {
+		t.Fatalf("dni = %v, want it cleared", text(row.dni))
 	}
 
 	// Another account's seller cannot reach the client at all.
@@ -178,5 +190,85 @@ func TestClientFiscal_PreviewOffersSignupOnlyWhenACUITIsMissing(t *testing.T) {
 	issues, url = preview()
 	if !slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") || url != "https://registro.example.com/signup" {
 		t.Fatalf("A without CUIT: issues = %v, url = %q, want RECEIVER_CUIT_REQUIRED and the supplier's sign-up page", issues, url)
+	}
+
+	// A DNI never stands in for the CUIT an invoice A names.
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client SET dni = '28123456' WHERE id = $1`, clientID); err != nil {
+		t.Fatal(err)
+	}
+	if issues, _ = preview(); !slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") {
+		t.Fatalf("A with only a DNI: issues = %v, want RECEIVER_CUIT_REQUIRED", issues)
+	}
+
+	// Without a hostname of its own nobody can sign up with the supplier, so there is no link.
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE account SET public_hostname = NULL WHERE id = $1`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	if issues, url = preview(); !slices.Contains(issues, "RECEIVER_CUIT_REQUIRED") || url != "" {
+		t.Fatalf("no hostname: issues = %v, url = %q, want the issue and no link", issues, url)
+	}
+}
+
+// Migration 00059 moves a DNI out of tax_id into its own column, keeps a CUIT, and refuses to run
+// over a value that is neither shape rather than guess.
+func TestClientFiscal_MigrationSplitsTheDNIFromTheCUIT(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, _ := e.seedAccount(t, "Corralón Migración")
+	cuit := "20123456786"
+	withCUIT := e.seedFiscalClient(t, accountID, &cuit)
+	withDNI := e.seedFiscalClient(t, accountID, nil)
+	odd := e.seedFiscalClient(t, accountID, nil)
+	migration, err := os.ReadFile("../../migrations/00059_client_dni.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, down, ok := strings.Cut(string(migration), "-- +goose Down")
+	if !ok {
+		t.Fatal("migration has no Down section")
+	}
+	up = strings.NewReplacer("-- +goose StatementBegin", "", "-- +goose StatementEnd", "").Replace(up)
+
+	// Back to the shape before it, with a DNI where the old code kept one.
+	tx, err := e.db.AdminTx(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `UPDATE client SET dni = '28123456' WHERE id = $1`, withDNI); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, down); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `SAVEPOINT before_up`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE client SET tax_id = '123456789' WHERE id = $1`, odd); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, up); err == nil || !strings.Contains(err.Error(), "neither a DNI") {
+		t.Fatalf("up over a 9-digit tax_id: err = %v, want it refused", err)
+	}
+	if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT before_up`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, up); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	read := func(id uuid.UUID) (taxID, dni *string) {
+		if err := tx.QueryRow(ctx, `SELECT tax_id, dni FROM client WHERE id = $1`, id).Scan(&taxID, &dni); err != nil {
+			t.Fatal(err)
+		}
+		return taxID, dni
+	}
+	if taxID, dni := read(withDNI); taxID != nil || dni == nil || *dni != "28123456" {
+		t.Fatalf("DNI client: tax_id = %s, dni = %s, want the DNI moved to dni", text(taxID), text(dni))
+	}
+	if taxID, dni := read(withCUIT); taxID == nil || *taxID != cuit || dni != nil {
+		t.Fatalf("CUIT client: tax_id = %s, dni = %s, want the CUIT kept", text(taxID), text(dni))
+	}
+	if _, err := tx.Exec(ctx, `UPDATE client SET tax_id = '28123456' WHERE id = $1`, odd); err == nil {
+		t.Fatal("tax_id took 8 digits after the migration, want only a CUIT's 11")
 	}
 }
