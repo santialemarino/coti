@@ -17,6 +17,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
 )
@@ -327,6 +328,74 @@ func (e *env) seedCreditNote(t *testing.T, sale invoicedSale, status domain.Invo
 	}
 	// Registered after the invoice's own teardown, so it runs first and frees the invoice.
 	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM invoice WHERE id = $1`, noteID) })
+}
+
+// authorizingARCA stands in for ARCA: it authorizes every voucher at number.
+type authorizingARCA struct{ number int64 }
+
+func (a authorizingARCA) Issue(ctx context.Context, _ domain.ARCACredentials, req domain.InvoiceRequest) (*domain.InvoiceAuthorization, error) {
+	if err := req.Claim(ctx, a.number); err != nil {
+		return nil, err
+	}
+	return &domain.InvoiceAuthorization{Number: a.number, CAE: "74123456789013", CAEExpiresOn: req.Date.AddDate(0, 0, 10)}, nil
+}
+
+func (authorizingARCA) Authorized(context.Context, domain.ARCACredentials, string, domain.VoucherType, int, int64) (*domain.AuthorizedInvoice, error) {
+	return nil, nil
+}
+
+// A credit note authorized on an archived sale is activity on it: the quote's updated_at moves, so the
+// sweep measures its quiet from the correction, and the sale stays archived.
+func TestQuoteArchive_ACreditNoteOnAnArchivedSaleTouchesIt(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Archivo nota de crédito")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	e.setInvoicing(t, accountID, true)
+	sale := e.seedInvoicedSale(t, accountID, branchID, admin, domain.InvoiceStatusIssued)
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM invoice WHERE credited_invoice_id = $1`, sale.invoiceID)
+	})
+
+	sealer, err := secrets.NewAESGCM(make([]byte, secrets.KeyLength))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedKey, err := sealer.Seal(accountID.String() + ":key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.exec(t, `INSERT INTO arca_setup (account_id, environment, tax_id, csr, sealed_key, certificate, certificate_expires_at)
+	           VALUES ($1, 'HOMOLOGATION', '30712345671', 'csr', $2, 'certificate', now() + interval '1 year')`,
+		accountID, sealedKey)
+	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM arca_setup WHERE account_id = $1`, accountID) })
+
+	archivedAt := time.Now().Add(-48 * time.Hour).UTC().Truncate(time.Microsecond)
+	e.archiveQuote(t, sale.quoteID, archivedAt)
+	e.backdateQuote(t, sale.quoteID, 48*time.Hour)
+
+	invoices := services.NewInvoiceService(e.db, repository.NewInvoicingRepository(), repository.NewQuoteRepository(),
+		repository.NewQuoteDiscountRepository(), authorizingARCA{number: 24}, sealer,
+		services.InvoiceSettings{Enabled: true, Environment: domain.ARCAEnvironmentHomologation,
+			IssueTimeout: time.Minute, ReconcileAfter: time.Hour}, nil, nil)
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: admin.ID, Role: domain.UserRoleAdmin}
+	note, err := invoices.IssueCreditNote(ctx, tenant, sale.invoiceID)
+	if err != nil || note.Status != domain.InvoiceStatusIssued {
+		t.Fatalf("credit note = %+v, err = %v, want it issued on the archived sale", note, err)
+	}
+
+	var updatedAt time.Time
+	var archived *time.Time
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT updated_at, archived_at FROM quote WHERE id = $1`,
+		sale.quoteID).Scan(&updatedAt, &archived); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(updatedAt) > time.Hour {
+		t.Fatalf("updated_at = %s, want it moved to the credit note's authorization", updatedAt)
+	}
+	if archived == nil || !archived.Equal(archivedAt) {
+		t.Fatalf("archived_at = %v, want the sale still archived at %s", archived, archivedAt)
+	}
 }
 
 // Complete sales and rejected quotes are archived once quiet past the closed window; a sale still
