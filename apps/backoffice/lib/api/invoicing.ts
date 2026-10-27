@@ -124,6 +124,7 @@ export interface InvoicePreviewRaw {
   invoice: InvoiceRaw | null;
   other_environment_invoice?: InvoiceRaw | null;
   credited_invoice?: InvoiceRaw | null;
+  customer_signup_url?: string;
 }
 
 export interface ClientFiscalRaw {
@@ -232,6 +233,8 @@ export interface InvoicePreview {
   otherEnvironmentInvoice: Invoice | null;
   // The newest invoice of the sale a credit note cancelled here, with that note: history.
   creditedInvoice: Invoice | null;
+  // The supplier's customer sign-up page, while the invoice waits on the buyer's CUIT or document.
+  customerSignupUrl: string | null;
 }
 
 export interface ClientFiscal {
@@ -351,6 +354,7 @@ export function mapInvoicePreview(raw: InvoicePreviewRaw): InvoicePreview {
       ? mapInvoice(raw.other_environment_invoice)
       : null,
     creditedInvoice: raw.credited_invoice ? mapInvoice(raw.credited_invoice) : null,
+    customerSignupUrl: raw.customer_signup_url || null,
   };
 }
 

@@ -62,6 +62,25 @@ describe('invoicing API mapping', () => {
     expect(settings.branches).toEqual([]);
   });
 
+  it('maps the sign-up page a preview offers while the buyer lacks a CUIT', () => {
+    const preview = mapInvoicePreview({
+      environment: 'PRODUCTION',
+      issuer_cuit: '30711111112',
+      fingerprint: 'a'.repeat(64),
+      version_id: 'v-1',
+      type: 'A',
+      point_of_sale: 3,
+      receiver: RECEIVER,
+      amounts: AMOUNTS,
+      currency: 'ARS',
+      issues: ['RECEIVER_CUIT_REQUIRED'],
+      invoice: null,
+      customer_signup_url: 'https://corralon.example.com/signup',
+    });
+
+    expect(preview.customerSignupUrl).toBe('https://corralon.example.com/signup');
+  });
+
   it('maps a preview and the invoice it already has', () => {
     expect(
       mapInvoicePreview({
@@ -120,6 +139,7 @@ describe('invoicing API mapping', () => {
       issues: [],
       otherEnvironmentInvoice: null,
       creditedInvoice: null,
+      customerSignupUrl: null,
       invoice: {
         id: 'inv-1',
         branchId: 'b1',

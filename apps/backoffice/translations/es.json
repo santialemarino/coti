@@ -392,6 +392,7 @@
     "ARCA_CREDENTIALS": "No pudimos usar el certificado: revisá que la clave privada sea la del certificado y que este tenga el CUIT.",
     "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna factura. Probá de nuevo en unos minutos.",
     "INVALID_TAX_ID": "Revisá el CUIT o DNI: el número no es válido.",
+    "TAX_ID_READ_ONLY": "El CUIT de un cliente lo carga el cliente al crear su cuenta.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
@@ -1932,12 +1933,16 @@
         "label": "Razón social",
         "placeholder": "Ingresá la razón social"
       },
-      "taxId": {
-        "label": "CUIT o DNI",
-        "placeholder": "Ingresá el CUIT o DNI",
-        "hint": "Formato: 30-70123456-8 para un CUIT o 12.345.678 para un DNI.",
-        "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
-        "checkDigit": "El CUIT no es válido: revisá el último dígito."
+      "cuit": {
+        "label": "CUIT",
+        "missing": "Sin cargar",
+        "hint": "Lo carga el cliente al crear su cuenta."
+      },
+      "dni": {
+        "label": "DNI",
+        "placeholder": "Ingresá el DNI",
+        "hint": "Para un consumidor final sin CUIT. Formato: 12.345.678.",
+        "invalid": "Ingresá un DNI de 7 u 8 dígitos."
       },
       "ivaCondition": {
         "label": "Condición frente al IVA",
@@ -1953,7 +1958,8 @@
       },
       "description": "Se utilizan al emitir las facturas de este cliente.",
       "errors": {
-        "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
+        "INVALID_TAX_ID": "Revisá el DNI del cliente.",
+        "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
       }
     }
   },
@@ -2916,11 +2922,11 @@
         },
         "RECEIVER_CUIT_REQUIRED": {
           "title": "Falta el CUIT del cliente",
-          "body": "Cargá el CUIT del cliente desde su ficha para emitir este tipo de factura."
+          "body": "El cliente carga su CUIT al crear su cuenta. Enviale el link de registro para emitir este tipo de factura."
         },
         "RECEIVER_ID_REQUIRED": {
           "title": "Falta el documento del cliente",
-          "body": "Por el monto, ARCA pide identificar al cliente con su CUIT o DNI."
+          "body": "Por el monto, ARCA pide identificar al cliente. Cargá su DNI en su ficha o enviale el link de registro para que cargue su CUIT."
         },
         "QUOTE_TOTAL_MISMATCH": {
           "title": "Los descuentos superan algún ítem",
@@ -2936,6 +2942,16 @@
         }
       },
       "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
+      "signup": {
+        "action": "Enviar link de registro",
+        "title": "Link de registro",
+        "description": "Compartile este link al cliente para que cree su cuenta y cargue su CUIT.",
+        "linkLabel": "Link de registro",
+        "copy": "Copiar link",
+        "copied": "Link copiado",
+        "copyFailed": "No pudimos copiar el link. Seleccionalo y copialo a mano.",
+        "close": "Cerrar"
+      },
       "errors": {
         "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
         "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",

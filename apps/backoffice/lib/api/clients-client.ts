@@ -68,7 +68,8 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
 export interface ClientFiscalInput {
   address?: string;
   legalName?: string;
-  taxId?: string;
+  // A consumidor final's DNI. A CUIT is never sent: only the customer loads one, with their account.
+  dni?: string;
   ivaCondition?: IvaCondition;
 }
 
@@ -82,7 +83,7 @@ export async function updateClientFiscal(
     body: JSON.stringify({
       address: values.address,
       legal_name: values.legalName,
-      tax_id: values.taxId,
+      dni: values.dni,
       iva_condition: values.ivaCondition,
     }),
     cache: 'no-store',

@@ -30,6 +30,7 @@ const READY: InvoicePreview = {
   invoice: null,
   otherEnvironmentInvoice: null,
   creditedInvoice: null,
+  customerSignupUrl: null,
 };
 
 function renderDialog(preview?: InvoicePreview) {

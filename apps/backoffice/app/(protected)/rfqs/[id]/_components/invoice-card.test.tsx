@@ -58,7 +58,10 @@ const READY: InvoicePreview = {
   invoice: null,
   otherEnvironmentInvoice: null,
   creditedInvoice: null,
+  customerSignupUrl: null,
 };
+
+const SIGNUP_URL = 'https://corralon.example.com/signup';
 
 const ISSUED: Invoice = {
   branchId: 'branch-1',
@@ -219,6 +222,41 @@ describe('InvoiceCard', () => {
     expect(view.queryByRole('form')).toBeNull();
     expect(view.queryByRole('textbox')).toBeNull();
   });
+  it.each(['RECEIVER_CUIT_REQUIRED', 'RECEIVER_ID_REQUIRED'])(
+    'offers the sign-up link on %s and copies it from its dialog',
+    async (issue) => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      vi.mocked(getInvoicePreview).mockResolvedValue({
+        ...READY,
+        issues: [issue],
+        customerSignupUrl: SIGNUP_URL,
+      });
+      const view = renderCard();
+
+      fireEvent.click(await view.findByRole('button', { name: card.signup.action }));
+      const dialog = within(await view.findByRole('dialog', { name: card.signup.title }));
+      expect(dialog.getByLabelText(card.signup.linkLabel).textContent).toBe(SIGNUP_URL);
+      fireEvent.click(dialog.getByRole('button', { name: card.signup.copy }));
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(SIGNUP_URL));
+      expect(dialog.getByRole('status').textContent).toBe(card.signup.copied);
+      delete (navigator as { clipboard?: unknown }).clipboard;
+    },
+  );
+
+  it('offers no sign-up link where a CUIT would not unblock the invoice', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      issues: ['RECEIVER_ADDRESS_REQUIRED'],
+      customerSignupUrl: SIGNUP_URL,
+    });
+    const view = renderCard();
+
+    expect(await view.findByText(card.issues.RECEIVER_ADDRESS_REQUIRED.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.signup.action })).toBeNull();
+  });
+
   it('keeps the ready client profile accessible for correcting invoice details', async () => {
     const view = renderCard();
     const link = await view.findByRole('link', { name: card.editClient });
