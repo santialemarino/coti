@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -27,6 +28,7 @@ interface SignupLinkDialogProps {
  */
 export function SignupLinkDialog({ url }: SignupLinkDialogProps) {
   const t = useTranslations('invoicing.card.signup');
+  const labelId = useId();
 
   return (
     <Dialog>
@@ -40,8 +42,10 @@ export function SignupLinkDialog({ url }: SignupLinkDialogProps) {
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-y-1">
-          <span className="text-paragraph-xs-medium text-foreground-muted">{t('linkLabel')}</span>
+        <div role="group" aria-labelledby={labelId} className="flex flex-col gap-y-1">
+          <span id={labelId} className="text-paragraph-xs-medium text-foreground-muted">
+            {t('linkLabel')}
+          </span>
           <span className="break-all text-paragraph-sm text-foreground">{url}</span>
         </div>
         <DialogFooter>

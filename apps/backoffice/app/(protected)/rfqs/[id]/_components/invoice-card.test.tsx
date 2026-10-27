@@ -236,7 +236,9 @@ describe('InvoiceCard', () => {
 
       fireEvent.click(await view.findByRole('button', { name: card.signup.action }));
       const dialog = within(await view.findByRole('dialog', { name: card.signup.title }));
-      expect(dialog.getByText(SIGNUP_URL)).toBeTruthy();
+      expect(dialog.getByRole('group', { name: card.signup.linkLabel }).textContent).toContain(
+        SIGNUP_URL,
+      );
       fireEvent.click(dialog.getByRole('button', { name: card.signup.copy }));
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith(SIGNUP_URL));
