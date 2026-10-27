@@ -75,6 +75,17 @@ jobs:
             echo "$drift"
             exit 1
           fi
+          # A component that reads it but drops the key falls back to the code default unnoticed.
+          for component in quote-auto-archive; do
+            found=$(NAME="$component" yq -r '
+              [.services[]?, .jobs[]?, .workers[]?]
+              | .[] | select(.name == strenv(NAME))
+              | .envs[]? | select(.key == "ARCA_ENVIRONMENT") | .key' "$SPEC")
+            if [ -z "$found" ]; then
+              echo "$component reads ARCA_ENVIRONMENT but the spec does not set it"
+              exit 1
+            fi
+          done
       # All three Dockerfiles build with the repository root as their context, so a component
       # pointed anywhere else fails at its first COPY — and a renamed Dockerfile only surfaces as a
       # failed deploy.
