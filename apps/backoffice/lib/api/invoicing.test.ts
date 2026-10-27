@@ -286,6 +286,7 @@ describe('invoicing API mapping', () => {
         name: 'Horizonte',
         legal_name: 'Constructora Horizonte SA',
         tax_id: '30701234568',
+        dni: '28123456',
         iva_condition: 'MONOTRIBUTO',
       }),
     ).toEqual({
@@ -293,6 +294,7 @@ describe('invoicing API mapping', () => {
       name: 'Horizonte',
       legalName: 'Constructora Horizonte SA',
       taxId: '30701234568',
+      dni: '28123456',
       ivaCondition: 'MONOTRIBUTO',
     });
   });

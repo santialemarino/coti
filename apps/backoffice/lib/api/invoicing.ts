@@ -133,6 +133,7 @@ export interface ClientFiscalRaw {
   name: string | null;
   legal_name: string | null;
   tax_id: string | null;
+  dni?: string | null;
   iva_condition: string | null;
 }
 
@@ -242,7 +243,9 @@ export interface ClientFiscal {
   id: string;
   name: string | null;
   legalName: string | null;
+  // The CUIT or CUIL, only ever from the customer's account.
   taxId: string | null;
+  dni: string | null;
   ivaCondition: IvaCondition | null;
 }
 
@@ -365,6 +368,7 @@ export function mapClientFiscal(raw: ClientFiscalRaw): ClientFiscal {
     name: raw.name,
     legalName: raw.legal_name,
     taxId: raw.tax_id,
+    dni: raw.dni ?? null,
     ivaCondition: ivaConditionOf(raw.iva_condition),
   };
 }

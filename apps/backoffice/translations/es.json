@@ -2950,7 +2950,8 @@
         "copy": "Copiar link",
         "copied": "Link copiado",
         "copyFailed": "No pudimos copiar el link. Seleccionalo y copialo a mano.",
-        "close": "Cerrar"
+        "close": "Cerrar",
+        "noSite": "El corralón todavía no tiene su sitio de clientes, así que no hay link de registro para enviar. Pedile al equipo de Coti que lo configure."
       },
       "errors": {
         "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",

@@ -318,6 +318,9 @@ export function InvoiceCard({
                 >
                   {t(`issues.${issue}.body`)}
                   {RECEIVER_ISSUES.has(issue) && clientId === null ? ` ${t('noClient')}` : null}
+                  {SIGNUP_ISSUES.has(issue) && !preview.customerSignupUrl
+                    ? ` ${t('signup.noSite')}`
+                    : null}
                 </Callout>
               ),
             )}

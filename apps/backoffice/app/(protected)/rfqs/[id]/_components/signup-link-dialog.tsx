@@ -42,9 +42,7 @@ export function SignupLinkDialog({ url }: SignupLinkDialogProps) {
         </DialogHeader>
         <div className="flex flex-col gap-y-1">
           <span className="text-paragraph-xs-medium text-foreground-muted">{t('linkLabel')}</span>
-          <span aria-label={t('linkLabel')} className="break-all text-paragraph-sm text-foreground">
-            {url}
-          </span>
+          <span className="break-all text-paragraph-sm text-foreground">{url}</span>
         </div>
         <DialogFooter>
           <DialogClose asChild>

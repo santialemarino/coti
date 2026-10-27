@@ -37,7 +37,6 @@ import { errorCodeOf } from '@/lib/api/errors';
 import { formatCuit, IVA_CONDITIONS, type ClientFiscal } from '@/lib/api/invoicing';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
-import { CUIT_DIGITS } from '@/lib/utils/cuit';
 import { taxIdDigits } from '@/lib/utils/tax-id';
 
 interface ClientFiscalFormProps {
@@ -46,8 +45,8 @@ interface ClientFiscalFormProps {
 
 /*
  * Fiscal identity belongs to the client profile and is shared by its orders. The CUIT is read-only:
- * only the customer loads it, by creating their account. A DNI stays editable for a consumidor
- * final without one.
+ * only the customer loads it, by creating their account. The DNI, a consumidor final's document,
+ * is the seller's to edit and never stands in for it.
  */
 export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
   const t = useTranslations('clients.fiscal');
@@ -61,7 +60,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
     resolver: zodResolver(schema),
     defaultValues: valuesOf(client),
   });
-  const cuit = cuitOf(client.taxId);
+  const cuit = taxIdDigits(client.taxId ?? '');
 
   async function onSubmit(values: ClientFiscalValues) {
     try {
@@ -69,7 +68,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
       const saved = await updateClientFiscal(client.id, {
         address: values.address || undefined,
         legalName: values.legalName || undefined,
-        dni: cuit ? undefined : values.dni || undefined,
+        dni: values.dni || undefined,
         ivaCondition: values.ivaCondition || undefined,
       });
       const name = saved.legalName ?? saved.name;
@@ -148,27 +147,25 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                 </dd>
                 <dd className="text-paragraph-xs text-foreground-muted">{t('cuit.hint')}</dd>
               </dl>
-              {cuit ? null : (
-                <FormField
-                  control={form.control}
-                  name="dni"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('dni.label')}</FormLabel>
-                      <FormControl>
-                        <TaxIdInput
-                          kind="dni"
-                          disabled={form.formState.isSubmitting}
-                          placeholder={t('dni.placeholder')}
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>{t('dni.hint')}</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              <FormField
+                control={form.control}
+                name="dni"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('dni.label')}</FormLabel>
+                    <FormControl>
+                      <TaxIdInput
+                        kind="dni"
+                        disabled={form.formState.isSubmitting}
+                        placeholder={t('dni.placeholder')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>{t('dni.hint')}</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="ivaCondition"
@@ -211,17 +208,10 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
 }
 
 function valuesOf(client: ClientFiscal): ClientFiscalValues {
-  const digits = taxIdDigits(client.taxId ?? '');
   return {
     address: client.address ?? '',
     legalName: client.legalName ?? '',
-    dni: cuitOf(digits) ? '' : digits,
+    dni: taxIdDigits(client.dni ?? ''),
     ivaCondition: client.ivaCondition ?? '',
   };
-}
-
-// The client's CUIT or CUIL, when the tax id on file is one rather than a DNI.
-function cuitOf(taxId: string | null): string | null {
-  const digits = taxIdDigits(taxId ?? '');
-  return digits.length === CUIT_DIGITS ? digits : null;
 }

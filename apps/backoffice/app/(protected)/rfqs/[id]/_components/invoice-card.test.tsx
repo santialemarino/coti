@@ -236,7 +236,7 @@ describe('InvoiceCard', () => {
 
       fireEvent.click(await view.findByRole('button', { name: card.signup.action }));
       const dialog = within(await view.findByRole('dialog', { name: card.signup.title }));
-      expect(dialog.getByLabelText(card.signup.linkLabel).textContent).toBe(SIGNUP_URL);
+      expect(dialog.getByText(SIGNUP_URL)).toBeTruthy();
       fireEvent.click(dialog.getByRole('button', { name: card.signup.copy }));
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith(SIGNUP_URL));
@@ -254,6 +254,18 @@ describe('InvoiceCard', () => {
     const view = renderCard();
 
     expect(await view.findByText(card.issues.RECEIVER_ADDRESS_REQUIRED.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: card.signup.action })).toBeNull();
+  });
+
+  it('says the customer site is missing instead of offering a link nobody could use', async () => {
+    vi.mocked(getInvoicePreview).mockResolvedValue({
+      ...READY,
+      issues: ['RECEIVER_CUIT_REQUIRED'],
+      customerSignupUrl: null,
+    });
+    const view = renderCard();
+
+    expect(await view.findByText(new RegExp(card.signup.noSite))).toBeTruthy();
     expect(view.queryByRole('button', { name: card.signup.action })).toBeNull();
   });
 

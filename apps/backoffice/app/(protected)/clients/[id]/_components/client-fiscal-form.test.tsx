@@ -16,6 +16,7 @@ const client: ClientFiscal = {
   name: 'Eduardo',
   legalName: null,
   taxId: null,
+  dni: null,
   address: null,
   ivaCondition: 'REGISTERED',
 };
@@ -42,14 +43,15 @@ describe('client profile fiscal data', () => {
 
   // Only the customer loads a CUIT, by creating their account; the seller reads it.
   it('shows the CUIT read-only, with who loads it, and offers no field for it', () => {
-    const view = show({ ...client, taxId: '30701234568' });
+    const view = show({ ...client, taxId: '30701234568', dni: '28123456' });
 
     expect(view.getByText('30-70123456-8')).toBeTruthy();
     expect(view.getByText(t.cuit.hint)).toBeTruthy();
     expect(
       view.getAllByRole('textbox').map((box) => (box as HTMLInputElement).value),
     ).not.toContain('30-70123456-8');
-    expect(view.queryByLabelText(t.dni.label)).toBeNull();
+    // The DNI is its own field, loaded from its own value, never from the CUIT.
+    expect(view.getByLabelText(t.dni.label)).toHaveProperty('value', '28.123.456');
   });
 
   it('says the CUIT is not loaded yet and still takes a DNI', () => {
