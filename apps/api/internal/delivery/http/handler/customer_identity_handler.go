@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
+
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"net/http"
 )
 
 // GetDeliverySite discovers public supplier routing without disclosing the linked order.
@@ -102,7 +104,7 @@ func (h *CustomerAuthHandler) CompleteGoogle(c *gin.Context) {
 	if p, ok := middleware.CustomerFrom(c); ok {
 		principal = &p
 	}
-	login, err := h.auth.CompleteGoogle(c.Request.Context(), c.Param("hostname"), in.Token, in.TaxID, principal)
+	login, err := h.auth.CompleteGoogle(c.Request.Context(), c.Param("hostname"), in.Token, in.TaxID, principal, in.Name)
 	if err != nil {
 		Respond(c, err)
 		return

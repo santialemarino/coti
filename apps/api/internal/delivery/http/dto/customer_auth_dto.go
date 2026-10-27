@@ -2,6 +2,13 @@ package dto
 
 import "time"
 
+// CustomerRegistrationRequest requires a fiscal identity, full name and commercial contact.
+type CustomerRegistrationRequest struct {
+	CustomerCredentialsRequest
+	Name     string               `json:"name" binding:"required,max=255"`
+	Contacts []ClientContactInput `json:"contacts" binding:"required,min=1,dive"`
+}
+
 // CustomerDeliverySiteResponse exposes public supplier routing for a legacy quotation link.
 type CustomerDeliverySiteResponse struct {
 	Hostname string `json:"hostname"`
@@ -52,6 +59,7 @@ type CustomerGoogleExchangeResponse struct {
 
 // CustomerGoogleCompleteRequest supplies CUIT/CUIL after a verified Google exchange.
 type CustomerGoogleCompleteRequest struct {
+	Name  string `json:"name" binding:"max=255"`
 	Token string `json:"token" binding:"required,len=43"`
 	TaxID string `json:"tax_id" binding:"required,max=20"`
 }
@@ -71,4 +79,15 @@ type CustomerTokenRequest struct {
 type CustomerPasswordResetRequest struct {
 	Token    string `json:"token" binding:"required,len=43"`
 	Password string `json:"password" binding:"required,max=72"`
+}
+
+// CustomerRecoveryEmailResponse separates credential recovery from commercial contacts.
+type CustomerRecoveryEmailResponse struct {
+	Email    *string `json:"email"`
+	Verified bool    `json:"verified"`
+}
+
+// CustomerRecoveryEmailRequest updates or clears the optional recovery destination.
+type CustomerRecoveryEmailRequest struct {
+	Email string `json:"email" binding:"omitempty,email,max=255"`
 }

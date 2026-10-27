@@ -4,7 +4,12 @@ import { z } from 'zod';
 export function customerProfileSchema(t: (key: string) => string) {
   return z
     .object({
-      name: z.string().trim().max(255, t('nameTooLong')),
+      name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
+      legalName: z.string().trim().max(255, t('nameTooLong')).optional(),
+      address: z.string().trim().max(255, t('nameTooLong')).optional(),
+      ivaCondition: z
+        .enum(['', 'REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER'])
+        .optional(),
       contacts: z.array(
         z.object({
           kind: z.enum(['WHATSAPP', 'EMAIL']),
@@ -14,6 +19,9 @@ export function customerProfileSchema(t: (key: string) => string) {
       ),
     })
     .superRefine((data, ctx) => {
+      if (!data.contacts.some((contact) => contact.value !== '')) {
+        ctx.addIssue({ code: 'custom', path: ['root'], message: t('contactRequired') });
+      }
       const seen = new Set<string>();
       for (const kind of ['WHATSAPP', 'EMAIL'] as const) {
         const filled = data.contacts

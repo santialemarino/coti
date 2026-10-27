@@ -3,6 +3,7 @@ export interface CustomerContact {
   kind: ContactKind;
   value: string;
   primary: boolean;
+  verified?: boolean;
 }
 export interface CustomerProfileRaw {
   client_id: string | null;
@@ -10,8 +11,14 @@ export interface CustomerProfileRaw {
   tax_id: string;
   name: string;
   contacts: CustomerContact[];
+  legal_name?: string | null;
+  iva_condition?: string | null;
+  fiscal_address?: string | null;
 }
 export interface CustomerProfile {
+  legalName?: string | null;
+  ivaCondition?: string | null;
+  address?: string | null;
   clientId: string | null;
   reviewPending: boolean;
   taxId: string;
@@ -25,6 +32,9 @@ export function mapCustomerProfile(raw: CustomerProfileRaw): CustomerProfile {
     reviewPending: raw.review_pending,
     taxId: raw.tax_id,
     name: raw.name,
+    legalName: raw.legal_name ?? null,
+    ivaCondition: raw.iva_condition ?? null,
+    address: raw.fiscal_address ?? null,
     contacts: raw.contacts.map((contact) => ({ ...contact })),
   };
 }

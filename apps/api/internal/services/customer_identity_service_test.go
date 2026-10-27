@@ -145,7 +145,7 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 func TestCustomerRecoveryRequiresStoredVerifiedEmailAndSingleUseMatchingPurpose(t *testing.T) {
 	svc, store, mail := customerIdentityFixture()
 	ctx := context.Background()
-	_, err := svc.Register(ctx, store.site.Hostname, domain.CustomerRegistration{TaxID: "20123456786", Password: "Customer-pass123!", RecoveryEmail: "customer@example.test"})
+	_, err := svc.Register(ctx, store.site.Hostname, domain.CustomerRegistration{Name: "Juan Perez", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: "customer@example.test", Primary: true}}, TaxID: "20123456786", Password: "Customer-pass123!", RecoveryEmail: "customer@example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,4 +186,22 @@ func TestCustomerRecoveryRequiresStoredVerifiedEmailAndSingleUseMatchingPurpose(
 	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, reset, "Another-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("reset link reused: %v", err)
 	}
+}
+
+func (f *customerCredentialsFake) SetRecoveryEmail(_ context.Context, _ repository.Querier, accountID, customerID uuid.UUID, email *string) error {
+	if f.identity == nil || f.identity.AccountID != accountID || f.identity.ID != customerID {
+		return domain.ErrUnauthenticated
+	}
+	f.identity.RecoveryEmail = email
+	f.identity.RecoveryEmailVerifiedAt = nil
+	f.tokens = map[string]domain.CustomerChallenge{}
+	return nil
+}
+
+func (f *customerCredentialsFake) GetChallengeCustomer(_ context.Context, _ repository.Querier, accountID uuid.UUID, hash string, purpose domain.CustomerChallengePurpose, now time.Time) (uuid.UUID, error) {
+	token, ok := f.tokens[hash]
+	if !ok || token.AccountID != accountID || token.Purpose != purpose || !token.ExpiresAt.After(now) || f.used[hash] || token.CustomerID == nil {
+		return uuid.Nil, domain.ErrUnauthenticated
+	}
+	return *token.CustomerID, nil
 }

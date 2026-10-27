@@ -22,6 +22,7 @@ import {
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ClientFiscalForm } from '@/app/(protected)/clients/[id]/_components/client-fiscal-form';
+import { ClientRegistrationLink } from '@/app/(protected)/clients/[id]/_components/client-registration-link';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
@@ -72,6 +73,11 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             <CardTitle>{t('profile.contactTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-y-4">
+            <ClientRegistrationLink
+              clientId={id}
+              phone={profile.client.phone}
+              email={profile.client.email}
+            />
             <div className="flex items-start gap-x-3">
               <PhoneIcon aria-hidden="true" className="mt-0.5 size-4 text-foreground-subtle" />
               <div className="flex flex-col gap-y-0.5">

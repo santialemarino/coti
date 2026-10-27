@@ -8,6 +8,7 @@ import messages from '@/translations/es.json';
 
 vi.mock('@/app/profile/actions', () => ({ saveCustomerProfile: vi.fn(async () => ({})) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 beforeEach(() => vi.clearAllMocks());
 

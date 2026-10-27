@@ -580,9 +580,9 @@ func TestInvoiceService_UpdateClientFiscalChecksTheCUIT(t *testing.T) {
 		domain.ClientFiscalUpdate{TaxID: &invalid}); domain.CodeOf(err) != domain.CodeInvalidTaxID {
 		t.Fatalf("err = %v, want INVALID_TAX_ID for a wrong check digit", err)
 	}
-	if client, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
-		domain.ClientFiscalUpdate{TaxID: &dni}); err != nil || *client.TaxID != "28123456" {
-		t.Fatalf("client = %+v, err = %v, want the DNI stored as digits", client, err)
+	if _, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
+		domain.ClientFiscalUpdate{TaxID: &dni}); domain.CodeOf(err) != domain.CodeInvalidTaxID {
+		t.Fatalf("err = %v, want an immutable fiscal identifier", err)
 	}
 }
 

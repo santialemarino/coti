@@ -282,10 +282,10 @@ func invoiceIssues(in invoiceInputs) []string {
 		add(invoiceIssueCredentialsCUIT)
 	}
 
-	switch {
-	case in.invoiceType == domain.InvoiceTypeA && in.receiver.DocType != domain.ReceiverDocCUIT:
+	if in.receiver.DocType != domain.ReceiverDocCUIT {
 		add(invoiceIssueReceiverCUIT)
-	case in.receiver.DocType == domain.ReceiverDocNone && in.amounts.Total.GreaterThanOrEqual(in.unidentifiedMax):
+	}
+	if in.receiver.DocType == domain.ReceiverDocNone && in.amounts.Total.GreaterThanOrEqual(in.unidentifiedMax) {
 		add(invoiceIssueReceiverID)
 	}
 	return issues

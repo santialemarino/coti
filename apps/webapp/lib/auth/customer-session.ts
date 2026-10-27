@@ -73,6 +73,7 @@ export async function startCustomerSession(
   password: string,
   callerAddress?: string,
   recoveryEmail?: string,
+  profile?: { name: string; phone: string; email: string },
 ): Promise<CustomerSession> {
   const response = await fetch(await customerApiPath(`/auth/${mode}`), {
     method: 'POST',
@@ -85,6 +86,15 @@ export async function startCustomerSession(
       tax_id: taxId,
       password,
       ...(recoveryEmail ? { recovery_email: recoveryEmail } : {}),
+      ...(profile
+        ? {
+            name: profile.name,
+            contacts: [
+              ...(profile.phone ? [{ kind: 'WHATSAPP', value: profile.phone, primary: true }] : []),
+              ...(profile.email ? [{ kind: 'EMAIL', value: profile.email, primary: true }] : []),
+            ],
+          }
+        : {}),
     }),
   });
   if (!response.ok) throw new CustomerAuthError(response.status);

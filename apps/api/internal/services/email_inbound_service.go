@@ -124,8 +124,23 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		if rfqID != uuid.Nil {
 			return nil
 		}
-		rfqID = uuid.New()
-		if err := s.storeOne(ctx, route, rfqID, message); err != nil {
+		reuse := false
+		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && declaredNamePattern.MatchString(strings.TrimSpace(message.Body)) {
+			if err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
+				pending, err := resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeEmail, message.SenderID)
+				if err == nil && pending != nil {
+					rfqID = *pending
+					reuse = true
+				}
+				return err
+			}); err != nil {
+				return err
+			}
+		}
+		if !reuse {
+			rfqID = uuid.New()
+		}
+		if err := s.storeOne(ctx, route, rfqID, message, reuse); err != nil {
 			return err
 		}
 		if s.onRecorded != nil {
@@ -136,11 +151,16 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 	if err != nil {
 		return uuid.Nil, err
 	}
+	if completer, ok := s.contacts.(inboundContactCompleter); ok {
+		if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeEmail, message.SenderID); err != nil {
+			return uuid.Nil, err
+		}
+	}
 	return rfqID, nil
 }
 
 func (s *EmailInboundService) storeOne(ctx context.Context, route domain.InboundChannelRoute,
-	rfqID uuid.UUID, message domain.InboundEmailMessage,
+	rfqID uuid.UUID, message domain.InboundEmailMessage, reuse bool,
 ) error {
 	files := make([]domain.NewRetainedAttachment, 0, len(message.Attachments)+2)
 	addFile := func(filename, contentType, extension string, kind domain.AttachmentType,
@@ -175,7 +195,7 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			text += "\n\n" + body
 		}
 	}
-	if text != "" {
+	if text != "" && !reuse {
 		if err := addFile("email.txt", "text/plain", "txt", domain.AttachmentTypeText,
 			domain.AttachmentProcessingPending, []byte(text)); err != nil {
 			return err
@@ -241,11 +261,13 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 		if err != nil || !matchesEmailChannel(channel, destination) {
 			return fmt.Errorf("%w: email channel no longer matches the mailbox", domain.ErrInvalidInput)
 		}
-		if _, err := s.rfqs.Create(ctx, q, route.AccountID, domain.NewRFQ{
-			ID: &rfqID, BranchID: route.BranchID, ChannelID: route.ChannelID,
-			RawText: &text, ClientLabel: senderLabel, Status: status,
-		}); err != nil {
-			return err
+		if !reuse {
+			if _, err := s.rfqs.Create(ctx, q, route.AccountID, domain.NewRFQ{
+				ID: &rfqID, BranchID: route.BranchID, ChannelID: route.ChannelID,
+				RawText: &text, ClientLabel: senderLabel, Status: status,
+			}); err != nil {
+				return err
+			}
 		}
 		reserved, err := s.messages.Reserve(ctx, q, route.AccountID, route.BranchID, route.ChannelID,
 			domain.NewInboundChannelMessage{ID: uuid.New(), RFQID: &rfqID,
@@ -258,7 +280,7 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			return errInboundAlreadyReserved
 		}
 		if s.contacts != nil {
-			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, declaredClientData(text)); err != nil {
+			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, declaredClientData(message.Body)); err != nil {
 				return err
 			}
 		}

@@ -15,6 +15,8 @@ import (
 )
 
 type customerCredentialStore interface {
+	GetChallengeCustomer(context.Context, repository.Querier, uuid.UUID, string, domain.CustomerChallengePurpose, time.Time) (uuid.UUID, error)
+	SetRecoveryEmail(context.Context, repository.Querier, uuid.UUID, uuid.UUID, *string) error
 	GetHostnameByDeliveryTokenCrossAccount(context.Context, repository.Querier, string) (string, error)
 	GetIdentityByGoogleSubject(context.Context, repository.Querier, uuid.UUID, string) (*domain.CustomerIdentity, error)
 	GetVerifiedRecoveryIdentity(context.Context, repository.Querier, uuid.UUID, string, string) (*domain.CustomerIdentity, error)
@@ -106,7 +108,7 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 }
 
 // CompleteGoogle binds a new CUIT/CUIL or explicitly links Google to an already authenticated customer.
-func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw, taxID string, principal *domain.CustomerPrincipal) (*domain.CustomerLogin, error) {
+func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw, taxID string, principal *domain.CustomerPrincipal, names ...string) (*domain.CustomerLogin, error) {
 	if s.credentials == nil {
 		return nil, domain.ErrNotConfigured
 	}
@@ -140,6 +142,12 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 		}
 		var identity *domain.CustomerIdentity
 		if principal == nil {
+			if len(names) > 0 && strings.TrimSpace(names[0]) != "" {
+				payload.Name = strings.TrimSpace(names[0])
+			}
+			if s.profiles == nil || payload.Name == "" || !validCustomerEmail(payload.Email) {
+				return domain.ErrInvalidInput
+			}
 			var name *string
 			if len(payload.Name) <= 255 && payload.Name != "" {
 				name = &payload.Name
@@ -157,6 +165,11 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 		}
 		if err != nil {
 			return err
+		}
+		if principal == nil {
+			if err := s.profiles.RegisterProfile(ctx, q, domain.CustomerPrincipal{CustomerID: identity.ID, AccountID: site.AccountID, TaxID: taxID}, domain.ClientContactUpdate{Name: payload.Name, Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: payload.Email, Primary: true}}}); err != nil {
+				return err
+			}
 		}
 		login, err = s.createSession(ctx, q, *identity, secret)
 		return err
@@ -190,7 +203,7 @@ func (s *CustomerAuthService) ForgotCustomerPassword(ctx context.Context, hostna
 	if err != nil {
 		return err
 	}
-	return s.sendCustomerChallenge(ctx, *site, *identity, "RESET_PASSWORD", email)
+	return s.sendCustomerChallenge(ctx, *site, *identity, "RESET_PASSWORD", email, false)
 }
 
 // VerifyCustomerEmail enables recovery only after the one-use link confirms the saved address.
@@ -212,8 +225,15 @@ func (s *CustomerAuthService) ResetCustomerPassword(ctx context.Context, hostnam
 	if err != nil {
 		return err
 	}
-	return s.redeemCustomerChallenge(ctx, hostname, raw, "RESET_PASSWORD", func(q repository.Querier, token domain.CustomerChallenge, _ customerChallengePayload) error {
+	return s.redeemCustomerChallenge(ctx, hostname, raw, "RESET_PASSWORD", func(q repository.Querier, token domain.CustomerChallenge, payload customerChallengePayload) error {
 		if token.CustomerID == nil {
+			return domain.ErrUnauthenticated
+		}
+		identity, err := s.store.GetIdentityForUpdate(ctx, q, token.AccountID, *token.CustomerID)
+		if err != nil {
+			return err
+		}
+		if identity.RecoveryEmail == nil || identity.RecoveryEmailVerifiedAt == nil || *identity.RecoveryEmail != payload.Email {
 			return domain.ErrUnauthenticated
 		}
 		return s.credentials.ResetCustomerPassword(ctx, q, token.AccountID, *token.CustomerID, hash, s.now())
@@ -232,6 +252,17 @@ func (s *CustomerAuthService) redeemCustomerChallenge(ctx context.Context, hostn
 		return err
 	}
 	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
+		customerID, err := s.credentials.GetChallengeCustomer(ctx, q, site.AccountID, hashToken(raw), purpose, s.now())
+		if err != nil {
+			return err
+		}
+		identity, err := s.store.GetIdentityForUpdate(ctx, q, site.AccountID, customerID)
+		if err != nil {
+			return err
+		}
+		if identity.DisabledAt != nil {
+			return domain.ErrUnauthenticated
+		}
 		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(raw), purpose, s.now())
 		if err != nil {
 			return err
@@ -244,7 +275,7 @@ func (s *CustomerAuthService) redeemCustomerChallenge(ctx context.Context, hostn
 	})
 }
 
-func (s *CustomerAuthService) sendCustomerChallenge(ctx context.Context, site domain.CustomerSite, identity domain.CustomerIdentity, purpose domain.CustomerChallengePurpose, email string) error {
+func (s *CustomerAuthService) sendCustomerChallenge(ctx context.Context, site domain.CustomerSite, identity domain.CustomerIdentity, purpose domain.CustomerChallengePurpose, email string, reportDelivery bool) error {
 	secret, err := s.newSecret()
 	if err != nil {
 		return err
@@ -262,8 +293,11 @@ func (s *CustomerAuthService) sendCustomerChallenge(ctx context.Context, site do
 	if err != nil {
 		return err
 	}
-	// Delivery outcomes never disclose whether a recovery address matches an account.
-	_ = s.mail.Send(ctx, OutboundMail{AccountID: site.AccountID, Event: event, To: email, Subject: subject, Heading: heading, ActionLabel: label, ActionURL: s.customerOrigin(site) + path + "?token=" + url.QueryEscape(secret)})
+	// Anonymous recovery requests conceal delivery outcomes.
+	deliveryErr := s.mail.Send(ctx, OutboundMail{AccountID: site.AccountID, Event: event, To: email, Subject: subject, Heading: heading, ActionLabel: label, ActionURL: s.customerOrigin(site) + path + "?token=" + url.QueryEscape(secret)})
+	if reportDelivery {
+		return deliveryErr
+	}
 	return nil
 }
 

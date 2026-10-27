@@ -46,6 +46,8 @@ type CustomerSession struct {
 
 // CustomerRegistration creates credentials without claiming an existing commercial profile.
 type CustomerRegistration struct {
+	Name          string
+	Contacts      []ClientContact
 	TaxID         string
 	Password      string
 	RecoveryEmail string
@@ -117,3 +119,9 @@ const (
 	CustomerChallengeResetPassword CustomerChallengePurpose = "RESET_PASSWORD"
 	CustomerChallengeVerifyEmail   CustomerChallengePurpose = "VERIFY_EMAIL"
 )
+
+// CustomerRecoveryEmail exposes the authenticated customer's recovery configuration.
+type CustomerRecoveryEmail struct {
+	Email    *string
+	Verified bool
+}

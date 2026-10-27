@@ -27,21 +27,23 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 	delivery := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
 	name := "Constructora Horizonte"
 	phone := "+5491155550188"
-	selection := &domain.AssociateQuoteClientInput{TaxID: "30712345671", New: &domain.NewClient{Name: &name, Phone: &phone}}
+	selection := &domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone}}
 	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: phone, ClientAssociation: selection}
 	result, err := delivery.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var clientID, requestClientID uuid.UUID
-	var taxID, status string
+	var taxID *string
+	var status string
 	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT qt.client_id,r.client_id,c.tax_id,qt.current_status FROM quote qt JOIN rfq r ON r.account_id=qt.account_id AND r.id=qt.rfq_id JOIN client c ON c.account_id=qt.account_id AND c.id=qt.client_id WHERE qt.id=$1`, seed.draft.Quote.ID).Scan(&clientID, &requestClientID, &taxID, &status); err != nil {
 		t.Fatal(err)
 	}
-	if clientID != requestClientID || taxID != "30712345671" || status != "SENT" || len(result.Deliveries) != 2 {
-		t.Fatalf("association at publication: %s %s %s %s", clientID, requestClientID, taxID, status)
+	if clientID != requestClientID || taxID != nil || status != "SENT" || len(result.Deliveries) != 2 {
+		t.Fatalf("association at publication: %s %s %v %s", clientID, requestClientID, taxID, status)
 	}
-	host, token := e.registerCustomer(t, seed.tenant.AccountID, taxID, "")
+	host, token := e.registerCustomer(t, seed.tenant.AccountID, "30712345671", "")
+	e.verifyCustomerContact(t, seed.tenant.AccountID, "30712345671", domain.ChannelTypeWhatsApp, phone)
 	response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String(), token: token})
 	var order struct {
 		Token *string `json:"delivery_token"`
@@ -56,13 +58,14 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM client WHERE account_id=$1 AND tax_id=$2`, seed.tenant.AccountID, taxID).Scan(&count); err != nil {
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM client WHERE account_id=$1 AND tax_id=$2`, seed.tenant.AccountID, "30712345671").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
 		t.Fatalf("retry created %d profiles", count)
 	}
-	selection.TaxID = "20123456786"
+	changedName := "Different profile"
+	selection.New.Name = &changedName
 	if _, err = delivery.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); domain.CodeOf(err) != domain.CodeIdempotencyMismatch {
 		t.Fatalf("changed selection retry: %v", err)
 	}
@@ -91,14 +94,15 @@ func TestClientProfile_PublicationFailureRollsBackProfileAndAssociations(t *test
 	service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
 	service.WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), failedSendClientLink{}, repository.NewQuoteSendRepository()))
 	name := "Rollback customer"
-	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188", ClientAssociation: &domain.AssociateQuoteClientInput{TaxID: "30712345671", New: &domain.NewClient{Name: &name}}}
+	phone := "+5491155550188"
+	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188", ClientAssociation: &domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone}}}
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err == nil {
 		t.Fatal("failed association committed")
 	}
 	var profiles, published int
 	var clientID *uuid.UUID
 	var status string
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT client_id,current_status,(SELECT count(*) FROM client WHERE account_id=$1 AND tax_id='30712345671'),(SELECT count(*) FROM quote_send WHERE account_id=$1 AND tracking_status='SENT') FROM quote WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, seed.draft.Quote.ID).Scan(&clientID, &status, &profiles, &published); err != nil {
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT client_id,current_status,(SELECT count(*) FROM client WHERE account_id=$1 AND name='Rollback customer'),(SELECT count(*) FROM quote_send WHERE account_id=$1 AND tracking_status='SENT') FROM quote WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, seed.draft.Quote.ID).Scan(&clientID, &status, &profiles, &published); err != nil {
 		t.Fatal(err)
 	}
 	if clientID != nil || status != "QUOTED" || profiles != 0 || published != 0 {
@@ -133,37 +137,34 @@ func TestClientProfile_InvalidSelectionNeverPublishesOrCreatesAClient(t *testing
 	}
 }
 
-func TestClientProfile_SendRequiresCUITAndPreservesExistingContacts(t *testing.T) {
+func TestClientProfile_SendPreservesImmutableCUITAndExistingContacts(t *testing.T) {
 	e := newEnv(t)
-	seed := e.seedSendableQuote(t, "Confirm existing client", false)
+	seed := e.seedSendableQuote(t, "Preserve client identity", false)
 	var clientID uuid.UUID
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT client_id FROM quote WHERE id=$1`, seed.draft.Quote.ID).Scan(&clientID); err != nil {
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT client_id FROM quote WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, seed.draft.Quote.ID).Scan(&clientID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE client SET tax_id=NULL,phone='+5491155550100',email='original@example.test' WHERE id=$1`, clientID); err != nil {
+	var before string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT tax_id FROM client WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, clientID).Scan(&before); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE client SET tax_id=NULL WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, clientID); err == nil {
+		t.Fatal("database allowed clearing a registered CUIT")
 	}
 	sender := &captureWhatsAppSender{}
 	service := e.quoteDeliveryService(t, sender, &stagedQuoteEmailSender{}, nil)
-	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199"}
-	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); !errors.Is(err, domain.ErrInvalidInput) || sender.count() != 0 {
-		t.Fatalf("missing CUIT: %v, provider calls %d", err, sender.count())
-	}
-	input.ClientAssociation = &domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID}
+	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550199", ClientAssociation: &domain.AssociateQuoteClientInput{ClientID: &clientID}}
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err != nil {
 		t.Fatal(err)
 	}
-	var taxID, phone, email string
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT tax_id,phone,email FROM client WHERE id=$1`, clientID).Scan(&taxID, &phone, &email); err != nil {
-		t.Fatal(err)
+	var after string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT tax_id FROM client WHERE account_id=$1 AND id=$2`, seed.tenant.AccountID, clientID).Scan(&after); err != nil || before != after {
+		t.Fatalf("CUIT changed: %q %q %v", before, after, err)
 	}
-	if taxID != "20123456786" || phone != "+5491155550100" || email != "original@example.test" {
-		t.Fatalf("profile contents: %s %s %s", taxID, phone, email)
-	}
-	name := "Another client"
+	name, phone := "Another client", "+5491155550888"
 	input.IdempotencyKey = uuid.New()
-	input.ClientAssociation = &domain.AssociateQuoteClientInput{TaxID: "30712345671", New: &domain.NewClient{Name: &name}}
+	input.ClientAssociation = &domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone}}
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); !errors.Is(err, domain.ErrConflict) || sender.count() != 1 {
-		t.Fatalf("published client reassignment: %v, provider calls %d", err, sender.count())
+		t.Fatalf("published reassignment: %v, sends %d", err, sender.count())
 	}
 }

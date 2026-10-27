@@ -26,10 +26,11 @@ const (
 
 // ClientContact is one commercial destination, independent of customer credentials.
 type ClientContact struct {
-	ID      uuid.UUID
-	Kind    ChannelType
-	Value   string
-	Primary bool
+	ID       uuid.UUID
+	Kind     ChannelType
+	Value    string
+	Primary  bool
+	Verified bool
 }
 
 // ClientContactProfile is the authenticated customer's unique fiscal profile.
@@ -39,12 +40,18 @@ type ClientContactProfile struct {
 	TaxID         string
 	Name          string
 	Contacts      []ClientContact
+	LegalName     *string
+	IVACondition  *IVACondition
+	Address       *string
 }
 
 // ClientContactUpdate replaces the customer's commercial contact collection.
 type ClientContactUpdate struct {
-	Name     string
-	Contacts []ClientContact
+	Name         string
+	Contacts     []ClientContact
+	LegalName    *string
+	IVACondition *IVACondition
+	Address      *string
 }
 
 // ContactObservation preserves inbound declarations and a seller's association decision.

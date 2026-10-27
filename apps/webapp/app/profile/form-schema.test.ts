@@ -5,12 +5,21 @@ import { customerProfileSchema } from '@/app/profile/form-schema';
 const schema = customerProfileSchema((key) => key);
 
 describe('customerProfileSchema', () => {
-  it('saves an empty profile and ignores unfinished blank contact rows', () => {
-    expect(schema.safeParse({ name: '', contacts: [] }).success).toBe(true);
+  it('requires a full name and at least one completed contact', () => {
+    expect(schema.safeParse({ name: '', contacts: [] }).success).toBe(false);
     expect(
       schema.safeParse({
         name: 'Customer',
         contacts: [{ kind: 'EMAIL', value: '', primary: true }],
+      }).success,
+    ).toBe(false);
+    expect(
+      schema.safeParse({
+        name: 'Juan Perez',
+        contacts: [
+          { kind: 'EMAIL', value: 'one@example.test', primary: true },
+          { kind: 'WHATSAPP', value: '', primary: true },
+        ],
       }).success,
     ).toBe(true);
   });

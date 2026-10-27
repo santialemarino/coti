@@ -1,0 +1,83 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+)
+
+// GetChallenge reads a proof only within its authenticated customer and supplier.
+func (r *ClientContactRepository) GetChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID) (*domain.ContactChallenge, error) {
+	return r.getChallenge(ctx, q, p, id, "")
+}
+
+// LockChallenge locks a proof after the destination advisory lock has been acquired.
+func (r *ClientContactRepository) LockChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID) (*domain.ContactChallenge, error) {
+	return r.getChallenge(ctx, q, p, id, " FOR UPDATE")
+}
+
+func (r *ClientContactRepository) getChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, suffix string) (*domain.ContactChallenge, error) {
+	c := &domain.ContactChallenge{}
+	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	c.AccountID, c.CustomerID = p.AccountID, p.CustomerID
+	return c, err
+}
+
+// HasRecentChallenge limits repeat delivery to the same customer and destination.
+func (r *ClientContactRepository) HasRecentChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, kind domain.ChannelType, value string, since time.Time) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND created_at>$5 AND consumed_at IS NULL)`, p.AccountID, p.CustomerID, kind, value, since).Scan(&found)
+	return found, err
+}
+
+// CreateChallenge persists only a hash and invalidates earlier proofs for the same destination.
+func (r *ClientContactRepository) CreateChallenge(ctx context.Context, q Querier, c domain.ContactChallenge) error {
+	if _, err := q.Exec(ctx, `UPDATE client_contact_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND consumed_at IS NULL`, c.AccountID, c.CustomerID, c.Kind, c.Value); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,kind,value,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Kind, c.Value, c.TokenHash, c.ExpiresAt)
+	return err
+}
+
+// FinishChallenge retains attempt counts and consumes successful or cancelled proofs.
+func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, consume bool) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_challenge SET attempts=attempts+1,consumed_at=CASE WHEN $4 THEN now() ELSE consumed_at END WHERE account_id=$1 AND customer_id=$2 AND id=$3`, p.AccountID, p.CustomerID, id, consume)
+	return err
+}
+
+// MarkVerified activates exactly the destination whose ownership was proved.
+func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, accountID, clientID, kind, value)
+	if isUniqueViolation(err, "uq_verified_client_contact") {
+		return domain.ErrConflict
+	}
+	if err == nil && result.RowsAffected() != 1 {
+		return domain.ErrNotFound
+	}
+	return err
+}
+
+// GetContactHostname reads only this supplier's configured portal hostname.
+func (r *ClientContactRepository) GetContactHostname(ctx context.Context, q Querier, accountID uuid.UUID) (string, error) {
+	var hostname string
+	err := q.QueryRow(ctx, `SELECT public_hostname FROM account WHERE id=$1 AND is_active AND public_hostname IS NOT NULL`, accountID).Scan(&hostname)
+	return hostname, err
+}
+
+// GetMessagingConfiguration selects an active supplier-owned channel without exposing its secrets.
+func (r *ClientContactRepository) GetMessagingConfiguration(ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID, kind domain.ChannelType) (*domain.ChannelConfiguration, error) {
+	c := &domain.ChannelConfiguration{}
+	err := q.QueryRow(ctx, `SELECT c.id,c.branch_id,c.type,c.config FROM channel c JOIN branch b ON b.account_id=c.account_id AND b.id=c.branch_id AND b.is_active JOIN account a ON a.id=c.account_id AND a.is_active WHERE c.account_id=$1 AND c.type=$2 AND c.is_active AND c.config IS NOT NULL AND ($3::uuid='00000000-0000-0000-0000-000000000000' OR c.id=$3) AND ($4::uuid='00000000-0000-0000-0000-000000000000' OR c.branch_id=$4) ORDER BY c.id LIMIT 1`, accountID, kind, channelID, branchID).Scan(&c.ChannelID, &c.BranchID, &c.Type, &c.Config)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotConfigured
+	}
+	c.AccountID = accountID
+	return c, err
+}

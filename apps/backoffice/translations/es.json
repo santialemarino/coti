@@ -1587,7 +1587,7 @@
         "clientNew": "Crear cliente",
         "clientChoose": "Seleccioná un cliente",
         "clientTax": "CUIT/CUIL",
-        "clientName": "Nombre o razón social",
+        "clientName": "Nombre y apellido",
         "clientEmail": "Email (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
@@ -1598,7 +1598,8 @@
         "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá un email válido.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
-        "clientTags": "Etiquetas"
+        "clientTags": "Etiquetas",
+        "clientContactRequired": "Ingresá al menos un teléfono o un email."
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1861,7 +1862,7 @@
       "taxId": {
         "label": "CUIT o DNI",
         "placeholder": "Ingresá el CUIT o DNI",
-        "hint": "Formato: 30-70123456-8 para un CUIT o 12.345.678 para un DNI.",
+        "hint": "El CUIT/CUIL se incorpora al crear la cuenta en la webapp y no se puede modificar.",
         "invalid": "Ingresá un CUIT de 11 dígitos o un DNI de 7 u 8.",
         "checkDigit": "El CUIT no es válido: revisá el último dígito."
       },
@@ -1882,7 +1883,19 @@
         "INVALID_TAX_ID": "Revisá el CUIT o DNI del cliente."
       }
     },
-    "contactSuggestions": "Coincidencias pendientes"
+    "contactSuggestions": "Coincidencias pendientes",
+    "registration": {
+      "title": "Solicitar que complete sus datos",
+      "confirm": "Se enviará a {contact} un enlace para crear su cuenta o ingresar y completar sus datos.",
+      "send": "Enviar enlace",
+      "sending": "Enviando…",
+      "cancel": "Cancelar",
+      "whatsapp": "Solicitar datos por WhatsApp",
+      "email": "Solicitar datos por email",
+      "selectBranch": "Elegí una sucursal para enviar el enlace",
+      "sent": "Enviamos el enlace al cliente.",
+      "failed": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+    }
   },
   "reports": {
     "placeholderTitle": "Reportes",
@@ -2937,6 +2950,7 @@
     "cancel": "Cancelar",
     "retry": "Reintentar",
     "loadError": "No pudimos cargar las coincidencias.",
-    "resolveError": "No pudimos resolver la coincidencia. Revisá tus permisos o volvé a cargar la página."
+    "resolveError": "No pudimos resolver la coincidencia. Revisá tus permisos o volvé a cargar la página.",
+    "verificationRequired": "La asociación se realiza cuando el cliente confirma el contacto desde Mis datos."
   }
 }

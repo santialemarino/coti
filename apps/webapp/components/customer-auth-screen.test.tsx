@@ -48,6 +48,10 @@ it('offers Google first with explicit local login and registration alternatives'
 it('creates password credentials without requiring a recovery email', async () => {
   vi.mocked(signUpCustomer).mockResolvedValue({ error: 'unavailable' });
   const view = screen('signup');
+  fireEvent.change(view.getByLabelText('Nombre y apellido', { exact: false }), {
+    target: { value: 'Juan Perez' },
+  });
+  fireEvent.change(view.getByLabelText(/^WhatsApp/), { target: { value: '11 5555 0101' } });
   fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
     target: { value: '20123456786' },
   });

@@ -78,11 +78,7 @@ func (r *ClientRepository) FindByContacts(
 ) ([]domain.Client, error) {
 	rows, err := q.Query(ctx, `SELECT `+clientColumns+`
 		FROM client
-		WHERE account_id = $1 AND merged_into IS NULL AND (
-		  ($2::text IS NOT NULL AND regexp_replace(COALESCE(phone, ''), '[^0-9+]', '', 'g') = $2)
-		  OR ($3::text IS NOT NULL AND lower(btrim(COALESCE(email, ''))) = $3)
-		  OR EXISTS(SELECT 1 FROM client_contact cc WHERE cc.account_id=client.account_id AND cc.client_id=client.id AND ((cc.kind='WHATSAPP' AND regexp_replace(cc.value,'[^0-9+]','','g')=$2) OR (cc.kind='EMAIL' AND lower(btrim(cc.value))=$3)))
-		)
+		WHERE account_id=$1 AND merged_into IS NULL AND EXISTS(SELECT 1 FROM client_contact cc WHERE cc.account_id=client.account_id AND cc.client_id=client.id AND cc.verified_at IS NOT NULL AND cc.retired_at IS NULL AND ((cc.kind='WHATSAPP' AND cc.value=$2::text) OR (cc.kind='EMAIL' AND cc.value=$3::text)))
 		ORDER BY updated_at DESC, id
 		LIMIT 10`, accountID, phone, email)
 	if err != nil {

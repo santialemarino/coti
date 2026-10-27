@@ -24,6 +24,7 @@ import {
   InlineLink,
   Input,
   PendingButton,
+  PhoneInput,
   StatusScreen,
   TaxIdInput,
 } from '@repo/ui/components';
@@ -38,6 +39,7 @@ import {
 import { customerAuthSchema, type CustomerAuthMode } from '@/components/customer-auth-schema';
 import { ROUTES } from '@/config/routes';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { useFormatters } from '@/lib/i18n/formatters';
 
 interface CustomerAuthScreenProps {
   mode: CustomerAuthMode;
@@ -64,17 +66,21 @@ export function CustomerAuthScreen({
 }: CustomerAuthScreenProps) {
   const t = useTranslations('customerAuth');
   const common = useTranslations('common');
+  const phoneLabels = useTranslations('rfq.fields.phone');
+  const formatters = useFormatters();
   const [received, setReceived] = useState(false);
   const form = useForm({
     ...FORM_VALIDATION,
     resolver: zodResolver(
       customerAuthSchema(mode, (key, values) => t(`validation.${key}`, values), minimum),
     ),
-    defaultValues: { taxId, password: '', confirmation: '', email: '' },
+    defaultValues: { taxId, password: '', confirmation: '', email: '', name: '', phone: '' },
   });
-  const fields: ('taxId' | 'email' | 'password' | 'confirmation')[] = [];
+  const fields: ('name' | 'taxId' | 'email' | 'phone' | 'password' | 'confirmation')[] = [];
+  if (mode === 'signup' || mode === 'google') fields.push('name');
   if (['login', 'signup', 'forgot', 'google', 'linkGoogle'].includes(mode)) fields.push('taxId');
   if (['signup', 'forgot'].includes(mode)) fields.push('email');
+  if (mode === 'signup') fields.push('phone');
   if (['login', 'signup', 'reset'].includes(mode)) fields.push('password');
   if (['signup', 'reset'].includes(mode)) fields.push('confirmation');
   const loginUrl = `${ROUTES.login}?method=password&next=${encodeURIComponent(next)}`;
@@ -92,12 +98,19 @@ export function CustomerAuthScreen({
     password: string;
     confirmation: string;
     email: string;
+    name?: string;
+    phone?: string;
   }) {
     const result =
       mode === 'login'
         ? await signInCustomer({ ...values, next })
         : mode === 'signup'
-          ? await signUpCustomer({ ...values, next })
+          ? await signUpCustomer({
+              ...values,
+              name: values.name || '',
+              phone: values.phone || '',
+              next,
+            })
           : mode === 'forgot'
             ? await recoverCustomerPassword(values)
             : mode === 'reset'
@@ -106,6 +119,7 @@ export function CustomerAuthScreen({
                 ? await verifyCustomerEmail(token)
                 : await completeCustomerGoogle({
                     taxId: values.taxId,
+                    name: values.name,
                     next,
                     link: mode === 'linkGoogle',
                   });
@@ -203,13 +217,35 @@ export function CustomerAuthScreen({
                           name={name}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel required={!(name === 'email' && mode === 'signup')}>
+                              <FormLabel
+                                required={!(['email', 'phone'].includes(name) && mode === 'signup')}
+                              >
                                 {t(
                                   `fields.${name}${name === 'email' && mode === 'signup' ? 'Optional' : ''}`,
                                 )}
                               </FormLabel>
                               <FormControl>
-                                {name === 'taxId' ? (
+                                {name === 'phone' ? (
+                                  <PhoneInput
+                                    {...field}
+                                    value={field.value || ''}
+                                    formatters={formatters}
+                                    countryLabel={phoneLabels('country')}
+                                    countrySearchPlaceholder={phoneLabels('search')}
+                                    countryEmptyLabel={phoneLabels('empty')}
+                                    landlineNotice={{
+                                      message: phoneLabels('landline'),
+                                      action: (number) => phoneLabels('mobile', { number }),
+                                    }}
+                                  />
+                                ) : name === 'name' ? (
+                                  <Input
+                                    {...field}
+                                    value={field.value || ''}
+                                    autoComplete="name"
+                                    maxLength={255}
+                                  />
+                                ) : name === 'taxId' ? (
                                   <TaxIdInput
                                     kind="cuit"
                                     {...field}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -11,6 +12,7 @@ import {
   Button,
   Callout,
   Card,
+  Combobox,
   ConfirmDialog,
   Form,
   FormControl,
@@ -25,6 +27,7 @@ import {
   PhoneInput,
   RowActionButton,
 } from '@repo/ui/components';
+import { ContactVerification } from '@/app/profile/_components/contact-verification';
 import { saveCustomerProfile } from '@/app/profile/actions';
 import { customerProfileSchema, type CustomerProfileValues } from '@/app/profile/form-schema';
 import type { ContactKind, CustomerProfile } from '@/lib/api/customer-profile-model';
@@ -40,12 +43,21 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
   const phone = useTranslations('rfq.fields.phone');
   const fmt = useFormatters();
   const saving = useRef(false);
+  const router = useRouter();
   const [removing, setRemoving] = useState<{ index: number; value: string } | null>(null);
   const initial = profile.contacts.length ? profile.contacts : [];
   const form = useForm<CustomerProfileValues>({
     resolver: zodResolver(customerProfileSchema(errors)),
     defaultValues: {
       name: profile.name,
+      legalName: profile.legalName || '',
+      address: profile.address || '',
+      ivaCondition: (profile.ivaCondition || '') as
+        | ''
+        | 'REGISTERED'
+        | 'MONOTRIBUTO'
+        | 'EXEMPT'
+        | 'FINAL_CONSUMER',
       contacts: (['WHATSAPP', 'EMAIL'] as const).flatMap((kind) => {
         const rows = initial.filter((c) => c.kind === kind);
         return rows.length ? rows : [{ kind, value: '', primary: true }];
@@ -79,11 +91,12 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
     }
     toast.success(t('saved'));
     form.reset(data);
+    router.refresh();
   };
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(submit)} className="flex flex-col gap-y-6">
+      <form onSubmit={form.handleSubmit(submit)} noValidate className="flex flex-col gap-y-6">
         {profile.reviewPending ? <Callout>{t('reviewPending')}</Callout> : null}
         <Card className="px-6 gap-y-5">
           <div className="flex flex-col gap-y-2">
@@ -95,7 +108,7 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('name')}</FormLabel>
+                <FormLabel required>{t('name')}</FormLabel>
                 <FormControl>
                   <Input {...field} placeholder={t('namePlaceholder')} disabled={pending} />
                 </FormControl>
@@ -175,6 +188,17 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
                       {t(values[index]?.primary ? 'primary' : 'makePrimary')}
                     </Button>
                   ) : null}
+                  {profile.contacts.some(
+                    (c) => c.kind === kind && c.value === values[index]?.value,
+                  ) ? (
+                    <ContactVerification
+                      kind={kind}
+                      value={values[index]!.value}
+                      verified={profile.contacts.some(
+                        (c) => c.kind === kind && c.value === values[index]?.value && c.verified,
+                      )}
+                    />
+                  ) : null}
                 </div>
               ),
             )}
@@ -198,6 +222,52 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
             </Button>
           </Card>
         ))}
+        <Card className="px-6 gap-y-5">
+          <h2 className="text-heading-5">{t('fiscalTitle')}</h2>
+          {(['legalName', 'address'] as const).map((name) => (
+            <FormField
+              key={name}
+              control={form.control}
+              name={name}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t(name)}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      value={field.value || ''}
+                      maxLength={255}
+                      disabled={pending}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ))}
+          <FormField
+            control={form.control}
+            name="ivaCondition"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('ivaCondition')}</FormLabel>
+                <FormControl>
+                  <Combobox
+                    value={field.value || ''}
+                    onValueChange={field.onChange}
+                    resetValue=""
+                    placeholder={t('ivaPlaceholder')}
+                    options={['', 'REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER'].map(
+                      (value) => ({ value, label: t(value ? `iva.${value}` : 'ivaEmpty') }),
+                    )}
+                    disabled={pending}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </Card>
         <FormRootMessage />
         <PendingButton
           type="submit"

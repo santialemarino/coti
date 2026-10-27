@@ -105,7 +105,7 @@ idempotency, quote locking and deterministic state transitions remain enforced.
 The authenticated `/profile` page manages optional commercial contact collections through
 `GET`/`PUT /v1/customer/sites/{hostname}/profile`. It never modifies recovery email verification,
 passwords or Google links. See [Client profiles](client-profiles.md) for intake provenance,
-uniqueness, primary-contact compatibility and seller-reviewed contact suggestions.
+uniqueness, primary-contact compatibility and proof-gated history transfers.
 
 ## Request intake
 

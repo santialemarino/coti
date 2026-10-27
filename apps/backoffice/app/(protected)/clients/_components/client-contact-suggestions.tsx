@@ -9,7 +9,6 @@ import { useTranslations } from 'next-intl';
 import {
   Button,
   Card,
-  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -44,9 +43,6 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<ContactSuggestion | null>(null);
-  const [decision, setDecision] = useState<'ASSOCIATE' | 'SEPARATE' | 'MERGE' | null>(null);
-  const [pending, setPending] = useState(false);
-  const [mutationError, setMutationError] = useState('');
 
   useEffect(() => {
     if (!pathname.startsWith(ROUTES.clients)) return;
@@ -77,36 +73,6 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
       window.removeEventListener('client-contact-suggestions-changed', reload);
     };
   }, [pathname, activeBranchId, revision]);
-
-  const resolve = async () => {
-    if (!selected || !decision || pending) return;
-    setPending(true);
-    setMutationError('');
-    try {
-      const response = await fetch(
-        `/api/client-contact-suggestions/${encodeURIComponent(selected.id)}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(activeBranchId ? { 'X-Branch-Id': activeBranchId } : {}),
-          },
-          body: JSON.stringify({ action: decision }),
-        },
-      );
-      if (!response.ok) throw new Error('Suggestion resolution failed');
-      setItems((previous) => previous?.filter((item) => item.id !== selected.id) ?? null);
-      setDecision(null);
-      setSelected(null);
-      setRevision((value) => value + 1);
-      window.dispatchEvent(new Event('client-contact-suggestions-changed'));
-    } catch {
-      setMutationError(t('resolveError'));
-      setDecision(null);
-    } finally {
-      setPending(false);
-    }
-  };
 
   if (error)
     return (
@@ -163,7 +129,6 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
                 variant="outline"
                 onClick={() => {
                   setSelected(item);
-                  setMutationError('');
                 }}
               >
                 {t('review')}
@@ -175,10 +140,10 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
       <Dialog
         open={selected !== null}
         onOpenChange={(open) => {
-          if (!open && !pending) setSelected(null);
+          if (!open) setSelected(null);
         }}
       >
-        <DialogContent closeOnClickOutside={!pending} aria-describedby={undefined}>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{t('reviewTitle')}</DialogTitle>
           </DialogHeader>
@@ -206,53 +171,11 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
               <pre className="max-h-52 whitespace-pre-wrap wrap-anywhere scroll-area text-paragraph-sm">
                 {selected.originalText}
               </pre>
-              {mutationError ? (
-                <p role="alert" className="text-paragraph-sm text-danger-foreground">
-                  {mutationError}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {selected.candidateClientId ? (
-                  <Button disabled={pending} onClick={() => setDecision('ASSOCIATE')}>
-                    {t('associate')}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  disabled={pending}
-                  onClick={() => setDecision('SEPARATE')}
-                >
-                  {t('separate')}
-                </Button>
-                {selected.sourceClientId &&
-                selected.candidateClientId &&
-                selected.sourceClientId !== selected.candidateClientId ? (
-                  <Button variant="outline" disabled={pending} onClick={() => setDecision('MERGE')}>
-                    {t('merge')}
-                  </Button>
-                ) : null}
-              </div>
+              <p className="text-paragraph-sm text-foreground-muted">{t('verificationRequired')}</p>
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
-      <ConfirmDialog
-        open={decision !== null}
-        onOpenChange={(open) => {
-          if (!open && !pending) setDecision(null);
-        }}
-        entity={selected}
-        title={t(decision === 'MERGE' ? 'merge' : 'confirm')}
-        description={(item) =>
-          t(decision === 'MERGE' ? 'mergeDescription' : 'decisionDescription', {
-            value: item.value,
-          })
-        }
-        onConfirm={resolve}
-        pending={pending}
-        tone="default"
-        labels={{ confirm: t('confirm'), pending: t('saving'), cancel: t('cancel') }}
-      />
     </>
   );
 }

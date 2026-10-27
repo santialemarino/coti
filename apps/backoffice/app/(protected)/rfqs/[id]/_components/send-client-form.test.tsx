@@ -55,7 +55,7 @@ describe('send client selection', () => {
     const view = renderForm();
     await waitFor(() =>
       expect(view.onChange).toHaveBeenLastCalledWith({
-        taxId,
+        taxId: '',
         newClient: { name: 'Web customer', email: 'customer@example.test' },
         tagIds: [],
       }),
@@ -65,9 +65,12 @@ describe('send client selection', () => {
     );
     expect(getQuoteClientAssociation).toHaveBeenCalledWith('quote-1', 'branch-1');
   });
-  it('suggests the exact CUIT match and keeps its profile tags', async () => {
+  it('keeps the current registered profile and its tags', async () => {
     const tag = { id: 'tag-1', name: 'Frecuente', createdAt: '2026-10-19T00:00:00Z' };
-    vi.mocked(getClientDirectory).mockResolvedValue([{ ...candidate, tags: [tag] }]);
+    vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+      ...context,
+      currentClient: { ...candidate, tags: [tag] },
+    });
     const view = renderForm();
     await waitFor(() =>
       expect(view.onChange).toHaveBeenLastCalledWith({
@@ -78,26 +81,27 @@ describe('send client selection', () => {
     );
     expect(view.queryByLabelText(new RegExp(copy.clientName))).toBeNull();
   });
-  it('requires a choice when several profiles have the same CUIT', async () => {
-    vi.mocked(getClientDirectory).mockResolvedValue([
-      candidate,
-      { ...candidate, client: { ...candidate.client, id: 'client-2' } },
-    ]);
-    const view = renderForm();
-    await view.findByRole('combobox');
-    expect(view.onChange).toHaveBeenLastCalledWith(null);
-  });
-  it('does not accept a different CUIT for the selected profile', async () => {
+  it('does not claim a fiscal profile from unverified request declarations', async () => {
     vi.mocked(getClientDirectory).mockResolvedValue([candidate]);
     const view = renderForm();
     await waitFor(() =>
-      expect(view.onChange).toHaveBeenLastCalledWith({ taxId, clientId: 'client-1', tagIds: [] }),
+      expect(view.onChange).toHaveBeenLastCalledWith({
+        taxId: '',
+        newClient: { name: 'Web customer', email: 'customer@example.test' },
+        tagIds: [],
+      }),
     );
-    fireEvent.change(view.getByLabelText(new RegExp(copy.clientTax)), {
-      target: { value: '30712345671' },
-    });
+    expect(view.queryByLabelText(new RegExp(copy.clientTax))).toBeNull();
+  });
+  it('requires a contact for a new provisional profile', async () => {
+    const view = renderForm();
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ newClient: expect.anything() }),
+      ),
+    );
+    fireEvent.change(view.getByLabelText(copy.clientEmail), { target: { value: '' } });
     await waitFor(() => expect(view.onChange).toHaveBeenLastCalledWith(null));
-    expect(view.getByText(copy.clientTaxMismatch)).toBeTruthy();
   });
   it('leaves sending unavailable when client context cannot be read', async () => {
     vi.mocked(getQuoteClientAssociation).mockRejectedValue(new Error('offline'));

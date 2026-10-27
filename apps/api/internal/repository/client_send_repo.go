@@ -43,18 +43,3 @@ func (r *ClientRepository) GetRequestContact(ctx context.Context, q Querier, acc
 	}
 	return &hints, err
 }
-
-// SetMissingTaxID fills an unassigned identifier without overwriting fiscal data.
-func (r *ClientRepository) SetMissingTaxID(ctx context.Context, q Querier, accountID, clientID uuid.UUID, taxID string) error {
-	result, err := q.Exec(ctx, `UPDATE client SET tax_id=$3,updated_at=now() WHERE account_id=$1 AND id=$2 AND merged_into IS NULL AND (tax_id IS NULL OR tax_id=$3)`, accountID, clientID, taxID)
-	if isUniqueViolation(err, "uq_client_account_tax_id") {
-		return domain.ErrConflict
-	}
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected() != 1 {
-		return domain.ErrConflict
-	}
-	return nil
-}

@@ -204,7 +204,7 @@ func readyInputs() invoiceInputs {
 		pointOfSale: &pos,
 		credential: &domain.ARCACredentialStatus{CUIT: "30712345671",
 			ExpiresAt: now.AddDate(1, 0, 0)},
-		receiver:        domain.InvoiceReceiver{DocType: domain.ReceiverDocNone},
+		receiver:        domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"},
 		amounts:         domain.InvoiceAmounts{Total: dec("1000.00")},
 		invoiceType:     domain.InvoiceTypeB,
 		unidentifiedMax: dec("10000000"),
@@ -247,6 +247,7 @@ func TestInvoiceIssues_ReceiverRules(t *testing.T) {
 	}
 
 	large := readyInputs()
+	large.receiver = domain.InvoiceReceiver{DocType: domain.ReceiverDocNone}
 	large.amounts.Total = dec("10000000.00")
 	if got := invoiceIssues(large); !slices.Contains(got, invoiceIssueReceiverID) {
 		t.Errorf("unidentified at the threshold: issues = %v, want %s", got, invoiceIssueReceiverID)

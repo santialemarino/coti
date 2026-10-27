@@ -200,31 +200,23 @@ func (s *InvoiceService) GetClientFiscal(
 	return client, err
 }
 
-// UpdateClientFiscal replaces a client's legal name, tax id and IVA condition. The tax id is a CUIT
-// (11 digits, check digit verified) or a DNI (7 or 8 digits); separators are dropped.
-func (s *InvoiceService) UpdateClientFiscal(
-	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate,
-) (*domain.ClientFiscal, error) {
+// UpdateClientFiscal changes optional fiscal data without changing the immutable CUIT/CUIL.
+func (s *InvoiceService) UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error) {
 	if in.IVACondition != nil && !in.IVACondition.Valid() {
-		return nil, fmt.Errorf("%w: unknown IVA condition %q", domain.ErrInvalidInput, *in.IVACondition)
+		return nil, domain.ErrInvalidInput
 	}
 	in.Address = trimmedOrNil(in.Address)
 	in.LegalName = trimmedOrNil(in.LegalName)
-	if in.TaxID != nil {
-		digits := domain.DigitsOnly(*in.TaxID)
-		switch {
-		case digits == "":
-			in.TaxID = nil
-		case len(digits) == 11 && validCUIT(digits), len(digits) == 7, len(digits) == 8:
-			in.TaxID = &digits
-		default:
-			return nil, domain.WithCode(domain.CodeInvalidTaxID,
-				fmt.Errorf("%w: %q is neither a valid CUIT nor a DNI", domain.ErrInvalidInput, *in.TaxID))
-		}
-	}
 	var client *domain.ClientFiscal
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
+		existing, err := s.store.GetClientFiscal(ctx, q, tenant.AccountID, clientID)
+		if err != nil {
+			return err
+		}
+		if in.TaxID != nil && (existing.TaxID == nil || domain.DigitsOnly(*in.TaxID) != *existing.TaxID) {
+			return domain.WithCode(domain.CodeInvalidTaxID, domain.ErrInvalidInput)
+		}
+		in.TaxID = existing.TaxID
 		client, err = s.store.UpdateClientFiscal(ctx, q, tenant.AccountID, clientID, in)
 		return err
 	})

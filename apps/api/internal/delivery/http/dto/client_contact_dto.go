@@ -1,15 +1,47 @@
 package dto
 
 import (
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-// ClientContactResponse is one commercial destination in a customer profile.
-type ClientContactResponse struct {
+// ContactVerificationRequest names a destination already saved in the customer's own profile.
+type ContactVerificationRequest struct {
+	Kind  string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
+	Value string `json:"value" binding:"required,max=255"`
+}
+
+// ContactRegistrationLinkRequest selects the customer's primary contact channel.
+type ContactRegistrationLinkRequest struct {
+	Kind string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
+}
+
+// ContactVerificationResponse exposes the challenge identifier without its secret.
+type ContactVerificationResponse struct {
+	ID        uuid.UUID `json:"id"`
+	ExpiresAt string    `json:"expires_at"`
+}
+
+// ContactVerificationConfirmation redeems a one-use email token or WhatsApp code.
+type ContactVerificationConfirmation struct {
+	ID    uuid.UUID `json:"id" binding:"required"`
+	Token string    `json:"token" binding:"required,max=128"`
+}
+
+// ClientContactInput declares a destination without granting verification authority.
+type ClientContactInput struct {
 	Kind    string `json:"kind" binding:"required,oneof=WHATSAPP EMAIL"`
 	Value   string `json:"value" binding:"required,max=255"`
 	Primary bool   `json:"primary"`
+}
+
+// ClientContactResponse is one commercial destination in a customer profile.
+type ClientContactResponse struct {
+	Kind     string `json:"kind" binding:"required,oneof=WHATSAPP EMAIL"`
+	Value    string `json:"value" binding:"required,max=255"`
+	Primary  bool   `json:"primary"`
+	Verified bool   `json:"verified"`
 }
 
 // CustomerProfileResponse is returned by GET /v1/customer/sites/{hostname}/profile.
@@ -19,12 +51,18 @@ type CustomerProfileResponse struct {
 	TaxID         string                  `json:"tax_id"`
 	Name          string                  `json:"name"`
 	Contacts      []ClientContactResponse `json:"contacts"`
+	LegalName     *string                 `json:"legal_name"`
+	IVACondition  *string                 `json:"iva_condition"`
+	Address       *string                 `json:"fiscal_address"`
 }
 
 // UpdateCustomerProfileRequest replaces the authenticated customer's commercial data.
 type UpdateCustomerProfileRequest struct {
-	Name     string                  `json:"name" binding:"max=255"`
-	Contacts []ClientContactResponse `json:"contacts" binding:"required,dive"`
+	Name         string               `json:"name" binding:"required,max=255"`
+	Contacts     []ClientContactInput `json:"contacts" binding:"required,dive"`
+	LegalName    *string              `json:"legal_name" binding:"omitempty,max=255"`
+	IVACondition *string              `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
+	Address      *string              `json:"fiscal_address" binding:"omitempty,max=255"`
 }
 
 // ContactSuggestionResponse is one branch-visible inbound association case.

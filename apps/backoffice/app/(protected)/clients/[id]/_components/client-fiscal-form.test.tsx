@@ -47,9 +47,8 @@ describe('client profile fiscal data', () => {
       taxId: '30701234568',
       address: 'San Martin 123',
     });
-    const view = show();
+    const view = show({ ...client, taxId: '30701234568' });
     fireEvent.change(view.getByLabelText(t.legalName.label), { target: { value: 'Obra SA' } });
-    fireEvent.change(view.getByLabelText(t.taxId.label), { target: { value: '30-70123456-8' } });
     fireEvent.change(view.getByLabelText(t.address.label), { target: { value: 'San Martin 123' } });
     fireEvent.submit(view.getByRole('form', { name: t.title }));
     await waitFor(() =>
@@ -64,37 +63,22 @@ describe('client profile fiscal data', () => {
     expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30-70123456-8');
   });
 
-  it('takes a DNI in its own shape and saves its digits', async () => {
-    vi.mocked(updateClientFiscal).mockResolvedValue({ ...client, taxId: '12345678' });
+  it('keeps a registered CUIT read-only', () => {
+    const view = show({ ...client, taxId: '30701234568' });
+    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('readOnly', true);
+    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('value', '30-70123456-8');
+  });
+  it('allows optional fiscal edits on a provisional profile without assigning CUIT', async () => {
+    vi.mocked(updateClientFiscal).mockResolvedValue({ ...client, legalName: 'Obra SA' });
     const view = show();
-    const taxId = view.getByLabelText(t.taxId.label);
-
-    fireEvent.change(taxId, { target: { value: '12 345 678' } });
-    expect(taxId).toHaveProperty('value', '12.345.678');
+    expect(view.getByLabelText(t.taxId.label)).toHaveProperty('readOnly', true);
+    fireEvent.change(view.getByLabelText(t.legalName.label), { target: { value: 'Obra SA' } });
     fireEvent.submit(view.getByRole('form', { name: t.title }));
-
     await waitFor(() =>
       expect(updateClientFiscal).toHaveBeenCalledWith(
         client.id,
-        expect.objectContaining({ taxId: '12345678' }),
+        expect.objectContaining({ legalName: 'Obra SA', taxId: undefined }),
       ),
     );
-  });
-
-  it('refuses a number that is neither a CUIT nor a DNI', async () => {
-    const view = show();
-
-    fireEvent.change(view.getByLabelText(t.taxId.label), { target: { value: '123456789' } });
-    fireEvent.submit(view.getByRole('form', { name: t.title }));
-
-    await waitFor(() => expect(view.getByText(t.taxId.invalid)).toBeTruthy());
-    expect(updateClientFiscal).not.toHaveBeenCalled();
-  });
-  it('prevents an invalid CUIT from reaching the client update', async () => {
-    const view = show();
-    fireEvent.change(view.getByLabelText(t.taxId.label), { target: { value: '20-12345678-5' } });
-    fireEvent.submit(view.getByRole('form', { name: t.title }));
-    await waitFor(() => expect(view.getByText(t.taxId.checkDigit)).toBeTruthy());
-    expect(updateClientFiscal).not.toHaveBeenCalled();
   });
 });

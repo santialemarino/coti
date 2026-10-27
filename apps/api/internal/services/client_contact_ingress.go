@@ -12,7 +12,7 @@ import (
 )
 
 var declaredTaxPattern = regexp.MustCompile(`(?i)\b(?:CUIT|CUIL)\s*:?\s*([0-9]{2}[ .-]?[0-9]{8}[ .-]?[0-9])\b`)
-var declaredNamePattern = regexp.MustCompile(`(?i)^(?:hola[, ]+)?soy\s+([\p{L}][\p{L}'\-]*)[.!]?$`)
+var declaredNamePattern = regexp.MustCompile(`(?i)^nombre y apellido\s*:\s*([\p{L}][\p{L}\p{M}\x{27}\- ]*)[.!]?$`)
 
 type inboundContactRecorder interface {
 	RecordInbound(context.Context, repository.Querier, domain.InboundChannelRoute, uuid.UUID, domain.ChannelType, string, string, domain.ClientContactHints) error
@@ -63,7 +63,11 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 		return domain.ErrForbidden
 	}
 	return s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
-		if err := s.contacts.Lock(ctx, q, p.AccountID, "commercial-contacts"); err != nil {
+		incoming := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: in.Phone}, {Kind: domain.ChannelTypeEmail, Value: in.Email}}
+		if err := s.lockContactValues(ctx, q, p.AccountID, incoming); err != nil {
+			return err
+		}
+		if err := s.lockContactProfiles(ctx, q, p.AccountID, p.TaxID, nil); err != nil {
 			return err
 		}
 		seen, err := s.contacts.HasObservation(ctx, q, p.AccountID, messageID)
@@ -91,7 +95,6 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 			return err
 		}
 		contacts := current[client.ID]
-		incoming := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: in.Phone}, {Kind: domain.ChannelTypeEmail, Value: in.Email}}
 		for _, contact := range incoming {
 			if contact.Value == "" {
 				continue

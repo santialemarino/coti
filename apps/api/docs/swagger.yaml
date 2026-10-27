@@ -405,6 +405,22 @@ definitions:
       tax_id:
         type: string
     type: object
+  dto.ClientContactInput:
+    properties:
+      kind:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        type: string
+      primary:
+        type: boolean
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
   dto.ClientContactResponse:
     properties:
       kind:
@@ -417,6 +433,8 @@ definitions:
       value:
         maxLength: 255
         type: string
+      verified:
+        type: boolean
     required:
     - kind
     - value
@@ -596,6 +614,16 @@ definitions:
       imported_rows:
         type: integer
     type: object
+  dto.ContactRegistrationLinkRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+    required:
+    - kind
+    type: object
   dto.ContactSuggestionResponse:
     properties:
       candidate_client_id:
@@ -617,6 +645,38 @@ definitions:
       tax_id:
         type: string
       value:
+        type: string
+    type: object
+  dto.ContactVerificationConfirmation:
+    properties:
+      id:
+        type: string
+      token:
+        maxLength: 128
+        type: string
+    required:
+    - id
+    - token
+    type: object
+  dto.ContactVerificationRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
+  dto.ContactVerificationResponse:
+    properties:
+      expires_at:
+        type: string
+      id:
         type: string
     type: object
   dto.ConversationBatchResponse:
@@ -981,6 +1041,9 @@ definitions:
     type: object
   dto.CustomerGoogleCompleteRequest:
     properties:
+      name:
+        maxLength: 255
+        type: string
       tax_id:
         maxLength: 20
         type: string
@@ -1071,12 +1134,31 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientContactResponse'
         type: array
+      fiscal_address:
+        type: string
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
       name:
         type: string
       review_pending:
         type: boolean
       tax_id:
         type: string
+    type: object
+  dto.CustomerRecoveryEmailRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+    type: object
+  dto.CustomerRecoveryEmailResponse:
+    properties:
+      email:
+        type: string
+      verified:
+        type: boolean
     type: object
   dto.CustomerRecoveryRequest:
     properties:
@@ -1088,6 +1170,31 @@ definitions:
         type: string
     required:
     - email
+    - tax_id
+    type: object
+  dto.CustomerRegistrationRequest:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactInput'
+        minItems: 1
+        type: array
+      name:
+        maxLength: 255
+        type: string
+      password:
+        maxLength: 72
+        type: string
+      recovery_email:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - contacts
+    - name
+    - password
     - tax_id
     type: object
   dto.CustomerSessionResponse:
@@ -2807,13 +2914,27 @@ definitions:
     properties:
       contacts:
         items:
-          $ref: '#/definitions/dto.ClientContactResponse'
+          $ref: '#/definitions/dto.ClientContactInput'
         type: array
+      fiscal_address:
+        maxLength: 255
+        type: string
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
       name:
         maxLength: 255
         type: string
     required:
     - contacts
+    - name
     type: object
   dto.UpdateDiscountRequest:
     properties:
@@ -3773,6 +3894,7 @@ paths:
     put:
       consumes:
       - application/json
+      deprecated: true
       parameters:
       - description: Branch filter
         in: header
@@ -3790,8 +3912,6 @@ paths:
         schema:
           $ref: '#/definitions/dto.ResolveContactSuggestionRequest'
       responses:
-        "204":
-          description: No Content
         "400":
           description: Bad Request
           schema:
@@ -3818,7 +3938,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Resolve a client contact suggestion
+      summary: Reject retired contact association decisions
       tags:
       - clients
   /v1/clients:
@@ -3968,6 +4088,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a client's fiscal data
+      tags:
+      - clients
+  /v1/clients/{clientId}/registration-link:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Selected branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Contact channel
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactRegistrationLinkRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Send customer registration or profile link
       tags:
       - clients
   /v1/clients/{clientId}/tags:
@@ -4230,6 +4399,65 @@ paths:
       summary: Log out as a customer
       tags:
       - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery-email:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerRecoveryEmailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get customer recovery email
+      tags:
+      - customer-auth
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Optional recovery email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryEmailRequest'
+      responses:
+        "204":
+          description: Recovery email saved
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update customer recovery email
+      tags:
+      - customer-auth
   /v1/customer/sites/{hostname}/auth/register:
     post:
       consumes:
@@ -4240,12 +4468,12 @@ paths:
         name: hostname
         required: true
         type: string
-      - description: CUIT/CUIL and password
+      - description: CUIT/CUIL, credentials, full name and contacts
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+          $ref: '#/definitions/dto.CustomerRegistrationRequest'
       produces:
       - application/json
       responses:
@@ -4468,6 +4696,102 @@ paths:
       security:
       - BearerAuth: []
       summary: Update customer commercial profile
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Saved contact destination
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactVerificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "423":
+          description: Locked
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Request customer contact verification
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification/confirm:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Challenge and received proof
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactVerificationConfirmation'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm customer contact verification
       tags:
       - customer-profile
   /v1/customer/sites/{hostname}/quote-sends/{token}:

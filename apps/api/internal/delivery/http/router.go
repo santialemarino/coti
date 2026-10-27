@@ -113,9 +113,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		customers.POST("/auth/login", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.Login)
 		customers.Use(middleware.RequireCustomer(auth.Customer))
 		customers.GET("/me", h.CustomerAuth.Me)
+		customers.GET("/auth/recovery-email", h.CustomerAuth.GetRecoveryEmail)
+		customers.PUT("/auth/recovery-email", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.UpdateRecoveryEmail)
 		if h.ClientContacts != nil {
 			customers.GET("/profile", h.ClientContacts.GetProfile)
 			customers.PUT("/profile", h.ClientContacts.UpdateProfile)
+			customers.POST("/profile/contacts/verification", h.ClientContacts.RequestVerification)
+			customers.POST("/profile/contacts/verification/confirm", h.ClientContacts.ConfirmVerification)
 		}
 		customers.POST("/auth/logout", h.CustomerAuth.Logout)
 		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)
@@ -250,6 +254,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
 	if h.ClientContacts != nil {
+		clients.POST("/:clientId/registration-link", h.ClientContacts.SendRegistrationLink)
 		verified.GET("/client-contact-suggestions", h.ClientContacts.ListSuggestions)
 		verified.PUT("/client-contact-suggestions/:suggestionId", h.ClientContacts.ResolveSuggestion)
 	}

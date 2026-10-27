@@ -31,7 +31,7 @@ function errorForStatus(status: number): string {
       ? 'locked'
       : status === 401
         ? 'credentials'
-        : status === 400
+        : status === 400 || status === 422
           ? 'invalid'
           : 'unavailable';
 }
@@ -57,6 +57,8 @@ export async function signInCustomer(values: {
 }
 
 export async function signUpCustomer(values: {
+  name: string;
+  phone: string;
   taxId: string;
   password: string;
   email: string;
@@ -69,6 +71,7 @@ export async function signUpCustomer(values: {
       values.password,
       forwardedClientAddress(await headers()),
       values.email,
+      { name: values.name, phone: values.phone, email: values.email },
     );
   } catch (error) {
     return {
@@ -79,6 +82,7 @@ export async function signUpCustomer(values: {
 }
 
 export async function completeCustomerGoogle(values: {
+  name?: string;
   taxId: string;
   next: string;
   link?: boolean;
@@ -88,7 +92,7 @@ export async function completeCustomerGoogle(values: {
   try {
     const response = await postCustomerAuth(
       values.link ? '/auth/google/link' : '/auth/google/complete',
-      { token, tax_id: values.taxId },
+      { token, tax_id: values.taxId, name: values.name },
       values.link,
     );
     if (!response.ok) return { error: errorForStatus(response.status) };

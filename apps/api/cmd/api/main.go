@@ -208,6 +208,10 @@ func run() error {
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
+	customerAuthService.WithClientProfiles(contactService)
+	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
+	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin)
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
 		cfg.RFQ, cfg.Storage.MaxFileSize).WithContacts(contactService)
@@ -318,7 +322,7 @@ func run() error {
 				quoteRepresentationService, highConfidence),
 			Conversation:   handler.NewConversationHandler(conversationReviewService),
 			Client:         handler.NewClientHandler(clientService),
-			ClientContacts: handler.NewClientContactHandler(contactService),
+			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			Prices:         handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport:  handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:        handler.NewAccountHandler(accountService),

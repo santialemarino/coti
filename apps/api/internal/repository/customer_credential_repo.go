@@ -92,3 +92,26 @@ func (r *CustomerAuthRepository) ResetCustomerPassword(ctx context.Context, q Qu
 	_, err = q.Exec(ctx, `UPDATE customer_auth_challenge SET consumed_at=$3 WHERE account_id=$1 AND customer_id=$2 AND purpose='RESET_PASSWORD' AND consumed_at IS NULL`, accountID, customerID, now)
 	return err
 }
+
+// SetRecoveryEmail invalidates previous capabilities when the recovery destination changes.
+func (r *CustomerAuthRepository) SetRecoveryEmail(ctx context.Context, q Querier, accountID, customerID uuid.UUID, email *string) error {
+	result, err := q.Exec(ctx, `UPDATE customer_identity SET recovery_email=$3,recovery_email_verified_at=NULL WHERE account_id=$1 AND id=$2 AND disabled_at IS NULL`, accountID, customerID, email)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return domain.ErrUnauthenticated
+	}
+	_, err = q.Exec(ctx, `UPDATE customer_auth_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND purpose IN ('VERIFY_EMAIL','RESET_PASSWORD') AND consumed_at IS NULL`, accountID, customerID)
+	return err
+}
+
+// GetChallengeCustomer resolves a recovery proof before acquiring the credential row lock.
+func (r *CustomerAuthRepository) GetChallengeCustomer(ctx context.Context, q Querier, accountID uuid.UUID, hash string, purpose domain.CustomerChallengePurpose, now time.Time) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT customer_id FROM customer_auth_challenge WHERE account_id=$1 AND token_hash=$2 AND purpose=$3 AND consumed_at IS NULL AND expires_at>$4 AND customer_id IS NOT NULL`, accountID, hash, purpose, now).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, domain.ErrUnauthenticated
+	}
+	return id, err
+}

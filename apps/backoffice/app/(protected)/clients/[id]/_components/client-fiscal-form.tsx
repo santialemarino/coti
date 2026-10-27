@@ -143,6 +143,7 @@ export function ClientFiscalForm({ client }: ClientFiscalFormProps) {
                     <FormLabel>{t('taxId.label')}</FormLabel>
                     <FormControl>
                       <TaxIdInput
+                        readOnly
                         kind="cuit-or-dni"
                         disabled={form.formState.isSubmitting}
                         placeholder={t('taxId.placeholder')}

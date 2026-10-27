@@ -18,7 +18,7 @@ func NewClientContactRepository() *ClientContactRepository { return &ClientConta
 
 // List returns contacts for a batch of account-owned profiles.
 func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error) {
-	rows, err := q.Query(ctx, `SELECT client_id,id,kind,value,is_primary FROM client_contact WHERE account_id=$1 AND client_id=ANY($2) ORDER BY kind,is_primary DESC,created_at,id`, accountID, ids)
+	rows, err := q.Query(ctx, `SELECT client_id,id,kind,value,is_primary,verified_at IS NOT NULL FROM client_contact WHERE account_id=$1 AND client_id=ANY($2) ORDER BY kind,is_primary DESC,created_at,id`, accountID, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID
 	for rows.Next() {
 		var id uuid.UUID
 		var c domain.ClientContact
-		if err := rows.Scan(&id, &c.ID, &c.Kind, &c.Value, &c.Primary); err != nil {
+		if err := rows.Scan(&id, &c.ID, &c.Kind, &c.Value, &c.Primary, &c.Verified); err != nil {
 			return nil, err
 		}
 		result[id] = append(result[id], c)
@@ -65,7 +65,7 @@ func (r *ClientContactRepository) GetObservation(ctx context.Context, q Querier,
 
 // FindProfiles returns exact fiscal or contact candidates without associating records.
 func (r *ClientContactRepository) FindProfiles(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, kind domain.ChannelType, value string) ([]domain.Client, error) {
-	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND (tax_id=NULLIF($2,'') OR id IN (SELECT client_id FROM client_contact WHERE account_id=$1 AND kind=$3 AND CASE WHEN kind='EMAIL' THEN lower(btrim(value)) ELSE regexp_replace(value,'[^0-9+]','','g') END=$4)) ORDER BY id`, accountID, taxID, kind, value)
+	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND (tax_id=NULLIF($2,'') OR id IN (SELECT client_id FROM client_contact WHERE account_id=$1 AND kind=$3 AND verified_at IS NOT NULL AND CASE WHEN kind='EMAIL' THEN lower(btrim(value)) ELSE regexp_replace(value,'[^0-9+]','','g') END=$4)) ORDER BY id`, accountID, taxID, kind, value)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`, accountID, clientID, payload); err != nil {
 		return err
 	}
-	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4 FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source); err != nil {
+	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source); err != nil {
 		return err
 	}
 	_, err = q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
@@ -161,9 +161,12 @@ func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant 
 	return err
 }
 
-// Lock serializes contact edits and intake decisions using account-scoped keys.
-func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID uuid.UUID, key string) error {
-	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, accountID.String()+":"+key)
+// Lock acquires account-scoped identity keys in a stable order within the caller's transaction.
+func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID uuid.UUID, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || key,0)) FROM (SELECT DISTINCT unnest($2::text[]) AS key ORDER BY key) AS locks`, accountID.String(), keys)
 	return err
 }
 
@@ -176,6 +179,9 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	}
 	if !allowed {
 		return domain.ErrForbidden
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now() WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
+		return err
 	}
 	if _, err = q.Exec(ctx, `INSERT INTO client_tag(account_id,client_id,tag_id) SELECT account_id,$3,tag_id FROM client_tag WHERE account_id=$1 AND client_id=$2 ON CONFLICT(client_id,tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
 		return err

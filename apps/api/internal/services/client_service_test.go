@@ -225,7 +225,7 @@ func TestClientService_AssociateQuote_UpdatesBothRecordsAndTags(t *testing.T) {
 	h.tags.selected = []domain.ClientTag{{ID: tagID, AccountID: testAccountID, Name: "Recurrente"}}
 
 	err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
-		&domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID,
+		&domain.AssociateQuoteClientInput{ClientID: &clientID,
 			TagIDs: []uuid.UUID{tagID, tagID}})
 	if err != nil {
 		t.Fatalf("AssociateQuote() = %v, want no error", err)
@@ -269,7 +269,7 @@ func TestClientService_ClientAssociation_RefusesArchivedQuote(t *testing.T) {
 	clientID := uuid.New()
 	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
 	associateErr := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
-		&domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID})
+		&domain.AssociateQuoteClientInput{ClientID: &clientID})
 	if domain.CodeOf(associateErr) != domain.CodeQuoteArchived {
 		t.Fatalf("AssociateQuote() error = %v, want QUOTE_ARCHIVED", associateErr)
 	}
@@ -285,7 +285,7 @@ func TestClientService_AssociateQuote_NormalizesNewProfile(t *testing.T) {
 	email := " COMPRAS@CLIENTE.TEST "
 
 	err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
-		&domain.AssociateQuoteClientInput{TaxID: "20123456786", New: &domain.NewClient{Name: &name, Phone: &phone,
+		&domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone,
 			Email: &email}})
 	if err != nil {
 		t.Fatalf("AssociateQuote() = %v, want no error", err)
