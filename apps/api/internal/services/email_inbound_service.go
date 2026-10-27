@@ -280,7 +280,7 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			return errInboundAlreadyReserved
 		}
 		if s.contacts != nil {
-			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, declaredClientData(message.Body)); err != nil {
+			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, channelClientData(message.Body, &message.SenderLabel)); err != nil {
 				return err
 			}
 		}

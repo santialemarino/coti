@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 func (e *env) registerCustomer(t *testing.T, accountID uuid.UUID, taxID, email string) (string, string) {
@@ -79,7 +81,7 @@ func TestCustomerAuthRecoveryRequiresVerifiedMatchingEmailAndRevokesSessions(t *
 	}
 }
 
-func TestCustomerHistoryIncludesEarlierCUITRequestsButIsolatesCustomersAndSuppliers(t *testing.T) {
+func TestCustomerHistoryRequiresContactProofAndIsolatesCustomersAndSuppliers(t *testing.T) {
 	e := newEnv(t)
 	accountID, branchID := e.seedAccount(t, "Customer history")
 	otherAccount, _ := e.seedAccount(t, "Other supplier")
@@ -89,7 +91,7 @@ func TestCustomerHistoryIncludesEarlierCUITRequestsButIsolatesCustomersAndSuppli
 		t.Fatal(err)
 	}
 	clientID := uuid.New()
-	if _, err = e.db.CrossAccount().Exec(context.Background(), `INSERT INTO client(id,account_id,name,tax_id) VALUES($1,$2,'Previous client','20123456786')`, clientID, accountID); err != nil {
+	if _, err = e.db.CrossAccount().Exec(context.Background(), `INSERT INTO client(id,account_id,name,tax_id,email) VALUES($1,$2,'Previous client','20123456786','legacy@example.test')`, clientID, accountID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = e.db.CrossAccount().Exec(context.Background(), `INSERT INTO rfq(id,account_id,branch_id,channel_id,client_id,raw_text) VALUES($1,$2,$3,$4,$5,'Previous counter request')`, rfqID, accountID, branchID, channelID, clientID); err != nil {
@@ -105,6 +107,26 @@ func TestCustomerHistoryIncludesEarlierCUITRequestsButIsolatesCustomersAndSuppli
 	if err = json.Unmarshal(rec.Body.Bytes(), &orders); err != nil {
 		t.Fatal(err)
 	}
+	if rec.Code != http.StatusOK || len(orders) != 0 {
+		t.Fatalf("unproved CUIT exposed history: %d %s", rec.Code, rec.Body)
+	}
+	if denied := e.do(t, request{method: http.MethodGet, path: base + "/orders/" + rfqID.String(), token: token}); denied.Code != http.StatusNotFound {
+		t.Fatalf("unproved detail status=%d", denied.Code)
+	}
+
+	e.verifyCustomerContact(t, accountID, "20123456786", "EMAIL", "customer20123456786@example.test", true)
+	rec = e.do(t, request{method: http.MethodGet, path: base + "/orders", token: token})
+	if err = json.Unmarshal(rec.Body.Bytes(), &orders); err != nil {
+		t.Fatal(err)
+	}
+	if len(orders) != 0 {
+		t.Fatalf("new signup contact unlocked legacy history: %s", rec.Body)
+	}
+	e.verifyCustomerContact(t, accountID, "20123456786", "EMAIL", "legacy@example.test", true)
+	rec = e.do(t, request{method: http.MethodGet, path: base + "/orders", token: token})
+	if err = json.Unmarshal(rec.Body.Bytes(), &orders); err != nil {
+		t.Fatal(err)
+	}
 	if rec.Code != http.StatusOK || len(orders) != 1 || orders[0].ID != rfqID || orders[0].Token != nil {
 		t.Fatalf("history: %d %s", rec.Code, rec.Body)
 	}
@@ -113,6 +135,27 @@ func TestCustomerHistoryIncludesEarlierCUITRequestsButIsolatesCustomersAndSuppli
 		t.Fatalf("other customer read request: %d %s", rec.Code, rec.Body)
 	}
 	otherHost, _ := e.registerCustomer(t, otherAccount, "20123456786", "")
+
+	if err := e.db.InTenantTx(context.Background(), domain.Tenant{AccountID: otherAccount}, func(q repository.Querier) error {
+		var count int
+		if err := q.QueryRow(context.Background(), `SELECT count(*) FROM customer_contact_ownership WHERE account_id=$1`, accountID).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			t.Fatal("ownership rows crossed RLS")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO customer_contact_ownership(account_id,customer_id,contact_id,includes_profile_history)
+ SELECT $1,i.id,o.contact_id,false FROM customer_identity i CROSS JOIN customer_contact_ownership o WHERE i.account_id=$1 AND o.account_id=$2 LIMIT 1`, otherAccount, accountID); err == nil {
+		t.Fatal("ownership accepted a foreign contact")
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO customer_contact_history(account_id,customer_id,rfq_id,kind,value)
+ SELECT $1,id,$2,'EMAIL','foreign@example.test' FROM customer_identity WHERE account_id=$1`, otherAccount, rfqID); err == nil {
+		t.Fatal("history accepted a foreign RFQ")
+	}
 	if rec = e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + otherHost + "/orders", token: token}); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("cross-supplier session accepted: %d", rec.Code)
 	}

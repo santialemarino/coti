@@ -16,6 +16,25 @@ type ClientContactRepository struct{}
 // NewClientContactRepository builds the commercial contacts repository.
 func NewClientContactRepository() *ClientContactRepository { return &ClientContactRepository{} }
 
+// ListForCustomer projects verification performed by this credential rather than legacy contact trust.
+func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID) ([]domain.ClientContact, error) {
+	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
+ FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL ORDER BY c.kind,c.is_primary DESC,c.created_at,c.id`, p.AccountID, clientID, p.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	contacts := []domain.ClientContact{}
+	for rows.Next() {
+		var c domain.ClientContact
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Value, &c.Primary, &c.Verified); err != nil {
+			return nil, err
+		}
+		contacts = append(contacts, c)
+	}
+	return contacts, rows.Err()
+}
+
 // List returns contacts for a batch of account-owned profiles.
 func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error) {
 	rows, err := q.Query(ctx, `SELECT client_id,id,kind,value,is_primary,verified_at IS NOT NULL FROM client_contact WHERE account_id=$1 AND client_id=ANY($2) ORDER BY kind,is_primary DESC,created_at,id`, accountID, ids)

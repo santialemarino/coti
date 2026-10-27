@@ -9,6 +9,7 @@ import (
 )
 
 type contactOnboardingStore interface {
+	CompleteNameRequest(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string, string) error
 	QueueNameRequest(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string) error
 	AttachContactObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
 	AssociateObservedRequests(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string) error
@@ -54,7 +55,7 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 	if err != nil || id == nil {
 		return err
 	}
-	message := "Para registrar tu pedido, necesitamos tu nombre y apellido. Respondé en una sola línea: Nombre y apellido: Juan Pérez"
+	message := "Para completar tus datos, necesitamos tu nombre y apellido. Respondé en una sola línea: Nombre y apellido: Juan Pérez"
 	reference, deliveryErr := s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: route.AccountID, BranchID: route.BranchID, ChannelID: route.ChannelID, Kind: kind, To: value, Body: message})
 	return s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 		return store.FinishNameRequest(ctx, q, route, *id, reference, deliveryErr == nil)

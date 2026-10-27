@@ -20,25 +20,37 @@ const customerOrderFrom = ` FROM rfq r
    WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
    ORDER BY v.version_number DESC,s.sent_at DESC,s.id DESC LIMIT 1
  ) published ON TRUE
- WHERE r.account_id=$1 AND (cl.tax_id=$2 OR EXISTS (
-   SELECT 1 FROM inbound_channel_message m
-   JOIN channel ch ON ch.account_id=m.account_id AND ch.branch_id=m.branch_id AND ch.id=m.channel_id AND ch.type='WEBAPP'
-   WHERE m.account_id=r.account_id AND m.branch_id=r.branch_id AND m.rfq_id=r.id AND m.payload->'contact'->>'tax_id'=$2
+ WHERE r.account_id=$1 AND (
+ EXISTS (SELECT 1 FROM inbound_channel_message own_message
+   JOIN channel own_channel ON own_channel.account_id=own_message.account_id AND own_channel.branch_id=own_message.branch_id AND own_channel.id=own_message.channel_id AND own_channel.type='WEBAPP'
+   WHERE own_message.account_id=$1 AND own_message.branch_id=r.branch_id AND own_message.rfq_id=r.id AND own_message.payload->>'customer_id'=$2::uuid::text)
+ OR EXISTS (
+   SELECT 1 FROM customer_contact_ownership ownership
+   JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
+   WHERE ownership.account_id=$1 AND ownership.customer_id=$2 AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL
+   AND (ownership.includes_profile_history AND contact.client_id=cl.id OR EXISTS (
+ SELECT 1 FROM customer_contact_history history WHERE history.account_id=$1 AND history.customer_id=$2 AND history.rfq_id=r.id AND history.kind=contact.kind AND history.value=contact.value
+ ) OR EXISTS (
+     SELECT 1 FROM client_contact_observation observation
+     JOIN inbound_channel_message observed ON observed.account_id=observation.account_id AND observed.id=observation.message_id
+     WHERE observation.account_id=$1 AND observed.account_id=$1 AND observed.branch_id=r.branch_id AND observed.rfq_id=r.id
+       AND observation.kind=contact.kind AND observation.value=contact.value
+   ))
  ))`
 
 const customerOrderColumns = `r.id,r.branch_id,b.name,r.received_at,
  CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN qt.current_status IN ('DRAFT','QUOTED') THEN 'SENT' ELSE qt.current_status::text END,
  COALESCE(r.raw_text,''),published.public_token`
 
-// CustomerOrderRepository reads CUIT/CUIL-matched requests within one supplier.
+// CustomerOrderRepository reads ownership-authorized requests within one supplier.
 type CustomerOrderRepository struct{}
 
 // NewCustomerOrderRepository builds the customer history repository.
 func NewCustomerOrderRepository() *CustomerOrderRepository { return &CustomerOrderRepository{} }
 
 // List returns a bounded page without loading internal quote drafts.
-func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, limit, offset int) ([]domain.CustomerOrder, error) {
-	rows, err := q.Query(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` ORDER BY r.received_at DESC,r.id DESC LIMIT $3 OFFSET $4`, accountID, taxID, limit, offset)
+func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID, customerID uuid.UUID, limit, offset int) ([]domain.CustomerOrder, error) {
+	rows, err := q.Query(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` ORDER BY r.received_at DESC,r.id DESC LIMIT $3 OFFSET $4`, accountID, customerID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -55,16 +67,16 @@ func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID
 }
 
 // Get checks ownership independently of the caller's knowledge of a request ID.
-func (r *CustomerOrderRepository) Get(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, id uuid.UUID) (*domain.CustomerOrder, error) {
-	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND r.id=$3`, accountID, taxID, id))
+func (r *CustomerOrderRepository) Get(ctx context.Context, q Querier, accountID, customerID uuid.UUID, id uuid.UUID) (*domain.CustomerOrder, error) {
+	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND r.id=$3`, accountID, customerID, id))
 }
 
 // GetByToken authorizes both active and expired legacy links without exposing their contents.
-func (r *CustomerOrderRepository) GetByToken(ctx context.Context, q Querier, accountID uuid.UUID, taxID, token string) (*domain.CustomerOrder, error) {
+func (r *CustomerOrderRepository) GetByToken(ctx context.Context, q Querier, accountID, customerID uuid.UUID, token string) (*domain.CustomerOrder, error) {
 	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND EXISTS (
  SELECT 1 FROM quote_send s JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
  JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
- WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED'))`, accountID, taxID, token))
+ WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED'))`, accountID, customerID, token))
 }
 
 func scanCustomerOrder(row pgx.Row) (*domain.CustomerOrder, error) {

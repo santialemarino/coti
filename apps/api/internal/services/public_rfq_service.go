@@ -45,6 +45,7 @@ type publicRFQProcessor interface {
 }
 
 type publicRFQEnvelope struct {
+	CustomerID  uuid.UUID               `json:"customer_id,omitempty"`
 	Contact     domain.PublicRFQContact `json:"contact"`
 	Fingerprint string                  `json:"fingerprint"`
 }
@@ -149,7 +150,7 @@ func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in d
 		if err := json.Unmarshal(payload, &current); err != nil {
 			return err
 		}
-		if original.Fingerprint != current.Fingerprint {
+		if original.Fingerprint != current.Fingerprint || original.CustomerID != current.CustomerID {
 			return domain.ErrConflict
 		}
 		if reserved.RFQID == nil {
@@ -224,7 +225,7 @@ func publicRFQPayload(in domain.PublicRFQInput, data []byte) ([]byte, error) {
 	digest := sha256.New()
 	_, _ = digest.Write(metadata)
 	_, _ = digest.Write(data)
-	return json.Marshal(publicRFQEnvelope{Contact: in.Contact, Fingerprint: hex.EncodeToString(digest.Sum(nil))})
+	return json.Marshal(publicRFQEnvelope{CustomerID: in.CustomerID, Contact: in.Contact, Fingerprint: hex.EncodeToString(digest.Sum(nil))})
 }
 
 func publicFileContentType(file *domain.AttachmentUpload) string {
@@ -246,6 +247,10 @@ func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.Custo
 	if domain.NormalizeTaxID(in.Contact.TaxID) != p.TaxID {
 		return domain.ErrForbidden
 	}
+	if p.CustomerID == uuid.Nil {
+		return domain.ErrUnauthenticated
+	}
+	in.CustomerID = p.CustomerID
 	in.Contact.TaxID = p.TaxID
 	in.Contact, err = in.Contact.Normalize()
 	if err != nil {

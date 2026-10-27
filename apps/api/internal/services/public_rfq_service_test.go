@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -157,4 +158,28 @@ func TestPublicRFQRejectsUnknownDestinationAndAmbiguousModes(t *testing.T) {
 
 func (f *publicIntakeFake) GetSiteCrossAccount(context.Context, repository.Querier, string) (*domain.PublicRFQSite, error) {
 	return nil, domain.ErrNotFound
+}
+
+func TestPublicRFQRetryCannotChangeAuthenticatedAuthor(t *testing.T) {
+	t.Parallel()
+	service, store, input := publicIntakeFixture()
+	principal := domain.CustomerPrincipal{AccountID: store.destination.Route.AccountID, CustomerID: uuid.New(), TaxID: input.Contact.TaxID}
+	input.CustomerID = uuid.New()
+	if err := service.CreateForCustomer(context.Background(), principal, store.destination.Route.ChannelID, input); err != nil {
+		t.Fatal(err)
+	}
+	var original publicRFQEnvelope
+	if err := json.Unmarshal(store.message.Payload, &original); err != nil {
+		t.Fatal(err)
+	}
+	if original.CustomerID != principal.CustomerID {
+		t.Fatal("request body selected its author")
+	}
+	principal.CustomerID = uuid.New()
+	if err := service.CreateForCustomer(context.Background(), principal, store.destination.Route.ChannelID, input); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("changed author retry=%v", err)
+	}
+	if store.sourceCalls != 1 || store.processCalls != 1 {
+		t.Fatal("retry changed the retained request")
+	}
 }
