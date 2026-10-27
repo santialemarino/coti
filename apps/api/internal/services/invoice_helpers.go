@@ -1,6 +1,7 @@
 package services
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -289,6 +290,11 @@ func invoiceIssues(in invoiceInputs) []string {
 		add(invoiceIssueReceiverID)
 	}
 	return issues
+}
+
+// lacksReceiverIdentity reports whether the invoice waits on a CUIT, or a document, the buyer lacks.
+func lacksReceiverIdentity(issues []string) bool {
+	return slices.Contains(issues, invoiceIssueReceiverCUIT) || slices.Contains(issues, invoiceIssueReceiverID)
 }
 
 // firstNonEmpty returns the first value that is set and not blank.

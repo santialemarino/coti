@@ -23,6 +23,7 @@ func (invoiceTestDB) InTenantTx(_ context.Context, _ domain.Tenant, fn func(repo
 }
 
 type fakeInvoicingStore struct {
+	fiscalUpdate *domain.ClientFiscalUpdate
 	savedProfile *domain.InvoiceIssuerProfile
 	// Off by default; a test turns it on to prove a refusal does not depend on the index.
 	noUniqueIndex  bool
@@ -116,7 +117,8 @@ func (f *fakeInvoicingStore) GetClientFiscal(context.Context, repository.Querier
 }
 
 func (f *fakeInvoicingStore) UpdateClientFiscal(_ context.Context, _ repository.Querier, _ uuid.UUID, id uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error) {
-	return &domain.ClientFiscal{ID: id, LegalName: in.LegalName, TaxID: in.TaxID, IVACondition: in.IVACondition}, nil
+	f.fiscalUpdate = &in
+	return &domain.ClientFiscal{ID: id, LegalName: in.LegalName, TaxID: in.DNI, IVACondition: in.IVACondition}, nil
 }
 
 func (f *fakeInvoicingStore) VATRatesByProductIDs(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID]domain.VATRate, error) {
@@ -647,23 +649,73 @@ func TestInvoiceService_StalePendingMismatchKeepsItsHold(t *testing.T) {
 	}
 }
 
-func TestInvoiceService_UpdateClientFiscalChecksTheCUIT(t *testing.T) {
+func TestInvoiceService_UpdateClientFiscalTakesOnlyADNI(t *testing.T) {
 	t.Parallel()
 	f := newInvoiceFixture(t)
-	valid, invalid, dni := "20-12345678-6", "20-12345678-5", "28.123.456"
+	dni, cuit, blank := "28.123.456", "20-12345678-6", " "
 
 	client, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
-		domain.ClientFiscalUpdate{TaxID: &valid})
-	if err != nil || *client.TaxID != "20123456786" {
-		t.Fatalf("client = %+v, err = %v, want the CUIT stored as digits", client, err)
+		domain.ClientFiscalUpdate{DNI: &dni})
+	if err != nil || *client.TaxID != "28123456" {
+		t.Fatalf("client = %+v, err = %v, want the DNI stored as digits", client, err)
+	}
+	f.store.fiscalUpdate = nil
+	if _, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
+		domain.ClientFiscalUpdate{DNI: &cuit}); domain.CodeOf(err) != domain.CodeInvalidTaxID || f.store.fiscalUpdate != nil {
+		t.Fatalf("err = %v, wrote = %v, want INVALID_TAX_ID and nothing written for a CUIT", err, f.store.fiscalUpdate != nil)
 	}
 	if _, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
-		domain.ClientFiscalUpdate{TaxID: &invalid}); domain.CodeOf(err) != domain.CodeInvalidTaxID {
-		t.Fatalf("err = %v, want INVALID_TAX_ID for a wrong check digit", err)
+		domain.ClientFiscalUpdate{DNI: &blank}); err != nil || f.store.fiscalUpdate.DNI != nil {
+		t.Fatalf("err = %v, want a blank DNI cleared", err)
 	}
-	if client, err := f.service.UpdateClientFiscal(context.Background(), f.tenant, uuid.New(),
-		domain.ClientFiscalUpdate{TaxID: &dni}); err != nil || *client.TaxID != "28123456" {
-		t.Fatalf("client = %+v, err = %v, want the DNI stored as digits", client, err)
+}
+
+// A consumidor final below the identification threshold needs no document, so no sign-up link either.
+func TestInvoiceService_PreviewInvoicesAnUnidentifiedBuyerBelowTheThreshold(t *testing.T) {
+	t.Parallel()
+	f := newInvoiceFixture(t)
+	final := domain.IVAConditionFinalConsumer
+	f.store.client = &domain.ClientFiscal{IVACondition: &final}
+	f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "", "https://app.example.com")
+
+	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+
+	if err != nil || preview.Type != domain.InvoiceTypeB || len(preview.Issues) != 0 || preview.CustomerSignupURL != "" {
+		t.Fatalf("preview = %+v, err = %v, want an issuable B with no sign-up link", preview, err)
+	}
+}
+
+func TestInvoiceService_PreviewOffersTheSignupLinkWhenTheReceiverLacksACUIT(t *testing.T) {
+	t.Parallel()
+	registered, final := domain.IVAConditionRegistered, domain.IVAConditionFinalConsumer
+	name, address := "Obra SA", "Main 123"
+	cases := []struct {
+		name   string
+		client domain.ClientFiscal
+		total  string
+		issue  string
+	}{
+		{"invoice A", domain.ClientFiscal{Name: &name, Address: &address, IVACondition: &registered}, "1000.00", invoiceIssueReceiverCUIT},
+		{"invoice B at the threshold", domain.ClientFiscal{IVACondition: &final}, "10000000.00", invoiceIssueReceiverID},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newInvoiceFixture(t)
+			f.store.client = &tc.client
+			product := uuid.New()
+			f.store.rates = map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne}
+			f.quotes.items = []domain.QuoteItem{invoiceLine(&product, tc.total)}
+			f.quotes.version.Total = dec(tc.total)
+			f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "", "https://app.example.com")
+
+			preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+
+			if err != nil || !containsString(preview.Issues, tc.issue) || preview.CustomerSignupURL != "https://corralon.example.com/signup" {
+				t.Fatalf("issues = %v, url = %q, err = %v, want %s with the supplier's sign-up page",
+					preview.Issues, preview.CustomerSignupURL, err, tc.issue)
+			}
+		})
 	}
 }
 
@@ -1087,4 +1139,13 @@ func TestInvoiceService_APendingTestInvoiceHoldsTheSaleInProduction(t *testing.T
 	if domain.CodeOf(err) != domain.CodeInvoiceInProgress || len(f.issuer.requests) != 0 {
 		t.Fatalf("err = %v, want INVOICE_IN_PROGRESS without asking ARCA", err)
 	}
+}
+
+type fakeCustomerHostnames struct{ hostname string }
+
+func (f fakeCustomerHostnames) GetCustomerHostname(context.Context, repository.Querier, uuid.UUID) (string, error) {
+	if f.hostname == "" {
+		return "", domain.ErrNotFound
+	}
+	return f.hostname, nil
 }

@@ -58,6 +58,37 @@ Profile tag editing and tag creation remain available through their existing end
 The backoffice maps API snake_case to camelCase in its fetch boundary. The send dialog uses the
 shared form controls, CUIT/CUIL input, phone input, validation states, and semantic design tokens.
 
+## Fiscal data
+
+A profile's CUIT or CUIL comes from the customer, when they create their account on the supplier's
+webapp; neither the seller nor the AI loads, changes or deletes it. `client.tax_id` holds that CUIT
+(11 digits) or, for a consumidor final without one, a DNI (7 or 8 digits).
+
+`PUT /v1/clients/{id}/fiscal` replaces the legal name, fiscal address, IVA condition and DNI, and an
+omitted field clears. It never writes a CUIT:
+
+- A body that carries `tax_id` is refused with **422** `TAX_ID_READ_ONLY`, so a caller still sending
+  a CUIT learns it was not saved instead of reading a 200 as success.
+- `dni` accepts 7 or 8 digits (separators dropped); anything else, a CUIT included, is **422**
+  `INVALID_TAX_ID`.
+- The update keeps a CUIT already on file in the same statement: `dni` only replaces a DNI or
+  nothing, so a sign-up landing between the seller's read and save is never overwritten.
+
+The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
+its own immutable copy of the receiver.
+
+An invoice A needs the receiver's CUIT, and an invoice B at or above
+`INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT` needs a CUIT or DNI. While the preview
+(`GET /v1/quotes/{quoteId}/invoice`) reports `RECEIVER_CUIT_REQUIRED` or `RECEIVER_ID_REQUIRED`, it
+also carries `customer_signup_url`: the supplier's customer sign-up page (`https://<public_hostname>/signup`,
+the shared webapp when the account has no hostname, `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local
+stack). The invoice card turns it into «Enviar link de registro», a dialog with the link and a copy
+button; the seller sends it through their own channel, because Coti has no free-text message to the
+client. An invoice B below the threshold goes to an unidentified consumidor final unchanged.
+
+The association at publication above is the one remaining place a seller sets a CUIT; it moves to
+the same rule with the contact-management work.
+
 ## Verification
 
 Service and PostgreSQL integration tests cover validated selections, branch and account isolation,

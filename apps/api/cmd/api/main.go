@@ -180,7 +180,8 @@ func run() error {
 	}
 	// The env var spells the deployment in lowercase; records store the native enum.
 	arcaEnvironment := domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment))
-	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer())
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer()).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin, cfg.Web.WebAppURL)
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
 		arca.NewSetupConnector(), arcaEnvironment)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,

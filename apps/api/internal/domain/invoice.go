@@ -399,11 +399,12 @@ type ClientFiscal struct {
 	IVACondition *IVACondition
 }
 
-// ClientFiscalUpdate replaces a client's fiscal data; a nil field clears it.
+// ClientFiscalUpdate replaces a client's fiscal data; a nil field clears it. A CUIT is never part of
+// it: only the customer loads one, by creating their account.
 type ClientFiscalUpdate struct {
 	Address      *string
 	LegalName    *string
-	TaxID        *string
+	DNI          *string // a consumidor final's DNI; ignored by the store while a CUIT is on file.
 	IVACondition *IVACondition
 }
 
@@ -455,6 +456,9 @@ type InvoicePreview struct {
 	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment:
 	// history to show, never a hold on this one.
 	OtherEnvironmentInvoice *Invoice
+	// CustomerSignupURL is the supplier's customer sign-up page, set only while the receiver lacks
+	// the CUIT or document the invoice needs.
+	CustomerSignupURL string
 }
 
 // DigitsOnly drops every character that is not a decimal digit.

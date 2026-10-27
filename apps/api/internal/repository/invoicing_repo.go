@@ -210,16 +210,18 @@ func (r *InvoicingRepository) GetClientFiscal(
 	return &c, nil
 }
 
-// UpdateClientFiscal replaces a client's fiscal identity and returns it.
+// UpdateClientFiscal replaces a client's fiscal identity and returns it. A CUIT on file is kept; the
+// DNI only ever replaces a DNI or nothing.
 func (r *InvoicingRepository) UpdateClientFiscal(
 	ctx context.Context, q Querier, accountID, clientID uuid.UUID, in domain.ClientFiscalUpdate,
 ) (*domain.ClientFiscal, error) {
 	var c domain.ClientFiscal
 	err := q.QueryRow(ctx,
-		`UPDATE client SET legal_name = $3, tax_id = $4, iva_condition = $5, fiscal_address = $6
+		`UPDATE client SET legal_name = $3, iva_condition = $5, fiscal_address = $6,
+		   tax_id = CASE WHEN char_length(tax_id) = 11 THEN tax_id ELSE $4 END
 		 WHERE account_id = $1 AND id = $2
 		 RETURNING id, name, legal_name, tax_id, iva_condition, fiscal_address`,
-		accountID, clientID, in.LegalName, in.TaxID, in.IVACondition, in.Address,
+		accountID, clientID, in.LegalName, in.DNI, in.IVACondition, in.Address,
 	).Scan(&c.ID, &c.Name, &c.LegalName, &c.TaxID, &c.IVACondition, &c.Address)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound

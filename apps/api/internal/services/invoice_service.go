@@ -98,6 +98,7 @@ type InvoiceService struct {
 	now       func() time.Time
 	renderer  domain.InvoicePDFRenderer
 	logos     invoiceLogoReader
+	portal    customerPortal
 }
 
 // NewInvoiceService builds the invoicing use cases.
@@ -115,6 +116,12 @@ func NewInvoiceService(
 	}
 	return &InvoiceService{renderer: renderer, logos: logos, db: db, store: store, quotes: quotes, discounts: discounts, issuer: issuer,
 		sealer: sealer, settings: settings, now: now}
+}
+
+// WithCustomerPortal lets a preview point the seller at the supplier's customer sign-up page.
+func (s *InvoiceService) WithCustomerPortal(reader customerQuoteHostnameReader, localOrigin, webappURL string) *InvoiceService {
+	s.portal = customerPortal{hostnames: reader, localOrigin: localOrigin, fallback: webappURL}
+	return s
 }
 
 // --- Settings ---
@@ -213,8 +220,8 @@ func (s *InvoiceService) GetClientFiscal(
 	return client, err
 }
 
-// UpdateClientFiscal replaces a client's legal name, tax id and IVA condition. The tax id is a CUIT
-// (11 digits, check digit verified) or a DNI (7 or 8 digits); separators are dropped.
+// UpdateClientFiscal replaces a client's legal name, address, IVA condition and DNI; a CUIT on file
+// stays as the customer loaded it. The DNI is 7 or 8 digits; separators are dropped.
 func (s *InvoiceService) UpdateClientFiscal(
 	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate,
 ) (*domain.ClientFiscal, error) {
@@ -223,16 +230,15 @@ func (s *InvoiceService) UpdateClientFiscal(
 	}
 	in.Address = trimmedOrNil(in.Address)
 	in.LegalName = trimmedOrNil(in.LegalName)
-	if in.TaxID != nil {
-		digits := domain.DigitsOnly(*in.TaxID)
-		switch {
+	if in.DNI != nil {
+		switch digits := domain.DigitsOnly(*in.DNI); {
 		case digits == "":
-			in.TaxID = nil
-		case len(digits) == 11 && validCUIT(digits), len(digits) == 7, len(digits) == 8:
-			in.TaxID = &digits
+			in.DNI = nil
+		case len(digits) == 7, len(digits) == 8:
+			in.DNI = &digits
 		default:
 			return nil, domain.WithCode(domain.CodeInvalidTaxID,
-				fmt.Errorf("%w: %q is neither a valid CUIT nor a DNI", domain.ErrInvalidInput, *in.TaxID))
+				fmt.Errorf("%w: %q is not a DNI", domain.ErrInvalidInput, *in.DNI))
 		}
 	}
 	var client *domain.ClientFiscal
@@ -264,6 +270,16 @@ func (s *InvoiceService) Preview(
 			return err
 		}
 		preview = &draft.preview
+		if !lacksReceiverIdentity(preview.Issues) {
+			return nil
+		}
+		base, err := s.portal.base(ctx, q, tenant.AccountID)
+		if err != nil {
+			return err
+		}
+		if base != "" {
+			preview.CustomerSignupURL = customerSignupURL(base)
+		}
 		return nil
 	})
 	return preview, err

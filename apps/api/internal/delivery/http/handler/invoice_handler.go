@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -175,10 +176,10 @@ func (h *InvoiceHandler) GetClientFiscal(c *gin.Context) {
 	c.JSON(http.StatusOK, toClientFiscalResponse(*client))
 }
 
-// UpdateClientFiscal replaces a client's legal name, tax id and IVA condition.
+// UpdateClientFiscal replaces a client's legal name, address, IVA condition and DNI; never a CUIT.
 //
 //	@Summary		Update a client's fiscal data
-//	@Description	Replaces the client's legal name, CUIT or DNI (check digit verified) and IVA condition; omitted fields clear.
+//	@Description	Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.
 //	@Tags			clients
 //	@Accept			json
 //	@Produce		json
@@ -189,7 +190,7 @@ func (h *InvoiceHandler) GetClientFiscal(c *gin.Context) {
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		404			{object}	dto.ErrorResponse
-//	@Failure		422			{object}	dto.ErrorResponse	"INVALID_TAX_ID"
+//	@Failure		422			{object}	dto.ErrorResponse	"INVALID_TAX_ID, TAX_ID_READ_ONLY"
 //	@Router			/v1/clients/{clientId}/fiscal [put]
 func (h *InvoiceHandler) UpdateClientFiscal(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -205,7 +206,13 @@ func (h *InvoiceHandler) UpdateClientFiscal(c *gin.Context) {
 		RespondBindError(c, err)
 		return
 	}
-	in := domain.ClientFiscalUpdate{Address: body.Address, LegalName: body.LegalName, TaxID: body.TaxID}
+	// Refused rather than dropped, so a caller still sending a CUIT never reads a 200 as saved.
+	if body.TaxID != nil {
+		Respond(c, domain.WithCode(domain.CodeTaxIDReadOnly,
+			fmt.Errorf("%w: a client's CUIT comes only from their customer account", domain.ErrInvalidInput)))
+		return
+	}
+	in := domain.ClientFiscalUpdate{Address: body.Address, LegalName: body.LegalName, DNI: body.DNI}
 	if body.IVACondition != nil {
 		condition := domain.IVACondition(*body.IVACondition)
 		in.IVACondition = &condition
@@ -363,6 +370,7 @@ func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewRespons
 		Environment: string(p.Environment), IssuerCUIT: p.IssuerCUIT,
 		Fingerprint: p.Fingerprint, VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
 		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
+		CustomerSignupURL: p.CustomerSignupURL,
 	}
 	if p.Invoice != nil {
 		invoice := toInvoiceResponse(*p.Invoice)
