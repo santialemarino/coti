@@ -13,13 +13,28 @@ import (
 )
 
 type fakeClientProfiles struct {
-	clients       map[uuid.UUID]domain.Client
-	matches       []domain.Client
-	created       *domain.NewClient
-	findPhone     *string
-	findEmail     *string
-	summaries     []domain.ClientSummary
-	acceptedSales []domain.ClientSale
+	requestContact domain.ClientContactHints
+	clients        map[uuid.UUID]domain.Client
+	matches        []domain.Client
+	created        *domain.NewClient
+	findPhone      *string
+	findEmail      *string
+	summaries      []domain.ClientSummary
+	acceptedSales  []domain.ClientSale
+}
+
+func (f *fakeClientProfiles) GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error) {
+	return &f.requestContact, nil
+}
+func (f *fakeClientProfiles) FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error) {
+	return f.matches, nil
+}
+
+func (f *fakeClientProfiles) SetMissingTaxID(_ context.Context, _ repository.Querier, _ uuid.UUID, id uuid.UUID, taxID string) error {
+	client := f.clients[id]
+	client.TaxID = &taxID
+	f.clients[id] = client
+	return nil
 }
 
 func (f *fakeClientProfiles) ListSummaries(
@@ -44,7 +59,7 @@ func (f *fakeClientProfiles) FindByContacts(_ context.Context, _ repository.Quer
 }
 
 func (f *fakeClientProfiles) ListAcceptedSales(
-	context.Context, repository.Querier, domain.Tenant, uuid.UUID,
+	context.Context, repository.Querier, domain.Tenant, uuid.UUID, domain.ARCAEnvironment,
 ) ([]domain.ClientSale, error) {
 	return f.acceptedSales, nil
 }
@@ -164,7 +179,7 @@ func newClientServiceHarness() *clientServiceHarness {
 		}},
 		tags: &fakeClientTags{byClient: make(map[uuid.UUID][]domain.ClientTag)},
 		quotes: &fakeClientQuotes{quote: &domain.Quote{ID: testQuoteID, AccountID: testAccountID,
-			BranchID: testBranchID, RFQID: testRFQID, CurrentStatus: domain.QuoteStatusAccepted}},
+			BranchID: testBranchID, RFQID: testRFQID, CurrentStatus: domain.QuoteStatusQuoted}},
 		rfqs:  &fakeClientRFQs{},
 		sends: &fakeClientSends{},
 	}
@@ -209,14 +224,11 @@ func TestClientService_AssociateQuote_UpdatesBothRecordsAndTags(t *testing.T) {
 	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
 	h.tags.selected = []domain.ClientTag{{ID: tagID, AccountID: testAccountID, Name: "Recurrente"}}
 
-	match, err := h.service.AssociateQuote(context.Background(), branchTenant(), testQuoteID,
-		domain.AssociateQuoteClientInput{ClientID: &clientID,
+	err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+		&domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID,
 			TagIDs: []uuid.UUID{tagID, tagID}})
 	if err != nil {
 		t.Fatalf("AssociateQuote() = %v, want no error", err)
-	}
-	if match.Client.ID != clientID || len(match.Tags) != 1 {
-		t.Fatalf("match = %#v, want selected client and tag", match)
 	}
 	if h.quotes.setClient == nil || *h.quotes.setClient != clientID ||
 		h.rfqs.setClient == nil || *h.rfqs.setClient != clientID {
@@ -256,8 +268,8 @@ func TestClientService_ClientAssociation_RefusesArchivedQuote(t *testing.T) {
 
 	clientID := uuid.New()
 	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
-	_, associateErr := h.service.AssociateQuote(context.Background(), branchTenant(), testQuoteID,
-		domain.AssociateQuoteClientInput{ClientID: &clientID})
+	associateErr := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+		&domain.AssociateQuoteClientInput{TaxID: "20123456786", ClientID: &clientID})
 	if domain.CodeOf(associateErr) != domain.CodeQuoteArchived {
 		t.Fatalf("AssociateQuote() error = %v, want QUOTE_ARCHIVED", associateErr)
 	}
@@ -272,8 +284,8 @@ func TestClientService_AssociateQuote_NormalizesNewProfile(t *testing.T) {
 	phone := "+54 9 (11) 5555-0000"
 	email := " COMPRAS@CLIENTE.TEST "
 
-	_, err := h.service.AssociateQuote(context.Background(), branchTenant(), testQuoteID,
-		domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone,
+	err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+		&domain.AssociateQuoteClientInput{TaxID: "20123456786", New: &domain.NewClient{Name: &name, Phone: &phone,
 			Email: &email}})
 	if err != nil {
 		t.Fatalf("AssociateQuote() = %v, want no error", err)

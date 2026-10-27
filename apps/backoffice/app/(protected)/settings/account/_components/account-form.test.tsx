@@ -1,7 +1,8 @@
-import { fireEvent, render, waitFor, type RenderResult } from '@testing-library/react';
+import { fireEvent, render, waitFor, within, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isMessageShown } from '@repo/vitest-config/form-messages';
 import { AccountForm } from '@/app/(protected)/settings/account/_components/account-form';
 import type { Account } from '@/lib/api/account';
 import { BRAND_COLOR_PRESETS } from '@/lib/constants/brand';
@@ -15,24 +16,47 @@ const { toast } = await import('sonner');
 
 const copy = messages.account;
 
+vi.mock('@/components/logo-crop-dialog', () => ({
+  LogoCropDialog: ({
+    open,
+    file,
+    onConfirm,
+  }: {
+    open: boolean;
+    file: File;
+    onConfirm: (file: File) => void;
+  }) =>
+    open ? (
+      <button type="button" onClick={() => onConfirm(file)}>
+        Use crop
+      </button>
+    ) : null,
+}));
 const ACCOUNT: Account = {
   id: 'a1',
   name: 'Corralón San Martín',
   legalName: 'Corralón San Martín S.R.L.',
-  taxId: '30-71234567-9',
+  taxId: '30-71234567-1',
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: '#C2410C',
+  preferredLowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+  invoicingEnabled: false,
+  hasInvoices: false,
+  invoiceOnPayment: false,
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
-function renderForm(account: Account = ACCOUNT) {
+function renderForm(
+  account: Account = ACCOUNT,
+  arcaConnection: 'inProgress' | 'connected' | null = null,
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <AccountForm account={account} />
+      <AccountForm account={account} arcaConnection={arcaConnection} />
     </NextIntlClientProvider>,
   );
 }
@@ -99,8 +123,29 @@ describe('AccountForm', () => {
         taxId: '',
         brandLogoUrl: '',
         brandColor: '',
+        lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
       },
       undefined,
+      false,
+    );
+  });
+
+  // The stored choice is the one selected, and picking the other is what the save sends.
+  it('shows the stored lower-price strategy and sends the one picked', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ ok: true });
+    const view = renderForm();
+    const cheaper = view.getByRole('radio', {
+      name: copy.lowerPrice.FIND_CHEAPER_ALTERNATIVES.label,
+    });
+    const adapt = view.getByRole('radio', { name: copy.lowerPrice.ADAPT_TO_REACH_DISCOUNT.label });
+    expect(cheaper.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(adapt);
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(vi.mocked(updateAccount).mock.calls[0]?.[0].lowerPriceStrategy).toBe(
+      'ADAPT_TO_REACH_DISCOUNT',
     );
   });
 
@@ -116,14 +161,54 @@ describe('AccountForm', () => {
       {
         name: 'Corralón San Martín Sur',
         legalName: ACCOUNT.legalName,
-        taxId: ACCOUNT.taxId,
+        taxId: '30712345671',
         brandLogoUrl: ACCOUNT.brandLogoUrl,
         brandColor: 'C2410C',
+        lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
       },
       undefined,
+      false,
     );
     // A confirmation of something just done is transient, so it is a toast.
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(copy.saved));
+  });
+
+  // The field shows the CUIT as it is written and describes that shape to a screen reader too.
+  it('shows the CUIT formatted, with its format as the field description', () => {
+    const view = renderForm({ ...ACCOUNT, taxId: '30712345671' });
+    const taxId = field(view, 'taxId');
+
+    expect(taxId.value).toBe('30-71234567-1');
+    expect(taxId.getAttribute('inputmode')).toBe('numeric');
+    const described = taxId.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(described.map((id) => document.getElementById(id)?.textContent)).toContain(
+      copy.taxId.hint,
+    );
+  });
+
+  it('refuses a CUIT with the wrong check digit, then clears the message once it is fixed', async () => {
+    const view = renderForm();
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '30-71234567-9' } });
+    submit(view);
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.checkDigit)).toBe(true));
+    expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true');
+    expect(updateAccount).not.toHaveBeenCalled();
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '30-71234567-1' } });
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.checkDigit)).toBe(false));
+  });
+
+  it('refuses a CUIT that is too short to be one', async () => {
+    const view = renderForm({ ...ACCOUNT, taxId: null });
+
+    fireEvent.change(field(view, 'taxId'), { target: { value: '3071234' } });
+    submit(view);
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.invalid)).toBe(true));
+    expect(updateAccount).not.toHaveBeenCalled();
   });
 
   it('refuses to submit without a name, and says so on the field', async () => {
@@ -150,6 +235,81 @@ describe('AccountForm', () => {
     await waitFor(() => expect(view.getByText(copy.errors.NOT_FOUND)).toBeTruthy());
     expect(copy.errors.NOT_FOUND).not.toBe(messages.errors.NOT_FOUND);
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  // A CUIT ARCA is connected with changes only once the caller accepts losing the connection.
+  it.each([
+    ['inProgress', copy.disconnectARCA.inProgress],
+    ['connected', copy.disconnectARCA.connected],
+  ] as const)('asks before a CUIT change disconnects ARCA (%s)', async (state, description) => {
+    vi.mocked(updateAccount)
+      .mockResolvedValueOnce({ error: 'ARCA_CONNECTED' })
+      .mockResolvedValueOnce({ ok: true });
+    const view = renderForm(ACCOUNT, state);
+
+    submit(view);
+
+    const dialog = await view.findByRole('dialog');
+    expect(within(dialog).getByText(description.replace('{old}', ACCOUNT.taxId!))).toBeTruthy();
+    expect(updateAccount).toHaveBeenLastCalledWith(expect.anything(), undefined, false);
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.disconnectARCA.confirm }));
+
+    await waitFor(() =>
+      expect(updateAccount).toHaveBeenLastCalledWith(expect.anything(), undefined, true),
+    );
+    expect(toast.success).toHaveBeenCalledWith(copy.savedDisconnected);
+  });
+
+  it('saves nothing when the change is cancelled', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'ARCA_CONNECTED' });
+    const view = renderForm(ACCOUNT, 'connected');
+
+    submit(view);
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.disconnectARCA.cancel }));
+
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    expect(updateAccount).toHaveBeenCalledOnce();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('lands on the CUIT when a confirmed change meets a pending invoice', async () => {
+    vi.mocked(updateAccount)
+      .mockResolvedValueOnce({ error: 'ARCA_CONNECTED' })
+      .mockResolvedValueOnce({ error: 'INVOICE_PENDING' });
+    const view = renderForm(ACCOUNT, 'connected');
+    // A real save starts from the focused button, which is where the dialog would hand focus back.
+    view.container.querySelector<HTMLButtonElement>('button[type="submit"]')!.focus();
+
+    submit(view);
+    const dialog = await view.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: copy.disconnectARCA.confirm }));
+
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(field(view, 'taxId')));
+  });
+
+  it('puts a CUIT the API refuses on its field', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'INVALID_TAX_ID' });
+    const view = renderForm();
+
+    submit(view);
+
+    await waitFor(() => expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true'));
+    expect(view.getByText(copy.errors.INVALID_TAX_ID)).toBeTruthy();
+  });
+
+  it('points to the invoices that keep the CUIT from changing', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'INVOICE_PENDING' });
+    const view = renderForm();
+
+    submit(view);
+
+    await waitFor(() => expect(field(view, 'taxId').getAttribute('aria-invalid')).toBe('true'));
+    expect(view.getByText(copy.invoicePending, { exact: false })).toBeTruthy();
+    expect(view.getByRole('link', { name: copy.invoicePendingLink }).getAttribute('href')).toBe(
+      '/administration',
+    );
   });
 
   /*
@@ -210,10 +370,11 @@ describe('AccountForm brand controls', () => {
     const input = view.container.querySelector<HTMLInputElement>('input[type="file"]');
 
     fireEvent.change(input!, { target: { files: [logo] } });
+    fireEvent.click(view.getByRole('button', { name: 'Use crop' }));
     submit(view);
 
     await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
-    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), logo);
+    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), logo, false);
   });
 
   it('clears the stored logo when it is removed', async () => {
@@ -224,6 +385,6 @@ describe('AccountForm brand controls', () => {
     submit(view);
 
     await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
-    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), null);
+    expect(updateAccount).toHaveBeenCalledWith(expect.any(Object), null, false);
   });
 });

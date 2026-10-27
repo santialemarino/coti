@@ -96,6 +96,11 @@ type fakePublicQuoteQuotes struct {
 	newVersion   *domain.QuoteVersion
 	newItems     []domain.NewQuoteItem
 	newAlts      []domain.NewQuoteItemAlternative
+	itemBatches  [][]domain.NewQuoteItem
+	deletedItems []uuid.UUID
+	deletedAlts  []uuid.UUID
+	quantities   []domain.QuoteItemQuantityUpdate
+	replacements []domain.QuoteItemReplacement
 	getErr       error
 	statusErr    error
 	statusCalls  []quoteStatusCall
@@ -191,7 +196,9 @@ func (f *fakePublicQuoteQuotes) ListItems(context.Context, repository.Querier,
 
 func (f *fakePublicQuoteQuotes) CreateItems(_ context.Context, _ repository.Querier,
 	_, _ uuid.UUID, items []domain.NewQuoteItem) ([]domain.QuoteItem, error) {
-	f.newItems = items
+	copy := append([]domain.NewQuoteItem(nil), items...)
+	f.itemBatches = append(f.itemBatches, copy)
+	f.newItems = append(f.newItems, items...)
 	return make([]domain.QuoteItem, len(items)), nil
 }
 
@@ -203,6 +210,34 @@ func (f *fakePublicQuoteQuotes) ListAlternativesByItemIDs(context.Context, repos
 func (f *fakePublicQuoteQuotes) CreateAlternatives(_ context.Context, _ repository.Querier,
 	_ uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error {
 	f.newAlts = alternatives
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) DeleteAlternativesByItemIDs(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	f.deletedAlts = append(f.deletedAlts, itemIDs...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) DeleteItems(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	_ uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	f.deletedItems = append(f.deletedItems, itemIDs...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) UpdateItemQuantities(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, updates []domain.QuoteItemQuantityUpdate,
+) error {
+	f.quantities = append(f.quantities, updates...)
+	return nil
+}
+
+func (f *fakePublicQuoteQuotes) ReplaceItems(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	_ uuid.UUID, replacements []domain.QuoteItemReplacement,
+) error {
+	f.replacements = append(f.replacements, replacements...)
 	return nil
 }
 
@@ -236,6 +271,67 @@ type fakeQuoteMessages struct {
 	body      string
 	calls     int
 	err       error
+	created   []domain.NewQuoteMessage
+}
+
+// fakeChangeWindows records how a change request was queued.
+type fakeChangeWindows struct {
+	opened []time.Duration
+	closed []uuid.UUID
+	at     []time.Time
+}
+
+func (f *fakeChangeWindows) OpenOrExtend(_ context.Context, _ repository.Querier, _, _,
+	quoteID uuid.UUID, now time.Time, reset, _ time.Duration,
+) (*domain.MessageBatch, error) {
+	f.opened = append(f.opened, reset)
+	f.at = append(f.at, now)
+	return &domain.MessageBatch{QuoteID: quoteID, Status: domain.MessageBatchStatusOpen}, nil
+}
+
+func (f *fakeChangeWindows) CloseOpen(_ context.Context, _ repository.Querier, _,
+	quoteID uuid.UUID,
+) (*domain.MessageBatch, error) {
+	f.closed = append(f.closed, quoteID)
+	return &domain.MessageBatch{QuoteID: quoteID, Status: domain.MessageBatchStatusClosed}, nil
+}
+
+type fakeChangeRequestHandler struct {
+	proposal *domain.ChangeRequestProposal
+	err      error
+	inputs   []domain.ChangeRequestInput
+}
+
+func (f *fakeChangeRequestHandler) Propose(_ context.Context,
+	in domain.ChangeRequestInput,
+) (*domain.ChangeRequestProposal, error) {
+	f.inputs = append(f.inputs, in)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.proposal, nil
+}
+
+type fakeChangeRequestMatcher struct {
+	matches []domain.LineMatch
+	err     error
+	texts   [][]string
+}
+
+func (f *fakeChangeRequestMatcher) Match(_ context.Context, _ domain.Tenant,
+	descriptions []string,
+) ([]domain.LineMatch, error) {
+	f.texts = append(f.texts, append([]string(nil), descriptions...))
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.matches, nil
+}
+
+func (f *fakeQuoteMessages) Create(_ context.Context, _ repository.Querier, _, _ uuid.UUID,
+	in domain.NewQuoteMessage) (*domain.QuoteMessage, error) {
+	f.created = append(f.created, in)
+	return &domain.QuoteMessage{ID: in.ID}, f.err
 }
 
 func (f *fakeQuoteMessages) CreateClientRequest(_ context.Context, _ repository.Querier,
@@ -335,6 +431,7 @@ type quoteActionHarness struct {
 	prices          *fakeBranchPrices
 	clientActions   *fakePublicQuoteClientActions
 	messages        *fakeQuoteMessages
+	windows         *fakeChangeWindows
 	representations *fakeQuoteDeliverRepresentations
 	token           string
 	now             time.Time
@@ -348,15 +445,16 @@ func newQuoteActionHarness() *quoteActionHarness {
 		prices:          &fakeBranchPrices{},
 		clientActions:   &fakePublicQuoteClientActions{},
 		messages:        &fakeQuoteMessages{},
+		windows:         &fakeChangeWindows{},
 		representations: &fakeQuoteDeliverRepresentations{},
 		token:           "public-token-quote-action",
 		now:             fixedNow,
 	}
-	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
+	h.service = NewQuoteDeliveryService(h.db, h.sends, h.quotes, nil, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil).
 		WithClientActions(h.clientActions, nil).WithRepresentationService(h.representations).
-		WithMessages(h.messages)
+		WithMessages(h.messages, h.windows)
 	return h
 }
 
@@ -366,6 +464,10 @@ func (h *quoteActionHarness) seedActiveSend(versionID uuid.UUID) *domain.QuoteSe
 		VersionID: versionID, PublicToken: h.token,
 		ExpiresAt: &expiry, TrackingStatus: domain.SendTrackingStatusViewed}
 	h.sends.send = send
+	if h.quotes.quote == nil {
+		h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+			CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusSent}
+	}
 	return send
 }
 
@@ -506,6 +608,39 @@ func TestQuoteDeliveryService_RespondPublic_CreatesAReviewableChangeRequest(t *t
 	}
 }
 
+// The webapp request answers at once and leaves the model to the queue: its message lands in a
+// batch closed in the same transaction, which the conversation handler picks up.
+func TestQuoteDeliveryService_RespondPublic_QueuesTheRequestInAClosedBatch(t *testing.T) {
+	h := newQuoteActionHarness()
+	h.seedActiveSend(testVersionID)
+	h.quotes.version = &domain.QuoteVersion{ID: testVersionID, QuoteID: testQuoteID,
+		VersionNumber: 1, Currency: "ARS", IsImmutable: true}
+	message := "Agregar 5 bolsas de cal hidratada 25 kg"
+
+	result, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionRequestChange, Message: &message})
+	if err != nil {
+		t.Fatalf("RespondPublic returned %v", err)
+	}
+	if result.QuoteStatus != domain.QuoteStatusChangeRequested ||
+		result.CustomerStatus != domain.ClientActionRequestChange {
+		t.Errorf("result = %+v, want the request acknowledged as CHANGE_REQUESTED", result)
+	}
+	if len(h.windows.opened) != 1 || h.windows.opened[0] != 0 ||
+		len(h.windows.closed) != 1 || h.windows.closed[0] != testQuoteID {
+		t.Errorf("windows = %+v, want one window opened with no wait and closed", h.windows)
+	}
+	for _, at := range h.windows.at {
+		if !at.Equal(fixedNow.UTC()) {
+			t.Errorf("window written at %s, want the service clock %s", at, fixedNow.UTC())
+		}
+	}
+	if len(h.quotes.itemBatches) != 1 {
+		t.Errorf("item batches = %d, want only the cloned lines: the model runs from the queue",
+			len(h.quotes.itemBatches))
+	}
+}
+
 func TestQuoteDeliveryService_RespondPublic_ReplaysItsFirstAnswer(t *testing.T) {
 	h := newQuoteActionHarness()
 	h.seedActiveSend(testVersionID)
@@ -639,7 +774,7 @@ func TestQuoteDeliveryService_RespondPublic_BlankOrUnknownTokenIsNotFound(t *tes
 
 func TestQuoteDeliveryService_RespondPublic_RequiresWiredActions(t *testing.T) {
 	h := newQuoteActionHarness()
-	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, unusedDeliveryDeps{},
+	service := NewQuoteDeliveryService(h.db, h.sends, h.quotes, nil, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, h.prices, unusedDeliveryDeps{},
 		unusedDeliveryDeps{}, nil, "https://app.coti.ar", func() time.Time { return h.now }, nil)
 
@@ -710,6 +845,36 @@ func TestQuoteDeliveryService_ResolvePublic_ExpiredLinkIsExpired(t *testing.T) {
 	}
 	if h.representations.calls != 0 {
 		t.Errorf("representation resolved %d times for an expired link", h.representations.calls)
+	}
+}
+
+func TestNormalizeQuoteDeliveryInput_SelectsValidDestinations(t *testing.T) {
+	email := " client@example.com "
+	badEmail := "not-an-email"
+	key := uuid.New()
+	tests := []struct {
+		name    string
+		input   domain.QuoteDeliveryInput
+		wantErr bool
+	}{
+		{name: "email only", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Email: &email}},
+		{name: "whatsapp only", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "+5491155550101"}},
+		{name: "both", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "+5491155550101", Email: &email}},
+		{name: "no destination", input: domain.QuoteDeliveryInput{IdempotencyKey: key}, wantErr: true},
+		{name: "invalid phone with email", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: "123", Email: &email}, wantErr: true},
+		{name: "invalid email", input: domain.QuoteDeliveryInput{IdempotencyKey: key, Email: &badEmail}, wantErr: true},
+		{name: "missing key", input: domain.QuoteDeliveryInput{Email: &email}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeQuoteDeliveryInput(tt.input)
+			if tt.wantErr != (err != nil) {
+				t.Fatalf("normalizeQuoteDeliveryInput() = %+v, %v; want error %v", got, err, tt.wantErr)
+			}
+			if !tt.wantErr && tt.input.Email != nil && *got.Email != "client@example.com" {
+				t.Errorf("email = %q, want trimmed address", *got.Email)
+			}
+		})
 	}
 }
 

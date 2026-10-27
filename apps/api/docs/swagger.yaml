@@ -1,5 +1,50 @@
 basePath: /
 definitions:
+  dto.ARCACredentialResponse:
+    properties:
+      cuit:
+        type: string
+      expires_at:
+        type: string
+      subject:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ARCASetupResponse:
+    properties:
+      certificate:
+        type: string
+      certificate_expires_at:
+        type: string
+      csr:
+        type: string
+      enabled:
+        type: boolean
+      environment:
+        description: 'Environment is where this server authorizes invoices: HOMOLOGATION
+          (test mode) or PRODUCTION.'
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
+      has_certificate:
+        type: boolean
+      reconnect_required:
+        description: |-
+          ReconnectRequired is set when the connection was made for the other environment and has to
+          be started over before it can invoice.
+        type: boolean
+      setup_environment:
+        description: SetupEnvironment is the environment the connection was made for;
+          null without one.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
+      tax_id:
+        type: string
+    type: object
   dto.AccountResponse:
     properties:
       brand_color:
@@ -8,13 +53,28 @@ definitions:
         type: string
       created_at:
         type: string
+      has_invoices:
+        description: Whether ARCA ever authorized a voucher here, which keeps the
+          history readable while invoicing is off.
+        type: boolean
       id:
         type: string
+      invoice_on_payment:
+        description: InvoiceOnPayment ticks «Facturar también» by default when a sale
+          is marked paid.
+        type: boolean
+      invoicing_enabled:
+        description: Whether the corralón invoices with Coti; off hides invoicing
+          and refuses issuing.
+        type: boolean
       is_active:
         type: boolean
       legal_name:
         type: string
       name:
+        type: string
+      preferred_lower_price_strategy:
+        description: FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.
         type: string
       tax_id:
         type: string
@@ -105,6 +165,9 @@ definitions:
         items:
           type: string
         type: array
+      tax_id:
+        maxLength: 20
+        type: string
     type: object
   dto.AvailabilityListResponse:
     properties:
@@ -138,6 +201,28 @@ definitions:
           $ref: '#/definitions/dto.BranchResponse'
         type: array
     type: object
+  dto.BranchPointOfSaleInput:
+    properties:
+      branch_id:
+        type: string
+      point_of_sale:
+        maximum: 99998
+        minimum: 1
+        type: integer
+    required:
+    - branch_id
+    type: object
+  dto.BranchPointOfSaleResponse:
+    properties:
+      branch_id:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      point_of_sale:
+        type: integer
+    type: object
   dto.BranchResponse:
     properties:
       address:
@@ -154,6 +239,8 @@ definitions:
         type: boolean
       name:
         type: string
+      point_of_sale:
+        type: integer
       updated_at:
         type: string
     type: object
@@ -254,24 +341,30 @@ definitions:
     type: object
   dto.ChangeRequestDiffResponse:
     properties:
-      original:
-        $ref: '#/definitions/dto.ChangeRequestSideResponse'
-      reason:
-        type: string
-      requested:
-        $ref: '#/definitions/dto.ChangeRequestSideResponse'
-    type: object
-  dto.ChangeRequestSideResponse:
-    properties:
+      client_messages:
+        description: ClientMessages is every message the customer sent since the version
+          they answered went out.
+        items:
+          $ref: '#/definitions/dto.ClientMessageResponse'
+        type: array
       discounts:
         items:
-          $ref: '#/definitions/dto.DiffDiscountLineResponse'
+          $ref: '#/definitions/dto.DiffDiscountResponse'
         type: array
-      items:
+      handler:
+        $ref: '#/definitions/dto.HandlerDecisionResponse'
+      lines:
+        description: Lines pairs each sent line with the draft line copied from it,
+          then the lines the draft added.
         items:
-          $ref: '#/definitions/dto.DiffLineItemResponse'
+          $ref: '#/definitions/dto.DiffLineResponse'
         type: array
-      total:
+      original_total:
+        description: decimal string, never float.
+        type: string
+      reason:
+        type: string
+      requested_total:
         description: decimal string, never float.
         type: string
     type: object
@@ -320,7 +413,29 @@ definitions:
     properties:
       email:
         type: string
+      name:
+        type: string
       phone:
+        type: string
+      tax_id:
+        type: string
+    type: object
+  dto.ClientFiscalResponse:
+    properties:
+      address:
+        type: string
+      dni:
+        type: string
+      id:
+        type: string
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
+      name:
+        type: string
+      tax_id:
+        description: CUIT or CUIL, from the customer's account; read-only.
         type: string
     type: object
   dto.ClientListResponse:
@@ -338,6 +453,13 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientTagResponse'
         type: array
+    type: object
+  dto.ClientMessageResponse:
+    properties:
+      body:
+        type: string
+      received_at:
+        type: string
     type: object
   dto.ClientProfileResponse:
     properties:
@@ -368,6 +490,8 @@ definitions:
         type: string
       phone:
         type: string
+      tax_id:
+        type: string
       updated_at:
         type: string
     type: object
@@ -378,6 +502,16 @@ definitions:
       branch_id:
         type: string
       branch_name:
+        type: string
+      invoice_status:
+        description: |-
+          InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the
+          account invoices.
+        enum:
+        - INVOICED
+        - PENDING
+        - WAIVED
+        - UNINVOICED
         type: string
       quote_id:
         type: string
@@ -412,6 +546,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientTagResponse'
         type: array
+      tax_id:
+        type: string
       updated_at:
         type: string
     type: object
@@ -471,6 +607,108 @@ definitions:
     properties:
       imported_rows:
         type: integer
+    type: object
+  dto.ConversationBatchResponse:
+    properties:
+      closed_at:
+        type: string
+      decision:
+        $ref: '#/definitions/dto.ConversationDecisionResponse'
+      failure_reason:
+        enum:
+        - UNPROCESSABLE
+        - ATTEMPTS_EXHAUSTED
+        type: string
+      id:
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
+      retryable:
+        type: boolean
+      status:
+        enum:
+        - CLOSED
+        - PROCESSING
+        - PROCESSED
+        - FAILED
+        type: string
+    type: object
+  dto.ConversationDecisionResponse:
+    properties:
+      adaptation:
+        $ref: '#/definitions/dto.HandlerAdaptationResponse'
+      created_at:
+        type: string
+      decided_at:
+        type: string
+      interpretation:
+        type: string
+      no_match_reason:
+        enum:
+        - REQUIRES_SELLER
+        - AI_DISABLED
+        - PROPOSAL_REFUSED
+        - PIPELINE_EXHAUSTED
+        - PROMOTION_NOT_EARNED
+        type: string
+      outcome:
+        enum:
+        - APPLIED
+        - NO_MATCH
+        type: string
+      seller_decision:
+        enum:
+        - APPROVED_AS_IS
+        - EDITED
+        - REJECTED
+        - MANUAL_OVERRIDE
+        type: string
+      strategies_tried:
+        description: StrategiesTried are the recipes run for a complex goal, in run
+          order.
+        items:
+          enum:
+          - FIND_CHEAPER_ALTERNATIVES
+          - IMPROVE_QUALITY
+          - ADAPT_TO_REACH_DISCOUNT
+          type: string
+        type: array
+    type: object
+  dto.ConversationMessageResponse:
+    properties:
+      author:
+        enum:
+        - CLIENT
+        - SELLER
+        - SYSTEM
+        type: string
+      body:
+        type: string
+      received_at:
+        type: string
+    type: object
+  dto.ConversationResponse:
+    properties:
+      batches:
+        items:
+          $ref: '#/definitions/dto.ConversationBatchResponse'
+        type: array
+      can_discard_ai_changes:
+        type: boolean
+      pending:
+        description: Pending are the messages of a window still open, not yet handed
+          to the handler.
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
+      seller_messages:
+        description: SellerMessages are the quote's sends; the public link reads as
+          a placeholder.
+        items:
+          $ref: '#/definitions/dto.ConversationMessageResponse'
+        type: array
     type: object
   dto.CreateBranchRequest:
     properties:
@@ -580,9 +818,42 @@ definitions:
       unit:
         maxLength: 64
         type: string
+      vat_rate:
+        enum:
+        - VAT_0
+        - VAT_2_5
+        - VAT_5
+        - VAT_10_5
+        - VAT_21
+        - VAT_27
+        - EXEMPT
+        type: string
     required:
     - canonical_name
     - family_id
+    type: object
+  dto.CreatePublicRFQRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        type: string
+      phone:
+        maxLength: 64
+        type: string
+      request_id:
+        type: string
+      tax_id:
+        maxLength: 32
+        type: string
+      text:
+        type: string
+    required:
+    - name
+    - request_id
+    - tax_id
     type: object
   dto.CreateRfqItemRequest:
     properties:
@@ -689,22 +960,170 @@ definitions:
     - from
     - text
     type: object
-  dto.DiffDiscountLineResponse:
+  dto.CustomerCredentialsRequest:
+    properties:
+      password:
+        maxLength: 72
+        type: string
+      recovery_email:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - password
+    - tax_id
+    type: object
+  dto.CustomerDeliverySiteResponse:
+    properties:
+      hostname:
+        type: string
+    type: object
+  dto.CustomerGoogleCompleteRequest:
+    properties:
+      tax_id:
+        maxLength: 20
+        type: string
+      token:
+        type: string
+    required:
+    - tax_id
+    - token
+    type: object
+  dto.CustomerGoogleExchangeRequest:
+    properties:
+      code:
+        maxLength: 4096
+        type: string
+      nonce:
+        type: string
+      verifier:
+        maxLength: 128
+        minLength: 43
+        type: string
+    required:
+    - code
+    - nonce
+    - verifier
+    type: object
+  dto.CustomerGoogleExchangeResponse:
+    properties:
+      session:
+        $ref: '#/definitions/dto.CustomerSessionResponse'
+      signup_token:
+        type: string
+    type: object
+  dto.CustomerGoogleOptionsResponse:
+    properties:
+      client_id:
+        type: string
+      logo_url:
+        type: string
+      password_min_length:
+        type: integer
+      redirect_uri:
+        type: string
+      supplier_name:
+        type: string
+    type: object
+  dto.CustomerIdentityResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      session_expires_at:
+        type: string
+      tax_id:
+        type: string
+    type: object
+  dto.CustomerOrderResponse:
+    properties:
+      branch_name:
+        type: string
+      delivery_token:
+        type: string
+      id:
+        type: string
+      original_text:
+        type: string
+      received_at:
+        type: string
+      status:
+        type: string
+    type: object
+  dto.CustomerPasswordResetRequest:
+    properties:
+      password:
+        maxLength: 72
+        type: string
+      token:
+        type: string
+    required:
+    - password
+    - token
+    type: object
+  dto.CustomerRecoveryRequest:
+    properties:
+      email:
+        maxLength: 255
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - email
+    - tax_id
+    type: object
+  dto.CustomerSessionResponse:
+    properties:
+      customer:
+        $ref: '#/definitions/dto.CustomerIdentityResponse'
+      session_token:
+        type: string
+    type: object
+  dto.CustomerTokenRequest:
+    properties:
+      token:
+        type: string
+    required:
+    - token
+    type: object
+  dto.DiffDiscountResponse:
+    properties:
+      change:
+        enum:
+        - UNCHANGED
+        - MODIFIED
+        - ADDED
+        - REMOVED
+        type: string
+      name:
+        type: string
+      original:
+        $ref: '#/definitions/dto.DiffDiscountSideResponse'
+      requested:
+        $ref: '#/definitions/dto.DiffDiscountSideResponse'
+    type: object
+  dto.DiffDiscountSideResponse:
     properties:
       amount:
         type: string
-      changed:
-        type: boolean
-      name:
+      origin:
+        enum:
+        - AUTOMATIC
+        - AI_ADAPTATION
+        - MANUAL_SELLER
         type: string
+      suppressed:
+        type: boolean
     type: object
   dto.DiffLineItemResponse:
     properties:
-      change_type:
-        type: string
-      changed:
-        type: boolean
       description:
+        type: string
+      product_name:
         type: string
       quantity:
         type: string
@@ -712,6 +1131,20 @@ definitions:
         type: string
       unit_price:
         type: string
+    type: object
+  dto.DiffLineResponse:
+    properties:
+      change:
+        enum:
+        - UNCHANGED
+        - MODIFIED
+        - ADDED
+        - REMOVED
+        type: string
+      original:
+        $ref: '#/definitions/dto.DiffLineItemResponse'
+      requested:
+        $ref: '#/definitions/dto.DiffLineItemResponse'
     type: object
   dto.ErrorResponse:
     properties:
@@ -737,12 +1170,304 @@ definitions:
     required:
     - email
     type: object
+  dto.GmailAuthorizationResponse:
+    properties:
+      authorization_url:
+        type: string
+    type: object
+  dto.HandlerAdaptationResponse:
+    properties:
+      lines:
+        items:
+          $ref: '#/definitions/dto.HandlerAdaptedLineResponse'
+        type: array
+      total_after:
+        type: string
+      total_before:
+        type: string
+      total_raised:
+        description: TotalRaised is true when the customer asked for the promotion
+          and reaching it costs more.
+        type: boolean
+    type: object
+  dto.HandlerAdaptedLineResponse:
+    properties:
+      description:
+        type: string
+      from_quantity:
+        type: string
+      item_id:
+        type: string
+      promotion_id:
+        type: string
+      promotion_name:
+        type: string
+      to_quantity:
+        type: string
+    type: object
+  dto.HandlerDecisionResponse:
+    properties:
+      adaptation:
+        $ref: '#/definitions/dto.HandlerAdaptationResponse'
+      client_input:
+        type: string
+      created_at:
+        type: string
+      interpretation:
+        type: string
+      no_match_reason:
+        enum:
+        - REQUIRES_SELLER
+        - AI_DISABLED
+        - PROPOSAL_REFUSED
+        - PIPELINE_EXHAUSTED
+        - PROMOTION_NOT_EARNED
+        type: string
+      outcome:
+        enum:
+        - APPLIED
+        - NO_MATCH
+        type: string
+      seller_decision:
+        enum:
+        - APPROVED_AS_IS
+        - EDITED
+        - REJECTED
+        - MANUAL_OVERRIDE
+        type: string
+      strategies_tried:
+        description: StrategiesTried are the recipes run for a complex goal, in run
+          order.
+        items:
+          enum:
+          - FIND_CHEAPER_ALTERNATIVES
+          - IMPROVE_QUALITY
+          - ADAPT_TO_REACH_DISCOUNT
+          type: string
+        type: array
+    type: object
   dto.HealthResponse:
     properties:
       detail:
         type: string
       status:
         type: string
+    type: object
+  dto.InvoiceAmountsResponse:
+    properties:
+      by_rate:
+        items:
+          $ref: '#/definitions/dto.VATAmountResponse'
+        type: array
+      exempt:
+        type: string
+      net:
+        type: string
+      total:
+        type: string
+      vat:
+        type: string
+    type: object
+  dto.InvoiceIssuerProfileRequest:
+    properties:
+      activity_started_on:
+        type: string
+      address:
+        maxLength: 255
+        type: string
+      gross_income_registration:
+        maxLength: 50
+        type: string
+    required:
+    - activity_started_on
+    - address
+    - gross_income_registration
+    type: object
+  dto.InvoiceListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.InvoiceResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.InvoicePreviewResponse:
+    properties:
+      amounts:
+        $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      credited_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: |-
+          CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
+          environment, with that credit note: history, and what a new invoice follows.
+      currency:
+        type: string
+      customer_signup_url:
+        description: |-
+          CustomerSignupURL is where the customer creates the account that carries their CUIT; present
+          only while the issues ask for the receiver's CUIT or document and the supplier has its own
+          customer site.
+        type: string
+      environment:
+        description: Environment is where an invoice issued now would be authorized.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
+      fingerprint:
+        type: string
+      invoice:
+        $ref: '#/definitions/dto.InvoiceResponse'
+      issuer_cuit:
+        type: string
+      issues:
+        items:
+          type: string
+        type: array
+      other_environment_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: |-
+          OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+          shown as history; it does not stop an invoice in this one.
+      point_of_sale:
+        type: integer
+      receiver:
+        $ref: '#/definitions/dto.InvoiceReceiverResponse'
+      type:
+        type: string
+      version_id:
+        description: what POST confirms, with type and total.
+        type: string
+    type: object
+  dto.InvoiceReceiverResponse:
+    properties:
+      address:
+        type: string
+      doc_number:
+        type: string
+      doc_type:
+        type: string
+      iva_condition:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.InvoiceResponse:
+    properties:
+      amounts:
+        $ref: '#/definitions/dto.InvoiceAmountsResponse'
+      branch_id:
+        type: string
+      cae:
+        type: string
+      cae_expires_on:
+        type: string
+      created_at:
+        type: string
+      credit_note:
+        allOf:
+        - $ref: '#/definitions/dto.InvoiceResponse'
+        description: CreditNote is an invoice's newest credit note; an ISSUED one
+          cancels the invoice.
+      credited_invoice:
+        allOf:
+        - $ref: '#/definitions/dto.VoucherReferenceResponse'
+        description: CreditedInvoice is the invoice a credit note cancels.
+      currency:
+        type: string
+      environment:
+        description: Environment is where ARCA authorizes it; a HOMOLOGATION invoice
+          has no fiscal validity.
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
+      id:
+        type: string
+      issued_on:
+        type: string
+      issuer_cuit:
+        type: string
+      issues:
+        items:
+          type: string
+        type: array
+      kind:
+        enum:
+        - INVOICE
+        - CREDIT_NOTE
+        type: string
+      number:
+        type: integer
+      point_of_sale:
+        type: integer
+      qr_url:
+        description: QRURL is ARCA's verification link for an issued invoice (RG 4892),
+          empty otherwise.
+        type: string
+      receiver:
+        $ref: '#/definitions/dto.InvoiceReceiverResponse'
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  dto.InvoicingSettingsResponse:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleResponse'
+        type: array
+      credential:
+        $ref: '#/definitions/dto.ARCACredentialResponse'
+      enabled:
+        type: boolean
+      environment:
+        enum:
+        - HOMOLOGATION
+        - PRODUCTION
+        type: string
+      invoice_on_payment:
+        description: InvoiceOnPayment ticks «Facturar también» by default when a sale
+          is marked paid.
+        type: boolean
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
+      prices_include_vat:
+        type: boolean
+      profile:
+        $ref: '#/definitions/dto.InvoiceIssuerProfileRequest'
+      tax_id:
+        type: string
+    type: object
+  dto.IssueInvoiceRequest:
+    properties:
+      fingerprint:
+        type: string
+      total:
+        type: string
+      type:
+        enum:
+        - A
+        - B
+        - C
+        type: string
+      version_id:
+        type: string
+    required:
+    - fingerprint
+    - total
+    - type
+    - version_id
     type: object
   dto.LoginRequest:
     properties:
@@ -967,6 +1692,8 @@ definitions:
         type: string
       updated_at:
         type: string
+      vat_rate:
+        type: string
     type: object
   dto.ProductSubgroupResponse:
     properties:
@@ -981,6 +1708,150 @@ definitions:
         items:
           $ref: '#/definitions/dto.ProductFamilyResponse'
         type: array
+    type: object
+  dto.PromotionConditionRequest:
+    properties:
+      family_id:
+        type: string
+      min_quantity:
+        type: string
+      product_id:
+        type: string
+      subgroup_id:
+        type: string
+    type: object
+  dto.PromotionConditionResponse:
+    properties:
+      family_id:
+        type: string
+      min_quantity:
+        type: string
+      product_id:
+        type: string
+      subgroup_id:
+        type: string
+    type: object
+  dto.PromotionListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.PromotionResponse'
+        type: array
+    type: object
+  dto.PromotionRequest:
+    properties:
+      action_type:
+        enum:
+        - PERCENTAGE
+        - FIXED_AMOUNT
+        - SPECIAL_PRICE
+        type: string
+      action_value:
+        description: ignored for QUANTITY_TIERED.
+        type: string
+      branch_id:
+        type: string
+      condition_type:
+        enum:
+        - PER_ITEM
+        - QUANTITY_TIERED
+        - ITEM_SET
+        - ON_TOTAL
+        type: string
+      conditions:
+        items:
+          $ref: '#/definitions/dto.PromotionConditionRequest'
+        type: array
+      description:
+        maxLength: 512
+        type: string
+      is_active:
+        description: defaults to true.
+        type: boolean
+      is_exclusive:
+        type: boolean
+      min_total:
+        type: string
+      name:
+        maxLength: 128
+        minLength: 1
+        type: string
+      priority:
+        type: integer
+      tiers:
+        items:
+          $ref: '#/definitions/dto.PromotionTierRequest'
+        type: array
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    required:
+    - action_type
+    - condition_type
+    - name
+    type: object
+  dto.PromotionResponse:
+    properties:
+      action_type:
+        type: string
+      action_value:
+        type: string
+      branch_id:
+        type: string
+      condition_type:
+        type: string
+      conditions:
+        items:
+          $ref: '#/definitions/dto.PromotionConditionResponse'
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_exclusive:
+        type: boolean
+      min_total:
+        type: string
+      name:
+        type: string
+      priority:
+        type: integer
+      tiers:
+        items:
+          $ref: '#/definitions/dto.PromotionTierResponse'
+        type: array
+      updated_at:
+        type: string
+      valid_from:
+        type: string
+      valid_to:
+        type: string
+    type: object
+  dto.PromotionTierRequest:
+    properties:
+      from_quantity:
+        type: string
+      to_quantity:
+        type: string
+      value:
+        type: string
+    required:
+    - from_quantity
+    - value
+    type: object
+  dto.PromotionTierResponse:
+    properties:
+      from_quantity:
+        type: string
+      to_quantity:
+        type: string
+      value:
+        type: string
     type: object
   dto.PublicQuoteActionRequest:
     properties:
@@ -1016,6 +1887,69 @@ definitions:
       quote:
         $ref: '#/definitions/dto.QuoteRepresentationPayloadResponse'
       status:
+        enum:
+        - ACTIVE
+        - EXPIRED
+        - UNAVAILABLE
+        type: string
+    type: object
+  dto.PublicRFQContactResponse:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      tax_id:
+        type: string
+    type: object
+  dto.PublicRFQDestinationResponse:
+    properties:
+      accepted_content_types:
+        items:
+          type: string
+        type: array
+      branch_name:
+        type: string
+      logo_url:
+        type: string
+      max_file_size:
+        type: integer
+      max_text_characters:
+        type: integer
+      supplier_name:
+        type: string
+    type: object
+  dto.PublicRFQReceiptResponse:
+    properties:
+      received:
+        type: boolean
+    type: object
+  dto.PublicRFQSiteBranchResponse:
+    properties:
+      channel_id:
+        type: string
+      name:
+        type: string
+    type: object
+  dto.PublicRFQSiteResponse:
+    properties:
+      accepted_content_types:
+        items:
+          type: string
+        type: array
+      branches:
+        items:
+          $ref: '#/definitions/dto.PublicRFQSiteBranchResponse'
+        type: array
+      logo_url:
+        type: string
+      max_file_size:
+        type: integer
+      max_text_characters:
+        type: integer
+      supplier_name:
         type: string
     type: object
   dto.QuoteAlternativeApprovalRequest:
@@ -1310,10 +2244,22 @@ definitions:
         type: string
       id:
         type: string
+      invoice_waived_at:
+        description: InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere
+          factura».
+        type: string
+      invoice_waived_by_user_id:
+        type: string
       needs_followup:
         type: boolean
       number:
         type: integer
+      paid_at:
+        description: PaidAt and PaidByUserID record «Cobrado» on an accepted sale;
+          null while it is not paid.
+        type: string
+      paid_by_user_id:
+        type: string
       rfq_id:
         type: string
       seller_id:
@@ -1323,14 +2269,14 @@ definitions:
     type: object
   dto.QuoteSendRequest:
     properties:
+      client_association:
+        $ref: '#/definitions/dto.AssociateQuoteClientRequest'
       email_delivery:
         $ref: '#/definitions/dto.QuoteEmailDeliveryRequest'
       expiry_days:
         type: integer
       recipient_phone:
         type: string
-    required:
-    - recipient_phone
     type: object
   dto.QuoteSendResponse:
     properties:
@@ -1360,6 +2306,8 @@ definitions:
       format:
         type: string
       id:
+        type: string
+      operation_id:
         type: string
       public_url:
         type: string
@@ -1424,6 +2372,8 @@ definitions:
       expires_at:
         type: string
       id:
+        type: string
+      original_filename:
         type: string
       processing_status:
         type: string
@@ -1545,6 +2495,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientActionResponse'
         type: array
+      conversation:
+        $ref: '#/definitions/dto.ConversationResponse'
       deliveries:
         items:
           $ref: '#/definitions/dto.QuoteSendTrackingResponse'
@@ -1553,10 +2505,22 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteDiscountResponse'
         type: array
+      inbound_email:
+        type: string
+      inbound_whatsapp_phone:
+        type: string
       items:
         items:
           $ref: '#/definitions/dto.QuoteItemResponse'
         type: array
+      public_attachments:
+        items:
+          $ref: '#/definitions/dto.RFQAttachmentResponse'
+        type: array
+      public_contact:
+        $ref: '#/definitions/dto.PublicRFQContactResponse'
+      public_original_text:
+        type: string
       quote:
         $ref: '#/definitions/dto.QuoteResponse'
       quote_status_history:
@@ -1594,10 +2558,30 @@ definitions:
         type: string
       id:
         type: string
+      invoice_pending:
+        description: InvoicePending is whether a voucher of the sale still waits for
+          ARCA's answer.
+        type: boolean
+      invoice_waived_at:
+        description: InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»;
+          null while it is not set.
+        type: string
+      invoice_waived_by:
+        type: string
+      invoiced:
+        description: Invoiced is whether an issued invoice no credit note cancelled
+          stands for the sale.
+        type: boolean
       item_count:
         type: integer
       needs_followup:
         type: boolean
+      paid_at:
+        description: PaidAt and PaidBy (the user's name) record «Cobrado»; null while
+          the sale is not paid.
+        type: string
+      paid_by:
+        type: string
       quote_id:
         type: string
       quote_number:
@@ -1606,6 +2590,11 @@ definitions:
         description: ReviewCount is how many of the current version's lines matching
           left for the seller.
         type: integer
+      sale_complete:
+        description: |-
+          SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
+          account does not invoice with Coti.
+        type: boolean
       seller:
         type: string
       seller_id:
@@ -1634,6 +2623,42 @@ definitions:
       status:
         type: string
       work_type:
+        type: string
+    type: object
+  dto.SaleAwaitingInvoiceListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SaleAwaitingInvoiceResponse'
+        type: array
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+    type: object
+  dto.SaleAwaitingInvoiceResponse:
+    properties:
+      accepted_at:
+        type: string
+      branch_id:
+        type: string
+      branch_name:
+        type: string
+      client:
+        type: string
+      client_id:
+        type: string
+      paid_at:
+        type: string
+      quote_id:
+        type: string
+      quote_number:
+        type: integer
+      rfq_id:
+        type: string
+      total:
         type: string
     type: object
   dto.SaveOnboardingProgressRequest:
@@ -1688,6 +2713,13 @@ definitions:
         type: boolean
       stock:
         type: string
+    type: object
+  dto.SetInvoicingEnabledRequest:
+    properties:
+      enabled:
+        type: boolean
+    required:
+    - enabled
     type: object
   dto.SetPriceRequest:
     properties:
@@ -1815,12 +2847,24 @@ definitions:
       brand_logo_url:
         maxLength: 512
         type: string
+      disconnect_arca:
+        description: |-
+          Confirms that a new tax_id removes the ARCA connection made with the old one; without it the
+          change is refused with 409 ARCA_CONNECTED.
+        type: boolean
       legal_name:
         maxLength: 255
         type: string
       name:
         maxLength: 255
         minLength: 1
+        type: string
+      preferred_lower_price_strategy:
+        description: What a request for a lower price tries first when the customer
+          did not say; omitted keeps it.
+        enum:
+        - FIND_CHEAPER_ALTERNATIVES
+        - ADAPT_TO_REACH_DISCOUNT
         type: string
       tax_id:
         maxLength: 255
@@ -1860,6 +2904,27 @@ definitions:
       is_active:
         type: boolean
     type: object
+  dto.UpdateClientFiscalRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      dni:
+        description: DNI identifies a consumidor final, beside any CUIT the customer's
+          account carries.
+        maxLength: 32
+        type: string
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
+    type: object
   dto.UpdateDiscountRequest:
     properties:
       action_type:
@@ -1886,6 +2951,37 @@ definitions:
       value:
         type: string
     type: object
+  dto.UpdateInvoicingSettingsRequest:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleInput'
+        type: array
+      invoice_on_payment:
+        description: InvoiceOnPayment ticks «Facturar también» by default when a sale
+          is marked paid; omitted keeps it.
+        type: boolean
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      prices_include_vat:
+        type: boolean
+      profile:
+        $ref: '#/definitions/dto.InvoiceIssuerProfileRequest'
+    type: object
+  dto.UpdatePointsOfSaleRequest:
+    properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchPointOfSaleInput'
+        type: array
+    required:
+    - branches
+    type: object
   dto.UpdateProductRequest:
     properties:
       canonical_name:
@@ -1907,12 +3003,26 @@ definitions:
       unit:
         maxLength: 64
         type: string
+      vat_rate:
+        enum:
+        - VAT_0
+        - VAT_2_5
+        - VAT_5
+        - VAT_10_5
+        - VAT_21
+        - VAT_27
+        - EXEMPT
+        type: string
     required:
     - canonical_name
     - family_id
     type: object
   dto.UpdateQuoteItemRequest:
     properties:
+      confirm_match:
+        description: ConfirmMatch settles a flagged line on the product it already
+          carries.
+        type: boolean
       product_id:
         type: string
       quantity:
@@ -1951,6 +3061,14 @@ definitions:
     - email
     - name
     - role
+    type: object
+  dto.UploadARCACertificateRequest:
+    properties:
+      certificate:
+        maxLength: 16384
+        type: string
+    required:
+    - certificate
     type: object
   dto.UserBrief:
     properties:
@@ -1996,6 +3114,28 @@ definitions:
       role:
         type: string
       updated_at:
+        type: string
+    type: object
+  dto.VATAmountResponse:
+    properties:
+      amount:
+        type: string
+      base:
+        type: string
+      rate:
+        type: string
+    type: object
+  dto.VoucherReferenceResponse:
+    properties:
+      id:
+        type: string
+      issued_on:
+        type: string
+      number:
+        type: integer
+      point_of_sale:
+        type: integer
+      type:
         type: string
     type: object
 info:
@@ -2147,6 +3287,67 @@ paths:
       summary: Upload an account logo
       tags:
       - accounts
+  /v1/arca/setup:
+    delete:
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Disconnect ARCA
+      tags:
+      - arca
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ARCASetupResponse'
+      security:
+      - BearerAuth: []
+      summary: Get ARCA setup
+      tags:
+      - arca
+    post:
+      description: Generates the key and the certificate request for the CUIT on the
+        account; 422 ACCOUNT_TAX_ID_REQUIRED when the account has none.
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ARCASetupResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create ARCA certificate request
+      tags:
+      - arca
+  /v1/arca/setup/certificate:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public PEM certificate
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UploadARCACertificateRequest'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Install ARCA certificate
+      tags:
+      - arca
   /v1/auth/change-email:
     post:
       consumes:
@@ -2620,6 +3821,39 @@ paths:
       summary: Update an intake channel
       tags:
       - channels
+  /v1/channels/{channelId}/gmail/authorization:
+    post:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Email channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GmailAuthorizationResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Authorize a branch Gmail mailbox
+      tags:
+      - channels
   /v1/clients:
     get:
       description: Returns account-level client profiles. Tags are account-wide; accepted
@@ -2692,6 +3926,84 @@ paths:
       summary: Get a client profile
       tags:
       - clients
+  /v1/clients/{clientId}/fiscal:
+    get:
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientFiscalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a client's fiscal data
+      tags:
+      - clients
+    put:
+      consumes:
+      - application/json
+      description: Replaces the client's legal name, address, IVA condition and DNI;
+        omitted fields clear. A CUIT comes only from the customer's account, so tax_id
+        is refused.
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Fiscal data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientFiscalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientFiscalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVALID_TAX_ID, TAX_ID_READ_ONLY
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a client's fiscal data
+      tags:
+      - clients
   /v1/clients/{clientId}/tags:
     put:
       consumes:
@@ -2736,6 +4048,517 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
+  /v1/customer/sites/{hostname}/auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and recovery email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryRequest'
+      responses:
+        "204":
+          description: Recovery request received
+      summary: Request customer password recovery
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/complete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verified Google signup token and CUIT/CUIL
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleCompleteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Complete Google customer registration
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/exchange:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Authorization code and PKCE verifier
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleExchangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerGoogleExchangeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Exchange a Google authorization code
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/link:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verified Google signup token and CUIT/CUIL
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerGoogleCompleteRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Link Google to an authenticated customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/google/options:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerGoogleOptionsResponse'
+      summary: Get customer Google sign-in configuration
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Log in as a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/logout:
+    post:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Logged out
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Log out as a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Register a customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Recovery token and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerPasswordResetRequest'
+      responses:
+        "204":
+          description: Password reset
+      summary: Reset a customer password
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/verify-email:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verification token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerTokenRequest'
+      responses:
+        "204":
+          description: Email verified
+      summary: Verify a customer recovery email
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/me:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerIdentityResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the authenticated customer
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/orders:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Page number starting at one
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.CustomerOrderResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List customer requests
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/orders/{rfqId}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Request ID
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerOrderResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a customer request
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/quote-sends/{token}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteSendResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a public quote delivery token
+      tags:
+      - public quote sends
+  /v1/customer/sites/{hostname}/quote-sends/{token}/order:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerOrderResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a customer delivery to its request
+      tags:
+      - customer-orders
+  /v1/customer/sites/{hostname}/rfq-channels/{channelId}/requests:
+    post:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: Accepts JSON text or multipart contact fields and one file; request_id
+        is a UUID v4 reused only for retries of the same submission.
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: WEBAPP channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Text request; multipart uses the same fields and a file part
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreatePublicRFQRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PublicRFQReceiptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Submit a public RFQ
+      tags:
+      - public-rfqs
   /v1/dev/whatsapp/messages:
     post:
       consumes:
@@ -2828,6 +4651,283 @@ paths:
       summary: Download a signed object
       tags:
       - files
+  /v1/invoices:
+    get:
+      parameters:
+      - description: Active branch; omitted lists every branch the caller reaches
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoiceListResponse'
+      security:
+      - BearerAuth: []
+      summary: List invoices
+      tags:
+      - invoicing
+  /v1/invoices/{invoiceId}/credit-note:
+    post:
+      description: 'Asks ARCA to authorize a credit note of the invoice''s letter,
+        lines, amounts and buyer, associated with it. Irreversible: once issued, the
+        sale is no longer invoiced.'
+      parameters:
+      - description: The invoice's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Invoice id
+        in: path
+        name: invoiceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InvoiceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS,
+            ARCA_ENVIRONMENT_MISMATCH
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVOICE_NOT_READY, INVOICE_REJECTED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: INVOICING_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a credit note for an invoice
+      tags:
+      - invoicing
+  /v1/invoices/{invoiceId}/pdf:
+    get:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Invoice id
+        in: path
+        name: invoiceId
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      security:
+      - BearerAuth: []
+      summary: Download invoice PDF
+      tags:
+      - invoicing
+  /v1/invoices/{invoiceId}/recover:
+    post:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Invoice id
+        in: path
+        name: invoiceId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoiceResponse'
+      security:
+      - BearerAuth: []
+      summary: Recover invoice authorization
+      tags:
+      - invoicing
+  /v1/invoicing/enabled:
+    put:
+      consumes:
+      - application/json
+      description: Off refuses issuing invoices and credit notes; issued ones stay
+        readable and the ARCA setup is kept. Turning it off is refused with 409 INVOICE_PENDING
+        while an invoice waits for ARCA.
+      parameters:
+      - description: Switch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetInvoicingEnabledRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Switch invoicing with Coti on or off
+      tags:
+      - invoicing
+  /v1/invoicing/points-of-sale:
+    put:
+      consumes:
+      - application/json
+      description: Sets the listed branches' ARCA points of sale in one write; 409
+        POINT_OF_SALE_TAKEN when two branches would share one.
+      parameters:
+      - description: Points of sale
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePointsOfSaleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update points of sale
+      tags:
+      - invoicing
+  /v1/invoicing/settings:
+    get:
+      description: Returns the account's IVA condition, how its prices treat IVA,
+        each branch's ARCA point of sale and the uploaded certificate.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get invoicing settings
+      tags:
+      - invoicing
+    put:
+      consumes:
+      - application/json
+      description: Replaces the account's IVA condition and price treatment and the
+        listed branches' points of sale.
+      parameters:
+      - description: Invoicing settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateInvoicingSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicingSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update invoicing settings
+      tags:
+      - invoicing
   /v1/me:
     get:
       description: Returns the caller's identity and branch reach, plus whether an
@@ -3974,6 +6074,156 @@ paths:
       summary: Preview bulk catalog changes
       tags:
       - catalog
+  /v1/promotions:
+    get:
+      description: Returns every promotion rule of the account, inactive ones included,
+        highest priority first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List promotions
+      tags:
+      - promotions
+    post:
+      consumes:
+      - application/json
+      description: Adds a typed promotion rule. The engine applies it to every quote
+        whose lines match, on its next discount sweep.
+      parameters:
+      - description: Promotion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PromotionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a promotion
+      tags:
+      - promotions
+  /v1/promotions/{promotionId}:
+    get:
+      description: Returns one promotion rule with its conditions and tiers.
+      parameters:
+      - description: Promotion id
+        in: path
+        name: promotionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a promotion
+      tags:
+      - promotions
+    put:
+      consumes:
+      - application/json
+      description: Rewrites the whole rule, conditions and tiers included. Deactivating
+        or reactivating a promotion is is_active or its validity window changing here.
+      parameters:
+      - description: Promotion id
+        in: path
+        name: promotionId
+        required: true
+        type: string
+      - description: Promotion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PromotionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PromotionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a promotion
+      tags:
+      - promotions
   /v1/public/account-logos/{accountId}/{logoId}:
     get:
       description: Serves one account logo by its public, unguessable identifier.
@@ -4268,33 +6518,16 @@ paths:
       summary: Get a product image
       tags:
       - catalog
-  /v1/public/quote-sends/{token}:
-    get:
-      parameters:
-      - description: Public delivery token
-        in: path
-        name: token
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.PublicQuoteSendResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-      summary: Resolve a public quote delivery token
-      tags:
-      - public quote sends
   /v1/public/quote-sends/{token}/action:
     post:
       consumes:
       - application/json
       parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
       - description: Public delivery token
         in: path
         name: token
@@ -4325,9 +6558,77 @@ paths:
           description: Conflict
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Record a customer response on a public quote
       tags:
       - public quote sends
+  /v1/public/quote-sends/{token}/site:
+    get:
+      parameters:
+      - description: Delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerDeliverySiteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get supplier routing for a legacy delivery
+      tags:
+      - customer-auth
+  /v1/public/rfq-channels/{channelId}:
+    get:
+      parameters:
+      - description: WEBAPP channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicRFQDestinationResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get a public RFQ destination
+      tags:
+      - public-rfqs
+  /v1/public/rfq-sites/{hostname}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicRFQSiteResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Get a public RFQ site
+      tags:
+      - public-rfqs
   /v1/quotes/{quoteId}/accept-materials:
     post:
       description: 'Freezes each line''s unit price and discount floor from the prices
@@ -4462,7 +6763,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: Quote is not accepted
+          description: Quote cannot be sent
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
@@ -4471,15 +6772,15 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get accepted-sale client association
+      summary: Get quotation-send client association
       tags:
       - clients
     put:
       consumes:
       - application/json
-      description: Links the quote and its RFQ to exactly one seller-confirmed profile,
-        and atomically replaces that profile's tags. Contact suggestions are never
-        accepted automatically.
+      deprecated: true
+      description: Client selection is confirmed through quotation delivery. This
+        standalone operation returns 409.
       parameters:
       - description: Active branch
         in: header
@@ -4500,10 +6801,6 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ClientMatchResponse'
         "400":
           description: Bad Request
           schema:
@@ -4521,7 +6818,7 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
-          description: Quote is not accepted
+          description: Association is confirmed during quotation delivery
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
@@ -4530,9 +6827,52 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Associate an accepted sale with a client
+      summary: Reject standalone client association
       tags:
       - clients
+  /v1/quotes/{quoteId}/discard-ai-changes:
+    post:
+      description: Resets the draft to the version the customer last received and
+        records the pending AI changes as rejected.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteVersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED or NO_AI_CHANGES
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Discard the AI's changes to a draft
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/discounts:
     post:
       consumes:
@@ -4687,6 +7027,191 @@ paths:
       summary: Update a discount
       tags:
       - rfqs
+  /v1/quotes/{quoteId}/invoice:
+    get:
+      description: Returns the invoice type, buyer and amounts the quote would be
+        invoiced with now, every gap that stops it, and the invoice it already has.
+      parameters:
+      - description: The quote's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InvoicePreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a quote's invoice
+      tags:
+      - invoicing
+    post:
+      consumes:
+      - application/json
+      description: 'Asks ARCA to authorize the electronic invoice for an accepted
+        quote, as long as it is still the one previewed. Irreversible: a mistake is
+        corrected with a credit note.'
+      parameters:
+      - description: The quote's branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: The previewed invoice being confirmed
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.IssueInvoiceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InvoiceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE,
+            QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: INVOICE_NOT_READY, INVOICE_REJECTED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: INVOICING_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Issue a quote's invoice
+      tags:
+      - invoicing
+  /v1/quotes/{quoteId}/invoice-waiver:
+    delete:
+      description: The accepted sale waits for its invoice again.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Undo «No requiere factura»
+      tags:
+      - quotes
+    post:
+      description: Takes the accepted sale out of the invoicing wait. Refused while
+        invoicing is off or the sale has a live invoice; issuing an invoice later
+        clears it.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_ACCEPTED, QUOTE_ARCHIVED, ACCOUNT_INVOICING_OFF or
+            QUOTE_ALREADY_INVOICED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark a sale as needing no invoice
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/items:
     post:
       consumes:
@@ -4912,6 +7437,139 @@ paths:
       summary: Approve or withdraw a quote alternative
       tags:
       - quotes
+  /v1/quotes/{quoteId}/message-batches/{batchId}/retry:
+    post:
+      description: Requeues a batch that ran out of attempts while the handler may
+        still act on its quote.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Batch id
+        in: path
+        name: batchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ConversationBatchResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote or batch in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: BATCH_NOT_RETRYABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Retry a failed conversation batch
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/payment:
+    delete:
+      description: Clears the paid mark of an accepted sale; a paid sale is reopened
+        only after this.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Unmark a paid sale
+      tags:
+      - quotes
+    post:
+      description: Records who marked the accepted sale paid and when. A fact, not
+        a status; repeating it keeps the first mark. Paying never issues an invoice.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark a sale paid
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/reactivate:
     post:
       consumes:
@@ -5023,9 +7681,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Freezes the current seller-approved version, always attempts WhatsApp
-        with a public webapp link, optionally attempts email independently, and moves
-        QUOTED to SENT when at least one selected channel succeeds.
+      description: Freezes the current seller-approved version, attempts each selected
+        channel with a public webapp link, and moves QUOTED to SENT when at least
+        one succeeds.
       parameters:
       - description: Active branch
         in: header
@@ -5179,6 +7837,44 @@ paths:
       summary: Unarchive a quote
       tags:
       - quotes
+  /v1/quotes/awaiting-invoice:
+    get:
+      description: Accepted, unarchived sales with no live invoice, no pending voucher
+        and no waiver, in the caller's branch and seller reach; empty while the account
+        does not invoice.
+      parameters:
+      - description: Active branch; omitted lists every branch the caller reaches
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SaleAwaitingInvoiceListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List sales awaiting an invoice
+      tags:
+      - invoicing
   /v1/rfqs:
     get:
       description: Returns the RFQ list scoped to the tenant and, when set, the active

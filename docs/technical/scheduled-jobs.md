@@ -96,11 +96,17 @@ No request has any reason to read an audit trail, let alone rewrite one.
 
 ## Configuration
 
-| Variable                                | Default | What for                                  |
-| --------------------------------------- | ------- | ----------------------------------------- |
-| `JOB_TIMEOUT_MINUTES`                   | 30      | Bound on a single run                     |
-| `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`  | 5       | Orders read per firing of the sweep       |
-| `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES` | 15      | How long one run's claim on a file stands |
+| Variable                                  | Default | What for                                  |
+| ----------------------------------------- | ------- | ----------------------------------------- |
+| `JOB_TIMEOUT_MINUTES`                     | 30      | Bound on a single run                     |
+| `ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE`    | 5       | Orders read per firing of the sweep       |
+| `ATTACHMENT_EXTRACTION_RECLAIM_MINUTES`   | 15      | How long one run's claim on a file stands |
+| `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`        | 30      | Days without movement before archiving    |
+| `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`          | 30      | The same, for a complete sale or REJECTED |
+| `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`           | 100     | Quotes archived per statement             |
+| `CONVERSATION_MAX_ATTEMPTS`               | 3       | Failed attempts before a batch is FAILED  |
+| `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` | 600     | One attempt's bound; older claims reclaim |
+| `CONVERSATION_SWEEP_BATCH_SIZE`           | 100     | Windows closed per page, claims per pass  |
 
 ## Registered schedules
 
@@ -110,6 +116,8 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `quote-quality-evaluation`  | Every 15 minutes      | Retry evaluations missing after a committed send |
 | `attachment-extraction`     | Every 15 minutes      | Read the files an order arrived with and extract |
 | `catalog-embedding`         | Every 15 minutes      | Embed products created or edited since last run  |
+| `quote-auto-archive`        | Daily at 03:30 (AR)   | Archive quotes nobody has moved in a month       |
+| `conversation-batches`      | Every 15 minutes      | Backstop for the API's conversation ticker       |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
@@ -163,3 +171,60 @@ costs a model call, so a full batch can run for `ATTACHMENT_EXTRACTION_RFQ_BATCH
 claims expire while it still holds them and the next firing extracts the same orders again — paying
 twice and writing two drafts. Startup refuses the combination rather than leaving it to be noticed
 in a bill.
+
+### `quote-auto-archive`
+
+**What it archives.** A quote not yet archived, in `DRAFT`, `QUOTED` or `SENT`, whose row has not
+changed in `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — and, for a `SENT` one, whose offer has lapsed
+(`quote.expires_at` in the past). Those are the two stalls follow-up chases: the seller has not
+finished or sent it, or the client has not answered. A second sweep in the same run archives the
+closed outcomes quiet for `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`: a complete sale and a rejected quote.
+Everything else is left alone:
+
+| Status                 | Archived automatically    | Why                                                          |
+| ---------------------- | ------------------------- | ------------------------------------------------------------ |
+| `DRAFT`, `QUOTED`      | Yes                       | Waiting on the seller                                        |
+| `SENT`, lapsed         | Yes                       | The client never answered and the offer is over              |
+| `SENT`, link live      | No                        | The client may still accept; archiving would lose the sale   |
+| `SENT`, no expiry      | No                        | Nothing proves the offer is over; the seller decides         |
+| `CHANGE_REQUESTED`     | No                        | The client asked for something; burying it loses the request |
+| `ACCEPTED`, complete   | Yes, on the closed window | Paid, and invoiced or needing no invoice: nothing left to do |
+| `ACCEPTED`, still open | No                        | It may still be paid, invoiced or delivered                  |
+| `REJECTED`             | Yes, on the closed window | A closed outcome nobody has touched                          |
+
+"Complete" is `domain.SaleComplete`, written again in the sweep's SQL: accepted, paid, no voucher
+pending in ARCA, and an issued invoice no credit note cancelled (in `ARCA_ENVIRONMENT` or
+production), «No requiere factura», or invoicing off for the account. A sale with an invoice in
+flight is never complete, so it is never swept. Turning an account's invoicing off therefore makes
+every paid accepted sale of it complete, and the next run archives the ones already quiet past the
+window.
+
+**What counts as activity is `quote.updated_at`.** Every write to the quote row moves it: a
+transition, a send, assigning the seller, associating the client, ARCA authorizing an invoice or a
+credit note (`InvoiceService.markIssued` claims the row in the same transaction), and unarchiving —
+so a quote the seller brings back starts a fresh window instead of being put away again on the next
+run. A line, discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches
+it and holds its lock until the edit commits, so a quote being worked on is never idle and the sweep
+can never archive it between the edit's archive check and its write. US-41's follow-up flag is meant
+to read the same measure on a shorter threshold, so a quote is flagged before it is archived;
+because setting the flag writes the quote row too, that job has to compare against the time before
+its own write.
+
+**How it runs.** One statement archives up to `QUOTE_AUTO_ARCHIVE_BATCH_SIZE` quotes across every
+account and returns them; the run repeats until a batch comes back short, so a backlog clears in one
+firing and each batch commits on its own. `FOR UPDATE SKIP LOCKED` leaves a quote a seller is writing
+at that moment for the next run. A second run finds nothing new — an archived quote is never matched
+again — and every archived quote is logged with its account, branch, number, status and last
+activity.
+
+### `conversation-batches`
+
+Closes the due client message windows and processes their batches, one per quote at a time in
+`closed_at` order, through the same batch change handler the API binds. The API already runs the
+same sweep on its own ticker every `CONVERSATION_TICKER_SECONDS`; this job is what keeps windows
+closing while the API is down or redeploying, and 15 minutes is the platform's shortest interval.
+The two can run at once: the
+closer skips locked rows, and a claim is a single statement guarded by `FOR UPDATE SKIP LOCKED`
+and `uq_message_batch_processing`. Its run records count closed, reclaimed and claimed batches as
+scanned. The full mechanics are in
+[whatsapp-cloud-api.md](whatsapp-cloud-api.md#closing-and-processing-batches).

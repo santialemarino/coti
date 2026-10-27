@@ -3,16 +3,23 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 
 import { cn } from '@repo/ui/lib';
+import { SurfaceFade } from '@/components/surface-fade';
 import { Toaster } from '@/components/toaster';
 import { inter, poppins } from '@/lib/fonts';
+import { siteOrigin } from '@/lib/utils/site-origin';
 
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: 'Coti — Backoffice',
-  description: 'Vendor and admin workspace for AI-assisted quoting.',
-  applicationName: 'Coti',
-};
+// Nothing is indexed unless a public page says so; `metadataBase` resolves the social card's URL.
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    metadataBase: new URL(await siteOrigin()),
+    title: 'Coti — Backoffice',
+    description: 'Vendor and admin workspace for AI-assisted quoting.',
+    applicationName: 'Coti',
+    robots: { index: false, follow: false },
+  };
+}
 
 /*
  * The browser chrome takes the app's own surface rather than the brand blue: iOS tints from the page
@@ -34,7 +41,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html className={cn(inter.variable, poppins.variable)} lang={locale}>
       <body className="min-h-screen bg-body-background font-sans text-paragraph text-foreground antialiased">
         <NextIntlClientProvider messages={messages}>
-          {children}
+          <SurfaceFade>{children}</SurfaceFade>
           <Toaster />
         </NextIntlClientProvider>
       </body>

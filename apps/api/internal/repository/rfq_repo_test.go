@@ -175,7 +175,7 @@ func TestRFQRepository_GetByRFQID_UsesTheTenantBranchFilter(t *testing.T) {
 		var item *domain.RfqListItem
 		err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 			var readErr error
-			item, readErr = repo.GetByRFQID(ctx, q, tenant, rfq.ID)
+			item, readErr = repo.GetByRFQID(ctx, q, tenant, rfq.ID, domain.ARCAEnvironmentHomologation)
 			return readErr
 		})
 		return item, err

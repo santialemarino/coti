@@ -1,0 +1,437 @@
+package handler
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+)
+
+// InvoiceService is the invoicing surface the handler needs.
+type InvoiceService interface {
+	List(context.Context, domain.Tenant, int) ([]domain.Invoice, int, error)
+	ListAwaitingInvoice(context.Context, domain.Tenant, int) ([]domain.SaleAwaitingInvoice, int, error)
+	DownloadPDF(context.Context, domain.Tenant, uuid.UUID) ([]byte, error)
+	Recover(context.Context, domain.Tenant, uuid.UUID) (*domain.Invoice, error)
+	GetSettings(ctx context.Context, tenant domain.Tenant) (*domain.InvoicingSettings, error)
+	UpdateSettings(ctx context.Context, tenant domain.Tenant, in domain.InvoicingSettingsUpdate) (*domain.InvoicingSettings, error)
+	UpdatePointsOfSale(ctx context.Context, tenant domain.Tenant, points map[uuid.UUID]*int) (*domain.InvoicingSettings, error)
+	GetClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID) (*domain.ClientFiscal, error)
+	UpdateClientFiscal(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, in domain.ClientFiscalUpdate) (*domain.ClientFiscal, error)
+	Preview(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.InvoicePreview, error)
+	Issue(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, expected domain.InvoiceExpectation) (*domain.Invoice, error)
+	IssueCreditNote(ctx context.Context, tenant domain.Tenant, invoiceID uuid.UUID) (*domain.Invoice, error)
+}
+
+// InvoiceHandler serves ARCA invoicing: the account's setup, buyers' fiscal data and the invoices.
+type InvoiceHandler struct {
+	invoices InvoiceService
+	maxBytes int64
+}
+
+// NewInvoiceHandler builds an InvoiceHandler; maxBytes caps a certificate upload.
+func NewInvoiceHandler(invoices InvoiceService, maxBytes int64) *InvoiceHandler {
+	return &InvoiceHandler{invoices: invoices, maxBytes: maxBytes}
+}
+
+// GetSettings returns the account's invoicing setup.
+//
+//	@Summary		Get invoicing settings
+//	@Description	Returns the account's IVA condition, how its prices treat IVA, each branch's ARCA point of sale and the uploaded certificate.
+//	@Tags			invoicing
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	dto.InvoicingSettingsResponse
+//	@Failure		401	{object}	dto.ErrorResponse
+//	@Failure		403	{object}	dto.ErrorResponse
+//	@Router			/v1/invoicing/settings [get]
+func (h *InvoiceHandler) GetSettings(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	settings, err := h.invoices.GetSettings(c.Request.Context(), tenant)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toInvoicingSettingsResponse(*settings))
+}
+
+// UpdateSettings replaces the account's fiscal settings and the listed branches' points of sale.
+//
+//	@Summary		Update invoicing settings
+//	@Description	Replaces the account's IVA condition and price treatment and the listed branches' points of sale.
+//	@Tags			invoicing
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			body	body		dto.UpdateInvoicingSettingsRequest	true	"Invoicing settings"
+//	@Success		200		{object}	dto.InvoicingSettingsResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		401		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		422		{object}	dto.ErrorResponse
+//	@Router			/v1/invoicing/settings [put]
+func (h *InvoiceHandler) UpdateSettings(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	var body dto.UpdateInvoicingSettingsRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	in := domain.InvoicingSettingsUpdate{PricesIncludeVAT: body.PricesIncludeVAT,
+		PointsOfSale: make(map[uuid.UUID]*int, len(body.Branches)), InvoiceOnPayment: body.InvoiceOnPayment}
+	if body.Profile != nil {
+		in.Profile = &domain.InvoiceIssuerProfile{Address: body.Profile.Address, GrossIncomeRegistration: body.Profile.GrossIncomeRegistration, ActivityStartedOn: body.Profile.ActivityStartedOn}
+	}
+	if body.IVACondition != nil {
+		condition := domain.IVACondition(*body.IVACondition)
+		in.IVACondition = &condition
+	}
+	for _, b := range body.Branches {
+		in.PointsOfSale[b.BranchID] = b.PointOfSale
+	}
+	settings, err := h.invoices.UpdateSettings(c.Request.Context(), tenant, in)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toInvoicingSettingsResponse(*settings))
+}
+
+// UpdatePointsOfSale replaces the listed branches' points of sale and nothing else.
+//
+//	@Summary		Update points of sale
+//	@Description	Sets the listed branches' ARCA points of sale in one write; 409 POINT_OF_SALE_TAKEN when two branches would share one.
+//	@Tags			invoicing
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			body	body		dto.UpdatePointsOfSaleRequest	true	"Points of sale"
+//	@Success		200		{object}	dto.InvoicingSettingsResponse
+//	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		404		{object}	dto.ErrorResponse
+//	@Failure		409		{object}	dto.ErrorResponse
+//	@Failure		422		{object}	dto.ErrorResponse
+//	@Router			/v1/invoicing/points-of-sale [put]
+func (h *InvoiceHandler) UpdatePointsOfSale(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	var body dto.UpdatePointsOfSaleRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	points := make(map[uuid.UUID]*int, len(body.Branches))
+	for _, b := range body.Branches {
+		points[b.BranchID] = b.PointOfSale
+	}
+	settings, err := h.invoices.UpdatePointsOfSale(c.Request.Context(), tenant, points)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toInvoicingSettingsResponse(*settings))
+}
+
+// GetClientFiscal returns a client's fiscal identity.
+//
+//	@Summary		Get a client's fiscal data
+//	@Tags			clients
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			clientId	path		string	true	"Client id"
+//	@Success		200			{object}	dto.ClientFiscalResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Router			/v1/clients/{clientId}/fiscal [get]
+func (h *InvoiceHandler) GetClientFiscal(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	clientID, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	client, err := h.invoices.GetClientFiscal(c.Request.Context(), tenant, clientID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toClientFiscalResponse(*client))
+}
+
+// UpdateClientFiscal replaces a client's legal name, address, IVA condition and DNI; never a CUIT.
+//
+//	@Summary		Update a client's fiscal data
+//	@Description	Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.
+//	@Tags			clients
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			clientId	path		string							true	"Client id"
+//	@Param			body		body		dto.UpdateClientFiscalRequest	true	"Fiscal data"
+//	@Success		200			{object}	dto.ClientFiscalResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse	"INVALID_TAX_ID, TAX_ID_READ_ONLY"
+//	@Router			/v1/clients/{clientId}/fiscal [put]
+func (h *InvoiceHandler) UpdateClientFiscal(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	clientID, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	var body dto.UpdateClientFiscalRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	// Refused rather than dropped, so a caller still sending a CUIT never reads a 200 as saved.
+	if body.TaxID != nil {
+		Respond(c, domain.WithCode(domain.CodeTaxIDReadOnly,
+			fmt.Errorf("%w: a client's CUIT comes only from their customer account", domain.ErrInvalidInput)))
+		return
+	}
+	in := domain.ClientFiscalUpdate{Address: body.Address, LegalName: body.LegalName, DNI: body.DNI}
+	if body.IVACondition != nil {
+		condition := domain.IVACondition(*body.IVACondition)
+		in.IVACondition = &condition
+	}
+	client, err := h.invoices.UpdateClientFiscal(c.Request.Context(), tenant, clientID, in)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toClientFiscalResponse(*client))
+}
+
+// Preview returns the invoice an accepted quote would produce, or the one it has.
+//
+//	@Summary		Preview a quote's invoice
+//	@Description	Returns the invoice type, buyer and amounts the quote would be invoiced with now, every gap that stops it, and the invoice it already has.
+//	@Tags			invoicing
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"The quote's branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.InvoicePreviewResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Router			/v1/quotes/{quoteId}/invoice [get]
+func (h *InvoiceHandler) Preview(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	preview, err := h.invoices.Preview(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toInvoicePreviewResponse(*preview))
+}
+
+// Issue asks ARCA to authorize the invoice for an accepted quote.
+//
+//	@Summary		Issue a quote's invoice
+//	@Description	Asks ARCA to authorize the electronic invoice for an accepted quote, as long as it is still the one previewed. Irreversible: a mistake is corrected with a credit note.
+//	@Tags			invoicing
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"The quote's branch"
+//	@Param			quoteId		path		string					true	"Quote id"
+//	@Param			body		body		dto.IssueInvoiceRequest	true	"The previewed invoice being confirmed"
+//	@Success		201			{object}	dto.InvoiceResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE, QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"INVOICE_NOT_READY, INVOICE_REJECTED"
+//	@Failure		503			{object}	dto.ErrorResponse	"INVOICING_UNAVAILABLE"
+//	@Router			/v1/quotes/{quoteId}/invoice [post]
+func (h *InvoiceHandler) Issue(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	var body dto.IssueInvoiceRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	total, err := decimal.NewFromString(body.Total)
+	if err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	invoice, err := h.invoices.Issue(c.Request.Context(), tenant, quoteID, domain.InvoiceExpectation{
+		Fingerprint: body.Fingerprint, VersionID: body.VersionID, Type: domain.InvoiceType(body.Type), Total: total,
+	})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toInvoiceResponse(*invoice))
+}
+
+// IssueCreditNote asks ARCA to authorize the credit note that cancels an issued invoice in full.
+//
+//	@Summary		Issue a credit note for an invoice
+//	@Description	Asks ARCA to authorize a credit note of the invoice's letter, lines, amounts and buyer, associated with it. Irreversible: once issued, the sale is no longer invoiced.
+//	@Tags			invoicing
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"The invoice's branch"
+//	@Param			invoiceId	path		string	true	"Invoice id"
+//	@Success		201			{object}	dto.InvoiceResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Failure		409			{object}	dto.ErrorResponse	"INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS, ARCA_ENVIRONMENT_MISMATCH"
+//	@Failure		422			{object}	dto.ErrorResponse	"INVOICE_NOT_READY, INVOICE_REJECTED"
+//	@Failure		503			{object}	dto.ErrorResponse	"INVOICING_UNAVAILABLE"
+//	@Router			/v1/invoices/{invoiceId}/credit-note [post]
+func (h *InvoiceHandler) IssueCreditNote(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	invoiceID, ok := pathUUID(c, "invoiceId")
+	if !ok {
+		return
+	}
+	note, err := h.invoices.IssueCreditNote(c.Request.Context(), tenant, invoiceID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toInvoiceResponse(*note))
+}
+
+func toInvoicingSettingsResponse(s domain.InvoicingSettings) dto.InvoicingSettingsResponse {
+	response := dto.InvoicingSettingsResponse{
+		Profile: dto.InvoiceIssuerProfileRequest{Address: s.Account.Profile.Address, GrossIncomeRegistration: s.Account.Profile.GrossIncomeRegistration, ActivityStartedOn: s.Account.Profile.ActivityStartedOn}, Enabled: s.Enabled, Environment: string(s.Environment), LegalName: s.Account.LegalName,
+		TaxID: s.Account.TaxID, IVACondition: conditionString(s.Account.IVACondition),
+		PricesIncludeVAT: s.Account.PricesIncludeVAT, Branches: make([]dto.BranchPointOfSaleResponse, 0, len(s.Branches)),
+		InvoiceOnPayment: s.InvoiceOnPayment,
+	}
+	for _, b := range s.Branches {
+		response.Branches = append(response.Branches, dto.BranchPointOfSaleResponse{
+			BranchID: b.BranchID, Name: b.BranchName, IsActive: b.IsActive, PointOfSale: b.PointOfSale})
+	}
+	if s.Credential != nil {
+		credential := toARCACredentialResponse(*s.Credential)
+		response.Credential = &credential
+	}
+	return response
+}
+
+func toARCACredentialResponse(s domain.ARCACredentialStatus) dto.ARCACredentialResponse {
+	return dto.ARCACredentialResponse{CUIT: s.CUIT, Subject: s.Subject, ExpiresAt: s.ExpiresAt, UpdatedAt: s.UpdatedAt}
+}
+
+func toClientFiscalResponse(c domain.ClientFiscal) dto.ClientFiscalResponse {
+	return dto.ClientFiscalResponse{Address: c.Address, ID: c.ID, Name: c.Name, LegalName: c.LegalName, TaxID: c.TaxID,
+		DNI: c.DNI, IVACondition: conditionString(c.IVACondition)}
+}
+
+func toInvoicePreviewResponse(p domain.InvoicePreview) dto.InvoicePreviewResponse {
+	response := dto.InvoicePreviewResponse{
+		Environment: string(p.Environment), IssuerCUIT: p.IssuerCUIT,
+		Fingerprint: p.Fingerprint, VersionID: p.VersionID, Type: string(p.Type), PointOfSale: p.PointOfSale, Receiver: toInvoiceReceiverResponse(p.Receiver),
+		Amounts: toInvoiceAmountsResponse(p.Amounts), Currency: p.Currency, Issues: p.Issues,
+		CustomerSignupURL: p.CustomerSignupURL,
+	}
+	if p.Invoice != nil {
+		invoice := toInvoiceResponse(*p.Invoice)
+		response.Invoice = &invoice
+	}
+	if p.OtherEnvironmentInvoice != nil {
+		other := toInvoiceResponse(*p.OtherEnvironmentInvoice)
+		response.OtherEnvironmentInvoice = &other
+	}
+	if p.CreditedInvoice != nil {
+		credited := toInvoiceResponse(*p.CreditedInvoice)
+		response.CreditedInvoice = &credited
+	}
+	return response
+}
+
+func toInvoiceResponse(inv domain.Invoice) dto.InvoiceResponse {
+	response := dto.InvoiceResponse{
+		ID: inv.ID, BranchID: inv.BranchID, Kind: string(inv.Kind), Environment: string(inv.Environment), Status: string(inv.Status), Type: string(inv.Type), PointOfSale: inv.PointOfSale,
+		Number: inv.Number, IssuedOn: inv.IssuedOn.Format("2006-01-02"), CAE: inv.CAE,
+		IssuerCUIT: inv.IssuerCUIT, Receiver: toInvoiceReceiverResponse(inv.Receiver),
+		Amounts: toInvoiceAmountsResponse(inv.Amounts), Currency: inv.Currency, Issues: inv.Issues,
+		QRURL: domain.InvoiceQRURL(inv), CreatedAt: inv.CreatedAt,
+	}
+	if response.Issues == nil {
+		response.Issues = []string{}
+	}
+	if inv.CAEExpiresOn != nil {
+		expires := inv.CAEExpiresOn.Format("2006-01-02")
+		response.CAEExpiresOn = &expires
+	}
+	if inv.CreditNote != nil {
+		note := toInvoiceResponse(*inv.CreditNote)
+		response.CreditNote = &note
+	}
+	if c := inv.CreditedInvoice; c != nil {
+		response.CreditedInvoice = &dto.VoucherReferenceResponse{ID: c.ID, Type: string(c.Type), PointOfSale: c.PointOfSale,
+			Number: c.Number, IssuedOn: c.IssuedOn.Format("2006-01-02")}
+	}
+	return response
+}
+
+func toInvoiceReceiverResponse(r domain.InvoiceReceiver) dto.InvoiceReceiverResponse {
+	return dto.InvoiceReceiverResponse{Address: r.Address, Name: r.Name, DocType: string(r.DocType), DocNumber: r.DocNumber,
+		IVACondition: string(r.IVACondition)}
+}
+
+func toInvoiceAmountsResponse(a domain.InvoiceAmounts) dto.InvoiceAmountsResponse {
+	response := dto.InvoiceAmountsResponse{Net: a.Net.StringFixed(2), Exempt: a.Exempt.StringFixed(2),
+		VAT: a.VAT.StringFixed(2), Total: a.Total.StringFixed(2), ByRate: make([]dto.VATAmountResponse, 0, len(a.ByRate))}
+	for _, r := range a.ByRate {
+		response.ByRate = append(response.ByRate, dto.VATAmountResponse{Rate: string(r.Rate),
+			Base: r.Base.StringFixed(2), Amount: r.Amount.StringFixed(2)})
+	}
+	return response
+}
+
+func conditionString(c *domain.IVACondition) *string {
+	if c == nil {
+		return nil
+	}
+	s := string(*c)
+	return &s
+}

@@ -7,6 +7,7 @@ import type { Branch } from '@/lib/api/branches';
 import { EXPIRY_MAX_DAYS, EXPIRY_MIN_DAYS } from '@/lib/constants/branch';
 import messages from '@/translations/es.json';
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/app/(protected)/settings/branches/actions', () => ({
   createBranch: vi.fn(),
   updateBranch: vi.fn(),
@@ -22,6 +23,7 @@ const { toast } = await import('sonner');
 const copy = messages.branches;
 
 const CENTRAL: Branch = {
+  pointOfSale: 1,
   id: 'b1',
   name: 'Casa Central',
   address: 'Av. Siempre Viva 742',
@@ -108,6 +110,23 @@ describe('BranchTable listing', () => {
     expect(within(rowOf(view, MORON.name)).queryByText(copy.table.noEmail)).toBeTruthy();
     expect(within(rowOf(view, CENTRAL.name)).queryByText(copy.table.noEmail)).toBeNull();
     expect(within(rowOf(view, CLOSED.name)).queryByText(copy.table.noEmail)).toBeNull();
+  });
+
+  it('offers Google connection only for an active branch with an email address', () => {
+    const view = renderTable([
+      { ...CENTRAL, email: 'centro@corralon.test' },
+      MORON,
+      { ...CLOSED, email: 'closed@corralon.test' },
+    ]);
+    expect(
+      within(rowOf(view, CENTRAL.name)).getByRole('button', { name: copy.gmail.connect }),
+    ).toBeTruthy();
+    expect(
+      within(rowOf(view, MORON.name)).queryByRole('button', { name: copy.gmail.connect }),
+    ).toBeNull();
+    expect(
+      within(rowOf(view, CLOSED.name)).queryByRole('button', { name: copy.gmail.connect }),
+    ).toBeNull();
   });
 
   // A branch with no address must read as one, not as an empty cell that looks like a render bug.

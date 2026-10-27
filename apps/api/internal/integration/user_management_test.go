@@ -27,6 +27,7 @@ import (
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	invoicepdf "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/secrets"
@@ -118,7 +119,8 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
-		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour},
+		Catalog:      config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 			InlinePipelineTimeout: 25 * time.Second,
@@ -168,6 +170,7 @@ func newEnvWithRFQProviders(
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil, mailService)
 	authTokenRepo := repository.NewAuthTokenRepository()
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
@@ -190,6 +193,8 @@ func newEnvWithRFQProviders(
 	}
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, embedder, cfg.Catalog)
 	quoteRepo := repository.NewQuoteRepository()
+	quoteDiscountRepo := repository.NewQuoteDiscountRepository()
+	promotionRepo := repository.NewPromotionRepository()
 	rfqRepo := repository.NewRFQRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientRepo := repository.NewClientRepository()
@@ -202,16 +207,35 @@ func newEnvWithRFQProviders(
 		quoteSendRepo, repository.NewQuoteAIGenerationRepository(),
 		channelRepo, repository.NewUserRepository(),
 		extractor,
-		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ)
+		services.NewCatalogMatchService(catalogSearchService, cfg.Catalog), quiet, cfg.RFQ).
+		WithDiscounts(quoteDiscountRepo).
+		WithPromotions(promotionRepo).
+		WithPrices(repository.NewProductPriceRepository()).
+		WithHandlerDecisions(repository.NewHandlerDecisionRepository()).
+		WithConversation(repository.NewMessageBatchRepository(), repository.NewQuoteMessageRepository(),
+			repository.NewHandlerDecisionRepository()).
+		WithClientMessages(repository.NewQuoteMessageRepository()).
+		WithInvoicingEnvironment(domain.ARCAEnvironmentHomologation)
 	quoteService := services.NewQuoteService(db, quoteRepo,
-		repository.NewProductPriceRepository(), quiet)
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
+		WithInvoicingSwitch(repository.NewInvoicingRepository())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo)
+		quoteSendRepo).WithInvoicingEnvironment(domain.ARCAEnvironmentHomologation)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
 	if err != nil {
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
 	}
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	arcaSealer, err := secrets.NewAESGCM(nil)
+	if err != nil {
+		t.Fatalf("NewAESGCM() = %v, want no error", err)
+	}
+	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo,
+		quoteDiscountRepo, nil, arcaSealer, services.InvoiceSettings{Environment: domain.ARCAEnvironmentHomologation,
+			UnidentifiedMax: decimal.NewFromInt(10_000_000)},
+		nil, nil, invoicepdf.NewInvoiceRenderer()).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 
 	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
 	if err != nil {
@@ -219,6 +243,11 @@ func newEnvWithRFQProviders(
 	}
 	rfqAttachmentService := services.NewRFQAttachmentService(db,
 		repository.NewRFQAttachmentRepository(), objectStorage.Storage, cfg.Storage, nil)
+	publicRFQRepo := repository.NewPublicRFQRepository()
+	rfqService.WithPublicContacts(publicRFQRepo, rfqAttachmentService)
+	publicRFQService := services.NewPublicRFQService(db, publicRFQRepo,
+		repository.NewInboundChannelMessageRepository(), rfqRepo, rfqAttachmentService,
+		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -232,10 +261,12 @@ func newEnvWithRFQProviders(
 	rateLimit := deliveryhttp.RateLimit{Limiter: limiter}
 	router := deliveryhttp.NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
 		deliveryhttp.Handlers{
-			Health:       handler.NewHealthHandler(db),
-			Auth:         handler.NewAuthHandler(authService),
-			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			Health:         handler.NewHealthHandler(db),
+			Auth:           handler.NewAuthHandler(authService),
+			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuth),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
@@ -248,15 +279,21 @@ func newEnvWithRFQProviders(
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			File:          handler.NewFileHandler(objectStorage.Local),
 			Quote:         handler.NewQuoteHandler(quoteService, nil, nil, highConfidence),
-			Client:        handler.NewClientHandler(clientService),
+			Conversation: handler.NewConversationHandler(services.NewConversationReviewService(db,
+				quoteRepo, repository.NewProductPriceRepository(), quoteDiscountRepo, promotionRepo,
+				repository.NewHandlerDecisionRepository(), repository.NewMessageBatchRepository())),
+			Client: handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
-				branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
+				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
+			Invoice:    handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Onboarding: handler.NewOnboardingHandler(onboardingService),
+			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuth},
 		rateLimit)
 
 	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
@@ -295,7 +332,11 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM customer_auth_challenge WHERE account_id=$1`,
+			`DELETE FROM customer_session WHERE account_id=$1`,
+			`DELETE FROM customer_identity WHERE account_id=$1`,
 			`DELETE FROM ai_usage WHERE account_id = $1`,
+			`DELETE FROM inbound_channel_message WHERE account_id = $1`,
 			`DELETE FROM quote_correction_memory_source WHERE account_id = $1`,
 			`DELETE FROM quote_correction_memory WHERE account_id = $1`,
 			`DELETE FROM quote_quality_difference WHERE account_id = $1`,

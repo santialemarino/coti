@@ -73,11 +73,8 @@ func valueQuoteItems(
 		valuation.currency = domain.DefaultCurrency
 	}
 
-	// quote_version.total is the sum of the line subtotals less the sum of the version's
-	// discounts. The promotion sweep that produces the second term is US-38, so it is empty
-	// here — part of the formula rather than missing from it.
-	discounts := decimal.Zero
-	valuation.total = subtotals.Sub(discounts).Round(domain.MoneyScale)
+	// The gross: the discount sweep that follows valuation takes the version's discounts off it.
+	valuation.total = subtotals.Round(domain.MoneyScale)
 	if err := validateAmount(valuation.total, "total"); err != nil {
 		return quoteValuation{}, err
 	}
@@ -189,4 +186,23 @@ func applyAlternativePricing(
 		}
 		alternatives[itemID] = offered
 	}
+}
+
+// requireUnarchived refuses any edit on an archived quote: it has to be unarchived first.
+func requireUnarchived(quote domain.Quote) error {
+	if quote.ArchivedAt != nil {
+		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+	}
+	return nil
+}
+
+// requireEditableLines gates every write on a quote's lines and discounts.
+func requireEditableLines(quote domain.Quote) error {
+	if err := requireUnarchived(quote); err != nil {
+		return err
+	}
+	if !domain.IsEditableStatus(quote.CurrentStatus) {
+		return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+	}
+	return nil
 }

@@ -10,6 +10,11 @@ import {
 import { type BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import { BRANCH_COOKIE } from '@/lib/auth/tokens';
 
+vi.mock('@/lib/auth/session', () => ({
+  requireAdmin: vi.fn(),
+  getSession: vi.fn(async () => ({ role: 'ADMIN' })),
+  mustVerifyEmail: vi.fn(() => false),
+}));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 // Only the request: the error vocabulary is what maps a status onto a rejection, and that mapping

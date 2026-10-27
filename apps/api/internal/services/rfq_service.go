@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"net/url"
 	"strings"
 	"time"
@@ -25,8 +26,8 @@ type rfqRepository interface {
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID, previousStatus *domain.RFQStatus, newStatus domain.RFQStatus, userID *uuid.UUID) (*domain.RFQStatusChange, error)
 	ListStatusChanges(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) ([]domain.RFQStatusChange, error)
-	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant, includeArchived bool) ([]domain.RfqListItem, error)
-	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqListItem, error)
+	ListByTenant(ctx context.Context, q repository.Querier, tenant domain.Tenant, includeArchived bool, env domain.ARCAEnvironment) ([]domain.RfqListItem, error)
+	GetByRFQID(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, env domain.ARCAEnvironment) (*domain.RfqListItem, error)
 	AssignSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID) (*domain.Quote, error)
 	SetSeller(ctx context.Context, q repository.Querier, tenant domain.Tenant, rfqID uuid.UUID, sellerID *uuid.UUID) (*domain.Quote, error)
 	GetManualEntryChannelID(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (uuid.UUID, error)
@@ -46,6 +47,7 @@ type quoteDraftRepository interface {
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	GetByRFQID(ctx context.Context, q repository.Querier, accountID, rfqID uuid.UUID) (*domain.Quote, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
+	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	GetPreviousVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, versionNumber int) (*domain.QuoteVersion, error)
 	ListItems(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteItem, error)
@@ -64,16 +66,13 @@ type quoteSendTracker interface {
 
 // quoteDiscountRepository is the discount application persistence surface the RFQ flow needs.
 type quoteDiscountRepository interface {
-	ListByVersionID(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID) ([]domain.QuoteDiscount, error)
+	versionDiscountStore
 	Create(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, in domain.QuoteDiscountCreate) (*domain.QuoteDiscount, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID) (*domain.QuoteDiscount, error)
 	UpdateByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, in domain.QuoteDiscountUpdate) (*domain.QuoteDiscount, error)
 	DeleteByID(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID) error
-	UpdateAmount(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, amount decimal.Decimal) error
 	CreateItemLinks(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, itemIDs []uuid.UUID) error
-	ReplaceItemLinks(ctx context.Context, q repository.Querier, accountID, versionID, discountID uuid.UUID, itemIDs []uuid.UUID) error
 	ListItemIDs(ctx context.Context, q repository.Querier, accountID, discountID uuid.UUID) ([]uuid.UUID, error)
-	ListItemIDsByDiscountIDs(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, discountIDs []uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }
 
 // quoteAIGenerationRepository stores the original proposal independently of its editable version.
@@ -88,6 +87,20 @@ type quoteAIGenerationRepository interface {
 type rfqClientActionRepository interface {
 	ListByQuote(ctx context.Context, q repository.Querier, accountID, branchID,
 		quoteID uuid.UUID) ([]domain.ClientAction, error)
+}
+
+// rfqInboundMessageReader finds the sender identifier retained for an inbound RFQ.
+type rfqInboundMessageReader interface {
+	FindSenderIDByRFQID(ctx context.Context, q repository.Querier, accountID, branchID,
+		rfqID uuid.UUID) (*string, error)
+}
+
+type rfqPublicContactReader interface {
+	FindPublicContactByRFQID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.PublicRFQContact, error)
+}
+
+type rfqPublicAttachmentLinks interface {
+	List(context.Context, domain.Tenant, uuid.UUID) ([]domain.AttachmentLink, error)
 }
 
 // rfqChannelReader is the channel validation surface the RFQ flow needs.
@@ -128,6 +141,16 @@ type sellerReach interface {
 		branchIDs []uuid.UUID, userID uuid.UUID) (bool, error)
 }
 
+type clientMessageReader interface {
+	ListClientSince(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID,
+		since time.Time) ([]domain.QuoteMessage, error)
+}
+
+type handlerDecisionReader interface {
+	GetLatestByVersionID(ctx context.Context, q repository.Querier, accountID,
+		versionID uuid.UUID) (*domain.HandlerDecisionNote, error)
+}
+
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
 // entry flow.
 type RFQService struct {
@@ -135,6 +158,8 @@ type RFQService struct {
 	rfqs        rfqRepository
 	quotes      quoteDraftRepository
 	discounts   quoteDiscountRepository
+	promotions  promotionReader
+	prices      branchPriceReader
 	sends       quoteSendTracker
 	generations quoteAIGenerationRepository
 	channels    rfqChannelReader
@@ -145,9 +170,23 @@ type RFQService struct {
 	// clientActions trails the customer responses the quote's versions received; the detail
 	// only enriches when the surface is wired, so older surfaces stay lean.
 	clientActions rfqClientActionRepository
+	// inboundMessages decorates WhatsApp RFQs with their sender without turning that sender into
+	// a client record.
+	inboundMessages   rfqInboundMessageReader
+	publicContacts    rfqPublicContactReader
+	publicAttachments rfqPublicAttachmentLinks
+	// handlerDecisions explains the latest conversation handler run beside a change request.
+	handlerDecisions handlerDecisionReader
+	// conversation lists the customer's messages after a send and the handler's work on them.
+	conversation *conversationReader
+	// clientMessages lists what the customer wrote beside a change request.
+	clientMessages clientMessageReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
 	webappURL string
+	// invoicingEnv is where this server invoices; only an invoice issued there or in production
+	// closes a sale.
+	invoicingEnv domain.ARCAEnvironment
 	// transcriber and attachments are only needed by the file intake, which refuses when
 	// either is unbound rather than making the text pipeline depend on them.
 	transcriber domain.Transcriber
@@ -181,9 +220,54 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 	return s
 }
 
+// WithPrices lets a line on a priced quote take the branch price of the product chosen for it.
+func (s *RFQService) WithPrices(prices branchPriceReader) *RFQService {
+	s.prices = prices
+	return s
+}
+
+// WithPromotions wires the promotion rules the discount sweep earns AUTOMATIC applications from.
+func (s *RFQService) WithPromotions(promotions promotionReader) *RFQService {
+	s.promotions = promotions
+	return s
+}
+
 // WithClientActions wires customer response reads, which the seller detail lists when present.
 func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) *RFQService {
 	s.clientActions = clientActions
+	return s
+}
+
+// WithInboundMessages wires the retained inbound sender into the RFQ detail projection.
+func (s *RFQService) WithInboundMessages(messages rfqInboundMessageReader) *RFQService {
+	s.inboundMessages = messages
+	return s
+}
+
+// WithPublicContacts adds customer declarations to the authorized seller's RFQ detail.
+func (s *RFQService) WithPublicContacts(contacts rfqPublicContactReader, attachments rfqPublicAttachmentLinks) *RFQService {
+	s.publicContacts = contacts
+	s.publicAttachments = attachments
+	return s
+}
+
+// WithHandlerDecisions wires the latest handler decision into the change-request comparison.
+func (s *RFQService) WithHandlerDecisions(decisions handlerDecisionReader) *RFQService {
+	s.handlerDecisions = decisions
+	return s
+}
+
+// WithConversation configures where the detail reads a quote's conversation from.
+func (s *RFQService) WithConversation(batches conversationBatchLister,
+	messages conversationMessageLister, reviews conversationReviewLister,
+) *RFQService {
+	s.conversation = &conversationReader{batches: batches, messages: messages, reviews: reviews}
+	return s
+}
+
+// WithClientMessages configures where the detail reads the customer's messages from.
+func (s *RFQService) WithClientMessages(messages clientMessageReader) *RFQService {
+	s.clientMessages = messages
 	return s
 }
 
@@ -191,6 +275,12 @@ func (s *RFQService) WithClientActions(clientActions rfqClientActionRepository) 
 // public_url with; without it the tracking rows carry their token but no resolvable link.
 func (s *RFQService) WithWebAppURL(webappURL string) *RFQService {
 	s.webappURL = strings.TrimRight(webappURL, "/")
+	return s
+}
+
+// WithInvoicingEnvironment sets the ARCA environment whose invoices close a sale.
+func (s *RFQService) WithInvoicingEnvironment(env domain.ARCAEnvironment) *RFQService {
+	s.invoicingEnv = env
 	return s
 }
 
@@ -222,7 +312,7 @@ func (s *RFQService) List(
 	var items []domain.RfqListItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var err error
-		items, err = s.rfqs.ListByTenant(ctx, q, tenant, includeArchived)
+		items, err = s.rfqs.ListByTenant(ctx, q, tenant, includeArchived, s.invoicingEnv)
 		return err
 	}); err != nil {
 		return nil, err
@@ -234,7 +324,7 @@ func (s *RFQService) List(
 func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error) {
 	var detail *domain.RfqDetail
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
+		rfq, rfqErr := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID, s.invoicingEnv)
 		if rfqErr != nil {
 			return rfqErr
 		}
@@ -246,6 +336,36 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 
 		detail = &domain.RfqDetail{
 			Rfq: *rfq,
+		}
+		if s.publicContacts != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWebApp)) {
+			contact, err := s.publicContacts.FindPublicContactByRFQID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+			if err != nil {
+				return err
+			}
+			detail.PublicContact = contact
+			if contact != nil {
+				source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+				if err != nil {
+					return err
+				}
+				detail.PublicOriginalText = source.RawText
+			}
+		}
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
+			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
+				rfq.BranchID, rfqID)
+			if senderErr != nil {
+				return senderErr
+			}
+			detail.InboundWhatsAppPhone = inboundWhatsAppPhone(senderID)
+		}
+		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeEmail)) {
+			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
+				rfq.BranchID, rfqID)
+			if senderErr != nil {
+				return senderErr
+			}
+			detail.InboundEmail = inboundEmailAddress(senderID)
 		}
 
 		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,
@@ -335,11 +455,53 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			}
 		}
 
+		if s.conversation != nil {
+			conversation, conversationErr := s.conversation.load(ctx, q, tenant.AccountID, *quote,
+				detail.Version)
+			if conversationErr != nil {
+				return conversationErr
+			}
+			detail.Conversation = conversation
+		}
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	if detail.PublicContact != nil && s.publicAttachments != nil {
+		scope := tenant
+		scope.BranchID = detail.Rfq.BranchID
+		files, err := s.publicAttachments.List(ctx, scope, rfqID)
+		if err != nil {
+			return nil, err
+		}
+		detail.PublicAttachments = files
+	}
 	return detail, nil
+}
+
+func inboundEmailAddress(senderID *string) *string {
+	if senderID == nil {
+		return nil
+	}
+	address := strings.TrimSpace(*senderID)
+	parsed, err := mail.ParseAddress(address)
+	if err != nil || parsed.Address != address {
+		return nil
+	}
+	return &address
+}
+
+// inboundWhatsAppPhone adapts Meta's digits-only wa_id to the E.164 form delivery accepts.
+func inboundWhatsAppPhone(senderID *string) *string {
+	if senderID == nil {
+		return nil
+	}
+	digits := strings.TrimPrefix(strings.TrimSpace(*senderID), "+")
+	phone := "+" + digits
+	if !e164PhonePattern.MatchString(phone) {
+		return nil
+	}
+	return &phone
 }
 
 // decorateDeliveryURLs rebuilds each delivery's public_url from the token the repository stored,
@@ -387,7 +549,7 @@ func (s *RFQService) SetSeller(
 	}
 	var quote *domain.Quote
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		item, err := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID)
+		item, err := s.rfqs.GetByRFQID(ctx, q, tenant, rfqID, s.invoicingEnv)
 		if err != nil {
 			return err
 		}
@@ -443,7 +605,7 @@ func (s *RFQService) buildChangeRequestDiff(
 	discounts []domain.QuoteDiscount, detail *domain.RfqDetail,
 ) error {
 	previous, prevErr := s.quotes.GetPreviousVersion(ctx, q, tenant.AccountID,
-		tenant.BranchID, quote.ID, version.VersionNumber)
+		quote.BranchID, quote.ID, version.VersionNumber)
 	if prevErr != nil {
 		if errors.Is(prevErr, domain.ErrNotFound) {
 			return nil
@@ -459,11 +621,30 @@ func (s *RFQService) buildChangeRequestDiff(
 	if discountsErr != nil {
 		return discountsErr
 	}
+	if linkErr := s.attachDiscountItemIDs(ctx, q, tenant.AccountID, previous.ID,
+		frozenDiscounts); linkErr != nil {
+		return linkErr
+	}
 	diff := domain.BuildChangeRequestDiff(version.Comment, domain.ChangeRequestSnapshot{
 		Items: frozenItems, Discounts: frozenDiscounts, Total: previous.Total,
 	}, domain.ChangeRequestSnapshot{
 		Items: items, Discounts: discounts, Total: version.Total,
 	})
+	if s.handlerDecisions != nil {
+		note, noteErr := s.handlerDecisions.GetLatestByVersionID(ctx, q, tenant.AccountID, version.ID)
+		if noteErr != nil && !errors.Is(noteErr, domain.ErrNotFound) {
+			return noteErr
+		}
+		diff.Handler = note
+	}
+	if s.clientMessages != nil && previous.FrozenAt != nil {
+		messages, messagesErr := s.clientMessages.ListClientSince(ctx, q, tenant.AccountID,
+			quote.ID, *previous.FrozenAt)
+		if messagesErr != nil {
+			return messagesErr
+		}
+		diff.ClientMessages = messages
+	}
 	detail.ChangesRequested = &diff
 	return nil
 }
@@ -495,12 +676,12 @@ func (s *RFQService) UpdateItem(
 
 	var item *domain.QuoteItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -514,13 +695,38 @@ func (s *RFQService) UpdateItem(
 		if version.IsImmutable {
 			return domain.ErrImmutable
 		}
+		if in.ConfirmMatch && in.ProductID == nil {
+			current, getErr := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if getErr != nil {
+				return getErr
+			}
+			if current.ProductID == nil {
+				return fmt.Errorf("%w: a line with no product cannot be confirmed", domain.ErrInvalidInput)
+			}
+		}
+		// A priced quote prices the product chosen for a line at the branch, as accepting did.
+		if quote.CurrentStatus == domain.QuoteStatusQuoted && in.ProductID != nil &&
+			in.UnitPriceSnapshot == nil && s.prices != nil {
+			prices, priceErr := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID,
+				quote.BranchID, []uuid.UUID{*in.ProductID})
+			if priceErr != nil {
+				return priceErr
+			}
+			if price, ok := prices[*in.ProductID]; ok {
+				in.UnitPriceSnapshot = &price.Price
+				if price.MinPrice.Valid {
+					in.MinPriceSnapshot = &price.MinPrice.Decimal
+				}
+			}
+		}
 		item, updateErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, itemID, in)
 		if updateErr != nil {
 			return updateErr
 		}
 
 		// A product change invalidates its previous price until materials are accepted again.
-		if in.ProductID != nil || in.UnitPriceSnapshot != nil || in.Quantity != nil {
+		if in.ProductID != nil || in.UnitPriceSnapshot != nil || in.Quantity != nil ||
+			in.ConfirmMatch {
 			if recalcErr := s.recalculateVersionTotal(ctx, q, tenant, version.ID); recalcErr != nil {
 				return recalcErr
 			}
@@ -546,12 +752,12 @@ func (s *RFQService) DeleteItem(
 		return err
 	}
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -592,12 +798,12 @@ func (s *RFQService) AddItem(
 
 	var item *domain.QuoteItem
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -612,7 +818,10 @@ func (s *RFQService) AddItem(
 			return domain.ErrImmutable
 		}
 		item, createErr = s.quotes.CreateSingleItem(ctx, q, tenant.AccountID, version.ID, in)
-		return createErr
+		if createErr != nil {
+			return createErr
+		}
+		return s.recalculateVersionTotal(ctx, q, tenant, version.ID)
 	}); err != nil {
 		return nil, err
 	}
@@ -639,12 +848,12 @@ func (s *RFQService) AddDiscount(
 
 	var discount *domain.QuoteDiscount
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -708,12 +917,12 @@ func (s *RFQService) UpdateDiscount(
 
 	var discount *domain.QuoteDiscount
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -728,12 +937,14 @@ func (s *RFQService) UpdateDiscount(
 		if existingErr != nil {
 			return existingErr
 		}
-		if existing.Origin != domain.DiscountOriginManualSeller {
+		// An engine-applied discount is only ever suppressed or restored; its rule is the promotion's.
+		ruleEdited := in.Value != nil || in.ActionType != nil || in.Scope != nil || len(in.ItemIDs) > 0
+		if existing.Origin != domain.DiscountOriginManualSeller &&
+			(ruleEdited || in.Description != nil || in.SuppressedBySeller == nil) {
 			return fmt.Errorf("%w: only a seller-typed discount can be edited",
 				domain.ErrInvalidInput)
 		}
 
-		ruleEdited := in.Value != nil || in.ActionType != nil || in.Scope != nil || len(in.ItemIDs) > 0
 		if ruleEdited {
 			rule, ruleErr := s.rebuiltRule(ctx, q, tenant.AccountID, version.ID, existing, in)
 			if ruleErr != nil {
@@ -780,6 +991,11 @@ func (s *RFQService) UpdateDiscount(
 			return recalcErr
 		}
 		fresh, freshErr := s.discounts.GetByID(ctx, q, tenant.AccountID, version.ID, discountID)
+		// A restored application the sweep no longer earns is gone: the restore is refused instead.
+		if errors.Is(freshErr, domain.ErrNotFound) &&
+			existing.Origin.EngineOwned() {
+			return domain.WithCode(domain.CodeDiscountNotApplicable, domain.ErrConflict)
+		}
 		if freshErr != nil {
 			return freshErr
 		}
@@ -803,12 +1019,12 @@ func (s *RFQService) DeleteDiscount(
 		return fmt.Errorf("%w: discount persistence is not wired", domain.ErrInvalidInput)
 	}
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, quoteErr := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, quoteErr := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if quoteErr != nil {
 			return quoteErr
 		}
-		if !domain.IsEditableStatus(quote.CurrentStatus) {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrImmutable)
+		if err := requireEditableLines(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentVersionID == nil {
 			return domain.ErrNotFound
@@ -956,6 +1172,45 @@ func (s *RFQService) assertProductsInAccount(
 
 // ---------- AI pipeline ----------
 
+// CreateInboundTextDraft turns a routed external text message into an unassigned quote draft.
+func (s *RFQService) CreateInboundTextDraft(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+) (*domain.TextRFQDraft, error) {
+	return s.createInboundTextDraft(ctx, route, in, nil)
+}
+
+// CreateInboundTextDraftForMessage resumes the RFQ reserved for one durable provider message.
+func (s *RFQService) CreateInboundTextDraftForMessage(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+	rfqID uuid.UUID,
+) (*domain.TextRFQDraft, error) {
+	if rfqID == uuid.Nil {
+		return nil, fmt.Errorf("%w: an inbound provider message needs an RFQ ID", domain.ErrInvalidInput)
+	}
+	return s.createInboundTextDraft(ctx, route, in, &rfqID)
+}
+
+func (s *RFQService) createInboundTextDraft(
+	ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput,
+	rfqID *uuid.UUID,
+) (*domain.TextRFQDraft, error) {
+	if err := route.Validate(); err != nil {
+		return nil, err
+	}
+	tenant := route.Tenant()
+	if err := requireBranch(tenant, "an inbound RFQ draft"); err != nil {
+		return nil, err
+	}
+	normalized, err := s.normalizeTextRFQDraftInput(domain.TextRFQDraftInput{
+		ChannelID: route.ChannelID, ClientID: in.ClientID, ClientLabel: in.ClientLabel,
+		RawText: in.RawText, WorkType: in.WorkType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.createTextDraft(ctx, tenant, normalized, nil, rfqID)
+}
+
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
 func (s *RFQService) CreateTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
@@ -968,7 +1223,7 @@ func (s *RFQService) CreateTextDraft(
 		return nil, err
 	}
 	sellerID := tenant.UserID
-	return s.createTextDraft(ctx, tenant, normalized, &sellerID)
+	return s.createTextDraft(ctx, tenant, normalized, &sellerID, nil)
 }
 
 // CreateFileDraft turns an order that arrived as a file into a quote DRAFT for seller review.
@@ -1014,13 +1269,13 @@ func (s *RFQService) CreateFileDraft(
 	if rawText == "" {
 		rawText = fileOrderPlaceholder(normalized.Filename)
 	}
-	rfq, err := s.persistReceivedRFQ(ctx, tenant, domain.TextRFQDraftInput{
+	rfq, _, err := s.persistReceivedRFQ(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID:   normalized.ChannelID,
 		ClientID:    normalized.ClientID,
 		ClientLabel: normalized.ClientLabel,
 		RawText:     rawText,
 		WorkType:    normalized.WorkType,
-	})
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1100,19 +1355,23 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	}
 	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
 		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
-	}, nil)
+	}, nil, nil)
 }
 
 func (s *RFQService) createTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
+	rfqID *uuid.UUID,
 ) (*domain.TextRFQDraft, error) {
 	if s.extractor == nil || s.channels == nil {
 		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
 	}
 
-	rfq, err := s.persistReceivedRFQ(ctx, tenant, in)
+	rfq, existing, err := s.persistReceivedRFQ(ctx, tenant, in, rfqID)
 	if err != nil {
 		return nil, err
+	}
+	if existing && rfq.Status != domain.RFQStatusReceived {
+		return &domain.TextRFQDraft{RFQ: *rfq}, nil
 	}
 
 	ctx = domain.WithAIRFQ(ctx, rfq.ID)
@@ -1239,16 +1498,29 @@ func (s *RFQService) applyMatches(
 }
 
 func (s *RFQService) persistReceivedRFQ(
-	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput,
-) (*domain.RFQ, error) {
+	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, rfqID *uuid.UUID,
+) (*domain.RFQ, bool, error) {
 	var rfq *domain.RFQ
+	existing := false
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if rfqID != nil {
+			stored, getErr := s.rfqs.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, *rfqID)
+			if getErr == nil {
+				rfq = stored
+				existing = true
+				return nil
+			}
+			if !errors.Is(getErr, domain.ErrNotFound) {
+				return getErr
+			}
+		}
 		if _, channelErr := s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
 			in.ChannelID); channelErr != nil {
 			return channelErr
 		}
 		var createErr error
 		rfq, createErr = s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
+			ID:          rfqID,
 			BranchID:    tenant.BranchID,
 			ClientID:    in.ClientID,
 			ChannelID:   in.ChannelID,
@@ -1260,9 +1532,9 @@ func (s *RFQService) persistReceivedRFQ(
 		return createErr
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return rfq, nil
+	return rfq, existing, nil
 }
 
 /*
@@ -1938,10 +2210,8 @@ func conditionTypeFor(scope domain.DiscountScope) *domain.PromotionConditionType
 	}
 }
 
-// recalculateVersionTotal recomputes a version's total from its items and discounts, then
-// persists it. A non-suppressed seller-typed PERCENTAGE is turned into money against its
-// scope and written back, so a discount always tracks the lines that carry it. Called after
-// any item, price, or discount mutation.
+// recalculateVersionTotal sweeps a version's discounts and persists the total that follows. Called
+// after any item, price, or discount mutation.
 func (s *RFQService) recalculateVersionTotal(
 	ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID,
 ) error {
@@ -1949,55 +2219,14 @@ func (s *RFQService) recalculateVersionTotal(
 	if err != nil {
 		return err
 	}
-	subtotals := sumItemSubtotals(items)
-	discountSum := decimal.Zero
+	total := sumItemSubtotals(items).Round(domain.MoneyScale)
 	if s.discounts != nil {
-		discounts, listErr := s.discounts.ListByVersionID(ctx, q, tenant.AccountID, versionID)
-		if listErr != nil {
-			return listErr
-		}
-		if len(discounts) > 0 {
-			discountIDs := make([]uuid.UUID, 0, len(discounts))
-			for _, discount := range discounts {
-				discountIDs = append(discountIDs, discount.ID)
-			}
-			linked, listErr := s.discounts.ListItemIDsByDiscountIDs(ctx, q,
-				tenant.AccountID, versionID, discountIDs)
-			if listErr != nil {
-				return listErr
-			}
-			for _, discount := range discounts {
-				if discount.SuppressedBySeller {
-					continue
-				}
-				amount := discount.Amount
-				if discount.Origin == domain.DiscountOriginManualSeller &&
-					discount.ActionType == domain.PromotionActionPercentage &&
-					discount.ActionValue != nil {
-					base, baseErr := scopeBaseForItems(items, discount.Scope, linked[discount.ID])
-					if baseErr != nil {
-						return baseErr
-					}
-					computed := ruleAmount(base, discount.ActionType, *discount.ActionValue)
-					if !computed.Equal(amount) {
-						if updateErr := s.discounts.UpdateAmount(ctx, q, tenant.AccountID,
-							versionID, discount.ID, computed); updateErr != nil {
-							return updateErr
-						}
-						amount = computed
-					}
-				}
-				discountSum = discountSum.Add(amount)
-			}
+		sweep := discountSweep{discounts: s.discounts, promotions: s.promotions, now: s.now}
+		total, err = sweep.settle(ctx, q, tenant.AccountID, tenant.BranchID, versionID, items)
+		if err != nil {
+			return err
 		}
 	}
-	// The result never goes negative: a discount scoped after the items it beat can exceed the
-	// net, and the total bottoms out at zero instead of carrying a sign.
-	net := subtotals.Sub(discountSum)
-	if net.IsNegative() {
-		net = decimal.Zero
-	}
-	total := net.Round(domain.MoneyScale)
 	_, err = s.quotes.UpdateVersionTotal(ctx, q, tenant.AccountID, versionID, total)
 	return err
 }

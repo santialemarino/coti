@@ -21,15 +21,33 @@ import {
 } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
+import { ClientFiscalForm } from '@/app/(protected)/clients/[id]/_components/client-fiscal-form';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
 import { ROUTES } from '@/config/routes';
-import { clientDisplayName, type ClientProfile, type ClientTag } from '@/lib/api/client-profiles';
-import { getClient, getClientTags } from '@/lib/api/clients';
+import { getAccount } from '@/lib/api/account';
+import {
+  clientDisplayName,
+  type ClientProfile,
+  type ClientTag,
+  type SaleInvoiceStatus,
+} from '@/lib/api/client-profiles';
+import { getClient, getClientFiscal, getClientTags } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
+import type { ClientFiscal } from '@/lib/api/invoicing';
 import { formatRfqReference } from '@/lib/api/rfqs';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
+
+const INVOICE_STATUS_TONE: Record<
+  SaleInvoiceStatus,
+  'success' | 'neutral' | 'outline' | 'warning'
+> = {
+  INVOICED: 'success',
+  PENDING: 'neutral',
+  WAIVED: 'outline',
+  UNINVOICED: 'warning',
+};
 
 export const generateMetadata = () => generatePageMetadata('clients');
 
@@ -39,8 +57,15 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   const fmt = await getFormatters();
   let profile: ClientProfile;
   let availableTags: ClientTag[];
+  let fiscal: ClientFiscal | null;
+  // A client's fiscal data only serves invoicing with Coti, so it is not even read while that is off.
+  const account = await getAccount();
   try {
-    [profile, availableTags] = await Promise.all([getClient(id), getClientTags()]);
+    [profile, availableTags, fiscal] = await Promise.all([
+      getClient(id),
+      getClientTags(),
+      account.invoicingEnabled ? getClientFiscal(id) : null,
+    ]);
   } catch (error) {
     if (error instanceof ApiError && errorCodeOf(error) === 'NOT_FOUND') notFound();
     throw error;
@@ -53,7 +78,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         <BackLink href={ROUTES.clients} label={t('backToList')} />
         <PageHeader
           title={name}
-          description={t('profile.description')}
+          description={t(fiscal ? 'profile.description' : 'profile.descriptionWithoutFiscal')}
           actions={<Badge tone="success">{t('salesCount', { total: profile.sales.length })}</Badge>}
         />
       </div>
@@ -97,6 +122,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         />
       </div>
 
+      {fiscal ? <ClientFiscalForm key={id} client={fiscal} /> : null}
+
       <Card className="gap-y-0 overflow-hidden py-0">
         <CardHeader className="py-6">
           <CardTitle className="text-heading-3">{t('profile.salesTitle')}</CardTitle>
@@ -109,21 +136,33 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
               <TableHead kind="text">{t('profile.table.branch')}</TableHead>
               <TableHead kind="date">{t('profile.table.date')}</TableHead>
               <TableHead kind="money">{t('profile.table.total')}</TableHead>
+              {account.invoicingEnabled ? (
+                <TableHead kind="status">{t('profile.table.invoice')}</TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {profile.sales.length === 0 ? (
               <TableEmptyRow
-                colSpan={4}
+                colSpan={account.invoicingEnabled ? 5 : 4}
                 icon={UserRoundIcon}
                 title={t('profile.emptySales.title')}
                 description={t('profile.emptySales.description')}
               />
             ) : (
               profile.sales.map((sale) => (
-                <TableRow key={sale.quoteId}>
+                /* The reference is the row's one link, stretched over the row, so the whole row
+                   opens the order and is still a single stop for the keyboard. */
+                <TableRow
+                  key={sale.quoteId}
+                  interactive
+                  className="group/sale has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/45 relative"
+                >
                   <TableCell kind="short">
-                    <InlineLink asChild>
+                    <InlineLink
+                      asChild
+                      className="group-hover/sale:decoration-primary after:absolute after:inset-0"
+                    >
                       <Link href={ROUTES.rfqsDetail(sale.rfqId)}>
                         {formatRfqReference(sale.quoteNumber) ?? t('profile.numberPending')}
                       </Link>
@@ -134,6 +173,13 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                   <TableCell kind="money" className="text-paragraph-sm-medium">
                     {fmt.currency(sale.total)}
                   </TableCell>
+                  {account.invoicingEnabled ? (
+                    <TableCell kind="status">
+                      <Badge tone={INVOICE_STATUS_TONE[sale.invoiceStatus]}>
+                        {t(`profile.invoiceStatuses.${sale.invoiceStatus}`)}
+                      </Badge>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))
             )}

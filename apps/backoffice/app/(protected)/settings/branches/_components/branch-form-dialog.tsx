@@ -109,6 +109,7 @@ export function BranchFormDialog({
                       maxLength={TEXT_FIELD_MAX_LENGTH}
                       placeholder={t('name.placeholder')}
                       {...field}
+                      disabled={pending}
                     />
                   </FormControl>
                   <FormMessage />
@@ -128,6 +129,7 @@ export function BranchFormDialog({
                       maxLength={TEXT_FIELD_MAX_LENGTH}
                       placeholder={t('address.placeholder')}
                       {...field}
+                      disabled={pending}
                     />
                   </FormControl>
                   <FormMessage />
@@ -148,6 +150,7 @@ export function BranchFormDialog({
                       maxLength={TEXT_FIELD_MAX_LENGTH}
                       placeholder={t('email.placeholder')}
                       {...field}
+                      disabled={pending}
                     />
                   </FormControl>
                   <FormDescription>{t('email.hint')}</FormDescription>
@@ -167,6 +170,7 @@ export function BranchFormDialog({
                       min={EXPIRY_MIN_DAYS}
                       placeholder={String(DEFAULT_EXPIRY_DAYS)}
                       {...field}
+                      disabled={pending}
                     />
                   </FormControl>
                   <FormDescription>

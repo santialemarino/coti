@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,7 +16,7 @@ const quoteSendColumns = `send.id, send.account_id, send.version_id, send.channe
 	channel.type, send.idempotency_key, COALESCE(send.destination, ''),
 	send.provider_reference, COALESCE(send.public_token, ''), send.format,
 	send.validity_days, send.sent_at, send.expires_at, send.tracking_status, send.created_at,
-	channel.identifier`
+	channel.identifier, send.client_association_hash`
 
 const quoteSendIdempotencyIndex = "uq_quote_send_idempotency_channel"
 
@@ -52,13 +53,13 @@ func (r *QuoteSendRepository) CreateBatch(ctx context.Context, q Querier, accoun
 	rows, err := q.Query(ctx, `WITH incoming AS (
 		  SELECT * FROM jsonb_to_recordset($2::jsonb) AS x(
 		    "ID" uuid, "VersionID" uuid, "ChannelID" uuid, "IdempotencyKey" uuid,
-		    "Destination" text, "PublicToken" text, "Format" text, "ValidityDays" integer)
+		    "Destination" text, "PublicToken" text, "Format" text, "ValidityDays" integer, "ClientAssociationHash" text)
 		), inserted AS (
 		  INSERT INTO quote_send (id, account_id, version_id, channel_id, idempotency_key,
-		    destination, public_token, format, validity_days)
+		    destination, public_token, format, validity_days, client_association_hash)
 		  SELECT incoming."ID", $1, version.id, channel.id, incoming."IdempotencyKey",
 		    incoming."Destination", incoming."PublicToken", incoming."Format"::send_format,
-		    incoming."ValidityDays"
+		    incoming."ValidityDays", COALESCE(incoming."ClientAssociationHash",'')
 		  FROM incoming
 		  JOIN quote_version version ON version.account_id = $1
 		    AND version.id = incoming."VersionID"
@@ -132,6 +133,44 @@ func (r *QuoteSendRepository) ListByQuote(
 		return nil, err
 	}
 	return scanQuoteSends(rows)
+}
+
+// ListLiveConversations returns, newest send first, the branch's SENT or CHANGE_REQUESTED quotes
+// that are not archived and whose latest successful send on channelID to one of destinations has
+// not expired at now.
+func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Querier, accountID,
+	branchID, channelID uuid.UUID, destinations []string, now time.Time,
+) ([]domain.ConversationCandidate, error) {
+	rows, err := q.Query(ctx, `SELECT latest.quote_id, latest.send_id, latest.sent_at
+		FROM (
+		  SELECT DISTINCT ON (version.quote_id) version.quote_id, send.id AS send_id,
+		    send.sent_at, send.expires_at
+		  FROM quote_send send
+		  JOIN quote_version version ON version.account_id = send.account_id
+		    AND version.id = send.version_id
+		  WHERE send.account_id = $1 AND send.channel_id = $3 AND send.destination = ANY($4)
+		    AND send.sent_at IS NOT NULL AND send.tracking_status <> 'FAILED'
+		  ORDER BY version.quote_id, send.sent_at DESC, send.id DESC
+		) latest
+		JOIN quote ON quote.account_id = $1 AND quote.id = latest.quote_id
+		WHERE quote.branch_id = $2 AND quote.archived_at IS NULL
+		  AND quote.current_status IN ('SENT', 'CHANGE_REQUESTED')
+		  AND latest.expires_at > $5
+		ORDER BY latest.sent_at DESC, latest.send_id DESC`,
+		accountID, branchID, channelID, destinations, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	candidates := make([]domain.ConversationCandidate, 0)
+	for rows.Next() {
+		var candidate domain.ConversationCandidate
+		if err := rows.Scan(&candidate.QuoteID, &candidate.QuoteSendID, &candidate.SentAt); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, rows.Err()
 }
 
 // GetAccountIDByPublicToken performs only the scope-discovery lookup on the owner pool.
@@ -211,7 +250,7 @@ func scanQuoteSend(row pgx.Row) (*domain.QuoteSend, error) {
 	err := row.Scan(&send.ID, &send.AccountID, &send.VersionID, &send.ChannelID,
 		&send.ChannelType, &send.IdempotencyKey, &send.Destination, &send.ProviderReference,
 		&send.PublicToken, &send.Format, &send.ValidityDays, &send.SentAt, &send.ExpiresAt,
-		&send.TrackingStatus, &send.CreatedAt, &send.ChannelIdentifier)
+		&send.TrackingStatus, &send.CreatedAt, &send.ChannelIdentifier, &send.ClientAssociationHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

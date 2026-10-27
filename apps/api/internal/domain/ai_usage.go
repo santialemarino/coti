@@ -12,13 +12,14 @@ type AIOperation string
 
 // The operations that spend on a provider, one per call site.
 const (
-	AIOperationRFQExtraction        AIOperation = "RFQ_EXTRACTION"
-	AIOperationAudioTranscription   AIOperation = "AUDIO_TRANSCRIPTION"
-	AIOperationInterpretationLookup AIOperation = "INTERPRETATION_LOOKUP"
-	AIOperationCatalogSearch        AIOperation = "CATALOG_SEARCH"
-	AIOperationCatalogMatchReview   AIOperation = "CATALOG_MATCH_REVIEW"
-	AIOperationCatalogEmbedding     AIOperation = "CATALOG_EMBEDDING"
-	AIOperationCorrectionLearning   AIOperation = "CORRECTION_LEARNING"
+	AIOperationRFQExtraction         AIOperation = "RFQ_EXTRACTION"
+	AIOperationAudioTranscription    AIOperation = "AUDIO_TRANSCRIPTION"
+	AIOperationInterpretationLookup  AIOperation = "INTERPRETATION_LOOKUP"
+	AIOperationCatalogSearch         AIOperation = "CATALOG_SEARCH"
+	AIOperationCatalogMatchReview    AIOperation = "CATALOG_MATCH_REVIEW"
+	AIOperationCatalogEmbedding      AIOperation = "CATALOG_EMBEDDING"
+	AIOperationCorrectionLearning    AIOperation = "CORRECTION_LEARNING"
+	AIOperationChangeRequestHandling AIOperation = "CHANGE_REQUEST_HANDLING"
 )
 
 // AIUsageScope is whom an AI call is spent for and on what. It travels in the context, from the

@@ -104,9 +104,13 @@ export function limitDecimalsInString(
 
 export type KeyRule = (event: KeyboardEvent<HTMLInputElement>) => void;
 
-/* Runs each rule on every keystroke. `preventDefault` is idempotent, so overlap is harmless. */
+/*
+ * Runs each rule on every keystroke but a shortcut, so ⌘− still zooms and ⌘E still finds.
+ * `preventDefault` is idempotent, so overlap is harmless.
+ */
 export function composeKeyHandlers(...rules: KeyRule[]): KeyRule {
   return (event) => {
+    if (event.metaKey || (event.ctrlKey && !event.altKey)) return;
     for (const rule of rules) rule(event);
   };
 }
@@ -119,32 +123,6 @@ export function blockSignKeys(event: KeyboardEvent<HTMLInputElement>): void {
 // `<input type="number">` accepts scientific notation; none of these fields ever wants it.
 export function blockScientificKeys(event: KeyboardEvent<HTMLInputElement>): void {
   if (event.key === 'e' || event.key === 'E') event.preventDefault();
-}
-
-/* Blocks the other locale's decimal separator, so a mixed-notation string can never be parsed. */
-export function blockWrongLocaleDecimal(locale?: string): KeyRule {
-  return (event) => {
-    const wrong = getDecimalSeparator(locale) === '.' ? ',' : '.';
-    if (event.key === wrong) event.preventDefault();
-  };
-}
-
-/*
- * Blocks a second decimal separator — unless the selection covers the existing one, in which case
- * the keystroke replaces it rather than adding another.
- */
-export function blockSecondDecimal(locale: string | undefined, currentValue: string): KeyRule {
-  return (event) => {
-    const decimal = getDecimalSeparator(locale);
-    if (event.key !== decimal) return;
-    const existing = currentValue.indexOf(decimal);
-    if (existing === -1) return;
-    const input = event.currentTarget;
-    const start = input.selectionStart ?? input.value.length;
-    const end = input.selectionEnd ?? input.value.length;
-    if (start <= existing && existing < end) return;
-    event.preventDefault();
-  };
 }
 
 /* Blocks the separator outright for a zero-decimal field (a whole-currency total, a count). */
@@ -201,6 +179,65 @@ export function sanitizeDecimalPaste(text: string, locale?: string): string {
   return `${integer}${getDecimalSeparator(locale)}${fraction}`;
 }
 
+export interface AmountEdit {
+  canonical: string;
+  display: string;
+  caret: number;
+}
+
+function fractionDigits(canonical: string): number {
+  const separator = canonical.indexOf('.');
+  return separator === -1 ? 0 : canonical.length - separator - 1;
+}
+
+/*
+ * Reads the field after any edit back into the canonical value, the display and a caret mapped by
+ * counting digits. A separator typed onto the same separator steps over it; a group separator typed
+ * at the end of the whole part is shown until the next digit regroups the number; any other typed
+ * separator is ignored, and so is a fraction digit typed past the cap rather than pushing one out;
+ * a paste or a replaced selection is truncated to the cap instead.
+ */
+export function editAmount(
+  raw: string,
+  caret: number,
+  previousDisplay: string,
+  locale: string | undefined,
+  maxDecimals: number | undefined,
+): AmountEdit {
+  const decimal = getDecimalSeparator(locale);
+  const group = getGroupSeparator(locale);
+  const previous = normalizeAmountFromInput(previousDisplay, locale);
+  const unchanged = (at: number) => ({ canonical: previous, display: previousDisplay, caret: at });
+  const inserted = raw.length - previousDisplay.length;
+  const typed =
+    inserted === 1 && raw.slice(0, caret - 1) + raw.slice(caret) === previousDisplay
+      ? raw[caret - 1]
+      : undefined;
+
+  if (typed === decimal || typed === group) {
+    if (previousDisplay[caret - 1] === typed) return unchanged(caret);
+    if (typed === group) {
+      const endsWhole =
+        caret === raw.length && !previousDisplay.includes(decimal) && /\d$/.test(previousDisplay);
+      return endsWhole ? { canonical: previous, display: raw, caret } : unchanged(caret - 1);
+    }
+    if (previousDisplay.includes(decimal) || maxDecimals === 0) return unchanged(caret - 1);
+  }
+
+  const canonical = normalizeAmountFromInput(sanitizeDecimalChars(raw, locale), locale);
+  if (
+    maxDecimals !== undefined &&
+    typed !== undefined &&
+    fractionDigits(canonical) > maxDecimals &&
+    fractionDigits(previous) >= maxDecimals
+  ) {
+    return unchanged(caret - 1);
+  }
+  const capped = limitDecimalsInString(canonical, '.', maxDecimals);
+  const display = formatAmountForInput(capped, locale);
+  return { canonical: capped, display, caret: mapCaretAfterRegroup(raw, caret, display, decimal) };
+}
+
 export function sanitizeIntegerPaste(text: string): string {
   return text.replace(/[^0-9]/g, '');
 }
@@ -223,12 +260,7 @@ export function stepCanonical(
   // Keeps the precision already written (1 → 2, 1,5 → 2,5), never more than the field allows.
   const places = Math.min(
     maxDecimals ?? Infinity,
-    Math.max(decimalPlaces(canonical), decimalPlaces(String(step))),
+    Math.max(fractionDigits(canonical), fractionDigits(String(step))),
   );
   return next.toFixed(places);
-}
-
-function decimalPlaces(canonical: string): number {
-  const separator = canonical.indexOf('.');
-  return separator === -1 ? 0 : canonical.length - separator - 1;
 }

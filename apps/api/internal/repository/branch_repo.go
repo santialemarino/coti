@@ -55,7 +55,7 @@ func (r *BranchRepository) ListForUser(
 		        b.created_at, b.updated_at, (SELECT c.identifier FROM channel c
 		          WHERE c.account_id = b.account_id AND c.branch_id = b.id
 		            AND c.type = 'EMAIL' AND c.is_active
-		          ORDER BY c.created_at LIMIT 1)
+		          ORDER BY c.created_at LIMIT 1), b.point_of_sale
 		 FROM branch b
 		 LEFT JOIN user_branch ub ON ub.branch_id = b.id AND ub.user_id = $2
 		 WHERE b.account_id = $1
@@ -80,7 +80,7 @@ func (r *BranchRepository) ListAllForAccount(
 		        created_at, updated_at, (SELECT c.identifier FROM channel c
 		          WHERE c.account_id = branch.account_id AND c.branch_id = branch.id
 		            AND c.type = 'EMAIL' AND c.is_active
-		          ORDER BY c.created_at LIMIT 1)
+		          ORDER BY c.created_at LIMIT 1), point_of_sale
 		 FROM branch
 		 WHERE account_id = $1
 		 ORDER BY is_active DESC, name`,
@@ -131,7 +131,7 @@ func (r *BranchRepository) GetByID(
 		        created_at, updated_at, (SELECT c.identifier FROM channel c
 		          WHERE c.account_id = branch.account_id AND c.branch_id = branch.id
 		            AND c.type = 'EMAIL' AND c.is_active
-		          ORDER BY c.created_at LIMIT 1)
+		          ORDER BY c.created_at LIMIT 1), point_of_sale
 		 FROM branch
 		 WHERE account_id = $1 AND id = $2`,
 		accountID, branchID))
@@ -166,7 +166,7 @@ func (r *BranchRepository) Create(
 		`INSERT INTO branch (account_id, name, address, default_expiry_days)
 		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, account_id, name, address, default_expiry_days, is_active,
-		           created_at, updated_at, NULL::varchar`,
+		           created_at, updated_at, NULL::varchar, point_of_sale`,
 		accountID, in.Name, in.Address, in.DefaultExpiryDays))
 }
 
@@ -183,7 +183,7 @@ func (r *BranchRepository) Update(
 		           created_at, updated_at, (SELECT c.identifier FROM channel c
 		          WHERE c.account_id = branch.account_id AND c.branch_id = branch.id
 		            AND c.type = 'EMAIL' AND c.is_active
-		          ORDER BY c.created_at LIMIT 1)`,
+		          ORDER BY c.created_at LIMIT 1), point_of_sale`,
 		accountID, branchID, in.Name, in.Address, in.DefaultExpiryDays, in.IsActive))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -239,7 +239,7 @@ func scanBranches(rows pgx.Rows) ([]domain.Branch, error) {
 	for rows.Next() {
 		var b domain.Branch
 		if err := rows.Scan(&b.ID, &b.AccountID, &b.Name, &b.Address, &b.DefaultExpiryDays,
-			&b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.Email); err != nil {
+			&b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.Email, &b.PointOfSale); err != nil {
 			return nil, err
 		}
 		branches = append(branches, b)
@@ -250,7 +250,7 @@ func scanBranches(rows pgx.Rows) ([]domain.Branch, error) {
 func scanBranch(row pgx.Row) (*domain.Branch, error) {
 	var b domain.Branch
 	if err := row.Scan(&b.ID, &b.AccountID, &b.Name, &b.Address, &b.DefaultExpiryDays,
-		&b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.Email); err != nil {
+		&b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.Email, &b.PointOfSale); err != nil {
 		return nil, err
 	}
 	return &b, nil

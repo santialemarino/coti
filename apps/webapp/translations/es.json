@@ -13,7 +13,11 @@
     },
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
-      "clearSearch": "Limpiar la búsqueda"
+      "clearSearch": "Limpiar la búsqueda",
+      "errors": {
+        "tooLong": "Máximo {max} caracteres.",
+        "invalidEmail": "Ingresá un email válido."
+      }
     }
   },
   "home": {
@@ -22,12 +26,103 @@
   },
   "rfq": {
     "title": "Solicitá tu presupuesto",
-    "intro": "Contanos qué materiales necesitás y te preparamos una cotización.",
-    "itemsLabel": "Materiales",
-    "submit": "Enviar solicitud",
+    "contact": {
+      "title": "Tus datos",
+      "continue": "Continuar"
+    },
+    "order": {
+      "title": "Tu pedido",
+      "mode": "Cómo cargar el pedido",
+      "textMode": "Escribir pedido",
+      "fileMode": "Subir archivo",
+      "editContact": "Editar mis datos"
+    },
+    "submit": "Enviar pedido",
     "submitting": "Enviando…",
-    "itemCount": "{count, plural, =0 {Sin ítems} one {# ítem} other {# ítems}}",
-    "success": "Recibimos tu solicitud. Te contactaremos con la cotización."
+    "received": {
+      "title": "Pedido recibido",
+      "description": "El corralón recibió tu pedido y lo va a revisar.",
+      "another": "Hacer otro pedido"
+    },
+    "fields": {
+      "taxId": {
+        "label": "CUIT/CUIL",
+        "placeholder": "Ingresá tu CUIT/CUIL"
+      },
+      "name": {
+        "label": "Nombre o razón social",
+        "placeholder": "Ingresá tu nombre o razón social"
+      },
+      "email": {
+        "label": "Email (opcional)",
+        "placeholder": "Ingresá tu email"
+      },
+      "phone": {
+        "label": "Teléfono (opcional)",
+        "placeholder": "Ingresá tu teléfono",
+        "country": "País",
+        "search": "Buscá un país",
+        "empty": "No encontramos ese país.",
+        "landline": "El número ingresado corresponde a una línea fija.",
+        "mobile": "Usar {number} como celular"
+      },
+      "text": {
+        "label": "Pedido",
+        "placeholder": "Ingresá los materiales y las cantidades que necesitás"
+      },
+      "file": {
+        "label": "Archivo del pedido",
+        "drop": "Arrastrá el archivo del pedido",
+        "choose": "Elegir archivo",
+        "replace": "Cambiar archivo",
+        "release": "Soltá el archivo",
+        "formats": "Imagen, PDF, Excel, CSV, audio o texto. Hasta {size} MB."
+      }
+    },
+    "validation": {
+      "taxId": {
+        "required": "Ingresá tu CUIT.",
+        "invalid": "Revisá el CUIT: debe tener 11 dígitos y ser válido."
+      },
+      "name": {
+        "required": "Ingresá tu nombre o razón social."
+      },
+      "email": {
+        "required": "Ingresá tu email."
+      },
+      "phone": {
+        "invalid": "Ingresá un teléfono válido."
+      },
+      "text": {
+        "required": "Ingresá tu pedido."
+      },
+      "file": {
+        "required": "Elegí un archivo para tu pedido.",
+        "size": "El archivo está vacío o supera el tamaño permitido.",
+        "type": "Elegí una imagen, PDF, Excel, CSV, audio o archivo de texto compatible."
+      }
+    },
+    "errors": {
+      "BAD_REQUEST": "Revisá los datos del pedido e intentá de nuevo.",
+      "INVALID_INPUT": "Revisá los datos y el archivo del pedido.",
+      "NOT_FOUND": "Este link ya no está disponible. Pedile un nuevo link al corralón.",
+      "CONFLICT": "Este envío ya fue registrado con otros datos. Volvé a intentarlo como un pedido nuevo.",
+      "RATE_LIMITED": "Hubo demasiados intentos. Esperá un momento y volvé a enviar el pedido.",
+      "FILE_TOO_LARGE": "El archivo supera el tamaño permitido.",
+      "UNSUPPORTED_FILE_TYPE": "El formato del archivo no es compatible.",
+      "LEGACY_EXCEL_FILE": "Guardá el archivo de Excel como .xlsx y volvé a subirlo.",
+      "UNREACHABLE": "No pudimos confirmar la recepción. Revisá tu conexión y volvé a enviar el mismo pedido.",
+      "INTERNAL": "No pudimos confirmar la recepción. Volvé a intentar en un momento.",
+      "INVALID_BODY": "Revisá los datos del pedido e intentá de nuevo.",
+      "NOT_CONFIGURED": "El corralón no puede recibir este pedido por el momento. Intentá más tarde.",
+      "UNAUTHENTICATED": "Tu sesión venció. Volvé a ingresar para enviar el pedido."
+    },
+    "branch": {
+      "title": "Elegí una sucursal",
+      "label": "Sucursal",
+      "placeholder": "Seleccioná una sucursal",
+      "continue": "Continuar"
+    }
   },
   "quote": {
     "title": "Tu cotización",
@@ -60,6 +155,8 @@
     "downloadPdf": "Descargar la cotización en PDF",
     "expiredTitle": "Esta cotización venció",
     "expiredDescription": "El enlace dejó de estar disponible el {date}. Escribile al corralón y pedile una cotización nueva.",
+    "unavailableTitle": "Esta cotización ya no está disponible",
+    "unavailableDescription": "El corralón la retiró. Escribile y pedile una cotización actualizada.",
     "questions": "¿Tenés dudas? Contactanos",
     "actions": {
       "heading": "¿Qué querés hacer?",
@@ -80,6 +177,7 @@
       "cancel": "Cancelar",
       "sending": "Registrando tu respuesta…",
       "errorSubmit": "No pudimos registrar tu respuesta. Intentalo de nuevo.",
+      "errorUnavailable": "Esta cotización ya no está disponible. Escribile al corralón para pedir una nueva.",
       "resultTitle": "Tu respuesta se registró",
       "resultAccept": "Aceptaste la cotización. El corralón avanza con tu pedido.",
       "resultRequestChange": "Enviamos tu solicitud de cambios. El corralón va a preparar una nueva versión.",
@@ -94,5 +192,87 @@
     "title": "No encontramos esta página",
     "description": "La dirección que abriste no existe o dejó de estar disponible. Si llegaste desde un enlace que te pasaron, pedí que te lo manden de nuevo.",
     "goHome": "Ir al inicio"
+  },
+  "customerAuth": {
+    "titles": {
+      "welcome": "Ingresá a tu cuenta",
+      "login": "Ingresar con CUIT/CUIL",
+      "signup": "Crear cuenta",
+      "forgot": "Recuperar contraseña",
+      "reset": "Elegí tu contraseña",
+      "verify": "Verificá tu email",
+      "google": "Completá tu CUIT/CUIL",
+      "linkGoogle": "Vincular Google"
+    },
+    "fields": {
+      "taxId": "CUIT/CUIL",
+      "email": "Email",
+      "emailOptional": "Email de recuperación (opcional)",
+      "password": "Contraseña",
+      "confirmation": "Repetí la contraseña"
+    },
+    "submit": {
+      "login": "Ingresar",
+      "signup": "Crear cuenta",
+      "forgot": "Enviar enlace",
+      "reset": "Guardar contraseña",
+      "verify": "Confirmar email",
+      "google": "Continuar",
+      "linkGoogle": "Vincular Google"
+    },
+    "google": "Continuar con Google",
+    "passwordLogin": "Ingresar con CUIT/CUIL",
+    "createAccount": "Crear cuenta",
+    "backToLogin": "Volver al ingreso",
+    "existingAccount": "Ya tengo una cuenta: ingresar y vincular Google",
+    "forgot": "Olvidé mi contraseña",
+    "pending": "Procesando…",
+    "recoverySent": "Si el CUIT/CUIL y el email coinciden con una cuenta con email verificado, vas a recibir un enlace para restablecer la contraseña.",
+    "success": {
+      "forgot": "Revisá tu email",
+      "reset": "Contraseña actualizada",
+      "verify": "Email verificado"
+    },
+    "validation": {
+      "taxInvalid": "Ingresá un CUIT/CUIL válido de 11 dígitos.",
+      "passwordRequired": "Ingresá tu contraseña.",
+      "passwordLength": "Usá al menos {min} caracteres.",
+      "passwordMaximum": "La contraseña admite hasta 72 bytes.",
+      "passwordPolicy": "Incluí una mayúscula, una minúscula, un número y un símbolo.",
+      "passwordMismatch": "Las contraseñas no coinciden.",
+      "emailInvalid": "Ingresá un email válido."
+    },
+    "errors": {
+      "conflict": "Ese CUIT/CUIL ya tiene una cuenta. Ingresá a ella para continuar.",
+      "locked": "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+      "credentials": "Revisá el CUIT/CUIL y la contraseña.",
+      "invalid": "Revisá los datos ingresados.",
+      "unavailable": "No pudimos completar la operación. Intentá de nuevo.",
+      "expired": "El enlace venció o ya fue utilizado.",
+      "googleUnavailable": "El ingreso con Google todavía no está configurado.",
+      "googleFailed": "No pudimos completar el ingreso con Google. Intentá de nuevo."
+    }
+  },
+  "customerOrders": {
+    "title": "Mis pedidos",
+    "newRequest": "Nuevo pedido",
+    "logout": "Cerrar sesión",
+    "empty": "Todavía no tenés pedidos",
+    "received": "Pedido recibido",
+    "preparing": "El corralón está preparando tu cotización.",
+    "original": "Pedido original",
+    "back": "Mis pedidos",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "statuses": {
+      "RECEIVED": "Recibido",
+      "SENT": "Cotización enviada",
+      "ACCEPTED": "Aceptado",
+      "REJECTED": "Rechazado",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "QUOTED": "En preparación",
+      "DRAFT": "En preparación"
+    },
+    "pagination": "Páginas de pedidos"
   }
 }

@@ -24,6 +24,10 @@ type QuoteService interface {
 	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
 	Archive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 	Unarchive(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	MarkPaid(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	UnmarkPaid(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	WaiveInvoice(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	RestoreInvoiceWait(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 // QuoteDeliveryService is the send and public-token surface the handler needs.
@@ -143,10 +147,10 @@ func (h *QuoteHandler) GenerateRepresentation(c *gin.Context) {
 	c.JSON(status, toQuoteRepresentationResponse(*result))
 }
 
-// Send delivers a frozen quote through WhatsApp and, when requested, email.
+// Send delivers a frozen quote through the seller-selected channels.
 //
 //	@Summary		Send a quote to its client
-//	@Description	Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.
+//	@Description	Freezes the current seller-approved version, attempts each selected channel with a public webapp link, and moves QUOTED to SENT when at least one succeeds.
 //	@Tags			quotes
 //	@Accept			json
 //	@Produce		json
@@ -191,7 +195,7 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 		email = &request.EmailDelivery.Address
 	}
 	result, err := h.delivery.Send(c.Request.Context(), tenant, quoteID,
-		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone,
+		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone, ClientAssociation: fromSendClientRequest(request.ClientAssociation),
 			Email: email, ExpiryDays: request.ExpiryDays})
 	if err != nil {
 		Respond(c, err)
@@ -204,7 +208,10 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 	c.JSON(status, toQuoteSendResponse(*result))
 }
 
-// ResolvePublic reports whether a completed delivery token is active or expired.
+// ResolvePublic reports whether a completed delivery token is active, expired or withdrawn.
+//
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
 //
 //	@Summary	Resolve a public quote delivery token
 //	@Tags		public quote sends
@@ -212,7 +219,7 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 //	@Param		token	path		string	true	"Public delivery token"
 //	@Success	200		{object}	dto.PublicQuoteSendResponse
 //	@Failure	404		{object}	dto.ErrorResponse
-//	@Router		/v1/public/quote-sends/{token} [get]
+//	@Router		/v1/customer/sites/{hostname}/quote-sends/{token} [get]
 func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	if h.delivery == nil {
 		Respond(c, domain.ErrNotFound)
@@ -240,6 +247,9 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 
 // RespondPublic records the customer's answer to a frozen quote and moves the quote when the
 // answer addresses the version it still shows.
+//
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
 //
 //	@Summary	Record a customer response on a public quote
 //	@Tags		public quote sends
@@ -528,6 +538,102 @@ func (h *QuoteHandler) Unarchive(c *gin.Context) {
 	c.JSON(http.StatusOK, toQuoteResponse(*quote))
 }
 
+// MarkPaid records «Cobrado» on an accepted sale.
+//
+//	@Summary		Mark a sale paid
+//	@Description	Records who marked the accepted sale paid and when. A fact, not a status; repeating it keeps the first mark. Paying never issues an invoice.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/payment [post]
+func (h *QuoteHandler) MarkPaid(c *gin.Context) {
+	h.closeSale(c, h.quotes.MarkPaid)
+}
+
+// UnmarkPaid takes «Cobrado» back from an accepted sale.
+//
+//	@Summary		Unmark a paid sale
+//	@Description	Clears the paid mark of an accepted sale; a paid sale is reopened only after this.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/payment [delete]
+func (h *QuoteHandler) UnmarkPaid(c *gin.Context) {
+	h.closeSale(c, h.quotes.UnmarkPaid)
+}
+
+// WaiveInvoice records «No requiere factura» on an accepted sale.
+//
+//	@Summary		Mark a sale as needing no invoice
+//	@Description	Takes the accepted sale out of the invoicing wait. Refused while invoicing is off or the sale has a live invoice; issuing an invoice later clears it.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_ACCEPTED, QUOTE_ARCHIVED, ACCOUNT_INVOICING_OFF or QUOTE_ALREADY_INVOICED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/invoice-waiver [post]
+func (h *QuoteHandler) WaiveInvoice(c *gin.Context) {
+	h.closeSale(c, h.quotes.WaiveInvoice)
+}
+
+// RestoreInvoiceWait undoes «No requiere factura».
+//
+//	@Summary		Undo «No requiere factura»
+//	@Description	The accepted sale waits for its invoice again.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/invoice-waiver [delete]
+func (h *QuoteHandler) RestoreInvoiceWait(c *gin.Context) {
+	h.closeSale(c, h.quotes.RestoreInvoiceWait)
+}
+
+// closeSale runs one of the sale-closing writes on the path's quote and answers the quote.
+func (h *QuoteHandler) closeSale(
+	c *gin.Context, write func(context.Context, domain.Tenant, uuid.UUID) (*domain.Quote, error),
+) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	quote, err := write(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteResponse(*quote))
+}
+
 func parseQuoteStatus(raw string) (domain.QuoteStatus, error) {
 	switch domain.QuoteStatus(raw) {
 	case domain.QuoteStatusSent, domain.QuoteStatusAccepted, domain.QuoteStatusRejected,
@@ -579,7 +685,8 @@ func toQuoteResponse(quote domain.Quote) dto.QuoteResponse {
 		CurrentStatus: string(quote.CurrentStatus), ExpiresAt: quote.ExpiresAt,
 		ArchivedAt: quote.ArchivedAt, NeedsFollowup: quote.NeedsFollowup,
 		FollowupFlaggedAt: quote.FollowupFlaggedAt, CreatedAt: quote.CreatedAt,
-		UpdatedAt: quote.UpdatedAt,
+		UpdatedAt: quote.UpdatedAt, PaidAt: quote.PaidAt, PaidByUserID: quote.PaidByUserID,
+		InvoiceWaivedAt: quote.InvoiceWaivedAt, InvoiceWaivedByUserID: quote.InvoiceWaivedByUserID,
 	}
 }
 

@@ -20,6 +20,10 @@ vi.mock('@/app/(protected)/_components/screen-fade', () => ({
 }));
 vi.mock('@/lib/api/onboarding', () => ({ getOnboarding: vi.fn() }));
 vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
+vi.mock('@/lib/api/account', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/account')>()),
+  getAccount: vi.fn(),
+}));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
 vi.mock('@/lib/auth/session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/session')>()),
@@ -45,6 +49,8 @@ class RedirectError extends Error {
 
 const { getOnboarding } = await import('@/lib/api/onboarding');
 const { getBranches } = await import('@/lib/api/branches');
+const { getAccount } = await import('@/lib/api/account');
+const { AppHeader } = await import('@/app/(protected)/_components/app-header');
 const { getSession } = await import('@/lib/auth/session');
 const { getSelectedBranchId } = await import('@/lib/auth/branch');
 const { ROUTES } = await import('@/config/routes');
@@ -96,6 +102,7 @@ beforeEach(() => {
   vi.mocked(getOnboarding).mockResolvedValue(FINISHED_ONBOARDING);
   vi.mocked(getBranches).mockResolvedValue([{ id: 'b1', isActive: true }] as never);
   vi.mocked(getSelectedBranchId).mockResolvedValue(undefined);
+  vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled: true, hasInvoices: false } as never);
 });
 
 describe('ProtectedLayout', () => {
@@ -124,6 +131,7 @@ describe('ProtectedLayout', () => {
 
     await expect(redirectedTo()).resolves.toBe(ROUTES.verifyEmail);
     expect(getOnboarding).not.toHaveBeenCalled();
+    expect(getAccount).not.toHaveBeenCalled();
   });
 
   it('sends an unconfirmed seller to confirm too', async () => {
@@ -232,4 +240,24 @@ describe('ProtectedLayout', () => {
     await redirectedTo();
     expect(vi.mocked(ContextColumn).mock.calls.at(-1)?.[0].onboarding).toBeNull();
   });
+
+  // Off with nothing ever issued, the invoice history has nothing to show in either navigation.
+  it.each([
+    { invoicingEnabled: true, hasInvoices: false, shown: true },
+    { invoicingEnabled: false, hasInvoices: true, shown: true },
+    { invoicingEnabled: false, hasInvoices: false, shown: false },
+  ])(
+    'offers Administración: $shown with the switch $invoicingEnabled and invoices $hasInvoices',
+    async ({ invoicingEnabled, hasInvoices, shown }) => {
+      vi.mocked(getSession).mockResolvedValue(session(true, 'SELLER'));
+      vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled, hasInvoices } as never);
+      await redirectedTo();
+
+      expect(vi.mocked(AppHeader).mock.calls.at(-1)?.[0].showInvoiceHistory).toBe(shown);
+      const bar = document.querySelector('[data-slot="tab-bar"]') as HTMLElement;
+      expect(
+        within(bar).queryByRole('link', { name: messages.common.nav.administration }) !== null,
+      ).toBe(shown);
+    },
+  );
 });

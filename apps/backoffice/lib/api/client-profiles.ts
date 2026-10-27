@@ -1,3 +1,6 @@
+// Where an accepted sale stands with its invoice; a waiting voucher wins over the rest.
+export type SaleInvoiceStatus = 'INVOICED' | 'PENDING' | 'WAIVED' | 'UNINVOICED';
+
 export interface ClientTagRaw {
   id: string;
   name: string;
@@ -5,6 +8,7 @@ export interface ClientTagRaw {
 }
 
 export interface ClientRaw {
+  tax_id?: string | null;
   id: string;
   name: string | null;
   phone: string | null;
@@ -37,6 +41,7 @@ export interface ClientSaleRaw {
   branch_name: string;
   total: string;
   accepted_at: string;
+  invoice_status: SaleInvoiceStatus;
 }
 
 export interface ClientProfileRaw {
@@ -53,7 +58,12 @@ export interface ClientMatchRaw {
 export interface QuoteClientAssociationRaw {
   current_client: ClientMatchRaw | null;
   suggestions: ClientMatchRaw[];
-  contact_hints: { phone: string | null; email: string | null };
+  contact_hints: {
+    tax_id?: string | null;
+    name?: string | null;
+    phone: string | null;
+    email: string | null;
+  };
   available_tags: ClientTagRaw[];
 }
 
@@ -64,6 +74,7 @@ export interface ClientTag {
 }
 
 export interface Client {
+  taxId?: string | null;
   id: string;
   name: string | null;
   phone: string | null;
@@ -88,6 +99,7 @@ export interface ClientSale {
   branchName: string;
   total: string;
   acceptedAt: string;
+  invoiceStatus: SaleInvoiceStatus;
 }
 
 export interface ClientProfile {
@@ -104,13 +116,19 @@ export interface ClientMatch {
 export interface QuoteClientAssociation {
   currentClient: ClientMatch | null;
   suggestions: ClientMatch[];
-  contactHints: { phone: string | null; email: string | null };
+  contactHints: {
+    taxId?: string | null;
+    name?: string | null;
+    phone: string | null;
+    email: string | null;
+  };
   availableTags: ClientTag[];
 }
 
 export function mapClient(raw: ClientRaw): Client {
   return {
     id: raw.id,
+    taxId: raw.tax_id ?? null,
     name: raw.name,
     phone: raw.phone,
     email: raw.email,
@@ -138,6 +156,7 @@ export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
   return {
     client: {
       id: summary.id,
+      taxId: summary.taxId ?? null,
       name: summary.name,
       phone: summary.phone,
       email: summary.email,
@@ -162,6 +181,7 @@ export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
       branchName: sale.branch_name,
       total: sale.total,
       acceptedAt: sale.accepted_at,
+      invoiceStatus: sale.invoice_status,
     })),
   };
 }
@@ -175,6 +195,8 @@ export function mapQuoteClientAssociation(raw: QuoteClientAssociationRaw): Quote
     currentClient: raw.current_client ? mapClientMatch(raw.current_client) : null,
     suggestions: raw.suggestions.map(mapClientMatch),
     contactHints: {
+      taxId: raw.contact_hints.tax_id ?? null,
+      name: raw.contact_hints.name ?? null,
       phone: raw.contact_hints.phone,
       email: raw.contact_hints.email,
     },

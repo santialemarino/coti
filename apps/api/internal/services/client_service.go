@@ -19,6 +19,9 @@ const (
 )
 
 type clientProfileRepository interface {
+	GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error)
+	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
+	SetMissingTaxID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	ListSummaries(ctx context.Context, q repository.Querier,
 		tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID,
@@ -26,7 +29,7 @@ type clientProfileRepository interface {
 	FindByContacts(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		phone, email *string) ([]domain.Client, error)
 	ListAcceptedSales(ctx context.Context, q repository.Querier, tenant domain.Tenant,
-		clientID uuid.UUID) ([]domain.ClientSale, error)
+		clientID uuid.UUID, env domain.ARCAEnvironment) ([]domain.ClientSale, error)
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		in domain.NewClient) (*domain.Client, error)
 }
@@ -63,7 +66,7 @@ type clientSendRepository interface {
 		quoteID uuid.UUID) ([]domain.QuoteSend, error)
 }
 
-// ClientService manages confirmed client profiles, tags, and accepted-sale associations.
+// ClientService manages client profiles, tags, and quotation-send associations.
 type ClientService struct {
 	db      tenantTxRunner
 	clients clientProfileRepository
@@ -71,6 +74,8 @@ type ClientService struct {
 	quotes  clientQuoteRepository
 	rfqs    clientRFQRepository
 	sends   clientSendRepository
+	// invoicingEnv is the ARCA environment whose invoices close a sale.
+	invoicingEnv domain.ARCAEnvironment
 }
 
 // NewClientService builds the client profile use cases.
@@ -80,6 +85,12 @@ func NewClientService(
 ) *ClientService {
 	return &ClientService{db: db, clients: clients, tags: tags, quotes: quotes, rfqs: rfqs,
 		sends: sends}
+}
+
+// WithInvoicingEnvironment sets the ARCA environment whose invoices close a sale.
+func (s *ClientService) WithInvoicingEnvironment(env domain.ARCAEnvironment) *ClientService {
+	s.invoicingEnv = env
+	return s
 }
 
 // ListClients returns account profiles with activity constrained to the caller's sales reach.
@@ -123,7 +134,7 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
-		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID)
+		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID, s.invoicingEnv)
 		if err != nil {
 			return err
 		}
@@ -160,7 +171,7 @@ func (s *ClientService) GetQuoteAssociation(
 		if err != nil {
 			return err
 		}
-		if err := requireClientAssociationAllowed(*quote); err != nil {
+		if err := requireUnarchived(*quote); err != nil {
 			return err
 		}
 		sends, err := s.sends.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
@@ -168,7 +179,25 @@ func (s *ClientService) GetQuoteAssociation(
 			return err
 		}
 		hints := contactHints(sends)
-		matches, err := s.clients.FindByContacts(ctx, q, tenant.AccountID, hints.Phone, hints.Email)
+		{
+			request, readErr := s.clients.GetRequestContact(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID)
+			if readErr != nil {
+				return readErr
+			}
+			hints.TaxID, hints.Name = request.TaxID, request.Name
+			if request.Phone != nil {
+				hints.Phone = request.Phone
+			}
+			if request.Email != nil {
+				hints.Email = request.Email
+			}
+		}
+		var matches []domain.Client
+		if hints.TaxID != nil {
+			matches, err = s.clients.FindByTaxID(ctx, q, tenant.AccountID, *hints.TaxID)
+		} else {
+			matches, err = s.clients.FindByContacts(ctx, q, tenant.AccountID, hints.Phone, hints.Email)
+		}
 		if err != nil {
 			return err
 		}
@@ -229,77 +258,22 @@ func (s *ClientService) CreateTag(
 	return tag, err
 }
 
-// AssociateQuote confirms one accepted sale's client and replaces the selected profile tags.
-func (s *ClientService) AssociateQuote(
-	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
-	in domain.AssociateQuoteClientInput,
-) (*domain.ClientMatch, error) {
+// AssociateQuote refuses the retired standalone association operation.
+func (s *ClientService) AssociateQuote(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, in domain.AssociateQuoteClientInput) (*domain.ClientMatch, error) {
 	if err := requireBranch(tenant, "a client association"); err != nil {
 		return nil, err
 	}
-	if (in.ClientID == nil) == (in.New == nil) {
-		return nil, fmt.Errorf("%w: select one existing or one new client", domain.ErrInvalidInput)
-	}
-	if in.New != nil {
-		if err := normalizeNewClient(in.New); err != nil {
-			return nil, err
-		}
-	}
-	in.TagIDs = uniqueUUIDs(in.TagIDs)
-
-	var result *domain.ClientMatch
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
 		}
-		if err := requireClientAssociationAllowed(*quote); err != nil {
+		if err := requireUnarchived(*quote); err != nil {
 			return err
 		}
-
-		var client *domain.Client
-		if in.ClientID != nil {
-			client, err = s.clients.GetByID(ctx, q, tenant.AccountID, *in.ClientID)
-		} else {
-			client, err = s.clients.Create(ctx, q, tenant.AccountID, *in.New)
-		}
-		if err != nil {
-			return err
-		}
-		selected, err := s.tags.GetByIDs(ctx, q, tenant.AccountID, in.TagIDs)
-		if err != nil {
-			return err
-		}
-		if len(selected) != len(in.TagIDs) {
-			return fmt.Errorf("%w: one or more tags do not belong to the account",
-				domain.ErrInvalidInput)
-		}
-		if err := s.tags.ReplaceClientTags(ctx, q, tenant.AccountID, client.ID,
-			in.TagIDs); err != nil {
-			return err
-		}
-		if err := s.quotes.SetClient(ctx, q, tenant.AccountID, tenant.BranchID, quote.ID,
-			client.ID); err != nil {
-			return err
-		}
-		if err := s.rfqs.SetClient(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID,
-			client.ID); err != nil {
-			return err
-		}
-		result = &domain.ClientMatch{Client: *client, Tags: nonNilTags(selected)}
-		return nil
+		return fmt.Errorf("%w: confirm the client when sending the quotation", domain.ErrConflict)
 	})
-	return result, err
-}
-
-func requireClientAssociationAllowed(quote domain.Quote) error {
-	if quote.ArchivedAt != nil {
-		return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
-	}
-	if quote.CurrentStatus != domain.QuoteStatusAccepted {
-		return fmt.Errorf("%w: only an accepted quote can be associated", domain.ErrConflict)
-	}
-	return nil
+	return nil, err
 }
 
 // ReplaceClientTags validates account ownership and replaces one profile's tag set.

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,13 +58,13 @@ func (f *fakeRfqRepoManual) ListStatusChanges(
 }
 
 func (f *fakeRfqRepoManual) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool, _ domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	return f.listItems, nil
 }
 
 func (f *fakeRfqRepoManual) GetByRFQID(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, _ domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in manual fake")
 }
@@ -540,8 +541,12 @@ func (f *fakeRFQs) Create(
 	_ context.Context, _ repository.Querier, accountID uuid.UUID, in domain.NewRFQ,
 ) (*domain.RFQ, error) {
 	f.created = append(f.created, in)
+	rfqID := testRFQID
+	if in.ID != nil {
+		rfqID = *in.ID
+	}
 	return &domain.RFQ{
-		ID: testRFQID, AccountID: accountID, BranchID: in.BranchID, ClientID: in.ClientID,
+		ID: rfqID, AccountID: accountID, BranchID: in.BranchID, ClientID: in.ClientID,
 		ChannelID: in.ChannelID, RawText: in.RawText, Status: in.Status, WorkType: in.WorkType,
 		ClientLabel: in.ClientLabel,
 	}, nil
@@ -592,13 +597,13 @@ func (f *fakeRFQs) ListStatusChanges(
 }
 
 func (f *fakeRFQs) ListByTenant(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ bool, _ domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	return nil, errors.New("not implemented in pipeline fake")
 }
 
 func (f *fakeRFQs) GetByRFQID(
-	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID,
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ uuid.UUID, _ domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
 	if f.rfqByIDErr != nil {
 		return nil, f.rfqByIDErr
@@ -652,6 +657,7 @@ type quoteStatusChangeCall struct {
 }
 
 type fakeQuoteDrafts struct {
+	claims                 int
 	created                []domain.NewQuote
 	currentVersion         []uuid.UUID
 	versions               []domain.NewQuoteVersion
@@ -832,6 +838,47 @@ func (f *fakeQuoteDiscounts) ListItemIDsByDiscountIDs(
 		}
 	}
 	return linked, nil
+}
+
+func (f *fakeQuoteDiscounts) CreateApplications(
+	_ context.Context, _ repository.Querier, accountID, versionID uuid.UUID,
+	apps []domain.DiscountApplication,
+) error {
+	for _, app := range apps {
+		promotionID := app.PromotionID
+		value := app.ActionValue
+		f.stored = append(f.stored, domain.QuoteDiscount{ID: app.ID, AccountID: accountID,
+			QuoteVersionID: versionID, PromotionID: &promotionID, ConditionType: app.ConditionType,
+			Scope: app.Scope, Origin: domain.DiscountOriginAutomatic, Amount: app.Amount,
+			ActionType: app.ActionType, ActionValue: &value})
+		if f.links == nil {
+			f.links = map[uuid.UUID][]uuid.UUID{}
+		}
+		f.links[app.ID] = app.ItemIDs
+	}
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) UpdateApplication(
+	_ context.Context, _ repository.Querier, accountID, versionID, discountID uuid.UUID,
+	actionValue, amount decimal.Decimal,
+) error {
+	d, err := f.GetByID(context.Background(), nil, accountID, versionID, discountID)
+	if err != nil {
+		return err
+	}
+	d.ActionValue = &actionValue
+	d.Amount = amount
+	return nil
+}
+
+func (f *fakeQuoteDiscounts) DeleteApplications(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, discountIDs []uuid.UUID,
+) error {
+	f.stored = slices.DeleteFunc(f.stored, func(d domain.QuoteDiscount) bool {
+		return d.Origin == domain.DiscountOriginAutomatic && slices.Contains(discountIDs, d.ID)
+	})
+	return nil
 }
 
 func (f *fakeQuoteAIGenerations) Create(
@@ -1112,6 +1159,22 @@ type fakeRFQClientActions struct {
 	reads   []uuid.UUID
 }
 
+type fakeInboundChannelMessages struct {
+	senderID *string
+	err      error
+	reads    []uuid.UUID
+}
+
+func (f *fakeInboundChannelMessages) FindSenderIDByRFQID(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, rfqID uuid.UUID,
+) (*string, error) {
+	f.reads = append(f.reads, rfqID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.senderID, nil
+}
+
 func (f *fakeRFQClientActions) ListByQuote(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, _ uuid.UUID, quoteID uuid.UUID,
 ) ([]domain.ClientAction, error) {
@@ -1123,17 +1186,18 @@ func (f *fakeRFQClientActions) ListByQuote(
 }
 
 type rfqHarness struct {
-	service       *RFQService
-	db            *fakeRFQDB
-	extractor     *fakeRFQExtractor
-	matcher       *fakeCatalogMatcher
-	rfqs          *fakeRFQs
-	quotes        *fakeQuoteDrafts
-	discounts     *fakeQuoteDiscounts
-	sends         *fakeQuoteSends
-	generations   *fakeQuoteAIGenerations
-	channels      *fakeRFQChannels
-	clientActions *fakeRFQClientActions
+	service         *RFQService
+	db              *fakeRFQDB
+	extractor       *fakeRFQExtractor
+	matcher         *fakeCatalogMatcher
+	rfqs            *fakeRFQs
+	quotes          *fakeQuoteDrafts
+	discounts       *fakeQuoteDiscounts
+	sends           *fakeQuoteSends
+	generations     *fakeQuoteAIGenerations
+	channels        *fakeRFQChannels
+	clientActions   *fakeRFQClientActions
+	inboundMessages *fakeInboundChannelMessages
 }
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
@@ -1148,16 +1212,17 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:            db,
-		extractor:     &fakeRFQExtractor{lines: lines, db: db},
-		matcher:       &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:          &fakeRFQs{},
-		quotes:        &fakeQuoteDrafts{},
-		discounts:     &fakeQuoteDiscounts{},
-		sends:         &fakeQuoteSends{},
-		generations:   &fakeQuoteAIGenerations{},
-		channels:      &fakeRFQChannels{},
-		clientActions: &fakeRFQClientActions{},
+		db:              db,
+		extractor:       &fakeRFQExtractor{lines: lines, db: db},
+		matcher:         &fakeCatalogMatcher{matches: matches, db: db},
+		rfqs:            &fakeRFQs{},
+		quotes:          &fakeQuoteDrafts{},
+		discounts:       &fakeQuoteDiscounts{},
+		sends:           &fakeQuoteSends{},
+		generations:     &fakeQuoteAIGenerations{},
+		channels:        &fakeRFQChannels{},
+		clientActions:   &fakeRFQClientActions{},
+		inboundMessages: &fakeInboundChannelMessages{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -1167,7 +1232,8 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 	h.channels.channelsByType = []domain.Channel{channel}
 	h.service = NewRFQService(h.db, h.rfqs, h.quotes, h.sends, h.generations, h.channels,
 		&fakeSellerReach{serves: true}, h.extractor, h.matcher, nil, testRFQConfig()).
-		WithDiscounts(h.discounts).WithClientActions(h.clientActions)
+		WithDiscounts(h.discounts).WithClientActions(h.clientActions).
+		WithInboundMessages(h.inboundMessages)
 	return h
 }
 
@@ -1349,6 +1415,61 @@ func TestRFQService_CreateTextDraft_PersistsGeneratedDraft(t *testing.T) {
 	}
 	if len(h.db.scopes) != 2 {
 		t.Errorf("opened %d transactions, want 2", len(h.db.scopes))
+	}
+}
+
+func TestRFQService_CreateInboundTextDraft_UsesTheResolvedChannelBranch(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{
+		explicitLine("cemento", "10", "bolsa", "pidiÃ³ 10"),
+	})
+	clientLabel := "Obra Norte"
+	route := domain.InboundChannelRoute{
+		AccountID: testAccountID, BranchID: testBranchID, ChannelID: testChannelID,
+		ChannelType: domain.ChannelTypeWhatsApp,
+	}
+
+	draft, err := h.service.CreateInboundTextDraft(context.Background(), route,
+		domain.InboundTextRFQDraftInput{
+			ClientLabel: &clientLabel, RawText: "10 bolsas de cemento",
+		})
+	if err != nil {
+		t.Fatalf("CreateInboundTextDraft() = %v, want no error", err)
+	}
+	if len(h.rfqs.created) != 1 {
+		t.Fatalf("created %d RFQs, want one", len(h.rfqs.created))
+	}
+	if h.rfqs.created[0].BranchID != route.BranchID || h.rfqs.created[0].ChannelID != route.ChannelID {
+		t.Errorf("RFQ route = branch %s channel %s, want branch %s channel %s",
+			h.rfqs.created[0].BranchID, h.rfqs.created[0].ChannelID, route.BranchID, route.ChannelID)
+	}
+	if len(h.quotes.created) != 1 || h.quotes.created[0].BranchID != route.BranchID {
+		t.Fatalf("quote branch = %#v, want %s", h.quotes.created, route.BranchID)
+	}
+	if h.quotes.created[0].SellerID != nil || h.quotes.versions[0].AuthorID != nil {
+		t.Errorf("inbound draft recorded seller/author %v/%v, want neither",
+			h.quotes.created[0].SellerID, h.quotes.versions[0].AuthorID)
+	}
+	if draft.RFQ.BranchID != route.BranchID {
+		t.Errorf("returned RFQ branch = %s, want %s", draft.RFQ.BranchID, route.BranchID)
+	}
+}
+
+func TestRFQService_CreateInboundTextDraftForMessage_ReplaysTheReservedRFQ(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{explicitLine("cemento", "10", "bolsa", "pedido")})
+	rfqID := uuid.New()
+	h.rfqs.rfqRow = &domain.RFQ{ID: rfqID, AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, Status: domain.RFQStatusGenerated}
+	route := domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, ChannelType: domain.ChannelTypeWhatsApp}
+
+	draft, err := h.service.CreateInboundTextDraftForMessage(context.Background(), route,
+		domain.InboundTextRFQDraftInput{RawText: "10 bolsas de cemento"}, rfqID)
+	if err != nil {
+		t.Fatalf("CreateInboundTextDraftForMessage() = %v, want no error", err)
+	}
+	if len(h.rfqs.created) != 0 || h.extractor.calls != 0 || draft.RFQ.ID != rfqID {
+		t.Errorf("replay = created %d / extraction %d / RFQ %s, want 0 / 0 / %s",
+			len(h.rfqs.created), h.extractor.calls, draft.RFQ.ID, rfqID)
 	}
 }
 
@@ -1854,6 +1975,67 @@ func TestRFQService_GetDetail_DecoratesDeliveryPublicURLs(t *testing.T) {
 	}
 	if want := "https://quotes.test/quotes/tk-viewed"; detail.Deliveries[0].PublicURL != want {
 		t.Errorf("delivery public_url = %q, want %q", detail.Deliveries[0].PublicURL, want)
+	}
+}
+
+func TestRFQService_GetDetail_ProvidesInboundWhatsAppSenderAsE164(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	senderID := "5491112345678"
+	h.inboundMessages.senderID = &senderID
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.InboundWhatsAppPhone == nil || *detail.InboundWhatsAppPhone != "+5491112345678" {
+		t.Errorf("inbound WhatsApp phone = %v, want %q", detail.InboundWhatsAppPhone,
+			"+5491112345678")
+	}
+	if len(h.inboundMessages.reads) != 1 || h.inboundMessages.reads[0] != testRFQID {
+		t.Errorf("inbound sender reads = %v, want [%v]", h.inboundMessages.reads, testRFQID)
+	}
+}
+
+func TestRFQService_GetDetail_RejectsMalformedInboundWhatsAppSender(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	senderID := "not-a-phone"
+	h.inboundMessages.senderID = &senderID
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	if detail.InboundWhatsAppPhone != nil {
+		t.Errorf("inbound WhatsApp phone = %q, want nil", *detail.InboundWhatsAppPhone)
+	}
+}
+
+func TestRFQService_GetDetail_ProvidesValidatedInboundEmail(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sender string
+		want   string
+	}{
+		{name: "bare address", sender: " client@example.com ", want: "client@example.com"},
+		{name: "display name rejected", sender: "Client <client@example.com>"},
+		{name: "invalid address rejected", sender: "invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, rfq, _, _, _ := getDetailHarness()
+			rfq.Channel = "email"
+			h.inboundMessages.senderID = &tc.sender
+			detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+			if err != nil {
+				t.Fatalf("GetDetail returned %v", err)
+			}
+			if tc.want == "" && detail.InboundEmail != nil ||
+				tc.want != "" && (detail.InboundEmail == nil || *detail.InboundEmail != tc.want) {
+				t.Errorf("inbound email = %v, want %q", detail.InboundEmail, tc.want)
+			}
+			if len(h.inboundMessages.reads) != 1 || h.inboundMessages.reads[0] != testRFQID {
+				t.Errorf("inbound sender reads = %v, want [%v]", h.inboundMessages.reads, testRFQID)
+			}
+		})
 	}
 }
 
@@ -2661,7 +2843,7 @@ func TestRFQService_GetDetail_CarriesTheVersionDiscounts(t *testing.T) {
 func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t *testing.T) {
 	h, _, _, _, _ := getDetailHarness()
 
-	frozenID := uuid.New()
+	frozenID, frozenLine := uuid.New(), uuid.New()
 	h.quotes.currentVersionData = &domain.QuoteVersion{
 		ID: testVersionID, QuoteID: testQuoteID, VersionNumber: 2, Total: decimal.NewFromFloat(17000),
 		IsImmutable: false, Comment: strPtr("necesito entrega el viernes"),
@@ -2672,7 +2854,7 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	}
 	h.quotes.itemsByVersionID = []domain.QuoteItem{
 		{
-			ID: uuid.New(), VersionID: testVersionID,
+			ID: uuid.New(), VersionID: testVersionID, SourceItemID: &frozenLine,
 			RequestedDescription: "10 bolsas de cemento",
 			Quantity:             decimal.RequireFromString("12"),
 			MatchStatus:          domain.ItemMatchStatusMatched,
@@ -2680,7 +2862,7 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	}
 	h.quotes.frozenItems = []domain.QuoteItem{
 		{
-			ID: uuid.New(), VersionID: frozenID,
+			ID: frozenLine, VersionID: frozenID,
 			RequestedDescription: "10 bolsas de cemento",
 			Quantity:             decimal.RequireFromString("10"),
 			MatchStatus:          domain.ItemMatchStatusMatched,
@@ -2708,24 +2890,17 @@ func TestRFQService_GetDetail_PopulatesChangeRequestDiffFromFrozenPredecessor(t 
 	if detail.ChangesRequested.Reason == nil || *detail.ChangesRequested.Reason != "necesito entrega el viernes" {
 		t.Errorf("reason = %v, want the client's request", detail.ChangesRequested.Reason)
 	}
-	if len(detail.ChangesRequested.Original.Items) != 1 || len(detail.ChangesRequested.Requested.Items) != 1 {
-		t.Fatalf("items = original %d requested %d, want 1 and 1",
-			len(detail.ChangesRequested.Original.Items), len(detail.ChangesRequested.Requested.Items))
+	diff := detail.ChangesRequested
+	if len(diff.Lines) != 1 || diff.Lines[0].Change != domain.DiffModified ||
+		diff.Lines[0].Original.Quantity != "10.00" || diff.Lines[0].Requested.Quantity != "12.00" {
+		t.Errorf("lines = %+v, want the requantified line paired with its sent line", diff.Lines)
 	}
-	if !detail.ChangesRequested.Requested.Items[0].Changed {
-		t.Error("quantity change not flagged")
+	if len(diff.Discounts) != 1 || diff.Discounts[0].Change != domain.DiffModified {
+		t.Errorf("discounts = %+v, want the amount change flagged", diff.Discounts)
 	}
-	if detail.ChangesRequested.Requested.Items[0].ChangeType != "modified" {
-		t.Errorf("change type = %q, want modified", detail.ChangesRequested.Requested.Items[0].ChangeType)
-	}
-	if len(detail.ChangesRequested.Requested.Discounts) != 1 || !detail.ChangesRequested.Requested.Discounts[0].Changed {
-		t.Error("discount amount change not flagged on the requested side")
-	}
-	if !detail.ChangesRequested.Original.Total.Equal(decimal.NewFromFloat(16000)) {
-		t.Errorf("original total = %v, want 16000", detail.ChangesRequested.Original.Total)
-	}
-	if !detail.ChangesRequested.Requested.Total.Equal(decimal.NewFromFloat(17000)) {
-		t.Errorf("requested total = %v, want 17000", detail.ChangesRequested.Requested.Total)
+	if !diff.OriginalTotal.Equal(decimal.NewFromInt(16000)) ||
+		!diff.RequestedTotal.Equal(decimal.NewFromInt(17000)) {
+		t.Errorf("totals = %s → %s, want 16000 → 17000", diff.OriginalTotal, diff.RequestedTotal)
 	}
 }
 

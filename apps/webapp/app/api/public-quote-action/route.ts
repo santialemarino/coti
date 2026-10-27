@@ -5,6 +5,8 @@ import {
   submitPublicQuoteAction,
   type CustomerActionType,
 } from '@/lib/api/public-quotes';
+import { getCustomerToken } from '@/lib/auth/customer-session';
+import { isSameOrigin } from '@/lib/auth/same-origin';
 
 const ACTION_TYPES: ReadonlySet<string> = new Set(['ACCEPT', 'REQUEST_CHANGE', 'REJECT']);
 
@@ -14,6 +16,9 @@ const ACTION_TYPES: ReadonlySet<string> = new Set(['ACCEPT', 'REQUEST_CHANGE', '
  * check again; this proxy only guards the boundary between the browser and the server module.
  */
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+  if (!(await getCustomerToken()))
+    return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
   const body = (await request.json().catch(() => null)) as {
     token?: unknown;
     type?: unknown;
@@ -40,14 +45,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof PublicQuoteActionError) {
+      if (error.status === 401)
+        return NextResponse.json({ error: 'UNAUTHENTICATED' }, { status: 401 });
       if (error.status === 404 || error.status === 409) {
-        return NextResponse.json(
-          { error: error.status === 404 ? 'NOT_FOUND' : 'CONFLICT' },
-          { status: error.status },
-        );
+        return NextResponse.json({ error: conflictCode(error) }, { status: error.status });
       }
       return NextResponse.json({ error: 'UNREACHABLE' }, { status: 502 });
     }
     return NextResponse.json({ error: 'UNREACHABLE' }, { status: 502 });
   }
+}
+
+// The one refusal the page words on its own: the corralón archived the quote, so the offer is gone.
+function conflictCode(error: PublicQuoteActionError): string {
+  if (error.status === 404) return 'NOT_FOUND';
+  return error.code === 'QUOTE_ARCHIVED' ? 'QUOTE_ARCHIVED' : 'CONFLICT';
 }

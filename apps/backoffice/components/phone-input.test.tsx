@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 
+import { browserEdit, typeText } from '@repo/vitest-config/input-edits';
 import { PhoneInput } from '@/components/phone-input';
 import messages from '@/translations/es.json';
 
@@ -41,6 +42,17 @@ function national() {
 
 function country() {
   return screen.getByRole('combobox', { name: 'País' });
+}
+
+function undo() {
+  const event = createEvent.keyDown(national(), { key: 'z', metaKey: true });
+  fireEvent(national(), event);
+  return event;
+}
+
+function start() {
+  national().focus();
+  national().setSelectionRange(0, 0);
 }
 
 describe('PhoneInput', () => {
@@ -157,6 +169,86 @@ describe('PhoneInput', () => {
       fireEvent.change(national(), { target: { value: '11 ab5555-0101x' } });
 
       expect(national().value).toBe('11 5555-0101');
+    });
+  });
+
+  describe('undo', () => {
+    it('keeps the caret in place when a typed letter is dropped', () => {
+      render(<Harness onValue={vi.fn()} />);
+      start();
+      typeText(national(), '1155');
+
+      browserEdit(national(), '11x55', { caret: 3 });
+
+      expect(national().value).toBe('1155');
+      expect([national().selectionStart, national().selectionEnd]).toEqual([2, 2]);
+    });
+
+    it('undoes a run of typing in one step', () => {
+      render(<Harness onValue={vi.fn()} />);
+      start();
+      typeText(national(), '11 5555');
+
+      expect(undo().defaultPrevented).toBe(true);
+
+      expect(national().value).toBe('');
+    });
+
+    it('undoes a pasted international number, country included', () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+      start();
+      typeText(national(), '11');
+
+      national().setSelectionRange(0, 2);
+      browserEdit(national(), '+598 99 123 456', { inputType: 'insertFromPaste' });
+      expect(country().textContent).toContain('+598');
+
+      undo();
+
+      expect(country().textContent).toBe('🇦🇷+54');
+      expect(national().value).toBe('11');
+      expect(onValue).toHaveBeenLastCalledWith('+5411');
+    });
+
+    it('undoes the settling on blur back to the number as written', () => {
+      render(<Harness onValue={vi.fn()} />);
+      start();
+      typeText(national(), '11 5555-0101');
+      fireEvent.blur(national());
+      expect(national().value).toBe('1155550101');
+
+      undo();
+
+      expect(national().value).toBe('11 5555-0101');
+    });
+
+    it('takes its own step when the browser undoes without announcing it', () => {
+      render(<Harness onValue={vi.fn()} />);
+      start();
+      typeText(national(), '1155');
+
+      browserEdit(national(), '115', { inputType: 'historyUndo', announced: false });
+
+      expect(national().value).toBe('');
+    });
+
+    it('takes a country picked by hand as a step of its own', async () => {
+      const onValue = vi.fn();
+      render(<Harness onValue={onValue} />);
+      start();
+      typeText(national(), '99123456');
+
+      fireEvent.click(country());
+      fireEvent.click(await screen.findByRole('option', { name: /Uruguay/ }));
+      expect(country().textContent).toContain('+598');
+
+      undo();
+      expect(country().textContent).toBe('🇦🇷+54');
+      expect(national().value).toBe('99123456');
+
+      undo();
+      expect(national().value).toBe('');
     });
   });
 });

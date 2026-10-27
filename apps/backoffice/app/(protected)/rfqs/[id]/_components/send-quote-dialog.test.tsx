@@ -3,12 +3,22 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients-client';
 import { ApiError } from '@/lib/api/errors';
-import type { QuoteDeliveryResponse, QuoteSendResponse, RfqDetailResponse } from '@/lib/api/rfqs';
+import type {
+  QuoteDeliveryResponse,
+  QuoteSendResponse,
+  QuoteSendTrackingResponse,
+  RfqDetailResponse,
+} from '@/lib/api/rfqs';
 import { sendQuote } from '@/lib/api/rfqs-client';
 import messages from '@/translations/es.json';
-import { SendQuoteDialog } from './send-quote-dialog';
+import { previousDestinations, SendQuoteDialog } from './send-quote-dialog';
 
+vi.mock('@/lib/api/clients-client', () => ({
+  getClientDirectory: vi.fn(),
+  getQuoteClientAssociation: vi.fn(),
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock('@/lib/api/rfqs-client', () => ({ sendQuote: vi.fn() }));
 
@@ -29,7 +39,7 @@ const EMAIL_URL = 'https://coti.app/quotes/email-token-b';
 
 const writeText = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-function makeDetail(): RfqDetailResponse {
+function makeDetail(inboundWhatsAppPhone: string | null = null): RfqDetailResponse {
   return {
     rfq: {
       id: RFQ_ID,
@@ -48,8 +58,17 @@ function makeDetail(): RfqDetailResponse {
       status: 'QUOTED',
       needs_followup: false,
       followup_flagged_at: null,
+      paid_at: null,
+      paid_by: null,
+      invoice_waived_at: null,
+      invoice_waived_by: null,
+      invoiced: false,
+      invoice_pending: false,
+      sale_complete: false,
       archived_at: null,
     },
+    inbound_whatsapp_phone: inboundWhatsAppPhone,
+    inbound_email: null,
     quote: {
       id: QUOTE_ID,
       branch_id: BRANCH_ID,
@@ -64,6 +83,10 @@ function makeDetail(): RfqDetailResponse {
       followup_flagged_at: null,
       created_at: BASE_TIME,
       updated_at: BASE_TIME,
+      paid_at: null,
+      paid_by_user_id: null,
+      invoice_waived_at: null,
+      invoice_waived_by_user_id: null,
     },
     version: {
       id: VERSION_ID,
@@ -106,7 +129,10 @@ function sentResult(deliveries: QuoteDeliveryResponse[]): QuoteSendResponse {
   };
 }
 
-function renderDialog() {
+function renderDialog(
+  inboundWhatsAppPhone: string | null = null,
+  detail = makeDetail(inboundWhatsAppPhone),
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -114,7 +140,7 @@ function renderDialog() {
       timeZone="America/Argentina/Buenos_Aires"
     >
       <SendQuoteDialog
-        detail={makeDetail()}
+        detail={detail}
         branchId={BRANCH_ID}
         onSent={vi.fn().mockResolvedValue(undefined)}
       />
@@ -133,12 +159,22 @@ function phoneField(view: RenderResult) {
 
 async function sendOn(view: RenderResult, phone = PHONE) {
   fireEvent.change(phoneField(view), { target: { value: phone } });
-  fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+  await waitFor(() =>
+    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+  );
+  fireEvent.click(view.getByRole('button', { name: copy.send }));
   await waitFor(() => expect(sendQuote).toHaveBeenCalled());
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getClientDirectory).mockResolvedValue([]);
+  vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+    currentClient: null,
+    suggestions: [],
+    availableTags: [],
+    contactHints: { taxId: '20123456786', name: 'Constructora', email: null, phone: null },
+  });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 });
 
@@ -147,6 +183,38 @@ afterEach(() => {
 });
 
 describe('SendQuoteDialog', () => {
+  it('reuses the reviewed operation after a transport failure', async () => {
+    vi.mocked(sendQuote)
+      .mockRejectedValueOnce(new ApiError('UNREACHABLE', 0))
+      .mockResolvedValueOnce(sentResult([delivery({})]));
+    const view = renderDialog();
+    openDialog(view);
+    await sendOn(view);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
+    await waitFor(() => expect(sendQuote).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(sendQuote).mock.calls[1]?.[3]).toBe(vi.mocked(sendQuote).mock.calls[0]?.[3]);
+    await view.findByText(copy.successTitle);
+  });
+
+  it('opens the web publication without exposing its internal destination', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(
+      sentResult([delivery({ channel: 'webapp', destination: 'customer-portal' })]),
+    );
+    const view = renderDialog();
+    openDialog(view);
+    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(true);
+    await sendOn(view);
+
+    expect(view.getByRole('link', { name: copy.visualizeOnline }).getAttribute('href')).toBe(
+      WHATSAPP_URL,
+    );
+    expect(view.queryByText('customer-portal')).toBeNull();
+  });
+
   /*
    * The send is done: what the seller still needs is the link. It rides the same two channels it
    * was sent on, so the dialog holds it until it is closed rather than disappearing with the toast.
@@ -160,6 +228,111 @@ describe('SendQuoteDialog', () => {
     expect(view.getByText(copy.successTitle)).toBeTruthy();
     expect(view.getByText(WHATSAPP_URL)).toBeTruthy();
     expect(view.getByRole('link', { name: /Abrir/ }).getAttribute('href')).toBe(WHATSAPP_URL);
+  });
+
+  it('uses the inbound WhatsApp sender as the editable recipient default', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
+    const view = renderDialog(PHONE);
+    openDialog(view);
+
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
+
+    await waitFor(() =>
+      expect(sendQuote).toHaveBeenCalledWith(
+        QUOTE_ID,
+        BRANCH_ID,
+        {
+          recipient_phone: PHONE,
+          clientAssociation: {
+            taxId: '20123456786',
+            newClient: { name: 'Constructora' },
+            tagIds: [],
+          },
+          email_delivery: null,
+        },
+        expect.any(String),
+      ),
+    );
+  });
+
+  it('defaults an email RFQ to its editable sender and sends without WhatsApp', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(
+      sentResult([delivery({ channel: 'email', public_url: EMAIL_URL })]),
+    );
+    const detail = makeDetail();
+    detail.rfq.channel = 'email';
+    detail.inbound_email = 'cliente@empresa.com';
+    const view = renderDialog(null, detail);
+    openDialog(view);
+
+    expect(view.getByLabelText(copy.emailLabel)).toHaveProperty('value', 'cliente@empresa.com');
+    expect(view.queryByLabelText(new RegExp(copy.phoneLabel))).toBeNull();
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
+
+    await waitFor(() =>
+      expect(sendQuote).toHaveBeenCalledWith(
+        QUOTE_ID,
+        BRANCH_ID,
+        {
+          clientAssociation: {
+            taxId: '20123456786',
+            newClient: { name: 'Constructora' },
+            tagIds: [],
+          },
+          email_delivery: { address: 'cliente@empresa.com' },
+        },
+        expect.any(String),
+      ),
+    );
+  });
+
+  it('requires at least one selected channel', async () => {
+    const view = renderDialog(PHONE);
+    openDialog(view);
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('checkbox', { name: copy.sendWhatsApp }));
+    expect(view.getByRole('button', { name: copy.send })).toHaveProperty('disabled', true);
+  });
+
+  it('lets the seller switch a manual order to email without a phone', async () => {
+    vi.mocked(sendQuote).mockResolvedValue(
+      sentResult([delivery({ channel: 'email', public_url: EMAIL_URL })]),
+    );
+    const view = renderDialog();
+    openDialog(view);
+    fireEvent.click(view.getByRole('checkbox', { name: copy.sendWhatsApp }));
+    fireEvent.click(view.getByRole('checkbox', { name: copy.alsoEmail }));
+    fireEvent.change(view.getByLabelText(copy.emailLabel), {
+      target: { value: 'cliente@empresa.com' },
+    });
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
+
+    await waitFor(() =>
+      expect(sendQuote).toHaveBeenCalledWith(
+        QUOTE_ID,
+        BRANCH_ID,
+        {
+          clientAssociation: {
+            taxId: '20123456786',
+            newClient: { name: 'Constructora' },
+            tagIds: [],
+          },
+          email_delivery: { address: 'cliente@empresa.com' },
+        },
+        expect.any(String),
+      ),
+    );
   });
 
   it('copies a delivered link, then announces it', async () => {
@@ -255,7 +428,7 @@ describe('SendQuoteDialog', () => {
 
     // Too short to be a number anywhere, whatever the country picker says.
     fireEvent.change(phoneField(view), { target: { value: '1234' } });
-    fireEvent.click(view.getByRole('button', { name: /^Enviar$/ }));
+    fireEvent.click(view.getByRole('button', { name: copy.send }));
 
     expect(sendQuote).not.toHaveBeenCalled();
   });
@@ -321,5 +494,77 @@ describe('SendQuoteDialog without a branch mailbox', () => {
     fireEvent.click(view.emailCopy);
 
     expect(view.queryByText(NOTICE)).toBeNull();
+  });
+});
+
+describe('previousDestinations', () => {
+  function sent(
+    version: string,
+    channel: string,
+    destination: string,
+    createdAt: string,
+    status = 'SENT',
+  ): QuoteSendTrackingResponse {
+    return {
+      id: `${version}-${channel}`,
+      version_id: version,
+      operation_id: `${version}-${createdAt}`,
+      channel,
+      destination,
+      format: 'WEBAPP_LINK',
+      tracking_status: status,
+      public_url: '',
+      sent_at: null,
+      expires_at: null,
+      created_at: createdAt,
+    };
+  }
+
+  it('starts a resend from where the last send went, the email copy included', () => {
+    const deliveries = [
+      sent('v1', 'WHATSAPP', '+5491100000000', '2026-10-15T10:00:00Z'),
+      sent('v2', 'WHATSAPP', '+5491155559001', '2026-10-15T12:00:00Z', 'FAILED'),
+      sent('v2', 'EMAIL', 'laura@obra.test', '2026-10-15T12:00:00Z'),
+    ];
+
+    expect(previousDestinations(deliveries, '+5491199999999', null, 'whatsapp')).toEqual({
+      phone: '+5491155559001',
+      email: 'laura@obra.test',
+      whatsapp: true,
+    });
+  });
+
+  it('leaves the email off when the last send carried no copy', () => {
+    const deliveries = [
+      sent('v1', 'EMAIL', 'vieja@obra.test', '2026-10-15T10:00:00Z'),
+      sent('v1', 'WHATSAPP', '+5491100000000', '2026-10-15T10:00:00Z'),
+      sent('v2', 'WHATSAPP', '+5491155559001', '2026-10-15T12:00:00Z'),
+    ];
+
+    expect(previousDestinations(deliveries, null, null, 'whatsapp')).toEqual({
+      phone: '+5491155559001',
+      email: null,
+      whatsapp: true,
+    });
+  });
+
+  it('falls back to the number the order came from on a first send', () => {
+    expect(previousDestinations([], '+5491199999999', null, 'whatsapp')).toEqual({
+      phone: '+5491199999999',
+      email: null,
+      whatsapp: true,
+    });
+  });
+
+  it('uses only the latest operation when the same version was sent again by email', () => {
+    const deliveries = [
+      sent('v1', 'WHATSAPP', '+5491100000000', '2026-10-15T10:00:00Z'),
+      sent('v1', 'EMAIL', 'new@obra.test', '2026-10-15T12:00:00Z'),
+    ];
+    expect(previousDestinations(deliveries, '+5491199999999', null, 'whatsapp')).toEqual({
+      phone: '+5491199999999',
+      email: 'new@obra.test',
+      whatsapp: false,
+    });
   });
 });

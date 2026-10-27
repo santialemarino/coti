@@ -114,7 +114,12 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		e.mustCleanup(t, `DELETE FROM quote_item WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
+		e.mustCleanup(t, `DELETE FROM handler_decision WHERE quote_version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
+			rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_message WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM message_batch WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		// A customer's answer points at both the version and the send it came back through, so it
 		// goes before either of them.
@@ -162,7 +167,7 @@ func TestQuoteQualityHook_PersistsOneIdempotentLabelAfterTheVersionIsSent(t *tes
 
 	quoteRepo := repository.NewQuoteRepository()
 	quoteService := services.NewQuoteService(e.db, quoteRepo,
-		repository.NewProductPriceRepository(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`UPDATE quote_item SET quantity = 3 WHERE id = $1`, draft.Items[0].ID); err != nil {
 		t.Fatalf("apply seller quantity correction: %v", err)

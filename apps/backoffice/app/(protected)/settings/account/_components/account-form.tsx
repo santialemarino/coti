@@ -1,36 +1,52 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import {
+  ConfirmDialog,
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
   FormRootMessage,
+  Hint,
+  InlineLink,
   Input,
+  Label,
   PendingButton,
+  RadioGroup,
+  RadioGroupItem,
 } from '@repo/ui/components';
+import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { BrandColorField } from '@/components/brand-color-field';
 import { LogoDropzone } from '@/components/logo-dropzone';
+import { TaxIdInput } from '@/components/tax-id-input';
+import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
+import { formatCuit } from '@/lib/api/invoicing';
+import { LOWER_PRICE_STRATEGIES } from '@/lib/constants/conversation';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { taxIdDigits } from '@/lib/utils/tax-id';
 
 interface AccountFormProps {
   account: Account;
+  // Where the ARCA connection made with this CUIT stands; null when there is none.
+  arcaConnection: 'inProgress' | 'connected' | null;
 }
 
-export function AccountForm({ account }: AccountFormProps) {
+export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   const t = useTranslations('account');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('account');
@@ -41,28 +57,61 @@ export function AccountForm({ account }: AccountFormProps) {
     defaultValues: {
       name: account.name,
       legalName: account.legalName ?? '',
-      taxId: account.taxId ?? '',
+      taxId: taxIdDigits(account.taxId ?? ''),
       brandLogoUrl: account.brandLogoUrl ?? '',
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
+      lowerPriceStrategy: account.preferredLowerPriceStrategy,
     },
   });
+  const strategyFieldId = useId();
   const [logo, setLogo] = useState<File | null>();
+  // The values a CUIT change is waiting on while the caller decides about the ARCA connection.
+  const [confirming, setConfirming] = useState<AccountValues | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [invoicePending, setInvoicePending] = useState(false);
+  const heldConnection = useHeldWhileClosed(arcaConnection, confirming !== null);
 
-  async function onSubmit(values: AccountValues) {
-    const result = await updateAccount(values, logo);
+  async function save(values: AccountValues, disconnectARCA: boolean) {
+    setInvoicePending(false);
+    const result = await updateAccount(values, logo, disconnectARCA);
     if (result.ok) {
-      toast.success(t('saved'));
+      toast.success(t(disconnectARCA ? 'savedDisconnected' : 'saved'));
       return;
     }
-    // The rejection belongs to the form, not to a field: the two the API answers with are both
-    // values this schema already refuses.
+    // A CUIT change ARCA is connected with asks first, then goes again with the confirmation.
+    if (result.error === 'ARCA_CONNECTED') {
+      setConfirming(values);
+      return;
+    }
+    // The refusals a field owns; the rest are values this schema already refuses.
+    if (result.error === 'INVOICE_PENDING') {
+      setInvoicePending(true);
+      // Behind the confirmation, the dialog's close moves focus here once it has finished closing.
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: !disconnectARCA });
+      return;
+    }
+    if (result.error === 'INVALID_TAX_ID') {
+      form.setError('taxId', { message: message(result.error) }, { shouldFocus: true });
+      return;
+    }
     form.setError('root', { message: message(result.error) });
+  }
+
+  async function confirmDisconnect() {
+    if (!confirming) return;
+    setDisconnecting(true);
+    try {
+      await save(confirming, true);
+    } finally {
+      setDisconnecting(false);
+      setConfirming(null);
+    }
   }
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={form.handleSubmit((values) => save(values, false))}
         noValidate
         className="flex flex-col w-full gap-y-6 lg:gap-y-8"
       >
@@ -115,13 +164,19 @@ export function AccountForm({ account }: AccountFormProps) {
                 <FormItem>
                   <FormLabel>{t('taxId.label')}</FormLabel>
                   <FormControl>
-                    <Input
-                      maxLength={TEXT_FIELD_MAX_LENGTH}
-                      placeholder={t('taxId.placeholder')}
-                      {...field}
-                    />
+                    <TaxIdInput kind="cuit" placeholder={t('taxId.placeholder')} {...field} />
                   </FormControl>
-                  <FormMessage />
+                  <FormDescription>{t('taxId.hint')}</FormDescription>
+                  <FormMessage>
+                    {invoicePending && form.formState.errors.taxId ? (
+                      <>
+                        {t('invoicePending')}{' '}
+                        <InlineLink asChild>
+                          <Link href={ROUTES.administration}>{t('invoicePendingLink')}</Link>
+                        </InlineLink>
+                      </>
+                    ) : undefined}
+                  </FormMessage>
                 </FormItem>
               )}
             />
@@ -140,6 +195,48 @@ export function AccountForm({ account }: AccountFormProps) {
               pickerLabel={t('brandColor.pickerLabel')}
             />
           </section>
+
+          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+            <h2 className="text-heading-6">{t('lowerPrice.title')}</h2>
+
+            <FormField
+              control={form.control}
+              name="lowerPriceStrategy"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('lowerPrice.label')}</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      aria-label={t('lowerPrice.label')}
+                      className="gap-y-3"
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      {LOWER_PRICE_STRATEGIES.map((strategy) => (
+                        <div key={strategy} className="flex items-start gap-x-2.5">
+                          <RadioGroupItem
+                            id={`${strategyFieldId}-${strategy}`}
+                            value={strategy}
+                            className="mt-0.5"
+                          />
+                          <div className="flex flex-col gap-y-0.5">
+                            <Label
+                              htmlFor={`${strategyFieldId}-${strategy}`}
+                              className="cursor-pointer"
+                            >
+                              {t(`lowerPrice.${strategy}.label`)}
+                            </Label>
+                            <Hint>{t(`lowerPrice.${strategy}.hint`)}</Hint>
+                          </div>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  </FormControl>
+                  <FormDescription>{t('lowerPrice.hint')}</FormDescription>
+                </FormItem>
+              )}
+            />
+          </section>
         </div>
 
         <FormRootMessage />
@@ -153,6 +250,33 @@ export function AccountForm({ account }: AccountFormProps) {
           {t('submit')}
         </PendingButton>
       </form>
+      <ConfirmDialog
+        open={confirming !== null}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        entity={account.taxId && formatCuit(taxIdDigits(account.taxId))}
+        title={t('disconnectARCA.title')}
+        description={(cuit) =>
+          t(
+            heldConnection === 'inProgress'
+              ? 'disconnectARCA.inProgress'
+              : 'disconnectARCA.connected',
+            { old: cuit },
+          )
+        }
+        onConfirm={confirmDisconnect}
+        onCloseAutoFocus={(event) => {
+          // A refusal the CUIT owns lands on that field, not back on the save button.
+          if (!invoicePending) return;
+          event.preventDefault();
+          form.setFocus('taxId');
+        }}
+        pending={disconnecting}
+        labels={{
+          confirm: t('disconnectARCA.confirm'),
+          pending: t('submitting'),
+          cancel: t('disconnectARCA.cancel'),
+        }}
+      />
     </Form>
   );
 }

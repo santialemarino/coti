@@ -41,6 +41,13 @@ const (
 	CodeQuoteArchived         ErrorCode = "QUOTE_ARCHIVED"
 	CodeQuoteNotDraft         ErrorCode = "QUOTE_NOT_DRAFT"
 	CodeQuoteNotReactivatable ErrorCode = "QUOTE_NOT_REACTIVATABLE"
+	// CodeNoAIChanges refuses discarding the AI's changes on a draft that has none pending.
+	CodeNoAIChanges ErrorCode = "NO_AI_CHANGES"
+	// CodeBatchNotRetryable refuses retrying a batch that did not run out of attempts, or whose
+	// quote the handler may no longer act on.
+	CodeBatchNotRetryable ErrorCode = "BATCH_NOT_RETRYABLE"
+	// CodeDiscountNotApplicable refuses restoring a promotion the quote no longer earns.
+	CodeDiscountNotApplicable ErrorCode = "DISCOUNT_NOT_APPLICABLE"
 	CodeLinkExpired           ErrorCode = "LINK_EXPIRED"
 	// CodeUnsupportedFileType sits beside CodeFileTooLarge: both refuse an upload, and a client
 	// offering a different file needs to know which rule it broke.
@@ -59,6 +66,42 @@ const (
 	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
+	// CodeQuoteItemsUnresolved refuses sending a quote with a line that has no confirmed,
+	// priced product.
+	CodeQuoteItemsUnresolved ErrorCode = "QUOTE_ITEMS_UNRESOLVED"
+	// Invoicing. INVOICE_NOT_READY carries the missing fiscal data as issues; INVOICE_REJECTED
+	// carries ARCA's own reasons.
+	CodeInvoiceNotReady      ErrorCode = "INVOICE_NOT_READY"
+	CodeInvoiceRejected      ErrorCode = "INVOICE_REJECTED"
+	CodeInvoiceInProgress    ErrorCode = "INVOICE_IN_PROGRESS"
+	CodeInvoiceStale         ErrorCode = "INVOICE_STALE"
+	CodePointOfSaleTaken     ErrorCode = "POINT_OF_SALE_TAKEN"
+	CodeQuoteAlreadyInvoiced ErrorCode = "QUOTE_ALREADY_INVOICED"
+	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
+	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"
+	// A client's CUIT comes only from the customer's own account, so no staff route writes one.
+	CodeTaxIDReadOnly        ErrorCode = "TAX_ID_READ_ONLY"
+	CodeInvoicingUnavailable ErrorCode = "INVOICING_UNAVAILABLE"
+	// The account's CUIT is what ARCA is connected with: it is required to connect and locked
+	// while connected.
+	CodeAccountTaxIDRequired ErrorCode = "ACCOUNT_TAX_ID_REQUIRED"
+	CodeARCAConnected        ErrorCode = "ARCA_CONNECTED"
+	// The connection cannot go while ARCA still owes the answer for an invoice issued with it.
+	CodeInvoicePending ErrorCode = "INVOICE_PENDING"
+	// The connection was made for the other ARCA environment, so it can neither take a certificate nor
+	// reach an invoice made in this one.
+	CodeARCAEnvironmentMismatch ErrorCode = "ARCA_ENVIRONMENT_MISMATCH"
+	// Credit notes: only an issued invoice is credited, once; a pending credit note holds it.
+	CodeInvoiceNotCreditable   ErrorCode = "INVOICE_NOT_CREDITABLE"
+	CodeInvoiceAlreadyCredited ErrorCode = "INVOICE_ALREADY_CREDITED"
+	CodeCreditNoteInProgress   ErrorCode = "CREDIT_NOTE_IN_PROGRESS"
+	// The account switched invoicing with Coti off, so nothing new is issued; the server key is
+	// INVOICING_DISABLED.
+	CodeAccountInvoicingOff ErrorCode = "ACCOUNT_INVOICING_OFF"
+	// A paid sale is reopened only after its paid mark is removed.
+	CodeQuoteAlreadyPaid ErrorCode = "QUOTE_ALREADY_PAID"
+	// Closing a sale (paid, no invoice needed) applies only to an accepted quote.
+	CodeQuoteNotAccepted ErrorCode = "QUOTE_NOT_ACCEPTED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any
@@ -121,6 +164,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeDeliveryUnavailable
 	case errors.Is(err, ErrRepresentationUnavailable):
 		return CodeRepresentationUnavailable
+	case errors.Is(err, ErrInvoicingUnavailable):
+		return CodeInvoicingUnavailable
 	default:
 		return CodeInternal
 	}

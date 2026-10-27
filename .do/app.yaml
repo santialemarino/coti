@@ -73,6 +73,18 @@ services:
       - key: CHANNEL_CONFIG_ENCRYPTION_KEY
         scope: RUN_TIME
         type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_REDIRECT_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: WHATSAPP_APP_SECRET
+        scope: RUN_TIME
+        type: SECRET
       - key: AI_ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET
@@ -85,6 +97,10 @@ services:
       - key: MAIL_SMTP_PASSWORD
         scope: RUN_TIME
         type: SECRET
+      # ARCA's test deployment until go-live switches it to production.
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
       # Every selector below is OFF, so the app boots on the two database URLs, AUTH_JWT_SECRET and
       # STORAGE_LOCAL_SIGNING_SECRET alone. Turning one on makes its own credential required at
       # startup: an empty SECRET beside an enabled capability is a deploy that never starts.
@@ -374,5 +390,75 @@ jobs:
         scope: RUN_TIME
         type: SECRET
       - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+  # Puts away the quotes nobody has moved in QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS, and the complete sales
+  # and rejected quotes quiet for QUOTE_AUTO_ARCHIVE_CLOSED_DAYS (Go defaults: 30 each). It only sets
+  # a flag the seller can clear, so once a day, at night, is enough.
+  - name: quote-auto-archive
+    kind: SCHEDULED
+    schedule:
+      cron: '30 3 * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-auto-archive
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      # The API's own value: it decides which invoices close a sale.
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
+  # Backstop for the API's conversation ticker (CONVERSATION_TICKER_SECONDS): closes due client
+  # message windows and works their queue if the ticker is down. Running beside it is safe; the
+  # database keeps them from sharing a batch. 15 minutes is the platform's shortest interval.
+  - name: conversation-batches
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job conversation-batches
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
         scope: RUN_TIME
         type: SECRET

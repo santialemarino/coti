@@ -11,7 +11,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-const clientColumns = `id, account_id, name, phone, email, origin_channel, notes,
+const clientColumns = `id, account_id, name, phone, email, origin_channel, notes, tax_id,
 	created_at, updated_at`
 
 // ClientRepository owns account-scoped client profiles and their accepted-sale projection.
@@ -25,7 +25,7 @@ func (r *ClientRepository) ListSummaries(
 	ctx context.Context, q Querier, tenant domain.Tenant,
 ) ([]domain.ClientSummary, error) {
 	rows, err := q.Query(ctx, `SELECT client.id, client.account_id, client.name, client.phone,
-		client.email, client.origin_channel, client.notes, client.created_at, client.updated_at,
+		client.email, client.origin_channel, client.notes, client.tax_id, client.created_at, client.updated_at,
 		count(quote.id)::integer,
 		max(COALESCE(accepted.accepted_at, quote.updated_at))
 		FROM client
@@ -55,7 +55,7 @@ func (r *ClientRepository) ListSummaries(
 		var summary domain.ClientSummary
 		var origin *string
 		if err := rows.Scan(&summary.ID, &summary.AccountID, &summary.Name, &summary.Phone,
-			&summary.Email, &origin, &summary.Notes, &summary.CreatedAt, &summary.UpdatedAt,
+			&summary.Email, &origin, &summary.Notes, &summary.TaxID, &summary.CreatedAt, &summary.UpdatedAt,
 			&summary.AcceptedQuoteCount, &summary.LastAcceptedAt); err != nil {
 			return nil, err
 		}
@@ -100,29 +100,32 @@ func (r *ClientRepository) FindByContacts(
 	return clients, rows.Err()
 }
 
-// ListAcceptedSales returns a client's accepted quotes inside the caller's branch and seller reach.
+// ListAcceptedSales returns a client's accepted quotes inside the caller's branch and seller reach,
+// each with its invoice facts as a server in env reads them.
 func (r *ClientRepository) ListAcceptedSales(
-	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID,
+	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID, env domain.ARCAEnvironment,
 ) ([]domain.ClientSale, error) {
-	rows, err := q.Query(ctx, `SELECT quote.id, quote.rfq_id, quote.number, quote.branch_id,
+	rows, err := q.Query(ctx, `SELECT q.id, q.rfq_id, q.number, q.branch_id,
 		branch.name, version.total,
-		COALESCE(accepted.accepted_at, quote.updated_at)
-		FROM quote
-		JOIN branch ON branch.account_id = quote.account_id AND branch.id = quote.branch_id
-		JOIN quote_version version ON version.account_id = quote.account_id
-		  AND version.id = quote.current_version_id
+		COALESCE(accepted.accepted_at, q.updated_at),
+		q.paid_at, q.invoice_waived_at, closure.invoiced, closure.pending
+		FROM quote q
+		JOIN branch ON branch.account_id = q.account_id AND branch.id = q.branch_id
+		JOIN quote_version version ON version.account_id = q.account_id
+		  AND version.id = q.current_version_id
 		LEFT JOIN LATERAL (
 		  SELECT max(change.changed_at) AS accepted_at
 		  FROM quote_status_change change
-		  WHERE change.account_id = quote.account_id AND change.quote_id = quote.id
+		  WHERE change.account_id = q.account_id AND change.quote_id = q.id
 		    AND change.new_status = 'ACCEPTED'
 		) accepted ON TRUE
-		WHERE quote.account_id = $1 AND quote.client_id = $2
-		  AND quote.current_status = 'ACCEPTED'
-		  AND ($3::uuid[] IS NULL OR quote.branch_id = ANY($3::uuid[]))
-		  AND ($4::uuid IS NULL OR quote.seller_id = $4 OR quote.seller_id IS NULL)
-		ORDER BY COALESCE(accepted.accepted_at, quote.updated_at) DESC, quote.id`,
-		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant))
+		`+saleInvoiceFacts("$5")+`
+		WHERE q.account_id = $1 AND q.client_id = $2
+		  AND q.current_status = 'ACCEPTED'
+		  AND ($3::uuid[] IS NULL OR q.branch_id = ANY($3::uuid[]))
+		  AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)
+		ORDER BY COALESCE(accepted.accepted_at, q.updated_at) DESC, q.id`,
+		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant), env)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +136,8 @@ func (r *ClientRepository) ListAcceptedSales(
 		var sale domain.ClientSale
 		var total decimal.Decimal
 		if err := rows.Scan(&sale.QuoteID, &sale.RFQID, &sale.Number, &sale.BranchID,
-			&sale.BranchName, &total, &sale.AcceptedAt); err != nil {
+			&sale.BranchName, &total, &sale.AcceptedAt, &sale.Closure.PaidAt,
+			&sale.Closure.InvoiceWaivedAt, &sale.Closure.Invoiced, &sale.Closure.InvoicePending); err != nil {
 			return nil, err
 		}
 		sale.Total = total
@@ -146,16 +150,16 @@ func (r *ClientRepository) ListAcceptedSales(
 func (r *ClientRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID,
 	in domain.NewClient) (*domain.Client, error) {
 	return scanClient(q.QueryRow(ctx, `INSERT INTO client
-		(account_id, name, phone, email, origin_channel)
-		VALUES ($1, $2, $3, $4, $5) RETURNING `+clientColumns,
-		accountID, in.Name, in.Phone, in.Email, in.OriginChannel))
+		(account_id, name, phone, email, origin_channel, tax_id)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING `+clientColumns,
+		accountID, in.Name, in.Phone, in.Email, in.OriginChannel, in.TaxID))
 }
 
 func scanClient(row pgx.Row) (*domain.Client, error) {
 	var client domain.Client
 	var origin *string
 	err := row.Scan(&client.ID, &client.AccountID, &client.Name, &client.Phone, &client.Email,
-		&origin, &client.Notes, &client.CreatedAt, &client.UpdatedAt)
+		&origin, &client.Notes, &client.TaxID, &client.CreatedAt, &client.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

@@ -54,6 +54,10 @@ type fakeQuoteRepo struct {
 
 	updateStatusErr error
 	applyPricingErr error
+	liveInvoice     bool
+	// paidWrites and waiverWrites record each closing write: the user, or nil for a clear.
+	paidWrites   []*uuid.UUID
+	waiverWrites []*uuid.UUID
 
 	branchesAskedFor      []uuid.UUID
 	versionBranches       []uuid.UUID
@@ -333,7 +337,7 @@ func newQuoteFixture(items []domain.QuoteItem, prices map[uuid.UUID]domain.Branc
 	}
 	branchPrices := &fakeBranchPrices{prices: prices}
 	return quoteFixture{
-		service: NewQuoteService(db, quotes, branchPrices,
+		service: NewQuoteService(db, quotes, branchPrices, domain.ARCAEnvironmentHomologation,
 			slog.New(slog.NewTextHandler(io.Discard, nil))),
 		db:     db,
 		quotes: quotes,
@@ -816,7 +820,7 @@ func quoteFixtureAt(quote *domain.Quote) quoteFixture {
 	db := &fakeQuoteDB{}
 	quotes := &fakeQuoteRepo{quote: quote, inTransaction: db}
 	prices := &fakeBranchPrices{}
-	service := NewQuoteService(db, quotes, prices,
+	service := NewQuoteService(db, quotes, prices, domain.ARCAEnvironmentHomologation,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return quoteFixture{
 		service: service,
@@ -899,6 +903,25 @@ func TestQuoteService_ReactivateForResend_ReusesTheFrozenVersion(t *testing.T) {
 		change.newStatus != domain.QuoteStatusQuoted {
 		t.Errorf("history = %v -> %s, want ACCEPTED -> QUOTED", change.previousStatus,
 			change.newStatus)
+	}
+}
+
+// Reopening an invoiced sale would let a second invoice go out for it.
+func TestQuoteService_Reactivate_RefusesAnInvoicedSale(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []domain.QuoteReactivationMode{domain.QuoteReactivationResend, domain.QuoteReactivationEdit} {
+		versionID := uuid.New()
+		quote := &domain.Quote{ID: uuid.New(), CurrentVersionID: &versionID,
+			CurrentStatus: domain.QuoteStatusAccepted}
+		f := quoteFixtureAt(quote)
+		f.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: quote.ID, IsImmutable: true}
+		f.quotes.liveInvoice = true
+
+		_, err := f.service.Reactivate(context.Background(), f.tenant, quote.ID, mode)
+
+		if domain.CodeOf(err) != domain.CodeQuoteAlreadyInvoiced || len(f.quotes.statusChanges) != 0 {
+			t.Fatalf("%s: err = %v, want QUOTE_ALREADY_INVOICED and the quote untouched", mode, err)
+		}
 	}
 }
 
@@ -1085,4 +1108,40 @@ func TestQuoteService_Unarchive_RestoresABoxedQuote(t *testing.T) {
 	if restored.ID != quote.ID {
 		t.Errorf("restored %v, want the same quote id %v", restored.ID, quote.ID)
 	}
+}
+
+func (f *fakeQuoteRepo) HasLiveInvoice(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ARCAEnvironment) (bool, error) {
+	return f.liveInvoice, nil
+}
+
+func (f *fakeQuoteRepo) SetPaid(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	f.paidWrites = append(f.paidWrites, userID)
+	if (f.quote.PaidByUserID == nil) != (userID == nil) {
+		f.quote.PaidByUserID = userID
+		f.quote.PaidAt = nil
+		if userID != nil {
+			now := time.Now()
+			f.quote.PaidAt = &now
+		}
+	}
+	quote := *f.quote
+	return &quote, nil
+}
+
+func (f *fakeQuoteRepo) SetInvoiceWaived(
+	_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	f.waiverWrites = append(f.waiverWrites, userID)
+	if (f.quote.InvoiceWaivedByUserID == nil) != (userID == nil) {
+		f.quote.InvoiceWaivedByUserID = userID
+		f.quote.InvoiceWaivedAt = nil
+		if userID != nil {
+			now := time.Now()
+			f.quote.InvoiceWaivedAt = &now
+		}
+	}
+	quote := *f.quote
+	return &quote, nil
 }

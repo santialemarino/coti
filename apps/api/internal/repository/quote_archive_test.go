@@ -12,7 +12,7 @@ import (
 )
 
 // Archive is an orthogonal flag, not a transition: it never touches current_status, so a boxed
-// SENT quote still reads SENT. It only refuses a second archive and a closed quote.
+// SENT quote still reads SENT. It only refuses a second archive.
 func TestQuoteRepository_Archive_BoxesAndUnboxes(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -66,9 +66,9 @@ func TestQuoteRepository_Archive_BoxesAndUnboxes(t *testing.T) {
 	}
 }
 
-// A closed quote (accepted or rejected) has no reason to be boxed away: the predicate refuses it
-// even though the row exists.
-func TestQuoteRepository_Archive_RefusesAClosedQuote(t *testing.T) {
+// A closed quote archives too, so a finished sale or a lost one can leave the queue, and it keeps
+// the status it closed with.
+func TestQuoteRepository_Archive_TakesAClosedQuote(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
 	accountID := seedAccount(t, db, "Archive closed")
@@ -87,20 +87,19 @@ func TestQuoteRepository_Archive_RefusesAClosedQuote(t *testing.T) {
 		t.Fatalf("move to ACCEPTED: %v", err)
 	}
 
-	err := db.InTenantTx(ctx, tenant, func(q Querier) error {
-		_, archiveErr := repo.Archive(ctx, q, accountID, branchID, quoteID)
+	var archived *domain.Quote
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var archiveErr error
+		archived, archiveErr = repo.Archive(ctx, q, accountID, branchID, quoteID)
 		return archiveErr
-	})
-	if !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("Archive() on ACCEPTED = %v, want ErrConflict", err)
+	}); err != nil {
+		t.Fatalf("Archive() on ACCEPTED = %v, want no error", err)
 	}
-	var archivedAt *time.Time
-	if err := db.CrossAccount().QueryRow(ctx,
-		`SELECT archived_at FROM quote WHERE id = $1`, quoteID).Scan(&archivedAt); err != nil {
-		t.Fatalf("read archived_at: %v", err)
+	if archived.ArchivedAt == nil {
+		t.Error("archived_at = NULL, want it set")
 	}
-	if archivedAt != nil {
-		t.Errorf("archived_at = %v, want NULL on a refused archive", archivedAt)
+	if archived.CurrentStatus != domain.QuoteStatusAccepted {
+		t.Errorf("status = %s, want ACCEPTED untouched", archived.CurrentStatus)
 	}
 }
 

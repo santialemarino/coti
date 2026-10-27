@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 const validSecret = "0123456789abcdef0123456789abcdef" // 32 chars.
@@ -15,6 +17,10 @@ func setEnv(t *testing.T, vars map[string]string) {
 	t.Helper()
 	known := []string{
 		"ENV", "LOG_LEVEL", "API_PORT",
+		"CUSTOMER_GOOGLE_CLIENT_ID", "CUSTOMER_GOOGLE_CLIENT_SECRET", "CUSTOMER_GOOGLE_LOCAL_ORIGIN", "CUSTOMER_GOOGLE_TIMEOUT_SECONDS", "CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES", "CUSTOMER_RECOVERY_TTL_MINUTES", "CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS", "CUSTOMER_ORDER_PAGE_SIZE",
+		"CUSTOMER_SESSION_TTL_DAYS", "CUSTOMER_MAX_FAILED_ATTEMPTS", "CUSTOMER_LOCKOUT_MINUTES", "CUSTOMER_PASSWORD_MIN_LENGTH",
+		"ARCA_SETUP_ENCRYPTION_KEY", "ARCA_SETUP_TIMEOUT_SECONDS", "ARCA_ENVIRONMENT",
+		"INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
 		"SERVER_READ_TIMEOUT_SECONDS", "SERVER_WRITE_TIMEOUT_SECONDS", "SERVER_SHUTDOWN_TIMEOUT_SECONDS",
 		"DATABASE_URL", "DATABASE_ADMIN_URL", "DB_MAX_CONNS", "DB_MIN_CONNS",
 		"DB_MAX_CONN_LIFETIME_MINUTES", "DB_MAX_CONN_IDLE_MINUTES", "DB_CONNECT_TIMEOUT_SECONDS",
@@ -50,6 +56,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"CATALOG_IMPORT_MAX_BYTES",
 		"PRICE_IMPORT_MAX_BYTES",
 		"JOB_TIMEOUT_MINUTES",
+		"QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS",
+		"QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
 		"RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
@@ -61,6 +69,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
 		"STORAGE_MAX_FILE_SIZE_BYTES", "STORAGE_SIGNED_URL_EXPIRY_MINUTES",
 		"CHANNEL_CONFIG_ENCRYPTION_KEY",
+		"WHATSAPP_APP_SECRET", "WHATSAPP_GRAPH_API_VERSION", "WHATSAPP_REQUEST_TIMEOUT_SECONDS",
+		"WHATSAPP_WEBHOOK_MAX_BYTES",
+		"GMAIL_OAUTH_CLIENT_ID", "GMAIL_OAUTH_CLIENT_SECRET", "GMAIL_OAUTH_REDIRECT_URL",
+		"GMAIL_REQUEST_TIMEOUT_SECONDS", "GMAIL_POLL_INTERVAL_SECONDS", "GMAIL_OAUTH_STATE_TTL_MINUTES",
+		"GMAIL_MAX_RAW_BYTES", "GMAIL_MAX_JSON_BYTES", "GMAIL_MAX_MIME_PARTS",
 	}
 	for _, k := range known {
 		t.Setenv(k, "")
@@ -238,8 +251,73 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Job.Timeout != 30*time.Minute {
 		t.Errorf("Job.Timeout = %v, want 30m", cfg.Job.Timeout)
 	}
+	if cfg.WhatsApp.GraphAPIVersion != "v25.0" || cfg.WhatsApp.RequestTimeout != 10*time.Second ||
+		cfg.WhatsApp.WebhookMaxBytes != 1*1024*1024 {
+		t.Errorf("WhatsApp = %+v, want v25.0/10s/1MiB", cfg.WhatsApp)
+	}
+	if cfg.ARCA.Environment != ARCAEnvironmentHomologation ||
+		!cfg.ARCA.ReceiverIDThreshold.Equal(decimal.RequireFromString("10000000")) {
+		t.Errorf("ARCA = %s/%s, want homologation/10000000", cfg.ARCA.Environment, cfg.ARCA.ReceiverIDThreshold)
+	}
 	if cfg.IsProduction() {
 		t.Error("IsProduction() = true, want false")
+	}
+}
+
+func TestLoad_GmailRequiresCompleteCredentialsAndAnEncryptionKey(t *testing.T) {
+	env := minimalEnv()
+	env["GMAIL_OAUTH_CLIENT_ID"] = "client"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "GMAIL_OAUTH_CLIENT_SECRET") ||
+		!strings.Contains(err.Error(), "GMAIL_OAUTH_REDIRECT_URL") {
+		t.Fatalf("incomplete Gmail configuration error = %v", err)
+	}
+	env["GMAIL_OAUTH_CLIENT_SECRET"] = "secret"
+	env["GMAIL_OAUTH_REDIRECT_URL"] = "https://api.example.test/v1/public/gmail/callback"
+	setEnv(t, env)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "CHANNEL_CONFIG_ENCRYPTION_KEY") {
+		t.Fatalf("missing Gmail encryption key error = %v", err)
+	}
+}
+
+func TestLoad_GmailSettingsAreDistinct(t *testing.T) {
+	env := minimalEnv()
+	env["GMAIL_OAUTH_CLIENT_ID"] = "client"
+	env["GMAIL_OAUTH_CLIENT_SECRET"] = "secret"
+	env["GMAIL_OAUTH_REDIRECT_URL"] = "https://api.example.test/v1/public/gmail/callback"
+	env["CHANNEL_CONFIG_ENCRYPTION_KEY"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	env["GMAIL_REQUEST_TIMEOUT_SECONDS"] = "15"
+	env["GMAIL_POLL_INTERVAL_SECONDS"] = "35"
+	env["GMAIL_OAUTH_STATE_TTL_MINUTES"] = "7"
+	env["GMAIL_MAX_RAW_BYTES"] = "2000"
+	env["GMAIL_MAX_JSON_BYTES"] = "4000"
+	env["GMAIL_MAX_MIME_PARTS"] = "30"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Gmail.Enabled() || cfg.Gmail.RequestTimeout != 15*time.Second ||
+		cfg.Gmail.PollInterval != 35*time.Second || cfg.Gmail.StateTTL != 7*time.Minute ||
+		cfg.Gmail.MaxRawBytes != 2000 || cfg.Gmail.MaxJSONBytes != 4000 || cfg.Gmail.MaxParts != 30 {
+		t.Fatalf("Gmail configuration = %+v", cfg.Gmail)
+	}
+}
+
+func TestLoad_ARCAInvoicingKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["ARCA_ENVIRONMENT"] = "production"
+	env["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "12500000.50"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ARCA.Environment != ARCAEnvironmentProduction ||
+		!cfg.ARCA.ReceiverIDThreshold.Equal(decimal.RequireFromString("12500000.50")) {
+		t.Errorf("ARCA = %s/%s, want production/12500000.50", cfg.ARCA.Environment, cfg.ARCA.ReceiverIDThreshold)
 	}
 }
 
@@ -270,6 +348,24 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+func TestLoad_WhatsAppKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["WHATSAPP_APP_SECRET"] = "app-secret"
+	env["WHATSAPP_GRAPH_API_VERSION"] = "v26.1"
+	env["WHATSAPP_REQUEST_TIMEOUT_SECONDS"] = "13"
+	env["WHATSAPP_WEBHOOK_MAX_BYTES"] = "262144"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.WhatsApp.AppSecret != "app-secret" || cfg.WhatsApp.GraphAPIVersion != "v26.1" ||
+		cfg.WhatsApp.RequestTimeout != 13*time.Second || cfg.WhatsApp.WebhookMaxBytes != 262144 {
+		t.Errorf("WhatsApp = %+v, want app-secret/v26.1/13s/262144", cfg.WhatsApp)
 	}
 }
 
@@ -403,6 +499,35 @@ func TestLoad_TheSweepBudgetMayExceedTheResponseBudget(t *testing.T) {
 	}
 }
 
+// The defaults are what a deployment that sets neither key runs on, and the docs quote them.
+func TestLoad_QuoteArchiveDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteArchive.InactiveAfter != 30*24*time.Hour || cfg.QuoteArchive.ClosedAfter != 30*24*time.Hour ||
+		cfg.QuoteArchive.BatchSize != 100 {
+		t.Errorf("QuoteArchive = %+v, want 720h/720h/100", cfg.QuoteArchive)
+	}
+}
+
+func TestLoad_QuoteArchiveKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "45"
+	env["QUOTE_AUTO_ARCHIVE_CLOSED_DAYS"] = "12"
+	env["QUOTE_AUTO_ARCHIVE_BATCH_SIZE"] = "7"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteArchive.InactiveAfter != 45*24*time.Hour || cfg.QuoteArchive.ClosedAfter != 12*24*time.Hour ||
+		cfg.QuoteArchive.BatchSize != 7 {
+		t.Errorf("QuoteArchive = %+v, want 1080h/288h/7", cfg.QuoteArchive)
+	}
+}
+
 func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["QUOTE_CORRECTION_SIMILARITY_PERCENT"] = "81"
@@ -493,6 +618,21 @@ func TestLoad_Invalid(t *testing.T) {
 		mutate  func(map[string]string)
 		wantSub string
 	}{
+		{
+			name:    "unknown arca environment",
+			mutate:  func(e map[string]string) { e["ARCA_ENVIRONMENT"] = "prod" },
+			wantSub: "ARCA_ENVIRONMENT must be",
+		},
+		{
+			name:    "non-positive receiver id threshold",
+			mutate:  func(e map[string]string) { e["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "0" },
+			wantSub: "INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT must be a positive amount",
+		},
+		{
+			name:    "unparseable receiver id threshold",
+			mutate:  func(e map[string]string) { e["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "10.000.000" },
+			wantSub: "INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT must be a positive amount",
+		},
 		{
 			name:    "missing app url",
 			mutate:  func(e map[string]string) { delete(e, "DATABASE_URL") },
@@ -607,6 +747,21 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a scheduled run bounded at nothing",
 			mutate:  func(e map[string]string) { e["JOB_TIMEOUT_MINUTES"] = "0" },
 			wantSub: "JOB_TIMEOUT_MINUTES must be greater than zero",
+		},
+		{
+			name:    "a quote archived the moment it stops moving",
+			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "0" },
+			wantSub: "QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a closed sale archived the moment it closes",
+			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_CLOSED_DAYS"] = "0" },
+			wantSub: "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS must be greater than zero",
+		},
+		{
+			name:    "an archive sweep that takes nothing per batch",
+			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_BATCH_SIZE"] = "0" },
+			wantSub: "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero",
 		},
 		{
 			// An allowance above the global one can never bite, so it reads as a cost bound that
@@ -1446,5 +1601,95 @@ func TestMailConfig_DeliversOnlyOverSMTP(t *testing.T) {
 		if got := (MailConfig{Provider: provider}).Delivers(); got != want {
 			t.Errorf("Delivers() for %q = %v, want %v", provider, got, want)
 		}
+	}
+}
+
+func TestLoad_ConversationDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	want := ConversationConfig{WindowReset: 120 * time.Second, WindowMax: 600 * time.Second,
+		ContextMessages: 10, TickerInterval: 30 * time.Second, MaxAttempts: 3,
+		ProcessingTimeout: 600 * time.Second, SweepBatchSize: 100}
+	if cfg.Conversation != want {
+		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
+	}
+}
+
+func TestLoad_ConversationKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["CONVERSATION_WINDOW_RESET_SECONDS"] = "45"
+	env["CONVERSATION_WINDOW_MAX_SECONDS"] = "300"
+	env["CONVERSATION_CONTEXT_MESSAGES"] = "7"
+	env["CONVERSATION_TICKER_SECONDS"] = "11"
+	env["CONVERSATION_MAX_ATTEMPTS"] = "5"
+	env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "13"
+	env["CONVERSATION_SWEEP_BATCH_SIZE"] = "17"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	want := ConversationConfig{WindowReset: 45 * time.Second, WindowMax: 300 * time.Second,
+		ContextMessages: 7, TickerInterval: 11 * time.Second, MaxAttempts: 5,
+		ProcessingTimeout: 13 * time.Second, SweepBatchSize: 17}
+	if cfg.Conversation != want {
+		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
+	}
+}
+
+// A cap at or below the reset would close a window before a second message could extend it.
+func TestLoad_ConversationMaxMustExceedReset(t *testing.T) {
+	env := minimalEnv()
+	env["CONVERSATION_WINDOW_RESET_SECONDS"] = "300"
+	env["CONVERSATION_WINDOW_MAX_SECONDS"] = "300"
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "CONVERSATION_WINDOW_MAX_SECONDS must be greater") {
+		t.Fatalf("Load() = %v, want the cap refused at the reset", err)
+	}
+}
+
+// Every queue setting is refused at zero, and all of them in one pass.
+func TestLoad_ConversationQueueSettingsMustBePositive(t *testing.T) {
+	env := minimalEnv()
+	for _, key := range []string{"CONVERSATION_TICKER_SECONDS", "CONVERSATION_MAX_ATTEMPTS",
+		"CONVERSATION_PROCESSING_TIMEOUT_SECONDS", "CONVERSATION_SWEEP_BATCH_SIZE"} {
+		env[key] = "0"
+	}
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() = nil, want the zero queue settings refused")
+	}
+	for _, key := range []string{"CONVERSATION_TICKER_SECONDS", "CONVERSATION_MAX_ATTEMPTS",
+		"CONVERSATION_PROCESSING_TIMEOUT_SECONDS", "CONVERSATION_SWEEP_BATCH_SIZE"} {
+		if !strings.Contains(err.Error(), key+" must be greater than zero") {
+			t.Errorf("Load() = %v, want %s refused", err, key)
+		}
+	}
+}
+
+func TestLoad_ConversationProcessingTimeoutBounds(t *testing.T) {
+	for name, test := range map[string]struct {
+		key, value, want string
+	}{
+		"at the ticker": {"CONVERSATION_TICKER_SECONDS", "600",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than CONVERSATION_TICKER_SECONDS"},
+		"at the job timeout": {"JOB_TIMEOUT_MINUTES", "10",
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be below JOB_TIMEOUT_MINUTES"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := minimalEnv()
+			env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "600"
+			env[test.key] = test.value
+			setEnv(t, env)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Load() = %v, want %q", err, test.want)
+			}
+		})
 	}
 }

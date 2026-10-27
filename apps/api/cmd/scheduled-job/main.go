@@ -26,6 +26,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
@@ -101,12 +102,25 @@ func run() error {
 	productRepo := repository.NewProductRepository()
 	catalogSearch := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
+	catalogMatch := services.NewCatalogMatchService(catalogSearch, cfg.Catalog).
+		WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log)
 	rfqService := services.NewRFQService(db, rfqRepo, quoteRepo, sends,
 		repository.NewQuoteAIGenerationRepository(), repository.NewChannelRepository(),
 		repository.NewUserRepository(), ai.NewRFQExtractor(providers.Generator, cfg.RFQ.MaxItems),
-		services.NewCatalogMatchService(catalogSearch, cfg.Catalog).
-			WithReviewer(ai.NewCatalogMatchReviewer(providers.Generator), log), log, cfg.RFQ).
+		catalogMatch, log, cfg.RFQ).
 		WithCorrectionMemory(correctionService)
+	// The same handler the API's ticker runs: the job is only its backstop.
+	messageBatchRepo := repository.NewMessageBatchRepository()
+	var changeProposer domain.ChangeRequestHandler
+	if providers.LanguageModelBound() {
+		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
+	}
+	batchChangeHandler := services.NewBatchChangeHandler(db, repository.NewAccountRepository(), quoteRepo,
+		repository.NewQuoteMessageRepository(), messageBatchRepo,
+		repository.NewHandlerDecisionRepository(), repository.NewProductPriceRepository(),
+		repository.NewQuoteDiscountRepository(), repository.NewPromotionRepository(),
+		repository.NewProductAlternativeRepository(), changeProposer, catalogMatch, services.BatchChangeHandlerConfig{
+			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
 		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),
@@ -114,7 +128,11 @@ func run() error {
 			cfg.Attachment, log),
 		services.NewCatalogEmbeddingJob(productRepo, services.NewCatalogEmbeddingService(db,
 			repository.NewAccountRepository(), productRepo, providers.Embedder, cfg.Catalog),
-			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled))
+			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled),
+		services.NewQuoteAutoArchiveJob(quoteRepo, cfg.QuoteArchive,
+			domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment)), log),
+		services.NewConversationBatchJob(services.NewConversationBatchService(db,
+			messageBatchRepo, batchChangeHandler, cfg.Conversation, nil, log)))
 	if err != nil {
 		return err
 	}

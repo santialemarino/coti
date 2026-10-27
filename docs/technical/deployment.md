@@ -25,7 +25,7 @@ of its own that downloads every file it reads — never sees. The spec still shi
 switch both to `spaces` together once the bucket's five keys are in. The Spaces adapter has never
 run against a real bucket. See [file-storage.md](file-storage.md).
 
-## Nine components, one app
+## Ten components, one app
 
 | Component                   | Type                    | Dockerfile                     | Port |
 | --------------------------- | ----------------------- | ------------------------------ | ---- |
@@ -37,6 +37,7 @@ run against a real bucket. See [file-storage.md](file-storage.md).
 | `quote-quality-evaluation`  | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `attachment-extraction`     | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `catalog-embedding`         | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `quote-auto-archive`        | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | the database                | Managed Postgres        | —                              | —    |
 
 **Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
@@ -46,7 +47,7 @@ is the most likely first failure and it is the cheapest one to avoid.
 
 The api image carries **four** binaries and the migration chain: `/api/bin/api`,
 `/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
-why one Dockerfile serves six components.
+why one Dockerfile serves seven components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
 been load-tested; it is the smallest size worth starting a Next.js server on, and the number the
@@ -59,6 +60,11 @@ primary domain, the webapp on `cotizacion.<domain>`. One registrar domain buys b
 costs nothing on top of it, DigitalOcean DNS hosting is free, App Platform offers two public ingress
 IPs free of charge, and a certificate is provisioned per hostname automatically. It stays one app
 and one bill.
+
+The primary domain also serves the public site — the landing at `/`, the privacy policy and the
+terms — from the backoffice itself, so its pages share an origin with the session and can tell a
+seller from a visitor (`docs/technical/public-site.md`). The webapp answers `noindex` and a robots
+file that disallows everything: every page on it is one customer's quote.
 
 **The session cookies are the reason.** `coti_access_token`, `coti_refresh_token` and `coti_branch`
 are set with no `domain` attribute (`apps/backoffice/lib/auth/tokens.ts`), so a browser scopes them
@@ -319,12 +325,13 @@ image and applies the whole migration chain **from inside it** against a real Po
 PRE_DEPLOY job's exact command.
 
 `.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
---schema-only`, which needs no account, plus the three things a schema check cannot see — that no
-`type: SECRET` entry carries a value, that every component builds `/` with a Dockerfile that
-exists, and that every ingress rule names a component the spec declares. Its second job **boots the
-api image on the spec's own settings**, with only those four secrets filled, and requires `/ready`.
-That is the one check that catches a capability switched on beside an empty credential, which is a
-deploy that never starts and looks like a valid spec until it is applied.
+--schema-only`, which needs no account, plus the four things a schema check cannot see — that no
+`type: SECRET` entry carries a value, that every component repeating `ARCA_ENVIRONMENT` carries the
+api service's value, that every component builds `/` with a Dockerfile that exists, and that every
+ingress rule names a component the spec declares. Its second job **boots the api image on the spec's
+own settings**, with only those four secrets filled, and requires `/ready`. That is the one check
+that catches a capability switched on beside an empty credential, which is a deploy that never
+starts and looks like a valid spec until it is applied.
 
 So the image half of a deploy is continuously verified, and the spec is checked for the mistakes
 that are checkable offline. What remains unverified is the platform half — whether the app the spec

@@ -1,4 +1,170 @@
 {
+  "arca": {
+    "title": "Conexión con ARCA",
+    "description": "Conectá el CUIT del corralón con ARCA para emitir facturas electrónicas desde Coti.",
+    "disabled": "Este servidor no tiene la configuración necesaria para conectarse con ARCA. Escribinos a soporte para habilitarla.",
+    "statuses": {
+      "done": "Completado",
+      "current": "Paso para hacer ahora",
+      "pending": "Pendiente"
+    },
+    "wsassLookup": "En la página de inicio de ARCA, escribí «WSASS» en el buscador «¿Qué necesitás?» y abrí «WSASS - Autogestión Certificados Homologación». También podés tocar «Ver todos» en «Servicios más utilizados» y buscarlo en «Mis servicios», con su buscador o recorriendo la lista.",
+    "pem": {
+      "middle": "(varias líneas de letras, números y símbolos)",
+      "instruction": {
+        "HOMOLOGATION": "Copialo completo, desde el primer guion hasta el último, guiones incluidos.",
+        "PRODUCTION": "Si en vez de elegir el archivo pegás su texto en Coti, copialo completo, desde el primer guion hasta el último, guiones incluidos."
+      }
+    },
+    "steps": {
+      "wsass": {
+        "HOMOLOGATION": {
+          "title": "Habilitá WSASS en ARCA",
+          "body": "WSASS es el servicio de ARCA que entrega el certificado digital con el que Coti factura en nombre del corralón. Entrá a ARCA con tu clave fiscal, abrí «Administrador de Relaciones de Clave Fiscal» y tocá «Adherir servicio». En «ARCA» → «Servicios Interactivos», elegí «WSASS» y confirmá. Cerrá sesión y volvé a entrar.",
+          "check": "Para comprobar que quedó habilitado: {lookup}"
+        },
+        "PRODUCTION": {
+          "title": "Habilitá la administración de certificados en ARCA",
+          "body": "Coti factura con un certificado digital que se pide en el servicio «Administración de Certificados Digitales». Entrá a ARCA con tu clave fiscal (nivel 3 o superior) y abrí «Administrador de Relaciones de Clave Fiscal». Tocá «Nueva Relación», después «Buscar», y elegí «Administración de Certificados Digitales». En «Representante», buscá tu CUIT y confirmá. Cerrá sesión y volvé a entrar.",
+          "check": "Si ya lo tenés habilitado, aparece entre tus servicios de ARCA y podés pasar al paso siguiente. Si después de volver a entrar no aparece, aceptá la designación en «Aceptación de Designación»."
+        },
+        "open": "Abrir ARCA"
+      },
+      "generate": {
+        "title": "Generá la solicitud del certificado",
+        "body": "La solicitud es el texto con el que le pedís a ARCA un certificado para el CUIT del corralón. Coti la genera junto con una clave privada que guarda cifrada y que nunca sale del servidor.",
+        "cuit": "CUIT del corralón",
+        "editCuit": "Editar en Cuenta",
+        "locked": "La conexión usa este CUIT. Para usar otro, borrá la conexión más abajo y volvé a empezar.",
+        "submit": "Generar solicitud",
+        "submitting": "Generando…",
+        "generated": "La solicitud del certificado está lista para copiar."
+      },
+      "copy": {
+        "HOMOLOGATION": {
+          "title": "Copiá la solicitud",
+          "body": "La vas a pegar en WSASS en el paso siguiente."
+        },
+        "PRODUCTION": {
+          "title": "Descargá la solicitud",
+          "body": "En el paso siguiente la subís a ARCA como archivo."
+        },
+        "label": "Solicitud del certificado",
+        "copy": "Copiar solicitud",
+        "copied": "Solicitud copiada",
+        "copyError": "No pudimos copiar la solicitud. Descargala y copiala desde el archivo.",
+        "download": "Descargar (.csr)"
+      },
+      "certificate": {
+        "HOMOLOGATION": {
+          "title": "Obtené el certificado en WSASS",
+          "open": "Volvé a «WSASS» y elegí «Nuevo Certificado».",
+          "alias": "En «Nombre simbólico del DN» escribí un alias con letras y números, sin espacios ni guiones; por ejemplo, coti2026.",
+          "paste": "Pegá la solicitud que copiaste en «Solicitud de certificado en formato PKCS#10» y tocá «Crear DN y Obtener Certificado».",
+          "result": "ARCA te muestra el certificado en «Resultado». Se ve así:"
+        },
+        "PRODUCTION": {
+          "title": "Obtené el certificado en ARCA",
+          "open": "Volvé a ARCA y abrí «Administración de Certificados Digitales». Si representás a más de un contribuyente, elegí el corralón.",
+          "alias": "Tocá «Agregar alias» y escribí un alias con letras y números, sin espacios ni signos; por ejemplo, coti2026.",
+          "upload": "En «Seleccionar archivo», elegí la solicitud que descargaste (el archivo .csr) y tocá «Agregar alias».",
+          "view": "Tocá «Ver» al lado del alias y descargá el certificado (el archivo .crt). Si lo abrís con un editor de texto, se ve así:"
+        },
+        "guide": "Ver la guía de ARCA"
+      },
+      "authorize": {
+        "title": "Autorizá la facturación electrónica",
+        "HOMOLOGATION": {
+          "body": "Volvé a «WSASS» y elegí «Crear autorización a servicio». Seleccioná el alias que creaste, ingresá <cuit></cuit> como «CUIT representado» y elegí el servicio «wsfe», que es el de facturación electrónica. Confirmá con «Crear autorización»."
+        },
+        "PRODUCTION": {
+          "body": "En «Administrador de Relaciones de Clave Fiscal», tocá «Nueva Relación» y, al lado de «Servicio», «Buscar». Elegí «ARCA» → «WebServices» → «Facturación Electrónica». Al lado de «Representante», tocá «Buscar», elegí en «Computador Fiscal» el alias que creaste y confirmá. Revisá que el representado sea <cuit></cuit> y confirmá otra vez."
+        },
+        "guide": "Ver la guía de ARCA"
+      },
+      "upload": {
+        "title": "Cargá el certificado en Coti",
+        "label": "Certificado de ARCA",
+        "invalid": "Pegá el certificado completo, desde el primer guion hasta el último.",
+        "tooLarge": "El certificado no puede superar los {max} KB.",
+        "readError": "No pudimos leer el archivo. Volvé a elegirlo o pegá el texto.",
+        "submit": "Guardar certificado",
+        "submitting": "Validando certificado…",
+        "saved": "Guardamos el certificado de ARCA. Ya podés cargar los puntos de venta.",
+        "installed": "Certificado instalado. Vence el {date}.",
+        "installedUndated": "Certificado instalado.",
+        "expired": "El certificado venció el {date}. Desconectá ARCA y repetí los pasos para obtener uno nuevo.",
+        "download": "Descargar certificado (.pem)",
+        "placeholder": "Pegá acá el certificado",
+        "fromFile": "¿Guardaste el certificado en un archivo?",
+        "chooseFile": "Cargalo desde el archivo",
+        "loaded": "Leímos el certificado de {fileName}. Revisalo y tocá «Guardar certificado».",
+        "pastedRequest": "Eso que pegaste es la solicitud que generaste en Coti, no el certificado. Usala en ARCA para obtener el certificado y pegá acá el que te entregue.",
+        "fileRequest": "Ese archivo es la solicitud que generaste en Coti, no el certificado. Usala en ARCA para obtener el certificado y cargá acá el que te entregue.",
+        "fileInvalid": "Ese archivo no es un certificado. Elegí el que te entregó ARCA o pegá su texto.",
+        "HOMOLOGATION": {
+          "body": "Pegá el certificado que copiaste de «Resultado» y tocá «Guardar certificado».",
+          "required": "Pegá el certificado que te dio ARCA."
+        },
+        "PRODUCTION": {
+          "body": "Elegí el archivo del certificado que descargaste de ARCA y tocá «Guardar certificado». También podés pegar su texto.",
+          "required": "Elegí el archivo del certificado que te dio ARCA, o pegá su texto."
+        },
+        "chooseCertificate": "Elegir el certificado",
+        "pastePlaceholder": "O pegá acá el texto del certificado"
+      },
+      "pointsOfSale": {
+        "title": "Cargá los puntos de venta",
+        "HOMOLOGATION": {
+          "body": "Cada sucursal factura con su propio punto de venta: el número que das de alta en ARCA, en «Administración de puntos de venta y domicilios». Cargalos acá. Después podés cambiarlos cuando quieras en Facturación.",
+          "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: el número que das de alta en ARCA, en «Administración de puntos de venta y domicilios»."
+        },
+        "PRODUCTION": {
+          "body": "Cada sucursal factura con su propio punto de venta. Creá uno en ARCA, en «Administración de puntos de venta y domicilios», para facturación electrónica por web services, del tipo que corresponda a tu condición frente al IVA. Cargá acá su número; después podés cambiarlo cuando quieras en Facturación.",
+          "pending": "Cuando el certificado esté cargado, acá vas a cargar el punto de venta de cada sucursal: uno creado en «Administración de puntos de venta y domicilios» para facturación electrónica por web services."
+        },
+        "progress": "{done} de {total} sucursales abiertas tienen punto de venta."
+      }
+    },
+    "remove": {
+      "restart": {
+        "hint": "Borra la solicitud que generaste. Vas a tener que generar una nueva y repetir los pasos en ARCA.",
+        "action": "Empezar de nuevo",
+        "pending": "Borrando…",
+        "title": "Empezar de nuevo",
+        "description": "Se va a borrar la solicitud que generaste para el CUIT {cuit}. Vas a tener que generar una nueva y repetir los pasos en ARCA.",
+        "done": "Borramos la solicitud. Ya podés generar una nueva."
+      },
+      "disconnect": {
+        "hint": "Desconectar borra el certificado y la clave privada del corralón.",
+        "action": "Desconectar ARCA",
+        "pending": "Desconectando…",
+        "title": "Desconectar ARCA",
+        "description": "Se van a borrar la clave privada y el certificado del CUIT {cuit}. Para volver a conectar vas a tener que generar y autorizar un certificado nuevo. La autorización en ARCA se revoca desde su portal.",
+        "done": "Desconectamos ARCA. Para volver a facturar, repetí los pasos de conexión."
+      },
+      "reconnect": {
+        "title": "Volver a conectar",
+        "description": "Se van a borrar la solicitud y el certificado del CUIT {cuit}, que eran de otro entorno de ARCA, y Coti va a generar una solicitud nueva.",
+        "action": "Volver a conectar",
+        "pending": "Conectando…",
+        "done": "Generamos una solicitud nueva. Seguí los pasos en ARCA y revisá los puntos de venta."
+      }
+    },
+    "cancel": "Cancelar",
+    "errors": {
+      "INVALID_INPUT": "El certificado no corresponde a la solicitud de este CUIT o ya venció. Revisá que sea el que ARCA emitió para esta solicitud.",
+      "INVALID_BODY": "Pegá el certificado completo, desde el primer guion hasta el último.",
+      "CONFLICT": "La conexión cambió mientras la editabas. Actualizá la página.",
+      "INVALID_TAX_ID": "El CUIT del corralón no es válido. Corregilo en Cuenta.",
+      "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA, así que todavía no se puede desconectar. Consultalas en Comprobantes y volvé a intentar.",
+      "ARCA_ENVIRONMENT_MISMATCH": "La solicitud es de otro entorno de ARCA. Volvé a conectar para generar una nueva."
+    },
+    "reconnect": {
+      "title": "Hay que volver a conectar",
+      "body": "Esta conexión se hizo para otro entorno de ARCA y ya no sirve para facturar. Generá una solicitud nueva y repetí los pasos en ARCA. Después revisá el punto de venta de cada sucursal: los que usabas en el otro entorno ARCA no los reconoce en este."
+    }
+  },
   "common": {
     "appName": "Coti",
     "actions": {
@@ -45,7 +211,23 @@
       "replace": "Cambiar imagen",
       "remove": "Quitar imagen",
       "invalidType": "Elegí una imagen PNG o JPG.",
-      "previewAlt": "Vista previa del logo"
+      "previewAlt": "Vista previa del logo",
+      "crop": {
+        "title": "Recortar logo",
+        "description": "Ajustá el encuadre. Así se va a guardar tu logo.",
+        "shape": "Formato del logo",
+        "original": "Original",
+        "square": "Cuadrado",
+        "wide": "Horizontal",
+        "preview": "Vista previa del recorte del logo",
+        "zoom": "Acercamiento",
+        "moveHint": "Arrastrá la imagen para moverla o usá las flechas del teclado.",
+        "reset": "Restablecer",
+        "cancel": "Cancelar",
+        "saving": "Preparando logo…",
+        "confirm": "Usar logo",
+        "error": "No pudimos preparar esta imagen. Probá con otra."
+      }
     },
     "fileUpload": {
       "title": "Arrastrá tu archivo hasta acá",
@@ -60,6 +242,7 @@
       "presets": "Colores sugeridos"
     },
     "retry": "Reintentar",
+    "retrying": "Reintentando…",
     "form": {
       "togglePassword": "Mostrar u ocultar la contraseña",
       "clearSearch": "Limpiar la búsqueda",
@@ -118,6 +301,50 @@
       "NO_INTAKE_CHANNELS": {
         "title": "Esta sucursal no tiene canales abiertos",
         "body": "Para importar un pedido hace falta al menos un canal abierto en la sucursal. Escribinos a soporte para habilitarlo."
+      },
+      "INVOICING_DISABLED": {
+        "title": "La facturación electrónica no está activada",
+        "body": "Este servidor todavía no tiene habilitada la conexión con ARCA, así que no se pueden emitir facturas. Escribinos a soporte para activarla."
+      },
+      "ACCOUNT_IVA_CONDITION": {
+        "title": "Falta la condición frente al IVA del corralón",
+        "body": "Sin ella no sabemos qué tipo de factura corresponde.",
+        "fix": "Configurar facturación"
+      },
+      "ACCOUNT_TAX_ID": {
+        "title": "Falta el CUIT del corralón o no es válido",
+        "body": "ARCA identifica a quien emite la factura por su CUIT de 11 dígitos.",
+        "fix": "Cargar CUIT"
+      },
+      "BRANCH_POINT_OF_SALE": {
+        "title": "Esta sucursal no tiene punto de venta",
+        "body": "Cargá el punto de venta de la sucursal en Facturación para poder facturar.",
+        "fix": "Cargar punto de venta"
+      },
+      "ARCA_CREDENTIALS": {
+        "title": "Falta el certificado de ARCA",
+        "body": "Sin el certificado y su clave privada, ARCA no acepta pedidos de factura del corralón.",
+        "fix": "Cargar certificado"
+      },
+      "ARCA_CREDENTIALS_EXPIRED": {
+        "title": "El certificado de ARCA venció",
+        "body": "ARCA rechaza los pedidos firmados con un certificado vencido. Generá uno nuevo y cargalo.",
+        "fix": "Reemplazar certificado"
+      },
+      "ARCA_CREDENTIALS_CUIT": {
+        "title": "El certificado es de otro CUIT",
+        "body": "El certificado cargado no corresponde al CUIT del corralón, así que ARCA no lo va a aceptar.",
+        "fix": "Revisar certificado"
+      },
+      "ISSUER_PROFILE_REQUIRED": {
+        "title": "Completá los datos del emisor",
+        "body": "Cargá el domicilio fiscal, ingresos brutos e inicio de actividades.",
+        "fix": "Configurar facturación"
+      },
+      "ARCA_CREDENTIALS_ENVIRONMENT": {
+        "title": "La conexión con ARCA es de otro entorno",
+        "body": "Se hizo para otro entorno de ARCA, así que no sirve para facturar en este. Hay que volver a conectarla.",
+        "fix": "Volver a conectar"
       }
     }
   },
@@ -147,22 +374,46 @@
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
+    "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
+    "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
+    "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
+    "QUOTE_ITEMS_UNRESOLVED": "Hay ítems sin producto confirmado o sin precio. Confirmalos o elegí el producto antes de enviar.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
     "AI_UNAVAILABLE": "La IA no está disponible en este momento. Probá de nuevo en unos minutos.",
+    "INVOICE_NOT_READY": "Faltan datos para emitir la factura. Revisá lo que indica la tarjeta de la factura.",
+    "INVOICE_REJECTED": "ARCA rechazó la factura. Revisá los motivos que informó y volvé a emitirla.",
+    "INVOICE_IN_PROGRESS": "La factura ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
+    "QUOTE_ALREADY_INVOICED": "Esta venta ya tiene una factura emitida.",
+    "ARCA_CREDENTIALS": "No pudimos usar el certificado: revisá que la clave privada sea la del certificado y que este tenga el CUIT.",
+    "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna factura. Probá de nuevo en unos minutos.",
+    "INVALID_TAX_ID": "Revisá el CUIT o DNI: el número no es válido.",
+    "TAX_ID_READ_ONLY": "El CUIT de un cliente lo carga el cliente al crear su cuenta.",
     "NOT_CONFIGURED": "Esa función todavía no está configurada en esta cuenta.",
     "INTERNAL": "Ocurrió un error inesperado. Intentá de nuevo.",
     "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión."
+    "SESSION_EXPIRED": "Tu sesión expiró. Volvé a iniciar sesión.",
+    "INVOICE_STALE": "La venta cambió desde que la revisaste. Revisá la factura y volvé a emitirla.",
+    "POINT_OF_SALE_TAKEN": "Ese punto de venta ya lo usa otra sucursal.",
+    "ACCOUNT_TAX_ID_REQUIRED": "Cargá el CUIT del corralón en Cuenta antes de conectar ARCA.",
+    "ARCA_CONNECTED": "El CUIT está conectado con ARCA. Confirmá el cambio para desconectarlo.",
+    "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Consultalas en Comprobantes y volvé a intentar.",
+    "ARCA_ENVIRONMENT_MISMATCH": "Esta factura se pidió en otro entorno de ARCA que el de la conexión actual, así que no se puede consultar desde acá.",
+    "INVOICE_NOT_CREDITABLE": "Solo se anula con nota de crédito una factura autorizada por ARCA.",
+    "INVOICE_ALREADY_CREDITED": "Esta factura ya está anulada por una nota de crédito.",
+    "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
+    "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
+    "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
   },
   "meta": {
     "home": {
-      "title": "Inicio",
-      "description": "Workspace del corralón."
+      "title": "Pedidos",
+      "description": "La cola de pedidos del corralón, por estado."
     },
     "rfqs": {
       "title": "Pedidos",
@@ -181,8 +432,8 @@
       "description": "Reportes de pedidos y cotizaciones."
     },
     "administration": {
-      "title": "Administración",
-      "description": "Administración de la cuenta."
+      "title": "Comprobantes",
+      "description": "Las facturas electrónicas emitidas por el corralón."
     },
     "login": {
       "title": "Iniciar sesión",
@@ -216,6 +467,10 @@
       "title": "Cuenta",
       "description": "Datos del corralón y la marca que ve tu cliente."
     },
+    "arcaSettings": {
+      "title": "Conexión con ARCA",
+      "description": "Conectá el CUIT del corralón con ARCA para emitir facturas electrónicas."
+    },
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
@@ -247,13 +502,396 @@
     "notFound": {
       "title": "Página no encontrada",
       "description": "La dirección que abriste no existe en el backoffice."
+    },
+    "landing": {
+      "title": "Cotización asistida por IA para corralones",
+      "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel y los convierte en cotizaciones con tu catálogo y tus precios, listas para revisar y enviar."
+    },
+    "privacy": {
+      "title": "Política de privacidad",
+      "description": "Qué datos trata Coti, para qué y con qué cuidados."
+    },
+    "terms": {
+      "title": "Términos de uso",
+      "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
+    },
+    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas.",
+    "invoicingSettings": {
+      "title": "Facturación",
+      "description": "Los datos con los que el corralón emite facturas electrónicas."
     }
   },
   "notFound": {
     "title": "No encontramos esta página",
     "description": "La dirección que abriste no existe o dejó de estar disponible. Puede que el enlace esté mal copiado o que la pantalla haya cambiado de lugar.",
-    "goHome": "Ir al inicio",
-    "goToLogin": "Iniciar sesión"
+    "goToOrders": "Ir a Pedidos",
+    "goToSite": "Ir al inicio",
+    "backHome": "Volver al inicio"
+  },
+  "landing": {
+    "header": {
+      "nav": "Accesos",
+      "login": "Ingresar",
+      "signup": "Probar Coti",
+      "goToOrders": "Ir a Pedidos"
+    },
+    "footer": {
+      "nav": "Pie de página",
+      "tagline": "Cotización asistida por IA para corralones de materiales.",
+      "columns": {
+        "product": {
+          "title": "Producto",
+          "links": {
+            "steps": "Cómo funciona",
+            "features": "Qué incluye",
+            "faq": "Preguntas frecuentes"
+          }
+        },
+        "legal": {
+          "title": "Legal",
+          "links": {
+            "privacy": "Privacidad",
+            "terms": "Términos de uso"
+          }
+        }
+      },
+      "copyright": "© {year} Coti. Todos los derechos reservados.",
+      "madeIn": "Hecho en Argentina"
+    },
+    "hero": {
+      "slogan": "Cotizá. Convertí. Cerrá.",
+      "title": "Cotizá en minutos lo que hoy te lleva horas",
+      "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel, los arma contra tu catálogo y tus precios, y te deja la cotización lista para revisar y enviar.",
+      "signup": "Probar Coti",
+      "login": "Ya tengo cuenta",
+      "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto."
+    },
+    "preview": {
+      "label": "Ejemplo: un pedido por WhatsApp convertido en una cotización con tres productos del catálogo, uno marcado para revisar.",
+      "from": "Martín · Obra Ituzaingó",
+      "channel": "WhatsApp",
+      "message": "Hola! Necesito 30 bolsas de cemento, 2 m³ de arena gruesa y 50 ladrillos huecos del 12 para el lunes.",
+      "quote": "Cotización",
+      "status": "Lista para revisar",
+      "quantity": "{quantity} {unit} × {price}",
+      "lines": {
+        "cement": {
+          "name": "Cemento portland 50 kg",
+          "unit": "bolsas"
+        },
+        "sand": {
+          "name": "Arena gruesa",
+          "unit": "m³"
+        },
+        "brick": {
+          "name": "Ladrillo hueco 12×18×33",
+          "unit": "u."
+        }
+      },
+      "match": {
+        "matched": "Coincide con tu catálogo",
+        "review": "Revisar coincidencia"
+      },
+      "total": "Total"
+    },
+    "benefits": {
+      "eyebrow": "Por qué Coti",
+      "title": "Menos tiempo armando presupuestos, más tiempo vendiendo",
+      "items": {
+        "speed": {
+          "title": "Respondé mientras el cliente sigue mirando",
+          "description": "El pedido llega como venga —texto, audio o la foto de una lista— y sale cotizado en minutos, no al día siguiente. El que contesta primero suele ser el que vende."
+        },
+        "accuracy": {
+          "title": "Tus productos y tus precios, sin errores de tipeo",
+          "description": "Cada línea se arma contra tu catálogo y tu lista vigente. Lo que no encuentra queda marcado para que lo resuelvas vos: ningún ítem del pedido se pierde."
+        },
+        "ticket": {
+          "title": "Cotizaciones que venden más",
+          "description": "Alternativas económicas y premium y combos de tu propio catálogo, para que el cliente elija sin que tengas que armar tres presupuestos."
+        }
+      }
+    },
+    "steps": {
+      "eyebrow": "Cómo funciona",
+      "title": "Del mensaje desordenado a la cotización enviada",
+      "description": "Cuatro pasos, y en el del medio decidís vos.",
+      "items": {
+        "arrives": {
+          "title": "Llega el pedido",
+          "description": "Por WhatsApp, por correo o por el enlace de tu corralón. Texto, audio, foto, PDF o Excel."
+        },
+        "drafts": {
+          "title": "Coti lo arma",
+          "description": "Extrae los ítems, calcula cantidades y los busca en tu catálogo con los precios de tu sucursal."
+        },
+        "review": {
+          "title": "Revisás y enviás",
+          "description": "Corregís lo que haga falta y aprobás. Nada le llega al cliente sin tu visto bueno."
+        },
+        "answer": {
+          "title": "El cliente responde",
+          "description": "Abre la cotización con la marca de tu corralón y acepta, rechaza o pide cambios ítem por ítem."
+        }
+      }
+    },
+    "features": {
+      "eyebrow": "Todo lo que incluye",
+      "title": "Del primer mensaje a la factura",
+      "description": "Lo que hace Coti en cada etapa de la venta, sin salir de una sola herramienta.",
+      "items": {
+        "intake": {
+          "title": "Pedidos por cualquier canal",
+          "description": "WhatsApp, correo o el enlace de tu corralón. Texto, audio, foto de una lista, PDF o Excel."
+        },
+        "matching": {
+          "title": "Coincidencias con tu catálogo",
+          "description": "Cada línea llega con su nivel de confianza, y lo que no encuentra queda marcado para que lo resuelvas."
+        },
+        "alternatives": {
+          "title": "Alternativas y combos",
+          "description": "Opciones económica, premium o equivalente y combos de tu catálogo. El cliente solo ve las que aprobaste."
+        },
+        "discounts": {
+          "title": "Descuentos y promociones",
+          "description": "Por ítem, por cantidad, por conjunto de productos o sobre el total, aplicados siempre con las mismas reglas."
+        },
+        "versions": {
+          "title": "Versiones y vencimiento",
+          "description": "Cada cambio queda como una versión nueva, y cada sucursal define cuántos días vale su cotización."
+        },
+        "followUp": {
+          "title": "Seguimiento",
+          "description": "Coti te avisa qué cotizaciones necesitan seguimiento y te prepara el mensaje para retomarlas."
+        },
+        "changes": {
+          "title": "Cambios que pide el cliente",
+          "description": "Si pide bajar el total o mejorar la calidad, Coti arma la propuesta y vos decidís si se envía."
+        },
+        "invoicing": {
+          "title": "Facturación electrónica",
+          "description": "Emitís la factura de ARCA desde la cotización aceptada, con el certificado de tu corralón."
+        },
+        "branches": {
+          "title": "Sucursales y vendedores",
+          "description": "Precios y disponibilidad por sucursal, administradores y vendedores, cada uno con lo suyo."
+        }
+      }
+    },
+    "trust": {
+      "eyebrow": "Un copiloto, no un piloto automático",
+      "title": "La IA propone. Vos decidís.",
+      "description": "Coti está hecho para trabajar al lado del vendedor, con reglas que no se negocian.",
+      "items": {
+        "prices": {
+          "title": "La IA no pone precios",
+          "description": "Los montos salen de tu lista y de tus reglas de descuento, calculados siempre de la misma forma."
+        },
+        "approval": {
+          "title": "Nada sale sin vos",
+          "description": "Coti arma borradores y cotizaciones; enviarlas es una decisión tuya. Nunca le escribe a tu cliente por su cuenta."
+        },
+        "data": {
+          "title": "Lo tuyo es tuyo",
+          "description": "Cada corralón ve solo sus datos, y cada sucursal sus precios. Ninguna otra cuenta puede leerlos."
+        }
+      }
+    },
+    "faq": {
+      "eyebrow": "Preguntas frecuentes",
+      "title": "Lo que suelen preguntarnos",
+      "items": {
+        "catalog": {
+          "question": "¿Tengo que cargar todo mi catálogo a mano?",
+          "answer": "No. Importás productos y precios desde un Excel o un CSV, y después los mantenés desde Configuración."
+        },
+        "noMatch": {
+          "question": "¿Qué pasa si Coti no encuentra un producto?",
+          "answer": "La línea queda marcada como sin coincidencia para que la resuelvas vos. Coti nunca descarta un ítem del pedido."
+        },
+        "autoReply": {
+          "question": "¿Coti le contesta solo a mis clientes?",
+          "answer": "No. Prepara la cotización y los borradores de respuesta, pero enviar es siempre una decisión del vendedor."
+        },
+        "branches": {
+          "question": "¿Sirve si tengo más de una sucursal?",
+          "answer": "Sí. Cada sucursal tiene sus precios, su disponibilidad y sus vendedores, y cada uno trabaja sobre la suya."
+        },
+        "customerAccount": {
+          "question": "¿Mi cliente necesita una cuenta para ver la cotización?",
+          "answer": "No. Le llega un enlace y la ve con la marca de tu corralón, desde el celular o la computadora."
+        },
+        "changes": {
+          "question": "¿Qué pasa si el cliente pide cambios?",
+          "answer": "Los pide desde la misma cotización, ítem por ítem. Coti arma la propuesta —más barata, de mejor calidad o con el cambio que pidió— y vos la revisás antes de enviar la nueva versión."
+        },
+        "invoicing": {
+          "question": "¿Puedo facturar desde Coti?",
+          "answer": "Sí. Cuando el cliente acepta, emitís la factura electrónica de ARCA desde la cotización, con el certificado de tu corralón."
+        }
+      }
+    },
+    "cta": {
+      "title": "Probá Coti con tu propio catálogo",
+      "description": "Creá la cuenta de tu corralón, importá tus productos y cotizá tu próximo pedido con Coti.",
+      "action": "Crear mi cuenta"
+    }
+  },
+  "legal": {
+    "updatedAt": "Última actualización: {date}",
+    "privacy": {
+      "title": "Política de privacidad",
+      "intro": "Esta política explica qué datos personales trata Coti, para qué los usa y con qué cuidados. Coti es un software con el que los corralones de materiales reciben pedidos de sus clientes y les arman y envían cotizaciones.",
+      "sections": [
+        {
+          "title": "Quién es responsable de los datos",
+          "paragraphs": [
+            "Coti es responsable de los datos de la cuenta del corralón y de sus usuarios: nombre, correo electrónico, rol y sucursales.",
+            "De los datos de los clientes del corralón que llegan con un pedido —nombre, teléfono, correo, dirección de entrega y el contenido del pedido— el responsable es el corralón. Coti los trata por cuenta y orden suya, solo para prestarle el servicio."
+          ]
+        },
+        {
+          "title": "Qué datos tratamos",
+          "paragraphs": [
+            "Los datos de la cuenta y de sus usuarios, que se cargan al crearla o desde Configuración.",
+            "El contenido de los pedidos que recibe el corralón: textos, audios, imágenes y archivos, y los datos de contacto del cliente que los envía.",
+            "Los datos fiscales y el certificado digital que el corralón carga para emitir facturas electrónicas, que se guardan protegidos.",
+            "Datos técnicos del uso del servicio, como la dirección IP y las cookies de sesión, que sirven para mantener la sesión abierta y proteger la cuenta."
+          ]
+        },
+        {
+          "title": "Para qué los usamos",
+          "paragraphs": [
+            "Para prestar el servicio: leer los pedidos, armar las cotizaciones, enviarlas y registrar la respuesta del cliente.",
+            "Para la seguridad de las cuentas: autenticar a los usuarios, limitar los intentos fallidos y detectar accesos indebidos.",
+            "No vendemos datos personales ni los usamos para publicidad."
+          ]
+        },
+        {
+          "title": "Inteligencia artificial",
+          "paragraphs": [
+            "Para leer un pedido y buscar sus productos en el catálogo, Coti envía el contenido del pedido a proveedores de modelos de inteligencia artificial, que actúan como encargados del tratamiento y reciben solo lo necesario para esa tarea.",
+            "La inteligencia artificial propone; no fija precios, no aprueba cotizaciones y no se comunica con los clientes del corralón."
+          ]
+        },
+        {
+          "title": "Con quién los compartimos",
+          "paragraphs": [
+            "Con los proveedores que hacen posible el servicio: alojamiento y base de datos, envío de correo y modelos de inteligencia artificial. Algunos de ellos procesan los datos fuera de la Argentina, con medidas de seguridad acordes a esta política.",
+            "Con ARCA, cuando el corralón emite una factura electrónica desde Coti, con los datos que la factura exige.",
+            "Con autoridades, solo cuando una norma o una orden judicial lo exija."
+          ]
+        },
+        {
+          "title": "Cookies",
+          "paragraphs": [
+            "Coti usa solamente las cookies necesarias para funcionar: las que mantienen la sesión iniciada y recuerdan la sucursal elegida. No usa cookies de publicidad ni de analítica de terceros."
+          ]
+        },
+        {
+          "title": "Cuánto tiempo los guardamos",
+          "paragraphs": [
+            "Mientras la cuenta del corralón esté activa. Cuando se da de baja, los datos se eliminan o se anonimizan en un plazo razonable, salvo los que una norma obligue a conservar."
+          ]
+        },
+        {
+          "title": "Cómo los protegemos",
+          "paragraphs": [
+            "Las comunicaciones viajan cifradas, las contraseñas se guardan con un hash y nunca en texto plano, y la base de datos separa la información de cada cuenta para que ninguna pueda leer la de otra."
+          ]
+        },
+        {
+          "title": "Tus derechos",
+          "paragraphs": [
+            "Podés pedir acceso, rectificación, actualización y supresión de tus datos personales, como prevé la Ley 25.326. Si sos cliente de un corralón, hacé el pedido a ese corralón; si sos usuario de Coti, podés actualizar tus datos desde Configuración.",
+            "El titular de los datos personales tiene la facultad de ejercer el derecho de acceso a ellos en forma gratuita a intervalos no inferiores a seis meses, salvo que se acredite un interés legítimo al efecto, conforme lo establecido en el artículo 14, inciso 3 de la Ley 25.326.",
+            "La Agencia de Acceso a la Información Pública, en su carácter de Órgano de Control de la Ley 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales."
+          ]
+        },
+        {
+          "title": "Cambios en esta política",
+          "paragraphs": [
+            "Si la cambiamos, publicamos la versión nueva en esta página con su fecha de actualización."
+          ]
+        }
+      ]
+    },
+    "terms": {
+      "title": "Términos de uso",
+      "intro": "Estos términos regulan el uso de Coti por parte de los corralones que crean una cuenta y de sus usuarios. Al crear una cuenta o usar el servicio, los aceptás.",
+      "sections": [
+        {
+          "title": "El servicio",
+          "paragraphs": [
+            "Coti es un software para recibir pedidos de cotización, armar cotizaciones asistidas por inteligencia artificial contra el catálogo y los precios del corralón, y enviarlas a sus clientes.",
+            "El servicio se ofrece en su etapa de piloto comercial y puede cambiar, sumar o quitar funciones."
+          ]
+        },
+        {
+          "title": "Tu cuenta",
+          "paragraphs": [
+            "Los datos de la cuenta tienen que ser verdaderos y estar actualizados. Quien la administra es responsable de los usuarios que da de alta, de sus permisos y de lo que hacen con ella.",
+            "Cada usuario cuida sus credenciales. Si sospechás que alguien entró a tu cuenta, cambiá la contraseña y avisá al administrador."
+          ]
+        },
+        {
+          "title": "La cotización es del corralón",
+          "paragraphs": [
+            "Coti propone; el corralón revisa y decide. Los precios salen del catálogo y de las reglas que carga el corralón, que es responsable de lo que envía a sus clientes. Revisá cada cotización antes de enviarla.",
+            "Lo mismo vale para la facturación: el corralón es responsable de sus datos fiscales y de las facturas que emite desde Coti."
+          ]
+        },
+        {
+          "title": "Tus datos y los de tus clientes",
+          "paragraphs": [
+            "Los datos que cargás siguen siendo tuyos. Nos autorizás a tratarlos solo para prestarte el servicio, como explica la Política de privacidad.",
+            "Sos responsable de contar con el consentimiento o la base legal necesaria para cargar en Coti los datos de tus clientes."
+          ]
+        },
+        {
+          "title": "Uso aceptable",
+          "paragraphs": [
+            "No se puede usar Coti para enviar comunicaciones no solicitadas, cargar contenido ilícito, intentar acceder a cuentas o datos ajenos, ni interferir con el funcionamiento del servicio."
+          ]
+        },
+        {
+          "title": "Disponibilidad",
+          "paragraphs": [
+            "Trabajamos para que el servicio esté disponible y funcione bien, pero durante el piloto no podemos garantizar que esté libre de interrupciones o errores. Cuando haya mantenimiento programado, lo avisamos con anticipación razonable."
+          ]
+        },
+        {
+          "title": "Responsabilidad",
+          "paragraphs": [
+            "En la medida en que la ley lo permita, Coti no responde por las decisiones comerciales que el corralón tome a partir de cotizaciones que revisó y aprobó, ni por el lucro cesante derivado del uso del servicio."
+          ]
+        },
+        {
+          "title": "Condiciones comerciales",
+          "paragraphs": [
+            "El precio y las condiciones de pago del servicio se acuerdan por separado con cada corralón."
+          ]
+        },
+        {
+          "title": "Baja y suspensión",
+          "paragraphs": [
+            "Podés dar de baja la cuenta cuando quieras. Podemos suspender una cuenta que incumpla estos términos, avisando el motivo."
+          ]
+        },
+        {
+          "title": "Ley aplicable",
+          "paragraphs": [
+            "Estos términos se rigen por las leyes de la República Argentina. Ante cualquier controversia, son competentes los tribunales ordinarios de la Ciudad Autónoma de Buenos Aires."
+          ]
+        },
+        {
+          "title": "Cambios en estos términos",
+          "paragraphs": [
+            "Si los cambiamos, publicamos la versión nueva en esta página con su fecha de actualización y, si el cambio es importante, lo avisamos antes de que rija."
+          ]
+        }
+      ]
+    }
   },
   "auth": {
     "login": {
@@ -307,7 +945,10 @@
       },
       "taxId": {
         "label": "CUIT",
-        "placeholder": "Ingresá el CUIT"
+        "placeholder": "Ingresá el CUIT",
+        "hint": "Formato: 30-70123456-8.",
+        "invalid": "Ingresá un CUIT de 11 dígitos.",
+        "checkDigit": "El CUIT no es válido: revisá el último dígito."
       },
       "branchName": {
         "label": "Nombre de la sucursal",
@@ -503,6 +1144,14 @@
     "createdAt": "Creada el {date}"
   },
   "rfqs": {
+    "emailAttachments": {
+      "title": "Correo y archivos recibidos",
+      "download": "Descargar",
+      "unnamed": "Archivo adjunto",
+      "manualReview": "Revisar manualmente",
+      "refresh": "Actualizar enlaces",
+      "error": "No pudimos cargar los archivos. Intentá de nuevo."
+    },
     "title": "Pedidos",
     "greeting": "¡Hola, {name}!",
     "status": {
@@ -598,7 +1247,13 @@
       "groups": {
         "expand": "Mostrar todos",
         "collapse": "Mostrar menos",
-        "stackHint": "Mostrar los {count} pedidos de este estado"
+        "stackHint": "Mostrar los {count} pedidos de este estado",
+        "stacks": {
+          "TO_CLOSE": "Por cerrar",
+          "COMPLETED": "Completados"
+        },
+        "show": "Mostrar",
+        "hide": "Ocultar"
       },
       "empty": {
         "title": "Todavía no hay pedidos"
@@ -620,6 +1275,20 @@
         "assigned": "Tomaste el pedido {id}, {name}. Lo vas a encontrar en tu lista.",
         "sellerAssigned": "El pedido {id} quedó asignado a {seller}.",
         "sellerUnassigned": "Al pedido {id} le quitamos el vendedor."
+      },
+      "closing": {
+        "MARK_PAID": "Marcar cobrado",
+        "UNMARK_PAID": "Desmarcar cobrado",
+        "INVOICE": "Facturar",
+        "WAIVE": "No requiere factura",
+        "UNWAIVE": "Requiere factura",
+        "labelled": "{action} el pedido {id}",
+        "menu": "Acciones del pedido {id}"
+      },
+      "archived": {
+        "loading": "Trayendo los pedidos archivados…",
+        "failed": "No pudimos traer los pedidos archivados.",
+        "retry": "Reintentar"
       }
     },
     "create": {
@@ -744,6 +1413,12 @@
         "none": "Sin datos"
       },
       "callouts": {
+        "archived": {
+          "title": "Pedido archivado",
+          "description": "No se puede editar, enviar ni facturar mientras esté archivado. Desarchivalo para seguir trabajándolo.",
+          "unarchive": "Desarchivar",
+          "unarchiving": "Desarchivando…"
+        },
         "accepted": {
           "title": "Cotización aceptada",
           "description": "La cotización quedó aceptada. El pedido está listo para procesar."
@@ -756,7 +1431,13 @@
         "changeRequested": {
           "title": "Cambio solicitado",
           "description": "El cliente solicitó cambios en esta cotización. Revisá los ítems y actualizá la propuesta.",
-          "withReason": "El cliente solicitó cambios: {reason}"
+          "discard": {
+            "title": "¿Descartar los cambios de la IA?",
+            "description": "El borrador vuelve a quedar igual a la última versión que recibió el cliente, con los precios y promociones de hoy. Se pierde lo que hayas editado a mano en este borrador, incluidos los descuentos que cargaste.",
+            "confirm": "Descartar cambios",
+            "pending": "Descartando…",
+            "success": "Descartamos los cambios de la IA en la cotización {reference}."
+          }
         },
         "sellerRevision": {
           "title": "Cotización reactivada",
@@ -789,6 +1470,7 @@
         "generate": "Generar cotización",
         "generating": "Generando cotización…",
         "chooseProduct": "Elegir producto",
+        "confirmMatch": "Confirmar producto",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "searchProduct": "Buscar producto",
@@ -846,6 +1528,10 @@
             "ITEM": "Por ítem",
             "ITEM_SET": "Por combo"
           },
+          "origin": {
+            "AUTOMATIC": "Promoción",
+            "AI_ADAPTATION": "Por ajuste de la IA"
+          },
           "toast": {
             "added": "Agregamos el descuento «{name}».",
             "updated": "Actualizamos el descuento «{name}».",
@@ -858,6 +1544,7 @@
           "updated": "Actualizamos «{name}».",
           "deleted": "Quitamos «{name}» de la cotización.",
           "added": "Agregamos «{name}» a la cotización.",
+          "confirmed": "Confirmamos «{name}» como el producto del ítem.",
           "generated": "La cotización quedó generada y lista para revisar.",
           "error": "No pudimos guardar el cambio. Intentá de nuevo."
         },
@@ -866,6 +1553,7 @@
           "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
           "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
           "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica con los materiales actuales, así que no se puede restaurar.",
           "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos guardar el cambio. Intentá de nuevo."
@@ -874,11 +1562,12 @@
       "send": {
         "button": "Enviar cotización",
         "title": "Enviar cotización",
-        "description": "La cotización se envía por WhatsApp con un enlace al detalle. Podés mandar además una copia por correo.",
+        "description": "Elegí cómo enviar la cotización al cliente. Cada mensaje incluye un enlace al detalle.",
+        "sendWhatsApp": "Enviar por WhatsApp",
         "phoneLabel": "WhatsApp del cliente",
         "phonePlaceholder": "Ingresá el celular",
         "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101.",
-        "alsoEmail": "Enviar también una copia por correo",
+        "alsoEmail": "Enviar por correo",
         "emailLabel": "Correo del cliente",
         "emailPlaceholder": "cliente@empresa.com",
         "summaryLabel": "Qué se envía",
@@ -887,15 +1576,16 @@
         "summaryLink": "Incluye un enlace para que el cliente vea el detalle y responda.",
         "numberPending": "sin número",
         "cancel": "Cancelar",
-        "send": "Enviar",
+        "send": "Enviar cotización",
         "sending": "Enviando…",
         "successTitle": "Cotización enviada",
-        "successDescription": "El enlace ya llegó con el mensaje. Copialo o abrílo si necesitás reenviarlo.",
+        "successDescription": "Podés copiar el enlace o abrir la cotización.",
         "linkLabel": "Enlace de la cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "openQuote": "Abrir",
+        "visualizeOnline": "Visualizar online",
         "resend": "Enviar a otro destino",
         "done": "Listo",
         "toast": {
@@ -915,7 +1605,24 @@
           "NOT_CONFIGURED": "El envío al cliente todavía no está configurado en esta cuenta.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
           "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
-        }
+        },
+        "clientTitle": "Cliente",
+        "clientExisting": "Seleccionar cliente",
+        "clientNew": "Crear cliente",
+        "clientChoose": "Seleccioná un cliente",
+        "clientTax": "CUIT/CUIL",
+        "clientName": "Nombre o razón social",
+        "clientEmail": "Email (opcional)",
+        "clientPhone": "Teléfono (opcional)",
+        "clientLoading": "Cargando clientes…",
+        "clientLoadFailed": "No se pudieron cargar los clientes. Cerrá el diálogo e intentá nuevamente.",
+        "clientInvalid": "Completá los datos del cliente.",
+        "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
+        "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
+        "clientNameRequired": "Ingresá el nombre o razón social.",
+        "clientEmailInvalid": "Ingresá un email válido.",
+        "clientPhoneInvalid": "Ingresá un teléfono válido.",
+        "clientTags": "Etiquetas"
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -927,6 +1634,83 @@
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "unavailable": "La cotización todavía no fue enviada: el enlace va a estar disponible cuando la envíes."
+      },
+      "changeRequest": {
+        "title": "Pedido de cambio",
+        "revisionTitle": "Revisión de la cotización",
+        "discard": "Descartar cambios de la IA",
+        "interpretation": "Interpretación:",
+        "outcome": {
+          "applied": "El borrador ya tiene estos cambios. Revisalos antes de enviar.",
+          "discarded": "Descartaste los cambios automáticos: el borrador volvió a lo que recibió el cliente.",
+          "noMatch": {
+            "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
+            "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
+            "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+          }
+        },
+        "changesTitle": "Cambios respecto de lo que recibió el cliente",
+        "noChanges": "El borrador todavía es igual a lo que recibió el cliente.",
+        "unchanged": "{count, plural, one {# ítem sin cambios} other {# ítems sin cambios}}",
+        "total": "Total",
+        "suppressed": "Suprimido",
+        "adaptedDiscount": "Por ajuste de la IA",
+        "change": {
+          "MODIFIED": "Modificado",
+          "ADDED": "Agregado",
+          "REMOVED": "Quitado"
+        },
+        "conversation": "Conversación con el cliente",
+        "rounds": "{count, plural, one {# ronda} other {# rondas}}"
+      },
+      "handlerRecipe": {
+        "raised": "Se subió {item} de {from} a {to} para alcanzar «{promotion}».",
+        "totalRaised": "El total sube de {before} a {after}: el cliente pidió esa promoción.",
+        "strategies": "Estrategias probadas: {list}.",
+        "strategy": {
+          "FIND_CHEAPER_ALTERNATIVES": "alternativas más baratas",
+          "ADAPT_TO_REACH_DISCOUNT": "ajuste de cantidades para alcanzar una promoción",
+          "IMPROVE_QUALITY": "alternativas de mejor calidad"
+        }
+      },
+      "conversation": {
+        "title": "Conversación con el cliente",
+        "customer": "Cliente",
+        "seller": "Cotización enviada",
+        "quoteLink": "[enlace a la cotización]",
+        "pending": "El cliente sigue escribiendo; la IA va a leer estos mensajes en unos minutos.",
+        "status": {
+          "CLOSED": "En cola para la IA",
+          "PROCESSING": "La IA lo está leyendo",
+          "PROCESSED": "Procesado",
+          "FAILED": "No se pudo procesar"
+        },
+        "decision": {
+          "applied": "Interpretación: {interpretation}",
+          "noMatch": {
+            "REQUIRES_SELLER": "No se aplicaron cambios: el pedido necesita tu revisión.",
+            "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
+            "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
+            "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+          }
+        },
+        "sellerDecision": {
+          "pending": "Sin revisar",
+          "APPROVED_AS_IS": "Enviado sin cambios",
+          "EDITED": "Editado antes de enviar",
+          "REJECTED": "Descartado",
+          "MANUAL_OVERRIDE": "Resuelto a mano"
+        },
+        "failure": {
+          "UNPROCESSABLE": "La cotización ya estaba cerrada o archivada cuando llegaron estos mensajes, así que la IA no los procesó.",
+          "ATTEMPTS_EXHAUSTED": "La IA no pudo procesar estos mensajes después de varios intentos."
+        },
+        "retry": "Reintentar",
+        "retrying": "Reintentando…",
+        "retried": "Volvimos a poner los mensajes en la cola de la IA."
       },
       "lifecycle": {
         "accept": {
@@ -967,26 +1751,49 @@
           "INVALID_INPUT": "La acción elegida no es válida para esta cotización.",
           "FORBIDDEN": "No tenés permiso para cambiar el estado de esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
-          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo."
+          "INTERNAL": "No pudimos actualizar la cotización. Intentá de nuevo.",
+          "QUOTE_ALREADY_INVOICED": "Esta venta está facturada y no se puede reactivar. Para cambiarla, anulá la factura con una nota de crédito desde la tarjeta de la factura.",
+          "QUOTE_ALREADY_PAID": "Esta venta está cobrada y no se puede reactivar. Desmarcá el cobro en «Cierre de la venta» y volvé a intentar."
         }
       },
-      "diff": {
-        "title": "Cambios solicitados",
-        "originalTitle": "Cotización original",
-        "requestedTitle": "Cotización con cambios solicitados",
-        "previousTitle": "Versión cerrada",
-        "revisionTitle": "Nueva versión editable",
-        "discountsTitle": "Descuentos aplicados",
-        "downloadOriginal": "Descargar pedido original",
-        "columns": {
-          "product": "Producto",
-          "quantity": "Cantidad",
-          "price": "Precio en el catálogo"
+      "publicRequest": {
+        "title": "Datos del solicitante",
+        "taxId": "CUIT",
+        "name": "Nombre o razón social",
+        "email": "Email",
+        "phone": "Teléfono",
+        "original": "Pedido original",
+        "file": "Ver archivo del pedido"
+      },
+      "closure": {
+        "title": "Cierre de la venta",
+        "unpaid": "Todavía no está cobrada.",
+        "paid": "Cobrada por {name} el {date}.",
+        "complete": "Venta completa",
+        "markPaid": "Marcar cobrado",
+        "unmarkPaid": "Desmarcar",
+        "unmarking": "Desmarcando…",
+        "markedPaid": "Marcamos el pedido {reference} como cobrado.",
+        "markedPaidAndInvoiced": "Marcamos el pedido {reference} como cobrado y emitimos la factura {type} {number}.",
+        "invoiceRejected": "Marcamos el cobro, pero ARCA rechazó la factura. Los motivos están en la tarjeta de la factura.",
+        "invoiceFailed": "Marcamos el cobro, pero la factura no se emitió. Volvé a intentarlo desde su tarjeta.",
+        "unmarkedPaid": "Desmarcamos el cobro del pedido {reference}.",
+        "dialog": {
+          "title": "Marcar como cobrado el pedido {reference}",
+          "description": "Registra que el cliente pagó, con tu nombre y la fecha. Se puede desmarcar después.",
+          "invoice": "Facturar también",
+          "invoiceHint": "Después de guardar el cobro, le pedimos a ARCA la factura {type} a {receiver} por {total}.",
+          "invoiceLoading": "Revisando la factura…",
+          "invoiceBlocked": "Todavía no se puede facturar: {reasons}. Resolvelo desde la tarjeta de la factura.",
+          "invoiceUnavailable": "No pudimos revisar la factura. Podés emitirla después desde su tarjeta.",
+          "invoiceWaived": "La venta está marcada como «No requiere factura». Para facturarla, deshacelo desde la tarjeta de la factura.",
+          "confirm": "Marcar cobrado",
+          "confirmAndInvoice": "Marcar cobrado y facturar",
+          "pending": "Guardando…",
+          "cancel": "Cancelar"
         },
-        "changeTypes": {
-          "added": "agregado",
-          "removed": "eliminado",
-          "modified": "modificado"
+        "errors": {
+          "QUOTE_ARCHIVED": "La venta está archivada. Desarchivala antes de marcar el cobro."
         }
       }
     }
@@ -1021,7 +1828,8 @@
       "description": "Probá con otro nombre, contacto o tag."
     },
     "profile": {
-      "description": "Contacto, tags e historial de ventas aceptadas.",
+      "description": "Datos de contacto, información fiscal, tags e historial comercial.",
+      "descriptionWithoutFiscal": "Datos de contacto, tags e historial comercial.",
       "contactTitle": "Datos de contacto",
       "phone": "Teléfono",
       "email": "Correo electrónico",
@@ -1032,7 +1840,14 @@
         "quote": "Cotización",
         "branch": "Sucursal",
         "date": "Aceptada",
-        "total": "Total"
+        "total": "Total",
+        "invoice": "Factura"
+      },
+      "invoiceStatuses": {
+        "INVOICED": "Facturada",
+        "PENDING": "Pendiente en ARCA",
+        "WAIVED": "No requiere factura",
+        "UNINVOICED": "Sin facturar"
       },
       "emptySales": {
         "title": "No hay ventas visibles",
@@ -1111,15 +1926,46 @@
         "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
         "INTERNAL": "No pudimos asociar el cliente. Intentá de nuevo."
       }
+    },
+    "fiscal": {
+      "title": "Datos fiscales",
+      "legalName": {
+        "label": "Razón social",
+        "placeholder": "Ingresá la razón social"
+      },
+      "cuit": {
+        "label": "CUIT",
+        "missing": "Sin cargar",
+        "hint": "Lo carga el cliente al crear su cuenta."
+      },
+      "dni": {
+        "label": "DNI",
+        "placeholder": "Ingresá el DNI",
+        "hint": "Para un consumidor final sin CUIT. Formato: 12.345.678.",
+        "invalid": "Ingresá un DNI de 7 u 8 dígitos."
+      },
+      "ivaCondition": {
+        "label": "Condición frente al IVA",
+        "placeholder": "Seleccioná una condición"
+      },
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…",
+      "saved": "Los datos fiscales de {name} quedaron guardados.",
+      "savedUnnamed": "Guardamos los datos fiscales del cliente.",
+      "address": {
+        "label": "Domicilio fiscal",
+        "placeholder": "Ingresá el domicilio fiscal"
+      },
+      "description": "Se utilizan al emitir las facturas de este cliente.",
+      "errors": {
+        "INVALID_TAX_ID": "Revisá el DNI del cliente.",
+        "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
+      }
     }
   },
   "reports": {
     "placeholderTitle": "Reportes",
     "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
-  },
-  "administration": {
-    "placeholderTitle": "Administración",
-    "placeholderDescription": "La administración de la cuenta se va a mostrar acá."
   },
   "catalog": {
     "title": "Catálogo",
@@ -1137,8 +1983,10 @@
       "users": "Usuarios",
       "catalog": "Catálogo",
       "prices": "Precios",
-      "onboarding": "Configuración inicial · {done}/{total}"
-    }
+      "onboarding": "Configuración inicial · {done}/{total}",
+      "invoicing": "Facturación"
+    },
+    "backToInvoicing": "Volver a Facturación"
   },
   "branches": {
     "title": "Sucursales",
@@ -1161,6 +2009,12 @@
     },
     "reopen": {
       "action": "Reabrir"
+    },
+    "gmail": {
+      "connect": "Conectar Gmail de la sucursal",
+      "connected": "Conectamos la casilla de Google con la sucursal.",
+      "failed": "No pudimos conectar la casilla. Verificá que elegiste el correo de la sucursal e intentá de nuevo.",
+      "startFailed": "No pudimos iniciar la conexión con Google. Revisá la configuración de la sucursal e intentá de nuevo."
     },
     "empty": {
       "title": "Todavía no hay sucursales",
@@ -1216,6 +2070,10 @@
       "INTERNAL": "No pudimos guardar la sucursal. Intentá de nuevo.",
       "CHANNEL_IDENTIFIER": "Revisá el correo de la sucursal: no es una dirección válida.",
       "CONFLICT": "Ese correo ya está en otro canal de la sucursal."
+    },
+    "billing": {
+      "pointOfSale": "Punto de venta",
+      "unset": "Sin configurar"
     }
   },
   "account": {
@@ -1239,7 +2097,10 @@
     },
     "taxId": {
       "label": "CUIT",
-      "placeholder": "Ingresá el CUIT"
+      "placeholder": "Ingresá el CUIT",
+      "hint": "Formato: 30-70123456-8.",
+      "invalid": "Ingresá un CUIT de 11 dígitos.",
+      "checkDigit": "El CUIT no es válido: revisá el último dígito."
     },
     "brand": {
       "title": "Marca"
@@ -1253,13 +2114,37 @@
       "pickerLabel": "Elegir color de marca",
       "invalid": "Ingresá un color hexadecimal válido."
     },
+    "lowerPrice": {
+      "title": "Pedidos de un precio más bajo",
+      "label": "Qué prueba primero la IA",
+      "hint": "Si esa opción no baja el total, la IA prueba la otra. Si el cliente dice cómo prefiere pagar menos, se sigue lo que pide.",
+      "FIND_CHEAPER_ALTERNATIVES": {
+        "label": "Alternativas más baratas",
+        "hint": "Cambia productos por alternativas económicas del catálogo, sin tocar las cantidades."
+      },
+      "ADAPT_TO_REACH_DISCOUNT": {
+        "label": "Ajustar cantidades para alcanzar una promoción",
+        "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
+      }
+    },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
     "saved": "Guardamos los datos del corralón. Tu cliente los va a ver en la próxima cotización que le envíes.",
     "errors": {
       "NOT_FOUND": "No encontramos la cuenta. Volvé a iniciar sesión.",
       "INVALID_INPUT": "Revisá los datos del corralón e intentá de nuevo.",
+      "INVALID_TAX_ID": "Revisá el CUIT: el dígito verificador no coincide.",
       "INTERNAL": "No pudimos guardar los datos. Intentá de nuevo."
+    },
+    "savedDisconnected": "Guardamos el CUIT nuevo y desconectamos ARCA. Conectalo desde Facturación para volver a facturar.",
+    "invoicePending": "Hay facturas esperando la respuesta de ARCA, así que el CUIT todavía no se puede cambiar.",
+    "invoicePendingLink": "Ver comprobantes",
+    "disconnectARCA": {
+      "title": "Cambiar el CUIT",
+      "inProgress": "Cambiar el CUIT descarta la solicitud que generaste para el CUIT {old}. Después vas a generar una nueva desde Facturación.",
+      "connected": "Cambiar el CUIT desconecta ARCA: se borran el certificado y la clave del CUIT {old}, y no vas a poder facturar hasta conectar el nuevo. Las facturas ya emitidas no cambian.",
+      "confirm": "Cambiar CUIT y desconectar ARCA",
+      "cancel": "Cancelar"
     }
   },
   "users": {
@@ -1499,6 +2384,11 @@
       "INVALID_INPUT": "Revisá los datos del producto e intentá de nuevo.",
       "FILE_TOO_LARGE": "La foto supera el tamaño permitido.",
       "INTERNAL": "No pudimos guardar el producto. Intentá de nuevo."
+    },
+    "vatRate": {
+      "label": "Alícuota de IVA",
+      "placeholder": "Seleccioná una alícuota",
+      "hint": "Por defecto {rate}. Es la que se usa al facturar este producto."
     }
   },
   "catalogImport": {
@@ -1815,5 +2705,376 @@
       "minPrice": "Precio mínimo",
       "result": "Validación"
     }
+  },
+  "invoicing": {
+    "ivaConditions": {
+      "REGISTERED": "Responsable inscripto",
+      "MONOTRIBUTO": "Monotributo",
+      "EXEMPT": "Exento",
+      "FINAL_CONSUMER": "Consumidor final"
+    },
+    "vatRates": {
+      "VAT_21": "IVA 21 %",
+      "VAT_10_5": "IVA 10,5 %",
+      "VAT_27": "IVA 27 %",
+      "VAT_5": "IVA 5 %",
+      "VAT_2_5": "IVA 2,5 %",
+      "VAT_0": "IVA 0 %",
+      "EXEMPT": "Exento"
+    },
+    "docTypes": {
+      "CUIT": "CUIT",
+      "DNI": "DNI",
+      "NONE": "Sin documento"
+    },
+    "settings": {
+      "title": "Facturación",
+      "description": "Los datos con los que el corralón emite facturas electrónicas.",
+      "connection": {
+        "title": "Conexión con ARCA",
+        "states": {
+          "disabled": "No disponible",
+          "notConnected": "Sin conectar",
+          "reconnect": "Hay que volver a conectar",
+          "inProgress": "En curso",
+          "pointsMissing": "Falta un paso",
+          "expiringSoon": "Vence pronto",
+          "expired": "Certificado vencido",
+          "connected": "Conectado"
+        },
+        "bodies": {
+          "disabled": "Este servidor no tiene la configuración necesaria para conectarse con ARCA. Escribinos a soporte para habilitarla.",
+          "notConnected": "Conectá el CUIT del corralón con ARCA para emitir facturas electrónicas.",
+          "reconnect": "Esta conexión se hizo para otro entorno de ARCA y ya no sirve para facturar. Volvé a conectar el CUIT.",
+          "inProgress": "Ya generaste la solicitud del certificado. Seguí los pasos para terminar la conexión.",
+          "pointsMissing": "Cargá el punto de venta de cada sucursal para empezar a facturar.",
+          "expiringSoon": "El certificado vence el {date}. Renovalo antes: desconectá ARCA y repetí los pasos de conexión para obtener uno nuevo.",
+          "expired": "ARCA rechaza las facturas firmadas con un certificado vencido. Desconectá ARCA y repetí los pasos para obtener uno nuevo.",
+          "connected": "Coti emite las facturas del corralón en ARCA con este CUIT."
+        },
+        "cuit": "CUIT",
+        "expires": "Vencimiento del certificado",
+        "actions": {
+          "start": "Conectar con ARCA",
+          "continue": "Continuar la conexión",
+          "manage": "Ver la conexión",
+          "reconnect": "Volver a conectar"
+        },
+        "testMode": "Modo de prueba",
+        "testModeNote": "Este servidor emite facturas de prueba en ARCA: no tienen validez fiscal."
+      },
+      "fiscal": {
+        "title": "Datos fiscales",
+        "legalName": "Razón social",
+        "taxId": "CUIT",
+        "missing": "Sin cargar",
+        "editHint": "Se cargan en los datos del corralón.",
+        "editLink": "Editar en Cuenta"
+      },
+      "ivaCondition": {
+        "label": "Condición frente al IVA",
+        "placeholder": "Seleccioná una condición",
+        "hint": "Decide el tipo de factura: un responsable inscripto emite A o B; el resto, C.",
+        "required": "Elegí la condición frente al IVA del corralón."
+      },
+      "pricesIncludeVat": {
+        "label": "Los precios del catálogo incluyen IVA",
+        "hintOn": "Los precios ya incluyen el IVA. Por ejemplo, un ítem de {gross} se factura como {net} + {vat} de IVA.",
+        "hintOff": "El IVA se suma al facturar. Por ejemplo, un ítem de {net} se factura como {net} + {vat} de IVA = {gross}."
+      },
+      "invoiceOnPayment": {
+        "label": "Facturar al marcar cobrado",
+        "hint": "Al marcar una venta como cobrada, «Facturar también» aparece tildado. Igual se confirma cada factura."
+      },
+      "profile": {
+        "address": "Domicilio fiscal",
+        "addressPlaceholder": "Ingresá el domicilio fiscal",
+        "addressRequired": "Ingresá el domicilio fiscal.",
+        "grossIncome": "Ingresos Brutos",
+        "grossIncomeKinds": {
+          "number": "Número de inscripción",
+          "exempt": "Exento"
+        },
+        "grossIncomeNumberHint": "El número que figura en tu constancia de inscripción.",
+        "sameAsCuit": "¿Es el mismo que tu CUIT?",
+        "grossIncomeExemptHint": "Las facturas van a decir «Ingresos Brutos: Exento».",
+        "grossIncomeNumber": "Número de inscripción",
+        "grossIncomeNumberPlaceholder": "Ingresá el número de inscripción",
+        "grossIncomeNumberRequired": "Ingresá el número de inscripción en Ingresos Brutos.",
+        "grossIncomeNumberInvalid": "Revisá el número: solo dígitos y guiones, entre {min} y {max} dígitos.",
+        "useCuit": "Usar mi CUIT",
+        "activityStartedOn": "Inicio de actividades",
+        "activityStartedOnRequired": "Ingresá la fecha de inicio de actividades.",
+        "activityStartedOnInvalid": "Ingresá una fecha válida."
+      },
+      "pointsOfSale": {
+        "title": "Puntos de venta",
+        "hint": "Cada sucursal factura con su propio punto de venta, el número que das de alta en ARCA. Dejalo vacío si la sucursal todavía no factura.",
+        "caption": "Punto de venta de cada sucursal",
+        "branch": "Sucursal",
+        "number": "Punto de venta",
+        "closed": "Cerrada",
+        "inputLabel": "Punto de venta de {branch}",
+        "placeholder": "Ingresá el número",
+        "save": "Guardar puntos de venta",
+        "saved": "Guardamos los puntos de venta de las sucursales.",
+        "unchanged": "No cambiaste ningún punto de venta."
+      },
+      "pointOfSale": {
+        "range": "Tiene que estar entre {min} y {max}.",
+        "duplicate": "Otra sucursal ya usa este punto de venta."
+      },
+      "submit": "Guardar cambios",
+      "submitting": "Guardando…",
+      "saved": "Guardamos {changes}.",
+      "savedUnchanged": "Guardamos la configuración de facturación.",
+      "changes": {
+        "ivaCondition": "la condición frente al IVA",
+        "pricesIncludeVat": "si los precios incluyen IVA",
+        "invoiceOnPayment": "si se factura al marcar cobrado",
+        "pointOfSale": "el punto de venta de {branches}",
+        "pointsOfSale": "los puntos de venta de {count} sucursales",
+        "profile": "los datos del emisor"
+      },
+      "errors": {
+        "INVALID_INPUT": "Revisá los datos: algún valor no es válido.",
+        "POINT_OF_SALE_TAKEN": "Dos sucursales no pueden compartir el mismo punto de venta."
+      },
+      "switch": {
+        "label": "Facturación electrónica",
+        "description": "Emití facturas electrónicas de ARCA desde Coti para las ventas aceptadas.",
+        "enabled": "Activamos la facturación electrónica. Conectá el CUIT con ARCA para empezar a facturar.",
+        "enabledConnected": "Activamos la facturación electrónica con la conexión de ARCA que ya tenías.",
+        "disabled": "Desactivamos la facturación electrónica.",
+        "disabledWithInvoices": "Desactivamos la facturación electrónica. Las facturas emitidas siguen en Comprobantes.",
+        "confirm": {
+          "title": "Desactivar la facturación electrónica",
+          "description": "Se ocultan la factura de los pedidos aceptados, los datos fiscales de los clientes y la conexión con ARCA. Las facturas emitidas se siguen consultando en Comprobantes, y la conexión queda guardada por si la volvés a activar.",
+          "action": "Desactivar",
+          "pending": "Desactivando…",
+          "cancel": "Cancelar"
+        },
+        "errors": {
+          "INVOICE_PENDING": "Hay facturas esperando la respuesta de ARCA. Revisalas en Comprobantes y volvé a intentar cuando respondan."
+        }
+      }
+    },
+    "card": {
+      "title": "Factura",
+      "loading": "Cargando la factura…",
+      "issuedTitle": "Factura {type} {number}",
+      "draftTitle": "Factura {type}",
+      "draftHint": "Así va a salir con los datos de hoy.",
+      "issuedOn": "Fecha",
+      "cae": "CAE",
+      "caeCopy": "Copiar CAE",
+      "caeCopied": "CAE copiado",
+      "caeCopyFailed": "No pudimos copiar el CAE. Seleccionalo y copialo a mano.",
+      "caeExpires": "Vencimiento del CAE",
+      "verify": "Verificar en ARCA",
+      "receiver": "Receptor",
+      "condition": "Condición frente al IVA",
+      "finalConsumer": "Consumidor final",
+      "documentLabel": "Documento",
+      "document": "{type} {number}",
+      "amounts": {
+        "caption": "Importes de la factura",
+        "concept": "Concepto",
+        "amount": "Importe",
+        "net": "Neto gravado",
+        "exempt": "Exento",
+        "total": "Total"
+      },
+      "issue": "Emitir factura {type}",
+      "issuing": "Emitiendo…",
+      "issued": "Emitimos la factura {type} {number}.",
+      "confirm": {
+        "title": "Emitir la factura {type}",
+        "description": "Le vamos a pedir a ARCA la factura {type} a {receiver} por {total}. Una vez emitida no se puede modificar: si hay un error, se anula con una nota de crédito.",
+        "confirm": "Emitir factura",
+        "confirming": "Emitiendo…",
+        "cancel": "Cancelar",
+        "titlePending": "Emitir la factura",
+        "unavailable": "No pudimos leer la factura. Abrí el pedido para emitirla desde su tarjeta.",
+        "alreadyIssued": "Esta venta ya tiene una factura emitida o esperando la respuesta de ARCA.",
+        "blocked": "Todavía no se puede facturar: {reasons}. Abrí el pedido para resolverlo desde la tarjeta de la factura."
+      },
+      "rejected": {
+        "title": "ARCA rechazó el último intento",
+        "retry": "Corregí lo que indica y volvé a emitirla."
+      },
+      "pending": {
+        "title": "La factura se está emitiendo",
+        "body": "ARCA todavía no confirmó el último pedido. Actualizá la página en unos minutos; si sigue igual, volvé a emitirla: no se va a duplicar."
+      },
+      "issues": {
+        "QUOTE_NOT_ACCEPTED": {
+          "title": "La venta no está aceptada",
+          "body": "Solo se factura una cotización que el cliente aceptó."
+        },
+        "QUOTE_EMPTY": {
+          "title": "La cotización no tiene importe",
+          "body": "Una factura necesita al menos un ítem con precio."
+        },
+        "QUOTE_CURRENCY": {
+          "title": "La cotización no está en pesos",
+          "body": "Coti solo emite facturas en pesos."
+        },
+        "RECEIVER_CUIT_REQUIRED": {
+          "title": "Falta el CUIT del cliente",
+          "body": "El cliente carga su CUIT al crear su cuenta. Enviale el link de registro para emitir este tipo de factura."
+        },
+        "RECEIVER_ID_REQUIRED": {
+          "title": "Falta el documento del cliente",
+          "body": "Por el monto, ARCA pide identificar al cliente. Cargá su DNI en su ficha o enviale el link de registro para que cargue su CUIT."
+        },
+        "QUOTE_TOTAL_MISMATCH": {
+          "title": "Los descuentos superan algún ítem",
+          "body": "Los ítems con sus descuentos no suman el total de la cotización. Revisá los descuentos antes de facturar."
+        },
+        "ISSUER_PROFILE_REQUIRED": {
+          "title": "Completá los datos del emisor",
+          "body": "Cargá el domicilio fiscal, ingresos brutos e inicio de actividades en Configuración → Facturación."
+        },
+        "RECEIVER_ADDRESS_REQUIRED": {
+          "title": "Completá los datos fiscales del cliente",
+          "body": "Completá su nombre o razón social y su domicilio fiscal en la ficha del cliente."
+        }
+      },
+      "noClient": "Asociá un cliente a la venta para cargar sus datos fiscales.",
+      "signup": {
+        "action": "Enviar link de registro",
+        "title": "Link de registro",
+        "description": "Compartile este link al cliente para que cree su cuenta y cargue su CUIT.",
+        "linkLabel": "Link de registro",
+        "copy": "Copiar link",
+        "copied": "Link copiado",
+        "copyFailed": "No pudimos copiar el link. Seleccionalo y copialo a mano.",
+        "close": "Cerrar",
+        "noSite": "El corralón todavía no tiene su sitio de clientes, así que no hay link de registro para enviar. Pedile al equipo de Coti que lo configure."
+      },
+      "errors": {
+        "NOT_CONFIGURED": "La facturación todavía no está configurada en este servidor.",
+        "INVOICE_STALE": "La venta cambió desde que la revisaste. Mirá la factura actualizada y volvé a emitirla.",
+        "ARCA_CREDENTIALS": "No pudimos usar el certificado de ARCA del corralón. Pedile a un administrador que lo vuelva a cargar."
+      },
+      "download": "Descargar factura",
+      "recover": "Consultar autorización",
+      "issuer": {
+        "cuit": "CUIT emisor de ARCA",
+        "pointOfSale": "Punto de venta",
+        "account": "Conexión con ARCA",
+        "branch": "Puntos de venta"
+      },
+      "editClient": "Editar cliente",
+      "receiverAddress": "Domicilio fiscal",
+      "testNote": "Comprobante de prueba: no tiene validez fiscal.",
+      "otherInvoice": {
+        "title": "Factura {type} {number}",
+        "HOMOLOGATION": {
+          "body": "Es una factura de prueba, emitida el {date}: no tiene validez fiscal. La factura real de esta venta se emite abajo."
+        },
+        "PRODUCTION": {
+          "body": "Es la factura real de esta venta, emitida el {date}. Lo que emitas en este servidor es de prueba."
+        },
+        "download": "Descargar factura"
+      },
+      "creditNote": {
+        "issue": "Emitir nota de crédito",
+        "issuing": "Emitiendo…",
+        "issued": "Emitimos la nota de crédito {type} {number}: la factura {type} {invoice} quedó anulada.",
+        "confirm": {
+          "title": "Anular la factura {type}",
+          "description": "Le vamos a pedir a ARCA una nota de crédito {type} por {total} que anula la factura {type} {number} de {receiver}. No se puede deshacer: la venta deja de estar facturada y podés reactivarla o volver a facturarla.",
+          "confirm": "Emitir nota de crédito",
+          "confirming": "Emitiendo…",
+          "cancel": "Cancelar"
+        },
+        "pending": {
+          "title": "La nota de crédito se está emitiendo",
+          "body": "ARCA todavía no confirmó el último pedido. Consultá la autorización en unos minutos: no se va a duplicar."
+        },
+        "rejected": {
+          "title": "ARCA rechazó la nota de crédito",
+          "retry": "Corregí lo que indica y volvé a emitirla."
+        },
+        "errors": {
+          "INVOICE_NOT_READY": "Falta la conexión con ARCA del CUIT y el entorno de esta factura para emitir la nota de crédito.",
+          "INVOICE_REJECTED": "ARCA rechazó la nota de crédito. Revisá los motivos que informó.",
+          "INVOICING_UNAVAILABLE": "ARCA no respondió y no se emitió ninguna nota de crédito. Probá de nuevo en unos minutos.",
+          "ARCA_ENVIRONMENT_MISMATCH": "La conexión con ARCA es de otro entorno que esta factura, así que no puede anularla."
+        }
+      },
+      "credited": {
+        "title": "Factura {type} {number} anulada por nota de crédito {noteType} {noteNumber}",
+        "body": "La venta ya no está facturada: podés reactivar la cotización para cambiarla o volver a facturarla.",
+        "downloadNote": "Descargar nota de crédito",
+        "downloadInvoice": "Descargar factura anulada",
+        "verify": "Verificar la nota de crédito en ARCA"
+      },
+      "waiver": {
+        "action": "No requiere factura",
+        "pending": "Guardando…",
+        "title": "No requiere factura",
+        "body": "Marcado por {name} el {date}. La venta ya no espera su factura.",
+        "undo": "Deshacer",
+        "undoing": "Deshaciendo…",
+        "waived": "El pedido {reference} ya no espera factura.",
+        "restored": "El pedido {reference} vuelve a esperar su factura."
+      }
+    },
+    "history": {
+      "title": "Comprobantes",
+      "description": "Las facturas y notas de crédito emitidas en ARCA por esta sucursal. Para emitir una factura, abrí un pedido aceptado.",
+      "empty": "Todavía no hay comprobantes en esta sucursal.",
+      "orders": "Ir a pedidos",
+      "settings": "Datos fiscales",
+      "date": "Fecha",
+      "number": "Comprobante",
+      "receiver": "Cliente",
+      "amount": "Total",
+      "status": "Estado",
+      "actions": "Acciones",
+      "cae": "CAE",
+      "statuses": {
+        "PENDING": "Pendiente",
+        "ISSUED": "Autorizada",
+        "REJECTED": "Rechazada",
+        "CREDITED": "Anulada"
+      },
+      "recover": "Consultar estado",
+      "download": "Descargar PDF",
+      "recovered": "El estado del comprobante fue actualizado.",
+      "finalConsumer": "Consumidor final",
+      "recovering": "Consultando…",
+      "descriptionAll": "Las facturas y notas de crédito emitidas en ARCA por las sucursales del corralón. Para emitir una factura, abrí un pedido aceptado.",
+      "emptyAll": "Todavía no hay comprobantes en ninguna sucursal.",
+      "branch": "Sucursal",
+      "creditNoteType": "NC {type}",
+      "credits": "Anula {type} {number}"
+    },
+    "views": {
+      "label": "Vista de administración",
+      "history": "Comprobantes",
+      "pending": "Por facturar"
+    },
+    "pending": {
+      "title": "Por facturar",
+      "description": "Las ventas aceptadas de esta sucursal que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "descriptionAll": "Las ventas aceptadas de las sucursales del corralón que todavía esperan su factura. Primero las cobradas, después las que esperan hace más tiempo.",
+      "empty": "No hay ventas esperando factura en esta sucursal.",
+      "emptyAll": "No hay ventas esperando factura en ninguna sucursal.",
+      "order": "Pedido",
+      "client": "Cliente",
+      "noClient": "Sin cliente",
+      "branch": "Sucursal",
+      "accepted": "Aceptada",
+      "total": "Total",
+      "payment": "Cobro",
+      "paid": "Cobrada",
+      "unpaid": "Sin cobrar",
+      "actions": "Acciones"
+    },
+    "testBadge": "Prueba"
   }
 }

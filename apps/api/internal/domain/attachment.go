@@ -18,6 +18,7 @@ const (
 	AttachmentTypeSpreadsheet AttachmentType = "SPREADSHEET"
 	AttachmentTypeAudio       AttachmentType = "AUDIO"
 	AttachmentTypeText        AttachmentType = "TEXT"
+	AttachmentTypeOther       AttachmentType = "OTHER"
 )
 
 // AttachmentProcessingStatus is how far the multi-format engine has got with one attachment.
@@ -92,6 +93,7 @@ type RFQAttachment struct {
 	ProcessingStatus AttachmentProcessingStatus
 	CreatedAt        time.Time
 	ProcessedAt      *time.Time
+	OriginalFilename *string
 }
 
 // ClaimedAttachment is one attachment the sweep has taken for processing. It carries the branch
@@ -129,10 +131,21 @@ const (
 
 // NewRFQAttachment is the input for recording a stored file against an RFQ.
 type NewRFQAttachment struct {
-	ID         uuid.UUID
-	RFQID      uuid.UUID
-	Type       AttachmentType
-	StorageKey string
+	ID               uuid.UUID
+	RFQID            uuid.UUID
+	Type             AttachmentType
+	StorageKey       string
+	OriginalFilename *string
+}
+
+// NewRetainedAttachment is one original file retained during an inbound message transaction.
+type NewRetainedAttachment struct {
+	ID               uuid.UUID                  `json:"id"`
+	Type             AttachmentType             `json:"type"`
+	StorageKey       string                     `json:"storage_key"`
+	OriginalFilename *string                    `json:"original_filename"`
+	Status           AttachmentProcessingStatus `json:"status"`
+	ExtractedText    *string                    `json:"extracted_text"`
 }
 
 // AttachmentUpload is one file offered for an RFQ. Size is what the transport reported, so it

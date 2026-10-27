@@ -1,17 +1,12 @@
 # Client profiles
 
-Coti turns accepted quotes into a lightweight commercial history without silently creating or
-merging customer records. Once a quote is accepted, the order detail shows a **Sale client** card.
-The seller confirms an existing profile suggested by an exact phone or email match, searches the
-account directory for another existing profile, or creates a new profile from the delivery contact
-details. A manual selection associates the sale without overwriting the profile's saved contacts.
-An archived accepted quote must be unarchived before this association can be read or changed.
+The seller selects an existing client or creates a profile when sending a quotation. Coti suggests
+exact CUIT/CUIL matches and prefills new-profile data from the original web request. The seller
+confirms the selection with the same action that publishes and sends the quotation.
 
-The same confirmation can assign reusable tags to the client. Every account starts with
-`Recurrente` and `Obra grande`, and sellers can create additional tags while associating a sale or
-editing a profile. Tag names are reusable across the account and duplicates that differ only by
-case or repeated spaces resolve to the same tag.
+The quotation and its source request receive the same client association when the quotation becomes
+Sent. The customer can then see the quotation in their authenticated history before accepting it.
+Acceptance records the sale; it does not introduce another client-association step.
 
-The **Clients** screen lists profiles, their tags, accepted-sale count, and most recent accepted
-sale. Opening a profile shows its contact details, editable tags, and the accepted quotes visible
-to the current seller. Suggestions never modify a profile until the seller confirms the action.
+Profiles and reusable tags belong to the supplier. Accepted-sale history retains its existing branch
+and seller visibility rules. Suggestions do not merge profiles or overwrite existing contact fields.

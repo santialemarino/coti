@@ -4,6 +4,7 @@ import { Callout, Card, CardContent, CardHeader } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { ProductManager } from '@/app/(protected)/settings/catalog/_components/product-manager';
 import { CatalogImport } from '@/components/catalog-import';
+import { getAccount } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { getProducts, getProductTaxonomy } from '@/lib/api/products';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
@@ -28,10 +29,11 @@ export default async function CatalogSettingsPage({
   const rawPage = Array.isArray(params.page) ? params.page[0] : params.page;
   const query = (rawQuery?.trim() ?? '').slice(0, TEXT_FIELD_MAX_LENGTH);
   const page = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1);
-  const [branches, products, families] = await Promise.all([
+  const [branches, products, families, account] = await Promise.all([
     getBranches(),
     getProducts({ search: query, limit: 20, offset: (page - 1) * 20 }),
     getProductTaxonomy(),
+    getAccount(),
   ]);
   const activeBranchId = await getEffectiveBranchId(branches);
   const branch = branches.find((candidate) => candidate.id === activeBranchId);
@@ -43,6 +45,7 @@ export default async function CatalogSettingsPage({
         page={products}
         families={families}
         query={query}
+        invoicingEnabled={account.invoicingEnabled}
         bulkEditTargetId={branch ? BULK_EDIT_ID : undefined}
       />
       {branch ? (

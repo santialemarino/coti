@@ -15,9 +15,17 @@ type Account struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
-	IsActive     bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// PreferredLowerPriceStrategy is what a «bajame el precio» tries first when the customer did not say.
+	PreferredLowerPriceStrategy HandlerStrategy
+	// InvoicingEnabled is whether the corralón invoices with Coti; off refuses issuing anything.
+	InvoicingEnabled bool
+	// HasInvoices is whether ARCA ever authorized a voucher here, which keeps the history reachable when off.
+	HasInvoices bool
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool
+	IsActive         bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client
@@ -28,6 +36,10 @@ type AccountUpdate struct {
 	TaxID        *string
 	BrandLogoURL *string
 	BrandColor   *string
+	// PreferredLowerPriceStrategy nil keeps the stored one.
+	PreferredLowerPriceStrategy *HandlerStrategy
+	// DisconnectARCA confirms that a new CUIT may remove the ARCA connection made with the old one.
+	DisconnectARCA bool
 }
 
 // AccountLogo is one account logo stored under a public, unguessable identifier.

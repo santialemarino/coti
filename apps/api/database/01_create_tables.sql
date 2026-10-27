@@ -1,3 +1,10 @@
+CREATE TYPE iva_condition AS ENUM ('REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER');
+CREATE TYPE vat_rate AS ENUM ('VAT_0', 'VAT_2_5', 'VAT_5', 'VAT_10_5', 'VAT_21', 'VAT_27', 'EXEMPT');
+CREATE TYPE invoice_type AS ENUM ('A', 'B', 'C');
+CREATE TYPE invoice_status AS ENUM ('PENDING', 'ISSUED', 'REJECTED');
+CREATE TYPE receiver_doc_type AS ENUM ('CUIT', 'DNI', 'NONE');
+CREATE TYPE arca_environment AS ENUM ('HOMOLOGATION', 'PRODUCTION');
+CREATE TYPE voucher_kind AS ENUM ('INVOICE', 'CREDIT_NOTE');
 -- Coti — consolidated reference schema.
 --
 -- This file is READ, never applied: the executable source is the goose chain in
@@ -69,7 +76,7 @@ CREATE TYPE discount_origin AS ENUM ('AUTOMATIC', 'AI_ADAPTATION', 'MANUAL_SELLE
 -- where the client came from — and is its own type for that reason.
 CREATE TYPE channel_type AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'MANUAL_ENTRY');
 CREATE TYPE client_origin AS ENUM ('WHATSAPP', 'EMAIL', 'WEBAPP', 'PHONE', 'WALK_IN');
-CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT');
+CREATE TYPE attachment_type AS ENUM ('IMAGE', 'PDF', 'SPREADSHEET', 'AUDIO', 'TEXT', 'OTHER');
 CREATE TYPE attachment_processing_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 
 CREATE TYPE send_format AS ENUM ('WEBAPP_LINK', 'PDF', 'MESSAGE');
@@ -86,6 +93,9 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'IN
 -- Conversational engine. The seller and the system are context, not a trigger.
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
+CREATE TYPE message_batch_failure_reason AS ENUM ('UNPROCESSABLE', 'ATTEMPTS_EXHAUSTED');
+-- Which recipe a «bajame el precio» runs first when the customer did not say.
+CREATE TYPE lower_price_strategy AS ENUM ('FIND_CHEAPER_ALTERNATIVES', 'ADAPT_TO_REACH_DISCOUNT');
 
 -- What an AI provider call was paid for. One value per call site that spends, so a cost report
 -- groups by the work, not by the provider method.
@@ -96,7 +106,8 @@ CREATE TYPE ai_operation AS ENUM (
   'CATALOG_SEARCH',
   'CATALOG_MATCH_REVIEW',
   'CATALOG_EMBEDDING',
-  'CORRECTION_LEARNING'
+  'CORRECTION_LEARNING',
+  'CHANGE_REQUEST_HANDLING'
 );
 
 -- =============================================================================
@@ -122,6 +133,8 @@ CREATE OR REPLACE FUNCTION app_current_account_id() RETURNS UUID
 -- =============================================================================
 
 CREATE TABLE account (
+  public_hostname VARCHAR(253) CONSTRAINT uq_account_public_hostname UNIQUE
+    CONSTRAINT ck_account_public_hostname CHECK (public_hostname = lower(public_hostname) AND public_hostname ~ '^[a-z0-9][a-z0-9.-]*[a-z0-9]$'),
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            VARCHAR(255) NOT NULL,
   legal_name      VARCHAR(255),
@@ -130,7 +143,15 @@ CREATE TABLE account (
   brand_color     VARCHAR(32),
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  iva_condition iva_condition,
+  prices_include_vat BOOLEAN NOT NULL DEFAULT TRUE,
+  invoice_profile JSONB NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(invoice_profile) = 'object'),
+  preferred_lower_price_strategy lower_price_strategy NOT NULL DEFAULT 'FIND_CHEAPER_ALTERNATIVES',
+  -- Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
+  invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Whether «Marcar cobrado» starts with «Facturar también» ticked.
+  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE account_onboarding (
@@ -158,6 +179,8 @@ CREATE TABLE onboarding_step_progress (
 );
 
 CREATE TABLE branch (
+  point_of_sale INTEGER CHECK (point_of_sale BETWEEN 1 AND 99998),
+  CONSTRAINT uq_branch_point_of_sale UNIQUE (account_id, point_of_sale),
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id          UUID NOT NULL,
   name                VARCHAR(255) NOT NULL,
@@ -185,7 +208,8 @@ CREATE TABLE app_user (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   email_verified_at TIMESTAMPTZ,
-  CONSTRAINT uq_app_user_email UNIQUE (account_id, email)
+  CONSTRAINT uq_app_user_email UNIQUE (account_id, email),
+  CONSTRAINT uq_app_user_account_id UNIQUE (account_id, id)
 );
 
 CREATE TABLE user_branch (
@@ -273,7 +297,8 @@ CREATE TABLE product (
   search_document TSVECTOR
     GENERATED ALWAYS AS (
       to_tsvector('spanish_unaccent'::regconfig, canonical_name || ' ' || coalesce(description, ''))
-    ) STORED
+    ) STORED,
+  vat_rate vat_rate NOT NULL DEFAULT 'VAT_21'
 );
 
 CREATE TABLE branch_product (
@@ -379,7 +404,14 @@ CREATE TABLE client (
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT uq_client_account UNIQUE (account_id, id)
+  CONSTRAINT uq_client_account UNIQUE (account_id, id),
+  legal_name VARCHAR(255),
+  -- CUIT or CUIL, only from the customer's own account.
+  tax_id VARCHAR(11) CONSTRAINT ck_client_tax_id CHECK (tax_id ~ '^[0-9]{11}$'),
+  iva_condition iva_condition,
+  fiscal_address VARCHAR(255),
+  -- A consumidor final's DNI, loaded by the seller; not unique.
+  dni VARCHAR(8) CONSTRAINT ck_client_dni CHECK (dni ~ '^[0-9]{7,8}$')
 );
 
 CREATE TABLE tag (
@@ -420,6 +452,52 @@ CREATE TABLE channel (
   CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
 );
 
+-- One provider event reserves either the RFQ it starts or the quote_message that continues a sent
+-- quote's conversation, before anything else runs. The external identifier is unique per channel,
+-- so a retried webhook resumes the same outcome rather than creating another.
+CREATE TABLE inbound_channel_message (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id           UUID NOT NULL,
+  branch_id            UUID NOT NULL,
+  channel_id           UUID NOT NULL,
+  rfq_id               UUID,
+  quote_message_id     UUID,
+  external_message_id  VARCHAR(255) NOT NULL,
+  sender_id            VARCHAR(255) NOT NULL,
+  sender_label         VARCHAR(255),
+  body                 TEXT NOT NULL,
+  payload              JSONB NOT NULL,
+  provider_received_at TIMESTAMPTZ NOT NULL,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id),
+  CONSTRAINT ck_inbound_channel_message_target
+    CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
+);
+
+CREATE TABLE gmail_mailbox (
+  channel_id               UUID PRIMARY KEY REFERENCES channel(id),
+  account_id               UUID NOT NULL REFERENCES account(id),
+  branch_id                UUID NOT NULL REFERENCES branch(id),
+  email_address            TEXT NOT NULL,
+  refresh_token_ciphertext TEXT NOT NULL,
+  history_id               TEXT NOT NULL,
+  connected_at             TIMESTAMPTZ NOT NULL,
+  initial_sync_pending     BOOLEAN NOT NULL DEFAULT TRUE,
+  last_synced_at           TIMESTAMPTZ,
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE gmail_authorization_state (
+  state_hash          BYTEA PRIMARY KEY,
+  account_id          UUID NOT NULL REFERENCES account(id),
+  branch_id           UUID NOT NULL REFERENCES branch(id),
+  channel_id          UUID NOT NULL REFERENCES channel(id),
+  user_id             UUID NOT NULL REFERENCES app_user(id),
+  session_epoch       INTEGER NOT NULL,
+  verifier_ciphertext TEXT NOT NULL,
+  expires_at          TIMESTAMPTZ NOT NULL
+);
+
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
 -- not a third entity.
 CREATE TABLE rfq (
@@ -454,7 +532,8 @@ CREATE TABLE rfq_attachment (
   processing_status     attachment_processing_status NOT NULL DEFAULT 'PENDING',
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   processing_started_at TIMESTAMPTZ,
-  processed_at          TIMESTAMPTZ
+  processed_at          TIMESTAMPTZ,
+  original_filename     TEXT
 );
 
 CREATE TABLE rfq_status_change (
@@ -493,9 +572,18 @@ CREATE TABLE quote (
   followup_flagged_at TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Closing an accepted sale: facts with who and when, never statuses.
+  paid_at                   TIMESTAMPTZ,
+  paid_by_user_id           UUID,
+  invoice_waived_at         TIMESTAMPTZ,
+  invoice_waived_by_user_id UUID,
+  CONSTRAINT ck_quote_paid CHECK ((paid_at IS NULL) = (paid_by_user_id IS NULL)),
+  CONSTRAINT ck_quote_invoice_waived
+    CHECK ((invoice_waived_at IS NULL) = (invoice_waived_by_user_id IS NULL)),
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
   CONSTRAINT uq_quote_account_number UNIQUE (account_id, number),
-  CONSTRAINT ck_quote_number CHECK (number > 0)
+  CONSTRAINT ck_quote_number CHECK (number > 0),
+  CONSTRAINT uq_invoice_quote_tenant UNIQUE (account_id, branch_id, id)
 );
 
 CREATE TABLE quote_number_counter (
@@ -522,7 +610,8 @@ CREATE TABLE quote_version (
   CONSTRAINT ck_quote_version_frozen_at CHECK (
     (is_immutable = TRUE AND frozen_at IS NOT NULL)
     OR (is_immutable = FALSE AND frozen_at IS NULL)
-  )
+  ),
+  CONSTRAINT uq_invoice_version_tenant UNIQUE (account_id, quote_id, id)
 );
 
 CREATE TABLE quote_representation (
@@ -567,7 +656,9 @@ CREATE TABLE quote_item (
   confidence_score      NUMERIC(5,4),
   match_status          item_match_status NOT NULL DEFAULT 'MATCHED',
   quantity_rationale    VARCHAR(512),
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The sent line a draft line was copied from; null for a line added to the draft.
+  source_item_id        UUID
 );
 
 -- The client never chooses among alternatives the seller did not approve.
@@ -723,6 +814,7 @@ CREATE TABLE quote_status_change (
 -- The link is issued per send and channel, not stored on quote. public_token is the
 -- webapp's only lookup key, so it is unique.
 CREATE TABLE quote_send (
+  client_association_hash VARCHAR(64) NOT NULL DEFAULT '',
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
   version_id      UUID NOT NULL,
@@ -766,17 +858,25 @@ CREATE TABLE client_action (
 -- The window and the queue. closes_at is recomputed on each new message as
 -- min(now + reset, opened_at + cap); a job closes the expired ones. The partial unique
 -- indexes guarantee one open window and one processing batch per quote; CLOSED ones wait
--- FIFO by closed_at.
+-- FIFO by closed_at. A failed attempt returns the batch to CLOSED until attempts reaches the
+-- limit, then FAILED; processing_started_at fences a claim and dates it for reclaiming.
 CREATE TABLE message_batch (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  account_id   UUID NOT NULL,
-  quote_id     UUID NOT NULL,
-  status       message_batch_status NOT NULL DEFAULT 'OPEN',
-  opened_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  closes_at    TIMESTAMPTZ NOT NULL,
-  closed_at    TIMESTAMPTZ,
-  processed_at TIMESTAMPTZ,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id            UUID NOT NULL,
+  quote_id              UUID NOT NULL,
+  status                message_batch_status NOT NULL DEFAULT 'OPEN',
+  opened_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closes_at             TIMESTAMPTZ NOT NULL,
+  closed_at             TIMESTAMPTZ,
+  processed_at          TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  attempts              INTEGER NOT NULL DEFAULT 0,
+  last_error            TEXT,
+  processing_started_at TIMESTAMPTZ,
+  -- Why a FAILED batch failed: only one that ran out of attempts can be retried.
+  failure_reason        message_batch_failure_reason,
+  CONSTRAINT ck_message_batch_attempts CHECK (attempts >= 0),
+  CONSTRAINT ck_message_batch_failure_reason CHECK ((status = 'FAILED') = (failure_reason IS NOT NULL))
 );
 
 -- One message in a quote's conversation. author_type separates the trigger (CLIENT) from
@@ -794,7 +894,11 @@ CREATE TABLE quote_message (
   author_user_id   UUID,
   body             TEXT NOT NULL,
   received_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  -- Other live quotes the same sender could have meant when the message was routed.
+  other_live_quotes INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_quote_message_other_live_quotes CHECK (other_live_quotes >= 0),
+  CONSTRAINT uq_quote_message_account_id UNIQUE (account_id, id)
 );
 
 -- =============================================================================
@@ -818,7 +922,12 @@ CREATE TABLE promotion (
   description    VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  name           VARCHAR(128) NOT NULL
+  name           VARCHAR(128) NOT NULL,
+  -- The net an ON_TOTAL promotion needs before it applies; null = no threshold.
+  min_total      NUMERIC(14,2),
+  CONSTRAINT ck_promotion_min_total CHECK (
+    min_total IS NULL OR (condition_type = 'ON_TOTAL'::promotion_condition_type AND min_total > 0)
+  )
 );
 
 CREATE TABLE promotion_condition_item (
@@ -908,7 +1017,11 @@ CREATE TABLE handler_decision (
   seller_decision   handler_seller_decision,
   state_at_decision quote_status,
   decided_at        TIMESTAMPTZ,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The draft's lines and seller-controlled discounts around the AI's change; what tells the
+  -- seller's own edits apart when the decision is settled.
+  draft_before      JSONB,
+  draft_after       JSONB
 );
 
 CREATE TABLE notification (
@@ -1018,6 +1131,10 @@ ALTER TABLE client_tag ADD CONSTRAINT fk_client_tag_tag FOREIGN KEY (account_id,
 
 ALTER TABLE channel ADD CONSTRAINT fk_channel_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE channel ADD CONSTRAINT fk_channel_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_account FOREIGN KEY (account_id) REFERENCES account(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_quote_message FOREIGN KEY (account_id, quote_message_id) REFERENCES quote_message(account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
@@ -1033,6 +1150,8 @@ ALTER TABLE quote ADD CONSTRAINT fk_quote_branch FOREIGN KEY (branch_id) REFEREN
 ALTER TABLE quote ADD CONSTRAINT fk_quote_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_rfq FOREIGN KEY (rfq_id) REFERENCES rfq(id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_seller FOREIGN KEY (seller_id) REFERENCES app_user(id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_paid_by FOREIGN KEY (account_id, paid_by_user_id) REFERENCES app_user(account_id, id);
+ALTER TABLE quote ADD CONSTRAINT fk_quote_invoice_waived_by FOREIGN KEY (account_id, invoice_waived_by_user_id) REFERENCES app_user(account_id, id);
 ALTER TABLE quote ADD CONSTRAINT fk_quote_current_version FOREIGN KEY (current_version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_number_counter ADD CONSTRAINT fk_quote_number_counter_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_version ADD CONSTRAINT fk_quote_version_account FOREIGN KEY (account_id) REFERENCES account(id);
@@ -1047,6 +1166,7 @@ ALTER TABLE quote_representation ADD CONSTRAINT fk_quote_representation_version 
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_product FOREIGN KEY (product_id) REFERENCES product(id);
+ALTER TABLE quote_item ADD CONSTRAINT fk_quote_item_source FOREIGN KEY (source_item_id) REFERENCES quote_item(id) ON DELETE SET NULL;
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
 ALTER TABLE quote_item_alternative ADD CONSTRAINT fk_qia_product FOREIGN KEY (product_id) REFERENCES product(id);
@@ -1163,6 +1283,9 @@ CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
+CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
+CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
+CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
 CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
@@ -1189,8 +1312,12 @@ CREATE INDEX idx_product_subgroup_family_id ON product_subgroup(family_id);
 CREATE INDEX idx_quote_discount_version ON quote_discount(quote_version_id);
 CREATE INDEX idx_promotion_account ON promotion(account_id) WHERE is_active = TRUE;
 CREATE INDEX idx_quote_message_quote ON quote_message(quote_id, received_at);
+CREATE UNIQUE INDEX uq_quote_message_client_action ON quote_message(client_action_id) WHERE client_action_id IS NOT NULL;
+CREATE INDEX idx_quote_send_channel_destination ON quote_send(channel_id, destination);
 CREATE INDEX idx_message_batch_due ON message_batch(closes_at) WHERE status = 'OPEN';
 CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE status = 'CLOSED';
+CREATE INDEX idx_message_batch_processing_started ON message_batch(processing_started_at) WHERE status = 'PROCESSING';
+CREATE INDEX idx_handler_decision_version ON handler_decision(quote_version_id, created_at);
 
 -- Business invariants expressed in the database, not left to the good will of the code.
 -- uq_channel_branch_type_identifier does not compare NULLs, so without this index a branch
@@ -1198,6 +1325,16 @@ CREATE INDEX idx_message_batch_queue ON message_batch(quote_id, closed_at) WHERE
 -- the rfq pointing at any of them.
 CREATE UNIQUE INDEX uq_channel_branch_type_no_identifier
   ON channel (branch_id, type) WHERE identifier IS NULL;
+-- External ingress arrives before an account is known, so its provider destination must resolve
+-- to exactly one active channel across the deployment. This leaves the per-branch cardinality
+-- unchanged: a branch can still hold many WhatsApp or email channels with distinct destinations.
+CREATE UNIQUE INDEX uq_channel_active_whatsapp_phone_number_id
+  ON channel ((config ->> 'phone_number_id'))
+  WHERE type = 'WHATSAPP' AND is_active = TRUE
+    AND (config ->> 'phone_number_id') IS NOT NULL;
+CREATE UNIQUE INDEX uq_channel_active_email_identifier_global
+  ON channel (lower(identifier))
+  WHERE type = 'EMAIL' AND is_active = TRUE AND identifier IS NOT NULL;
 CREATE UNIQUE INDEX uq_quote_version_draft ON quote_version(quote_id) WHERE is_immutable = FALSE;
 -- One open price period per branch and product. The service also takes a FOR UPDATE on the
 -- parent product row, which is what lets two concurrent repricings both succeed; this index
@@ -1308,7 +1445,8 @@ BEGIN
     'product', 'branch_product', 'product_synonym', 'product_price', 'product_alternative',
     'combo', 'combo_item', 'branch_combo',
     'client', 'tag', 'client_tag',
-    'channel', 'rfq', 'rfq_attachment', 'rfq_status_change',
+    'channel', 'inbound_channel_message', 'gmail_mailbox', 'gmail_authorization_state',
+    'rfq', 'rfq_attachment', 'rfq_status_change',
     'quote', 'quote_number_counter', 'quote_version', 'quote_representation',
     'quote_item', 'quote_item_alternative',
     'quote_ai_generation', 'quote_ai_generation_item',
@@ -1326,3 +1464,194 @@ BEGIN
       t || '_account_isolation', t);
   END LOOP;
 END $$;
+
+
+ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
+CREATE TABLE arca_setup (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL UNIQUE REFERENCES account(id) ON DELETE CASCADE,
+  -- The ARCA deployment the certificate was requested for; a server set to the other cannot use it.
+  environment arca_environment NOT NULL,
+  tax_id VARCHAR(11) NOT NULL,
+  csr TEXT NOT NULL,
+  sealed_key TEXT NOT NULL,
+  certificate TEXT NOT NULL DEFAULT '',
+  sealed_ticket TEXT NOT NULL DEFAULT '',
+  certificate_expires_at TIMESTAMPTZ,
+  UNIQUE (account_id, id)
+);
+
+ALTER TABLE arca_setup ENABLE ROW LEVEL SECURITY;
+ALTER TABLE arca_setup FORCE ROW LEVEL SECURITY;
+CREATE POLICY arca_setup_tenant ON arca_setup
+  USING (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid)
+  WITH CHECK (account_id = NULLIF(current_setting('app.current_account_id', true), '')::uuid);
+
+CREATE TABLE invoice (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id             UUID NOT NULL,
+  branch_id              UUID NOT NULL,
+  quote_id               UUID NOT NULL,
+  quote_version_id       UUID NOT NULL,
+  -- The ARCA deployment that authorizes it; HOMOLOGATION invoices have no fiscal validity.
+  environment            arca_environment NOT NULL,
+  kind                   voucher_kind NOT NULL,
+  -- On a credit note: the invoice it cancels.
+  credited_invoice_id    UUID,
+  -- On an invoice issued after a credit note: the credited invoice it bills the sale again after.
+  replaces_invoice_id    UUID,
+  status                 invoice_status NOT NULL DEFAULT 'PENDING',
+  invoice_type           invoice_type NOT NULL,
+  point_of_sale          INTEGER NOT NULL,
+  number                 BIGINT,
+  -- The number last requested from ARCA, written before the request: how an unknown outcome is checked.
+  claimed_number         BIGINT,
+  issued_on              DATE NOT NULL,
+  cae                    VARCHAR(14),
+  cae_expires_on         DATE,
+  issuer_cuit            VARCHAR(11) NOT NULL,
+  receiver_name          VARCHAR(255) NOT NULL,
+  receiver_doc_type      receiver_doc_type NOT NULL,
+  receiver_doc_number    VARCHAR(11),
+  receiver_iva_condition iva_condition NOT NULL,
+  net_amount             NUMERIC(14,2) NOT NULL,
+  exempt_amount          NUMERIC(14,2) NOT NULL,
+  vat_amount             NUMERIC(14,2) NOT NULL,
+  total                  NUMERIC(14,2) NOT NULL,
+  currency               CHAR(3) NOT NULL,
+  snapshot               JSONB NOT NULL DEFAULT '{}',
+  issuer_profile         JSONB NOT NULL DEFAULT '{}',
+  issuer_iva_condition   iva_condition NOT NULL DEFAULT 'REGISTERED',
+  -- [{rate, base, amount}] as decimal strings, as authorized.
+  vat_breakdown          JSONB NOT NULL DEFAULT '[]',
+  issues                 JSONB NOT NULL DEFAULT '[]',
+  arca_request           TEXT,
+  arca_response          TEXT,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT fk_invoice_account FOREIGN KEY (account_id) REFERENCES account(id),
+  CONSTRAINT fk_invoice_branch FOREIGN KEY (account_id, branch_id) REFERENCES branch(account_id, id),
+  CONSTRAINT fk_invoice_quote FOREIGN KEY (account_id, branch_id, quote_id) REFERENCES quote(account_id, branch_id, id),
+  CONSTRAINT fk_invoice_quote_version FOREIGN KEY (account_id, quote_id, quote_version_id) REFERENCES quote_version(account_id, quote_id, id),
+  CONSTRAINT chk_invoice_amounts CHECK (net_amount >= 0 AND exempt_amount >= 0 AND vat_amount >= 0 AND total > 0 AND total = net_amount + exempt_amount + vat_amount),
+  CONSTRAINT chk_invoice_identifiers CHECK (point_of_sale BETWEEN 1 AND 99999 AND issuer_cuit ~ '^[0-9]{11}$' AND (number IS NULL OR number > 0) AND (claimed_number IS NULL OR claimed_number > 0) AND (cae IS NULL OR cae ~ '^[0-9]{14}$')),
+  CONSTRAINT chk_invoice_issued CHECK (
+    status <> 'ISSUED' OR (number IS NOT NULL AND cae IS NOT NULL AND cae_expires_on IS NOT NULL)
+  ),
+  CONSTRAINT uq_invoice_link_tenant UNIQUE (account_id, quote_id, environment, id),
+  CONSTRAINT fk_invoice_credited FOREIGN KEY (account_id, quote_id, environment, credited_invoice_id)
+    REFERENCES invoice(account_id, quote_id, environment, id),
+  CONSTRAINT fk_invoice_replaces FOREIGN KEY (account_id, quote_id, environment, replaces_invoice_id)
+    REFERENCES invoice(account_id, quote_id, environment, id),
+  CONSTRAINT chk_invoice_links CHECK (
+    (kind = 'CREDIT_NOTE' AND credited_invoice_id IS NOT NULL AND replaces_invoice_id IS NULL)
+    OR (kind = 'INVOICE' AND credited_invoice_id IS NULL)
+  )
+);
+
+-- One live invoice per sale and environment: each new one names the credited invoice it follows.
+CREATE UNIQUE INDEX uq_invoice_active_quote ON invoice(quote_id, environment, replaces_invoice_id) NULLS NOT DISTINCT
+  WHERE kind = 'INVOICE' AND status <> 'REJECTED';
+-- One credit note per invoice: a pending one holds it, an issued one cancels it for good.
+CREATE UNIQUE INDEX uq_invoice_credit_note ON invoice(credited_invoice_id, environment)
+  WHERE kind = 'CREDIT_NOTE' AND status <> 'REJECTED';
+CREATE UNIQUE INDEX uq_invoice_number ON invoice(account_id, environment, issuer_cuit, point_of_sale, kind, invoice_type, number)
+  WHERE number IS NOT NULL;
+CREATE UNIQUE INDEX uq_invoice_pending_series ON invoice(account_id, environment, issuer_cuit, point_of_sale, kind, invoice_type)
+  WHERE status = 'PENDING';
+ALTER TABLE invoice FORCE ROW LEVEL SECURITY;
+CREATE INDEX idx_invoice_account_quote ON invoice(account_id, quote_id);
+
+CREATE TRIGGER trg_invoice_updated BEFORE UPDATE ON invoice
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+ALTER TABLE invoice ENABLE ROW LEVEL SECURITY;
+CREATE POLICY invoice_account_isolation ON invoice
+  USING (account_id = app_current_account_id())
+  WITH CHECK (account_id = app_current_account_id());
+
+-- An authorized invoice is a fiscal record: it is corrected with a credit note, never deleted.
+GRANT SELECT, INSERT, UPDATE ON invoice TO coti_app;
+REVOKE DELETE ON invoice FROM coti_app;
+
+
+CREATE FUNCTION protect_issued_invoice() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status = 'ISSUED' THEN RAISE EXCEPTION 'Authorized invoices are immutable'; END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_invoice_immutable BEFORE UPDATE ON invoice FOR EACH ROW EXECUTE FUNCTION protect_issued_invoice();
+
+CREATE FUNCTION check_invoice_links() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.credited_invoice_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE id = NEW.credited_invoice_id AND kind = 'INVOICE' AND status = 'ISSUED'
+  ) THEN
+    RAISE EXCEPTION 'A credit note cancels an issued invoice';
+  END IF;
+  IF NEW.replaces_invoice_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM invoice WHERE credited_invoice_id = NEW.replaces_invoice_id AND kind = 'CREDIT_NOTE' AND status = 'ISSUED'
+  ) THEN
+    RAISE EXCEPTION 'An invoice replaces only an invoice an issued credit note cancelled';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER trg_invoice_links BEFORE INSERT OR UPDATE OF kind, credited_invoice_id, replaces_invoice_id ON invoice
+  FOR EACH ROW EXECUTE FUNCTION check_invoice_links();
+
+CREATE TABLE customer_identity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES account(id),
+  tax_id VARCHAR(11) NOT NULL CHECK (tax_id ~ '^[0-9]{11}$'),
+  password_hash TEXT,
+  google_subject VARCHAR(255),
+  recovery_email VARCHAR(255),
+  recovery_email_verified_at TIMESTAMPTZ,
+  name VARCHAR(255),
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  disabled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_customer_identity_scope UNIQUE (account_id, id),
+  CONSTRAINT ck_customer_identity_credential CHECK (password_hash IS NOT NULL OR google_subject IS NOT NULL)
+);
+CREATE UNIQUE INDEX uq_customer_identity_active_tax_id ON customer_identity(account_id, tax_id)
+  WHERE disabled_at IS NULL;
+
+CREATE TABLE customer_session (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES account(id),
+  customer_id UUID NOT NULL,
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (account_id, customer_id) REFERENCES customer_identity(account_id, id)
+);
+CREATE INDEX idx_customer_session_subject ON customer_session(account_id, customer_id);
+
+ALTER TABLE customer_identity ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_identity_account_isolation ON customer_identity
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
+ALTER TABLE customer_session ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_session_account_isolation ON customer_session
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
+CREATE UNIQUE INDEX uq_customer_google_subject ON customer_identity(account_id,google_subject) WHERE disabled_at IS NULL AND google_subject IS NOT NULL;
+CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP','VERIFY_EMAIL','RESET_PASSWORD');
+CREATE TABLE customer_auth_challenge (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ customer_id UUID,
+ purpose customer_auth_purpose NOT NULL,
+ token_hash VARCHAR(64) NOT NULL UNIQUE,
+ payload JSONB NOT NULL DEFAULT '{}',
+ expires_at TIMESTAMPTZ NOT NULL,
+ consumed_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,customer_id) REFERENCES customer_identity(account_id,id)
+);
+CREATE INDEX idx_customer_challenge_subject ON customer_auth_challenge(account_id,customer_id,purpose);
+ALTER TABLE customer_auth_challenge ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_auth_challenge_account_isolation ON customer_auth_challenge USING (account_id=app_current_account_id()) WITH CHECK (account_id=app_current_account_id());

@@ -29,8 +29,8 @@ its own transaction so the caller gets a precise `409` instead of a bare constra
 
 ## Every branch opens with its channels
 
-Both paths that create a branch — registration and `POST /v1/branches` — open three channels in the
-same transaction as the branch: MANUAL_ENTRY, WHATSAPP and EMAIL. **The manual-entry one is not
+Both paths that create a branch — registration and `POST /v1/branches` — open four channels in the
+same transaction as the branch: MANUAL_ENTRY, WHATSAPP, EMAIL and WEBAPP. **The manual-entry one is not
 optional**: `rfq.channel_id` is `NOT NULL`, and a counter, phone or unintegrated-messaging order has
 no other channel to point at. The other two are what a quote is delivered through, so a new branch
 can send one without first configuring anything.
@@ -180,6 +180,68 @@ it, so **omitting it clears it** — the same rule as `address` on a branch and 
 account. That matters more here than there, since `resolveWhatsAppChannel` uses it to tell one of a
 branch's numbers from another, so a form editing a channel sends the identifier back every time.
 
+### Inbound routing
+
+An external connector arrives without a tenant session, so it resolves its destination on the owner
+pool before opening a tenant transaction. `InboundRoutingService` accepts normalized identifiers in
+one batch and returns the concrete channel together with its account and branch; the connector then
+uses that route for RFQ persistence and catalog matching. WhatsApp resolves Meta's
+`phone_number_id` from its readable channel configuration, while email resolves the lower-cased
+mailbox in `channel.identifier`.
+
+An inbound destination is eligible only while the channel, its branch, and its account are active.
+The RFQ creation path checks those states again inside the tenant transaction before creating an RFQ.
+A batch naming an active channel on an inactive account or branch returns the available routes with
+`ErrInboundDestinationInactive`. The connector processes those routes idempotently and signals a
+retryable failure for the delivery. The provider's retry policy limits how long an unavailable
+destination can recover the delivery.
+
+Two partial global indexes make active external destinations unambiguous. They do not reduce the
+existing cardinality: a branch may still configure multiple WhatsApp numbers or mailboxes, provided
+each has a distinct external destination. `WEBAPP` uses its opaque delivery token and is resolved by
+the public delivery flow, not this inbox resolver.
+
+Public request intake resolves an active `WEBAPP` channel by its channel ID, checks its account
+and branch are active, then enters a tenant transaction. Customer declarations stay on the request;
+they never resolve or overwrite a client profile. See [Public RFQ intake](public-rfq-intake.md).
+
+#### Connector integration contract
+
+The connector owns provider authentication, payload parsing, acknowledgement and durable
+idempotency. Routing owns tenant discovery. The connector is a thin adapter over these two service
+calls:
+
+1. Extract the **destination** from the verified provider payload and call
+   `InboundRoutingService.ResolveChannels` with `WHATSAPP` or `EMAIL`. WhatsApp supplies Meta's
+   `metadata.phone_number_id`, never the sender's `from` value or the human-facing phone number in
+   `channel.identifier`. Email supplies an envelope or final-delivery recipient, never `From` or
+   `Reply-To`.
+2. Use `domain.NormalizeInboundChannelIdentifier` when retrieving the returned route: email keys
+   are trimmed and lower-cased; WhatsApp provider identifiers are trimmed but otherwise unchanged.
+   A missing route means no tenant work must be created for that destination. If the resolver
+   reports an inactive destination, process the returned routes and signal a retryable failure to
+   the provider rather than acknowledging the unavailable destination as an unknown address.
+3. Pass the returned `InboundChannelRoute` unchanged to
+   `RFQService.CreateInboundTextDraft` with an `InboundTextRFQDraftInput`. The input deliberately
+   has no channel, branch or account field: an adapter must not accept, infer or construct any of
+   those identifiers from a request, header or provider payload.
+
+`CreateInboundTextDraft` opens the tenant transaction from the resolved route and creates an
+unassigned seller-review draft. It must be used instead of the authenticated
+`CreateTextDraft`, which carries a seller from the caller's session. That preserves the resolved
+branch for the RFQ, quote, catalog availability and branch price list.
+
+Provider retries must be deduplicated by the connector's durable external-message identifier before
+calling the draft service; replaying a delivery must not create a second RFQ. The routing service
+does not retain provider event IDs, so that persistence belongs to the connector implementation.
+The adapter must not read a tenant-scoped repository or open a tenant transaction before routing,
+and it must never expose the resolved account, branch or channel identifiers in its provider-facing
+response.
+
+The WhatsApp Cloud API connector is documented in [WhatsApp Cloud API](whatsapp-cloud-api.md). It
+uses `metadata.phone_number_id` for this routing contract, validates Meta's app-level HMAC before
+routing, and reserves an RFQ against Meta's message ID before the text pipeline starts.
+
 ### Credentials are encrypted at rest, and never come back out
 
 Every credential field is sealed with **AES-256-GCM** under `CHANNEL_CONFIG_ENCRYPTION_KEY` before
@@ -210,7 +272,11 @@ anything naming the corralón needs it; `PUT /v1/account` replaces it and is adm
 carries no account id — it writes whatever the session resolved.
 
 **Replaces, so an omitted optional field is cleared.** That is how a corralón removes a logo it no
-longer wants on its quotes. A name that is blank once trimmed is refused with 422.
+longer wants on its quotes. A name that is blank once trimmed is refused with 422. The one
+exception is `preferred_lower_price_strategy` (`FIND_CHEAPER_ALTERNATIVES`, the default, or
+`ADAPT_TO_REACH_DISCOUNT`): it cannot be empty, so omitting it keeps the stored one. It is the
+strategy the conversation handler runs first for a lower total when the customer did not say
+([rfq-pipeline.md](rfq-pipeline.md#conversation-batch-handler)).
 
 The brand pair (`brand_logo_url`, `brand_color`) is what the client webapp renders a quote with, and
 both carry a format because a malformed one breaks a screen the corralón cannot see: the logo must be
@@ -218,6 +284,42 @@ an absolute URL, and the colour hexadecimal with three, four, six or eight digit
 (`#C2410C`). Either one malformed is a 400. `settings/account` in the backoffice mirrors both shapes
 exactly rather than narrowing them — a form stricter than the column cannot show an account its own
 stored value back.
+
+### Invoicing with Coti
+
+`invoicing_enabled` says whether the corralón invoices with Coti, and `has_invoices` whether ARCA ever
+authorized a voucher for it — an issued invoice or credit note, test-environment ones included,
+since «Comprobantes» lists those too with their «Prueba» mark; a pending or refused attempt is no
+fiscal record and does not count. Both are read-only on the record, so every member — sellers
+included — reads them from `GET /v1/account`. `PUT /v1/invoicing/enabled` (`{"enabled": bool}`, admin-only) is
+the one write. It is not part of `PUT /v1/account`, which replaces the whole record, so flipping a
+switch would otherwise have to resend the name and the brand.
+
+- **Off** refuses previewing or issuing an invoice and issuing a credit note with **409**
+  `ACCOUNT_INVOICING_OFF`. Listing invoices, downloading a PDF and recovering an invoice still
+  waiting for ARCA stay open: they are fiscal records. ARCA setup, invoicing settings and points of
+  sale stay open too, so the configuration survives a flip.
+- **Turning it off is refused** with **409** `INVOICE_PENDING` while any invoice is waiting for
+  ARCA's answer. It takes the account row `FOR UPDATE`; issuing reads the switch under the
+  `FOR SHARE` lock it takes before writing a pending invoice, so the two cannot interleave.
+- **On** connects nothing; it only reveals the ARCA connection and the invoicing settings.
+
+The migration that added it started it on for accounts with an `arca_setup` row or any invoice, and
+off for every other account. A new account starts off. `INVOICING_DISABLED` is a different thing: the
+server has no ARCA encryption key, whatever the account chose.
+
+The backoffice hides everything invoicing-related while it is off: the invoice card on an accepted
+order, «Facturar también» and «No requiere factura» when closing a sale, a product's IVA rate, the
+client's fiscal data, the setup notices and the ARCA guide (`/settings/invoicing/arca` redirects to
+`/settings/invoicing`, where the switch lives) and «Por facturar», Administración's list of sales
+waiting for an invoice. «Comprobantes», the invoice history, stays reachable while the account has
+invoices, since those are still readable.
+
+`invoice_on_payment` is the account default for «Facturar también» when a sale is marked paid
+(false for every account). It is written through `PUT /v1/invoicing/settings` beside the other
+invoicing settings — omitted, it keeps its value — and read back there and, for sellers, on
+`GET /v1/account`. It only pre-ticks the box: every invoice is still confirmed by a person. See
+[rfq-pipeline.md](rfq-pipeline.md#closing-a-sale-paid-and-no-requiere-factura).
 
 ## Identity
 
@@ -232,3 +334,7 @@ stays valid. `config.Load()` refuses a value of zero or less.
 `CHANNEL_CONFIG_ENCRYPTION_KEY` (no default) is 32 bytes of base64 — `openssl rand -base64 32` — and
 seals the credential fields of `channel.config`. Unset, storing a credential is refused; malformed,
 `config.Load()` refuses to start.
+
+Gmail intake binds an administrator-authorized mailbox to its branch channel instead of resolving a
+provider callback destination. It uses the same encryption key for mailbox credentials. See
+[Gmail intake](gmail-intake.md) for the authorization and synchronization flow.

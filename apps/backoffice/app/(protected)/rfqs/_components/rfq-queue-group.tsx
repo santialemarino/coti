@@ -7,8 +7,14 @@ import { useTranslations } from 'next-intl';
 import { DropdownChevron } from '@repo/ui/components';
 import { cn, MOTION, SPRING, STAGGER } from '@repo/ui/lib';
 import { RfqQueueCard } from '@/app/(protected)/rfqs/_components/rfq-queue-card';
-import type { QueueStatusGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
+import {
+  FOLDED_STACKS,
+  type QueueStack,
+  type QueueStatusGroup,
+} from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
 import { STATUS_DOT } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
+import type { SaleNextStep } from '@/app/(protected)/rfqs/_components/sale-closure';
+import type { RfqRecord } from '@/lib/api/rfqs';
 
 // Cards that show behind the top of a folded stack, and how far each one shows below the last.
 const PEEK_COUNT = 2;
@@ -19,33 +25,53 @@ const PEEK_FADE_STEP = 0.2;
 // A card arriving as the stack unfolds drops in from just above its place.
 const ENTER_OFFSET_PX = -8;
 
+// Both halves of an accepted order keep the accepted hue.
+const STACK_DOT: Record<QueueStack, string> = {
+  ...STATUS_DOT,
+  TO_CLOSE: STATUS_DOT.ACCEPTED,
+  COMPLETED: STATUS_DOT.ACCEPTED,
+};
+
 interface RfqQueueGroupProps {
   group: QueueStatusGroup;
   expanded: boolean;
   activeRfqId: string | null;
   onToggle: () => void;
+  onClosingStep: (record: RfqRecord, step: SaleNextStep) => void;
 }
 
 /*
- * One status in the queue column, folded into a stack the way a phone stacks its notifications: the
- * top card in front, two edges peeking behind it, and a press on that card fans the rest out.
+ * One stack in the queue column, folded the way a phone stacks its notifications: the top card in
+ * front, two edges peeking behind it, and a press on that card fans the rest out. A closed outcome's
+ * stack folds further, to its heading alone, until it is shown.
  *
  * Cards travel by `layout="position"` only: a size animation would scale-correct the text inside,
  * so the edges behind take the top card's box at once. Springs rather than durations, so a press
  * mid-flight reverses from where the cards are.
  */
-export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQueueGroupProps) {
+export function RfqQueueGroup({
+  group,
+  expanded,
+  activeRfqId,
+  onToggle,
+  onClosingStep,
+}: RfqQueueGroupProps) {
   const t = useTranslations('rfqs');
   const reduced = useReducedMotion();
   const headingId = useId();
   const listId = useId();
 
-  const { status, records } = group;
-  const stackable = records.length > 1;
+  const { stack, records } = group;
+  const foldsAway = FOLDED_STACKS.has(stack);
+  const stackable = !foldsAway && records.length > 1;
   const stacked = stackable && !expanded;
   const peeks = Math.min(records.length - 1, PEEK_COUNT);
-  const visible = stacked ? records.slice(0, peeks + 1) : records;
+  const visible = foldsAway && !expanded ? [] : stacked ? records.slice(0, peeks + 1) : records;
   const spring = reduced ? { duration: 0 } : expanded ? SPRING.expand : SPRING.collapse;
+  const label =
+    stack === 'TO_CLOSE' || stack === 'COMPLETED'
+      ? t(`list.groups.stacks.${stack}`)
+      : t(`status.${stack}`);
 
   return (
     <motion.div
@@ -62,12 +88,12 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
         >
           <span
             aria-hidden="true"
-            className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[status])}
+            className={cn('size-1.5 shrink-0 rounded-full', STACK_DOT[stack])}
           />
-          {t(`status.${status}`)}
+          {label}
           <span className="text-foreground-subtle tabular-nums">{records.length}</span>
         </h3>
-        {stackable ? (
+        {stackable || foldsAway ? (
           <button
             type="button"
             aria-expanded={expanded}
@@ -75,7 +101,9 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
             onClick={onToggle}
             className="group/toggle flex items-center px-1 gap-x-1 rounded-sm outline-none transition-colors duration-200 ease-out-soft hover:text-foreground focus-visible:text-foreground text-paragraph-mini-medium text-foreground-muted"
           >
-            {expanded ? t('list.groups.collapse') : t('list.groups.expand')}
+            {foldsAway
+              ? t(expanded ? 'list.groups.hide' : 'list.groups.show')
+              : t(expanded ? 'list.groups.collapse' : 'list.groups.expand')}
             <DropdownChevron
               open={expanded}
               className="size-3.5 group-focus-visible/toggle:animate-focus-bump-soft"
@@ -128,7 +156,9 @@ export function RfqQueueGroup({ group, expanded, activeRfqId, onToggle }: RfqQue
                   rfq={rfq}
                   active={rfq.id === activeRfqId}
                   stackCount={stacked && index === 0 ? records.length : undefined}
+                  behind={behind}
                   onExpand={onToggle}
+                  onClosingStep={onClosingStep}
                 />
               </motion.li>
             );

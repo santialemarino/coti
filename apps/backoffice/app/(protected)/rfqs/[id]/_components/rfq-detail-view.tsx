@@ -2,30 +2,44 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArchiveIcon } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { Callout, PendingButton } from '@repo/ui/components';
+import { Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
-import { normalizeRfqStatus } from '@/lib/api/rfqs';
-import { fetchRfqDetail, generateQuote } from '@/lib/api/rfqs-client';
+import { formatRfqReference, mapListItem, normalizeRfqStatus } from '@/lib/api/rfqs';
+import {
+  discardAIChanges,
+  fetchRfqDetail,
+  generateQuote,
+  setQuoteArchived,
+} from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
-import { ClientAssociationCard } from './client-association-card';
+import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
-import { RfqChangeDiff } from './rfq-change-diff';
+import { RfqChangeRequestCard } from './rfq-change-request-card';
+import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
+import { RfqEmailAttachments } from './rfq-email-attachments';
 import { RfqItemsTable } from './rfq-items-table';
 import { RfqStatusTimeline } from './rfq-status-timeline';
+import { SaleClosureCard } from './sale-closure-card';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
   /* Whether the order's branch has no mailbox for a customer's reply to reach. */
   branchMissesEmail?: boolean;
+  /* Whether the corralón invoices with Coti; off, an accepted order shows no invoice. */
+  invoicingEnabled: boolean;
+  /* Whether «Marcar cobrado» starts with «Facturar también» ticked. */
+  invoiceOnPayment?: boolean;
 }
 
 // What the queue shows for the order's lines, recounted whenever this screen changes them.
@@ -39,10 +53,13 @@ function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCoun
 export function RfqDetailView({
   detail: initialDetail,
   branchMissesEmail = false,
+  invoicingEnabled,
+  invoiceOnPayment = false,
 }: RfqDetailViewProps) {
   const router = useRouter();
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
+  const tCommon = useTranslations('common');
   const message = useApiErrorMessage('rfqs.detail.items');
   const { updateRecord } = useRfqList();
   const reduced = useReducedMotion();
@@ -53,6 +70,12 @@ export function RfqDetailView({
   );
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
+  const [unarchiving, startUnarchive] = useTransition();
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // Bumped when closing the sale may have issued its invoice, so the invoice card reads it again.
+  const [invoiceRevision, setInvoiceRevision] = useState(0);
+  const clientId = detail.quote?.client_id;
   const rootRef = useRef<HTMLDivElement>(null);
 
   const quoteId = detail.quote?.id ?? null;
@@ -62,19 +85,26 @@ export function RfqDetailView({
   // Business status the seller sees: DRAFT (an internal quote_state) reads as GENERATED here.
   // A requested revision remains a mutable draft until the seller accepts its materials.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
-  const isDraft = quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED';
+  // Every edit on an archived quote is refused until it is unarchived, so the screen offers none.
+  const archived = detail.quote?.archived_at != null;
+  const isDraft = !archived && (quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED');
   const latestClientAction = detail.client_actions?.at(-1);
+  // A customer's messages reach the draft through the conversation handler, which leaves a note.
+  const handlerNote = detail.changes_requested?.handler;
   const isCustomerChangeRequest =
     quoteStatus === 'CHANGE_REQUESTED' &&
     detail.version !== null &&
-    latestClientAction?.type === 'REQUEST_CHANGE' &&
-    latestClientAction.version_number === detail.version.version_number - 1;
+    (handlerNote != null ||
+      (latestClientAction?.type === 'REQUEST_CHANGE' &&
+        latestClientAction.version_number === detail.version.version_number - 1));
+  const canDiscardAIChanges = !archived && detail.conversation?.can_discard_ai_changes === true;
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
   const showFollowup = followupDue(
     detail.rfq.needs_followup,
     rfqStatus,
     detail.rfq.archived_at != null,
   );
+  const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
   const statusKey = `${rfqStatus}:${quoteStatus}`;
   const shownStatusKey = useRef(statusKey);
 
@@ -108,7 +138,14 @@ export function RfqDetailView({
       setDetail(fresh);
       setItems(fresh.items);
       setDiscounts(fresh.discounts ?? []);
-      updateRecord(fresh.rfq.id, lineCounts(fresh.items));
+      const { paidAt, invoiceWaivedAt, invoiced, saleComplete } = mapListItem(fresh.rfq);
+      updateRecord(fresh.rfq.id, {
+        ...lineCounts(fresh.items),
+        paidAt,
+        invoiceWaivedAt,
+        invoiced,
+        saleComplete,
+      });
     } catch {
       // The mutation itself succeeded; a failed refetch must not look like the write died.
       toast.error(t('detail.items.toast.error'));
@@ -122,6 +159,45 @@ export function RfqDetailView({
     },
     [detail.rfq.id, updateRecord],
   );
+
+  async function handleClosureChanged() {
+    await refreshDetail();
+    setInvoiceRevision((revision) => revision + 1);
+  }
+
+  function handleUnarchive() {
+    if (!quoteId) return;
+    startUnarchive(async () => {
+      try {
+        await setQuoteArchived(quoteId, false, branchId);
+        setDetail((prev) => ({
+          ...prev,
+          rfq: { ...prev.rfq, archived_at: null },
+          quote: prev.quote ? { ...prev.quote, archived_at: null } : prev.quote,
+        }));
+        updateRecord(detail.rfq.id, { archived: false });
+        toast.success(t('list.toast.unarchived', { id: reference }));
+        router.refresh();
+      } catch (error) {
+        toast.error(message(errorCodeOf(error)));
+      }
+    });
+  }
+
+  async function handleDiscard() {
+    if (!quoteId) return;
+    setDiscarding(true);
+    try {
+      await discardAIChanges(quoteId, branchId);
+      toast.success(t('detail.callouts.changeRequested.discard.success', { reference }));
+      setDiscardOpen(false);
+      await refreshDetail();
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setDiscarding(false);
+    }
+  }
 
   function handleGenerate() {
     if (!quoteId) return;
@@ -157,13 +233,41 @@ export function RfqDetailView({
     <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
 
+      {detail.rfq.channel.toLowerCase() === 'email' ? (
+        <RfqEmailAttachments rfqId={detail.rfq.id} branchId={branchId} />
+      ) : null}
+
       <QuoteDeliveryCard
         detail={detail}
         onSent={refreshDetail}
         branchMissesEmail={branchMissesEmail}
       />
 
+      {archived ? (
+        <Callout
+          tone="info"
+          icon={ArchiveIcon}
+          title={t('detail.callouts.archived.title')}
+          action={
+            <PendingButton
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUnarchive}
+              pending={unarchiving}
+              pendingLabel={t('detail.callouts.archived.unarchiving')}
+            >
+              {t('detail.callouts.archived.unarchive')}
+            </PendingButton>
+          }
+        >
+          {t('detail.callouts.archived.description')}
+        </Callout>
+      ) : null}
+
       <RfqStatusTimeline detail={detail} />
+
+      {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
 
       {showFollowup ? (
         <Callout tone="followup" title={t('detail.callouts.followup.title')}>
@@ -180,8 +284,36 @@ export function RfqDetailView({
           <Callout tone="success" title={t('detail.callouts.accepted.title')}>
             {t('detail.callouts.accepted.description')}
           </Callout>
-          {quoteId && detail.quote?.archived_at === null ? (
-            <ClientAssociationCard quoteId={quoteId} branchId={branchId} />
+          {quoteId ? (
+            <SaleClosureCard
+              quoteId={quoteId}
+              branchId={branchId}
+              reference={reference}
+              paidAt={detail.rfq.paid_at}
+              paidBy={detail.rfq.paid_by}
+              saleComplete={detail.rfq.sale_complete}
+              invoicingEnabled={invoicingEnabled}
+              invoiceOnPayment={invoiceOnPayment}
+              invoiceWaived={detail.rfq.invoice_waived_at != null}
+              readOnly={archived}
+              onChanged={handleClosureChanged}
+            />
+          ) : null}
+          {quoteId && invoicingEnabled ? (
+            <InvoiceCard
+              quoteId={quoteId}
+              branchId={branchId}
+              clientId={clientId}
+              readOnly={archived}
+              reference={reference}
+              waiver={
+                detail.rfq.invoice_waived_at
+                  ? { at: detail.rfq.invoice_waived_at, by: detail.rfq.invoice_waived_by }
+                  : null
+              }
+              onWaiverChanged={refreshDetail}
+              revision={invoiceRevision}
+            />
           ) : null}
         </>
       )}
@@ -194,21 +326,42 @@ export function RfqDetailView({
         </Callout>
       )}
 
-      {rfqStatus === 'CHANGE_REQUESTED' && (
-        <Callout
-          tone="warning"
-          title={t(
-            isCustomerChangeRequest
-              ? 'detail.callouts.changeRequested.title'
-              : 'detail.callouts.sellerRevision.title',
+      {rfqStatus === 'CHANGE_REQUESTED' && quoteId && detail.changes_requested ? (
+        <RfqChangeRequestCard
+          diff={detail.changes_requested}
+          variant={isCustomerChangeRequest ? 'customer-request' : 'seller-revision'}
+          conversation={detail.conversation}
+          quoteId={quoteId}
+          branchId={branchId}
+          canDiscard={canDiscardAIChanges}
+          onDiscard={() => setDiscardOpen(true)}
+          onChanged={refreshDetail}
+        />
+      ) : (
+        <>
+          {rfqStatus === 'CHANGE_REQUESTED' && (
+            <Callout
+              tone="warning"
+              title={t(
+                isCustomerChangeRequest
+                  ? 'detail.callouts.changeRequested.title'
+                  : 'detail.callouts.sellerRevision.title',
+              )}
+            >
+              {isCustomerChangeRequest
+                ? t('detail.callouts.changeRequested.description')
+                : t('detail.callouts.sellerRevision.description')}
+            </Callout>
           )}
-        >
-          {isCustomerChangeRequest
-            ? detail.version?.comment
-              ? t('detail.callouts.changeRequested.withReason', { reason: detail.version.comment })
-              : t('detail.callouts.changeRequested.description')
-            : t('detail.callouts.sellerRevision.description')}
-        </Callout>
+          {quoteId && detail.conversation ? (
+            <RfqConversation
+              conversation={detail.conversation}
+              quoteId={quoteId}
+              branchId={branchId}
+              onChanged={refreshDetail}
+            />
+          ) : null}
+        </>
       )}
 
       {rfqStatus === 'SENT' && detail.quote?.expires_at && (
@@ -219,35 +372,33 @@ export function RfqDetailView({
         </Callout>
       )}
 
-      {rfqStatus === 'CHANGE_REQUESTED' && detail.changes_requested ? (
-        <>
-          <RfqChangeDiff
-            diff={detail.changes_requested}
-            variant={isCustomerChangeRequest ? 'customer-request' : 'seller-revision'}
-          />
-          <RfqItemsTable
-            quoteId={quoteId}
-            quoteStatus={quoteStatus}
-            branchId={branchId}
-            items={items}
-            discounts={discounts}
-            onItemsChange={handleItemsChange}
-            onDiscountsChange={setDiscounts}
-            onRefresh={refreshDetail}
-          />
-        </>
-      ) : (
-        <RfqItemsTable
-          quoteId={quoteId}
-          quoteStatus={quoteStatus}
-          branchId={branchId}
-          items={items}
-          discounts={discounts}
-          onItemsChange={handleItemsChange}
-          onDiscountsChange={setDiscounts}
-          onRefresh={refreshDetail}
-        />
-      )}
+      <RfqItemsTable
+        quoteId={quoteId}
+        quoteStatus={quoteStatus}
+        branchId={branchId}
+        items={items}
+        discounts={discounts}
+        onItemsChange={handleItemsChange}
+        onDiscountsChange={setDiscounts}
+        onRefresh={refreshDetail}
+        readOnly={archived}
+      />
+
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        entity={canDiscardAIChanges ? quoteId : null}
+        title={t('detail.callouts.changeRequested.discard.title')}
+        description={() => t('detail.callouts.changeRequested.discard.description')}
+        onConfirm={handleDiscard}
+        pending={discarding}
+        tone="danger"
+        labels={{
+          confirm: t('detail.callouts.changeRequested.discard.confirm'),
+          pending: t('detail.callouts.changeRequested.discard.pending'),
+          cancel: tCommon('actions.cancel'),
+        }}
+      />
 
       {isDraft && quoteId && (
         <div className="flex justify-end">

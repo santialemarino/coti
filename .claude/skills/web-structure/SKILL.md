@@ -9,12 +9,12 @@ Coti has **two** Next.js apps (this is the defining difference from a single-app
 frontend). Decide which app you are in **first** — the rules below differ per app.
 
 - **`apps/backoffice`** — Authenticated vendor & admin web app. Port 3000. Uses
-  route groups: `(auth)` (no session) vs `(protected)` (session enforced). This
-  is where reps triage RFQs, review AI-extracted quotes, manage the catalog, and
-  switch sucursales.
-- **`apps/webapp`** — Public customer-facing app. Port 3001. **No auth, no route
-  groups** — every route is public. This is where a customer submits an RFQ or
-  reviews/responds to a quote via a tokenized link.
+  route groups: `(auth)` (no session) vs `(protected)` (session enforced), plus
+  `(public)` for Coti's own public site. This is where reps triage RFQs, review
+  AI-extracted quotes, manage the catalog, and switch sucursales.
+- **`apps/webapp`** — Customer-facing app. Port 3001. Supplier-scoped customer sessions are
+  independent of staff authentication. Public login and registration lead to authenticated
+  requests and history; delivery links require the same customer authorization.
 
 Both apps share the same toolchain: Next.js 16 (App Router, React 19), Tailwind
 v4 (CSS-first — no `tailwind.config`), TS 5.9, and the shared design system
@@ -57,6 +57,10 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   account/settings. Its `layout.tsx` calls `getSession()` and redirects to
   `LOGIN_ROUTE` when there is no valid session. It also hosts the app shell
   (header + branch switcher).
+- **`app/(public)/`** — Coti's public site: the landing at `/`, `/privacy` and
+  `/terms`, the same pages for everyone. A seller's home is the queue at `/inbox`
+  (`ROUTES.home`), so the root never depends on who asks; the header reads the
+  session cookies only to offer a seller the queue instead of a login. See `docs/technical/public-site.md`.
 - **`app/layout.tsx`** — Root layout: async server component that resolves the
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
@@ -66,17 +70,18 @@ From each app's `tsconfig.json`. Always import through these — never `.`/`..`:
   `middleware.ts`, and the exported function is `proxy`. Never add a
   `middleware.ts` beside it — the build refuses both at once.
 
-## App Router layout — webapp (public)
+## App Router layout — webapp (customers)
 
-- **No route groups.** Every route is public; there is no session gate and no
-  `(auth)`/`(protected)` split. Do not add one.
+- Routes live directly under `app/`. Public credential pages coexist with customer pages
+  that call `requireCustomer`; staff middleware never grants customer access.
 - **`app/layout.tsx`** — Root layout: async server component that resolves the
   locale + messages via next-intl, wraps `children` in `NextIntlClientProvider`,
   and sets `<html lang={locale}>` (always `es` today); imports `globals.css`.
-- Routes live directly under `app/` — e.g. a public RFQ submission form and a
-  tokenized quote-review route (`quotes/[token]/`). Access control for a customer
-  route is the **unguessable token in the URL**, resolved server-side — never a
-  session.
+- `orders/` and `new-request/` require a customer session. `quotes/[token]/` preserves
+  legacy supplier routing and redirects to the same authorized order detail as history.
+  The URL token identifies a delivery; it never replaces customer authentication.
+- `lib/auth/customer-session.ts` owns the host-only HttpOnly customer cookie; the API
+  validates its opaque token within the registered supplier on every customer request.
 
 ## `error.tsx` and `not-found.tsx` — both apps, both required
 
@@ -87,9 +92,10 @@ ships its own at the **root of `app/`**:
   a digest, so its copy is the generic one from the catalog — a failure a screen can name is worded
   where it happened, not here.
 - **`not-found.tsx`** is a server component, so it can read whatever decides its call to action. In
-  the backoffice that is whether a token cookie exists: offering the login screen to someone already
-  signed in is a dead end, and offering the home page to someone signed out bounces them back to
-  login. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
+  the backoffice that is whether a session cookie exists (`isAuthenticated`): a seller gets the queue (and the public
+  site), a visitor gets the landing. The gate lets a caller with no session
+  reach an unknown path directly — it redirects to login only for a path `isProtectedPath`
+  recognises — so the 404 is a real answer for both. Read the **cookie**, not `getSession()` — a 404 must not depend on the API being up, and
   `getSession` rethrows anything that is not a 401/403, which would turn an unrelated outage into an
   error screen where a plain "this page does not exist" belonged. A stale token costs one bounce off
   the gate, which is exactly what the gate is for.
@@ -130,8 +136,8 @@ ships its own at the **root of `app/`**:
   in `packages/ui/src/hooks` + its `index.ts` (imported `@repo/ui/hooks`).
 - **Server-side data fetching (reads):** `lib/api/<feature>.ts` with
   `import 'server-only'`. Called directly from server components (`page.tsx`).
-  Backoffice reads use the authenticated fetch (JWT from session); webapp reads
-  are unauthenticated (public / token-scoped). Can be imported by multiple pages.
+  Backoffice reads use the authenticated staff fetch; customer reads use `customerFetch`
+  with the separate customer session. Supplier branding and credential configuration are public.
   **Wrap a read that a layout and a page both perform in React's `cache()`**, so the
   nested server components share one round trip instead of one each — a layout cannot
   pass props to the page under it, so re-calling is the only way to get the data there.
@@ -140,9 +146,13 @@ ships its own at the **root of `app/`**:
 - **Cross-entity API contract types:** `lib/api/types.ts` (e.g. a shared
   `SortOrder`) — shared by multiple `lib/api/<feature>.ts` modules; entity-specific
   types stay in their feature module.
-- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports what the
-  gate reads — `PUBLIC_ROUTES`, `SIGNED_OUT_ONLY_ROUTES`, `LOGIN_ROUTE`, `NEXT_PARAM`
-  — and `safeNextPath`, which is what makes a `?next=` round trip same-origin only.
+- **Routes:** `config/routes.ts` for `ROUTES`. The backoffice also exports the route
+  groups the gate reads — `AUTH_ROUTES`, `PUBLIC_ROUTES`, the computed
+  `PROTECTED_ROUTES`, and the `SIGNED_OUT_ONLY_ROUTES` / `SESSION_CLEARING_ROUTES`
+  subsets of the auth group — plus `LOGIN_ROUTE`, `NEXT_PARAM` and `safeNextPath`, which
+  honours a `?next=` only for a same-origin protected path. **A new route goes in a
+  group** (protected is the default by omission); a test fails on any route in none or
+  two. Never special-case a path with an `if` in the proxy — add it to the right list.
 - **Constants:** `lib/constants/<topic>.ts` — one file per topic (the backoffice
   has `auth.ts`, `branch.ts`, `brand.ts`, `forms.ts`, `password.ts`). Only for
   constants imported by 2+ files; single-file constants stay in the file that uses
@@ -258,7 +268,7 @@ app/
 │   ├── constants/<topic>.ts
 │   └── utils/page.tsx
 ├── config/
-│   └── routes.ts                    # ROUTES, PUBLIC_ROUTES, LOGIN_ROUTE, safeNextPath
+│   └── routes.ts                    # ROUTES, the route groups, LOGIN_ROUTE, safeNextPath
 ├── proxy.ts                         # the gate (Next 16's name for middleware.ts)
 ├── i18n/request.ts                  # next-intl request config (locale es, AR timezone)
 ├── translations/es.json            # message catalog (namespaced by feature)

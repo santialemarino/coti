@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RfqListProvider, useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import type { QuoteItemResponse, RfqDetailResponse, RfqRecord } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
-import { RfqChangeDiff } from './rfq-change-diff';
 import { RfqDetailView } from './rfq-detail-view';
 import { SendQuoteDialog } from './send-quote-dialog';
 
@@ -21,21 +20,44 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/lib/api/rfqs-client', () => ({
+  discardAIChanges: vi.fn(),
   fetchRfqDetail: vi.fn(),
   generateQuote: vi.fn(),
+  retryConversationBatch: vi.fn(),
+  setQuoteArchived: vi.fn(),
 }));
-// The send button's presence per status is what these tests exercise; the edit surface, diff and
-// header are stubbed out, with the send dialog and the diff left as spies.
+// The send button's presence per status is what these tests exercise; the edit surface and header
+// are stubbed out, with the send dialog left as a spy.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
-vi.mock('./client-association-card', () => ({
-  ClientAssociationCard: () => <div data-testid="client-association-card" />,
+vi.mock('./invoice-card', () => ({
+  InvoiceCard: ({ readOnly }: { readOnly?: boolean }) => (
+    <div data-testid="invoice-card" data-read-only={String(Boolean(readOnly))} />
+  ),
 }));
 vi.mock('./send-quote-dialog', () => ({ SendQuoteDialog: vi.fn(() => null) }));
-vi.mock('./rfq-change-diff', () => ({ RfqChangeDiff: vi.fn(() => null) }));
+vi.mock('./sale-closure-card', () => ({
+  SaleClosureCard: ({
+    readOnly,
+    invoicingEnabled,
+    paidBy,
+  }: {
+    readOnly?: boolean;
+    invoicingEnabled: boolean;
+    paidBy: string | null;
+  }) => (
+    <div
+      data-testid="sale-closure-card"
+      data-read-only={String(Boolean(readOnly))}
+      data-invoicing={String(invoicingEnabled)}
+      data-paid-by={paidBy ?? ''}
+    />
+  ),
+}));
 
 const { toast } = await import('sonner');
-const { generateQuote } = await import('@/lib/api/rfqs-client');
+const { discardAIChanges, fetchRfqDetail, generateQuote, setQuoteArchived } =
+  await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -95,6 +117,11 @@ function draftRecord(): RfqRecord {
     status: 'GENERATED',
     needsFollowup: false,
     followupFlaggedAt: null,
+    paidAt: null,
+    invoiceWaivedAt: null,
+    invoiced: false,
+    invoicePending: false,
+    saleComplete: false,
   };
 }
 
@@ -103,34 +130,28 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
     quoteStatus === 'CHANGE_REQUESTED'
       ? {
           reason: 'Precio alto',
-          original: {
-            items: [
-              {
+          lines: [
+            {
+              change: 'MODIFIED' as const,
+              original: {
                 description: 'Ladrillo hueco 12x18x33',
+                product_name: null,
                 quantity: '500.00',
                 unit: 'unidad',
                 unit_price: '780.00',
-                changed: true,
-                change_type: 'modified' as const,
               },
-            ],
-            discounts: [],
-            total: '390000.00',
-          },
-          requested: {
-            items: [
-              {
+              requested: {
                 description: 'Ladrillo hueco 12x18x33',
+                product_name: null,
                 quantity: '500.00',
                 unit: 'unidad',
                 unit_price: '760.00',
-                changed: true,
-                change_type: 'modified' as const,
               },
-            ],
-            discounts: [],
-            total: '380000.00',
-          },
+            },
+          ],
+          discounts: [],
+          original_total: '390000.00',
+          requested_total: '380000.00',
         }
       : undefined;
 
@@ -154,8 +175,17 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       status: rfqStatus,
       needs_followup: false,
       followup_flagged_at: null,
+      paid_at: null,
+      paid_by: null,
+      invoice_waived_at: null,
+      invoice_waived_by: null,
+      invoiced: false,
+      invoice_pending: false,
+      sale_complete: false,
       archived_at: null,
     },
+    inbound_whatsapp_phone: null,
+    inbound_email: null,
     quote: {
       id: QUOTE_ID,
       branch_id: BRANCH_ID,
@@ -170,6 +200,10 @@ function makeDetail(quoteStatus: string, rfqStatus: string = quoteStatus): RfqDe
       followup_flagged_at: null,
       created_at: BASE_TIME,
       updated_at: BASE_TIME,
+      paid_at: null,
+      paid_by_user_id: null,
+      invoice_waived_at: null,
+      invoice_waived_by_user_id: null,
     },
     version: {
       id: VERSION_ID,
@@ -222,11 +256,19 @@ function RecordProbe() {
   );
 }
 
-function renderView(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
-  return render(viewTree(detail, activeBranchId));
+function renderView(
+  detail: RfqDetailResponse,
+  activeBranchId: string | null = BRANCH_ID,
+  invoicingEnabled = true,
+) {
+  return render(viewTree(detail, activeBranchId, invoicingEnabled));
 }
 
-function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRANCH_ID) {
+function viewTree(
+  detail: RfqDetailResponse,
+  activeBranchId: string | null = BRANCH_ID,
+  invoicingEnabled = true,
+) {
   return (
     <NextIntlClientProvider
       locale="es"
@@ -241,7 +283,7 @@ function viewTree(detail: RfqDetailResponse, activeBranchId: string | null = BRA
         userId="u-admin"
         isAdmin={true}
       >
-        <RfqDetailView detail={detail} />
+        <RfqDetailView detail={detail} invoicingEnabled={invoicingEnabled} />
         <RecordProbe />
       </RfqListProvider>
     </NextIntlClientProvider>
@@ -295,7 +337,7 @@ describe('RfqDetailView tracking', () => {
 
 describe('RfqDetailView send flow', () => {
   const SendDialog = vi.mocked(SendQuoteDialog);
-  const ChangeDiff = vi.mocked(RfqChangeDiff);
+  const card = copy.detail.changeRequest;
 
   it('mounts the shared send dialog on a QUOTED quote', () => {
     renderView(makeDetail('QUOTED'));
@@ -308,11 +350,8 @@ describe('RfqDetailView send flow', () => {
 
     expect(sendOffered()).toBe(false);
     expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
-    expect(view.getByText(copy.detail.callouts.sellerRevision.title)).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'seller-revision' }),
-      undefined,
-    );
+    expect(view.getByText(card.revisionTitle)).toBeTruthy();
+    expect(view.queryByText(card.title)).toBeNull();
   });
 
   it('keeps a customer change request distinct from a seller reactivation', () => {
@@ -331,15 +370,135 @@ describe('RfqDetailView send flow', () => {
 
     const view = renderView(detail);
 
-    expect(
-      view.getByText(
-        copy.detail.callouts.changeRequested.withReason.replace('{reason}', 'Precio alto'),
-      ),
-    ).toBeTruthy();
-    expect(ChangeDiff).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: 'customer-request' }),
-      undefined,
-    );
+    expect(view.getByText(card.title)).toBeTruthy();
+    expect(view.getByText('Precio alto')).toBeTruthy();
+  });
+
+  it("reads a conversation batch as the customer's request and says how the AI took it", () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'que sean 4' };
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      // The API reads the reason off the draft's comment, so the two always agree.
+      reason: 'que sean 4',
+      handler: {
+        client_input: 'que sean 4',
+        interpretation: 'Pide cuatro bolsas',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText('que sean 4')).toBeTruthy();
+    expect(view.getByText('Pide cuatro bolsas')).toBeTruthy();
+    expect(view.getByText(card.outcome.applied)).toBeTruthy();
+    expect(view.getByText(card.title)).toBeTruthy();
+  });
+
+  it('lists every message the customer sent, not only the first batch', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.version = { ...detail.version!, version_number: 2, comment: 'que sean 4' };
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'y sumá arena',
+        interpretation: 'Suma arena.',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        created_at: BASE_TIME,
+      },
+      client_messages: [
+        { body: 'que sean 4', received_at: BASE_TIME },
+        { body: 'y sumá arena', received_at: BASE_TIME },
+      ],
+    };
+
+    const view = renderView(detail);
+
+    const quoted = view.container.querySelector('blockquote');
+    expect(quoted?.textContent).toContain('que sean 4');
+    expect(quoted?.textContent).toContain('y sumá arena');
+    expect(view.getByText('Suma arena.')).toBeTruthy();
+  });
+
+  it('discards the AI changes only after the seller confirms', async () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.conversation = {
+      batches: [],
+      pending: [],
+      seller_messages: [],
+      can_discard_ai_changes: true,
+    };
+    vi.mocked(discardAIChanges).mockResolvedValue(detail.version!);
+    vi.mocked(fetchRfqDetail).mockResolvedValue(detail);
+    const discard = copy.detail.callouts.changeRequested.discard;
+
+    const view = renderView(detail);
+    fireEvent.click(view.getByRole('button', { name: card.discard }));
+    expect(discardAIChanges).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(await view.findByRole('button', { name: discard.confirm }));
+    });
+
+    expect(discardAIChanges).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID);
+    expect(toast.success).toHaveBeenCalledWith(discard.success.replace('{reference}', '#01'));
+    expect(fetchRfqDetail).toHaveBeenCalledWith(RFQ_ID);
+  });
+
+  it('says the AI changes were discarded once the seller rejected them', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'que sean 4',
+        interpretation: 'Pide cuatro bolsas',
+        outcome: 'APPLIED',
+        no_match_reason: null,
+        seller_decision: 'REJECTED',
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText(card.outcome.discarded)).toBeTruthy();
+    expect(view.queryByText(card.outcome.applied)).toBeNull();
+  });
+
+  it('offers no discard when the draft carries no pending AI change', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.conversation = {
+      batches: [],
+      pending: [],
+      seller_messages: [],
+      can_discard_ai_changes: false,
+    };
+
+    const view = renderView(detail);
+
+    expect(view.queryByRole('button', { name: card.discard })).toBeNull();
+  });
+
+  it('tells the seller why the AI left the request to them', () => {
+    const detail = makeDetail('CHANGE_REQUESTED');
+    detail.changes_requested = {
+      ...detail.changes_requested!,
+      handler: {
+        client_input: 'dale, acepto',
+        interpretation: '',
+        outcome: 'NO_MATCH',
+        no_match_reason: 'AI_DISABLED',
+        created_at: BASE_TIME,
+      },
+    };
+
+    const view = renderView(detail);
+
+    expect(view.getByText(card.outcome.noMatch.AI_DISABLED)).toBeTruthy();
   });
 
   it('keeps the send button hidden until a quote is review-ready', () => {
@@ -359,10 +518,10 @@ describe('RfqDetailView send flow', () => {
 });
 
 describe('RfqDetailView client association', () => {
-  it('shows the association card for an active accepted quote', () => {
+  it('does not offer a new association after accepting the quote', () => {
     const view = renderView(makeDetail('ACCEPTED'));
 
-    expect(view.getByTestId('client-association-card')).toBeTruthy();
+    expect(view.queryByTestId('client-association-card')).toBeNull();
   });
 
   it('hides the association card while the accepted quote is archived', () => {
@@ -372,6 +531,92 @@ describe('RfqDetailView client association', () => {
     const view = renderView(detail);
 
     expect(view.queryByTestId('client-association-card')).toBeNull();
+  });
+});
+
+function archivedDetail(quoteStatus: string, rfqStatus: string = quoteStatus) {
+  const detail = makeDetail(quoteStatus, rfqStatus);
+  detail.rfq = { ...detail.rfq, archived_at: BASE_TIME };
+  detail.quote = { ...detail.quote!, archived_at: BASE_TIME };
+  return detail;
+}
+
+describe('RfqDetailView archived', () => {
+  it('locks an archived draft: no generate, read-only lines, and a way back', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    expect(view.getByText(copy.detail.callouts.archived.title)).toBeTruthy();
+    expect(view.queryByRole('button', { name: copy.detail.items.generate })).toBeNull();
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(true);
+  });
+
+  it('keeps the lines editable and says nothing while the quote is not archived', async () => {
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(makeDetail('DRAFT', 'GENERATED'));
+
+    expect(view.queryByText(copy.detail.callouts.archived.title)).toBeNull();
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
+  });
+
+  it('shows no invoice on an accepted sale while invoicing with Coti is off', () => {
+    const view = renderView(makeDetail('ACCEPTED'), BRANCH_ID, false);
+
+    expect(view.getByText(copy.detail.callouts.accepted.title)).toBeTruthy();
+    expect(view.queryByTestId('invoice-card')).toBeNull();
+    // Closing the sale does not depend on invoicing: «Cobrado» is offered either way.
+    expect(view.getByTestId('sale-closure-card').dataset.invoicing).toBe('false');
+  });
+
+  it('closes an accepted sale from its closure card, with who marked it paid', () => {
+    const detail = makeDetail('ACCEPTED');
+    detail.rfq = { ...detail.rfq, paid_at: BASE_TIME, paid_by: 'Ana Pérez' };
+    const view = renderView(detail);
+
+    const closure = view.getByTestId('sale-closure-card');
+    expect(closure.dataset.paidBy).toBe('Ana Pérez');
+    expect(closure.dataset.readOnly).toBe('false');
+    expect(closure.dataset.invoicing).toBe('true');
+  });
+
+  it('offers no closure before the sale is accepted', () => {
+    const view = renderView(makeDetail('SENT'));
+
+    expect(view.queryByTestId('sale-closure-card')).toBeNull();
+  });
+
+  it('keeps the invoice of an archived sale on screen, read-only', () => {
+    const view = renderView(archivedDetail('ACCEPTED'));
+
+    expect(view.getByTestId('invoice-card').dataset.readOnly).toBe('true');
+    expect(view.getByTestId('sale-closure-card').dataset.readOnly).toBe('true');
+    expect(view.queryByTestId('client-association-card')).toBeNull();
+  });
+
+  it("unarchives through the order's branch and hands the lines back", async () => {
+    vi.mocked(setQuoteArchived).mockResolvedValue(undefined);
+    const { RfqItemsTable } = await import('./rfq-items-table');
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.callouts.archived.unarchive }));
+
+    await vi.waitFor(() =>
+      expect(view.queryByText(copy.detail.callouts.archived.title)).toBeNull(),
+    );
+    expect(setQuoteArchived).toHaveBeenCalledWith(QUOTE_ID, false, BRANCH_ID);
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].readOnly).toBe(false);
+    expect(view.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('stays archived and says why when the unarchive fails', async () => {
+    vi.mocked(setQuoteArchived).mockRejectedValue(new Error('boom'));
+    const view = renderView(archivedDetail('DRAFT', 'GENERATED'));
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.callouts.archived.unarchive }));
+
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(view.getByText(copy.detail.callouts.archived.title)).toBeTruthy();
   });
 });
 

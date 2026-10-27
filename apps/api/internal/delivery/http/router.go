@@ -4,6 +4,7 @@ package http
 
 import (
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -28,25 +29,34 @@ const mailScope = "mail"
 
 // Handlers carries every handler the router mounts.
 type Handlers struct {
-	Health        *handler.HealthHandler
-	Auth          *handler.AuthHandler
-	Password      *handler.PasswordHandler
-	Verification  *handler.VerificationHandler
-	User          *handler.UserHandler
-	Branch        *handler.BranchHandler
-	Rfq           *handler.RfqHandler
-	Channel       *handler.ChannelHandler
-	Product       *handler.ProductHandler
-	BranchCatalog *handler.BranchCatalogHandler
-	RFQ           *handler.RFQHandler
-	RFQAttachment *handler.RFQAttachmentHandler
-	Quote         *handler.QuoteHandler
-	Client        *handler.ClientHandler
-	Account       *handler.AccountHandler
-	AccountLogo   *handler.BrandLogoHandler
-	Prices        *handler.ProductPriceHandler
-	CatalogImport *handler.CatalogImportHandler
-	Onboarding    *handler.OnboardingHandler
+	Health         *handler.HealthHandler
+	Auth           *handler.AuthHandler
+	CustomerAuth   *handler.CustomerAuthHandler
+	CustomerOrders *handler.CustomerOrderHandler
+	Password       *handler.PasswordHandler
+	Verification   *handler.VerificationHandler
+	User           *handler.UserHandler
+	Branch         *handler.BranchHandler
+	Rfq            *handler.RfqHandler
+	Channel        *handler.ChannelHandler
+	Product        *handler.ProductHandler
+	BranchCatalog  *handler.BranchCatalogHandler
+	RFQ            *handler.RFQHandler
+	RFQAttachment  *handler.RFQAttachmentHandler
+	PublicRFQ      *handler.PublicRFQHandler
+	Quote          *handler.QuoteHandler
+	Conversation   *handler.ConversationHandler
+	Client         *handler.ClientHandler
+	Account        *handler.AccountHandler
+	AccountLogo    *handler.BrandLogoHandler
+	Prices         *handler.ProductPriceHandler
+	CatalogImport  *handler.CatalogImportHandler
+	Onboarding     *handler.OnboardingHandler
+	WhatsApp       *handler.WhatsAppWebhookHandler
+	Gmail          *handler.GmailHandler
+	ARCASetup      *handler.ARCASetupHandler
+	Invoice        *handler.InvoiceHandler
+	Promotion      *handler.PromotionHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -55,6 +65,7 @@ type Handlers struct {
 type Auth struct {
 	Verifier middleware.AccessVerifier
 	Resolver middleware.TenantResolver
+	Customer middleware.CustomerSessionVerifier
 }
 
 // RateLimit carries the counter and the identity reader the limiter counts by.
@@ -74,6 +85,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	r.GET("/health", h.Health.Live)
 	r.GET("/ready", h.Health.Ready)
+	if h.WhatsApp != nil {
+		r.GET(apiPrefix+"/webhooks/whatsapp", h.WhatsApp.Verify)
+		r.POST(apiPrefix+"/webhooks/whatsapp", h.WhatsApp.Receive)
+	}
 
 	if !cfg.IsProduction() {
 		r.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -81,6 +96,34 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	limit := func(scope string, max int) gin.HandlerFunc {
 		return middleware.RateLimit(rl.Limiter, rateLimitOptions(cfg, rl, scope, max))
+	}
+
+	if h.CustomerAuth != nil && auth.Customer != nil {
+		customers := r.Group(apiPrefix+"/customer/sites/:hostname", limit("global", cfg.RateLimit.Global))
+		customers.Use(func(c *gin.Context) { c.Header("Cache-Control", "no-store") })
+		credentialBody := func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32768) }
+		customers.GET("/auth/google/options", h.CustomerAuth.GoogleOptions)
+		customers.POST("/auth/google/exchange", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.GoogleExchange)
+		customers.POST("/auth/google/complete", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.CompleteGoogle)
+		customers.POST("/auth/forgot-password", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.Forgot)
+		customers.POST("/auth/verify-email", credentialBody, limit("customer-verify", cfg.RateLimit.Credentials), h.CustomerAuth.VerifyEmail)
+		customers.POST("/auth/reset-password", credentialBody, limit("customer-reset", cfg.RateLimit.Credentials), h.CustomerAuth.Reset)
+		customers.POST("/auth/register", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.Register)
+		customers.POST("/auth/login", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.Login)
+		customers.Use(middleware.RequireCustomer(auth.Customer))
+		customers.GET("/me", h.CustomerAuth.Me)
+		customers.POST("/auth/logout", h.CustomerAuth.Logout)
+		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)
+		if h.PublicRFQ != nil {
+			customers.POST("/rfq-channels/:channelId/requests", limit("customer-rfq", cfg.RateLimit.AI), h.PublicRFQ.Create)
+		}
+		if h.CustomerOrders != nil {
+			customers.GET("/orders", h.CustomerOrders.List)
+			customers.GET("/orders/:rfqId", h.CustomerOrders.Get)
+			customers.GET("/quote-sends/:token/order", h.CustomerOrders.GetByToken)
+			customers.GET("/quote-sends/:token", h.CustomerOrders.AuthorizeDelivery, h.Quote.ResolvePublic)
+			customers.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global), h.CustomerOrders.AuthorizeDelivery, h.Quote.RespondPublic)
+		}
 	}
 
 	v1 := r.Group(apiPrefix,
@@ -92,6 +135,11 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 
 	public := v1.Group("/public")
+	if h.PublicRFQ != nil {
+		public.GET("/rfq-sites/:hostname", h.PublicRFQ.GetSite)
+		public.GET("/rfq-channels/:channelId", h.PublicRFQ.GetDestination)
+		public.POST("/rfq-channels/:channelId/requests", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
+	}
 	mail := limit(mailScope, cfg.RateLimit.Mail)
 
 	public.POST("/auth/login", limit("login", cfg.RateLimit.Credentials), h.Auth.Login)
@@ -108,13 +156,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
 	}
-	public.GET("/quote-sends/:token", h.Quote.ResolvePublic)
-	// A public response is heavy on idempotency and race control, so it gets its own limit lane
-	// rather than sharing the generic public one.
-	// The quote-action lane shares a window with the generic public traffic but is keyed on its
-	// own label, so a flood of link clicks cannot starve the token GETs or vice versa.
-	public.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global),
-		h.Quote.RespondPublic)
+	if h.Gmail != nil {
+		public.GET("/gmail/callback", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Callback)
+	}
+	if h.CustomerAuth != nil {
+		public.GET("/quote-sends/:token/site", h.CustomerAuth.GetDeliverySite)
+	}
+	public.GET("/quote-sends/:token", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
+	public.POST("/quote-sends/:token/action", func(c *gin.Context) { c.AbortWithStatus(http.StatusUnauthorized) })
 
 	authed := v1.Group("", middleware.RequireTenant())
 
@@ -128,6 +177,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	// Using the product needs a confirmed address. Everything below is closed until then.
 	verified := authed.Group("", middleware.RequireVerifiedEmail(cfg.Auth.RequireVerifiedEmail))
+	if h.ARCASetup != nil {
+		arca := verified.Group("/arca/setup", middleware.RequireAdmin())
+		arca.Use(func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32768) })
+		arca.GET("", h.ARCASetup.Get)
+		arca.POST("", limit("arca-setup", cfg.RateLimit.Credentials), h.ARCASetup.Create)
+		arca.PUT("/certificate", h.ARCASetup.Upload)
+		arca.DELETE("", h.ARCASetup.Delete)
+	}
 	verified.POST("/auth/change-password", h.Password.Change)
 
 	ai := limit("ai", cfg.RateLimit.AI)
@@ -150,6 +207,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+	if h.Gmail != nil {
+		channelAdmin.POST("/:channelId/gmail/authorization", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Start)
+	}
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action
 	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of
@@ -162,7 +222,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
+	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
+	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
+	quotes.POST("/:quoteId/payment", h.Quote.MarkPaid)
+	quotes.DELETE("/:quoteId/payment", h.Quote.UnmarkPaid)
+	quotes.POST("/:quoteId/invoice-waiver", h.Quote.WaiveInvoice)
+	quotes.DELETE("/:quoteId/invoice-waiver", h.Quote.RestoreInvoiceWait)
 	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
 	quotes.PUT("/:quoteId/client-association", h.Client.AssociateQuote)
 	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
@@ -172,9 +238,22 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.PATCH("/:quoteId/discounts/:discountId", h.Rfq.UpdateDiscount)
 	quotes.DELETE("/:quoteId/discounts/:discountId", h.Rfq.DeleteDiscount)
 
+	if h.Invoice != nil {
+		verified.GET("/invoices", h.Invoice.List)
+		verified.GET("/invoices/:invoiceId/pdf", h.Invoice.DownloadPDF)
+		verified.POST("/invoices/:invoiceId/recover", h.Invoice.Recover)
+		verified.POST("/invoices/:invoiceId/credit-note", h.Invoice.IssueCreditNote)
+		quotes.GET("/awaiting-invoice", h.Invoice.ListAwaitingInvoice)
+		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
+		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
+	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
 	clients.GET("/:clientId", h.Client.Get)
+	if h.Invoice != nil {
+		clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
+		clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
+	}
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
 
 	tags := verified.Group("/tags")
@@ -229,6 +308,16 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	admin.GET("/promotions", h.Promotion.List)
+	admin.GET("/promotions/:promotionId", h.Promotion.Get)
+	admin.POST("/promotions", h.Promotion.Create)
+	admin.PUT("/promotions/:promotionId", h.Promotion.Replace)
+	admin.PUT("/invoicing/enabled", h.Account.SetInvoicingEnabled)
+	if h.Invoice != nil {
+		admin.GET("/invoicing/settings", h.Invoice.GetSettings)
+		admin.PUT("/invoicing/settings", h.Invoice.UpdateSettings)
+		admin.PUT("/invoicing/points-of-sale", h.Invoice.UpdatePointsOfSale)
+	}
 
 	users := verified.Group("/users", middleware.RequireAdmin())
 	users.GET("", h.User.List)

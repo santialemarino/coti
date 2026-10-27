@@ -1,3 +1,5 @@
+import type { HandlerStrategy } from '@/lib/constants/conversation';
+
 /*
  * The statuses a seller sees and reasons about. DRAFT is deliberately absent: it is an internal
  * quote_state while the RFQ is still GENERATED, never a visible business state (see
@@ -56,6 +58,16 @@ export interface RfqRecord {
   followupFlaggedAt: string | null;
   processing?: boolean;
   archived?: boolean;
+  // When the sale was marked paid; null while it is not.
+  paidAt: string | null;
+  // When it was marked as needing no invoice; null while it is not.
+  invoiceWaivedAt: string | null;
+  // Whether an issued invoice no credit note cancelled stands for the sale.
+  invoiced: boolean;
+  // Whether a voucher of the sale still waits for ARCA, so no second one is offered.
+  invoicePending: boolean;
+  // Accepted, paid, and invoiced or waived (or the account does not invoice), as the API derives it.
+  saleComplete: boolean;
 }
 
 // Raw shape returned by GET /v1/rfqs; mapListItem turns it into an RfqRecord.
@@ -77,6 +89,14 @@ export interface RfqListItem {
   needs_followup: boolean;
   followup_flagged_at: string | null;
   archived_at: string | null;
+  paid_at: string | null;
+  // The name of whoever marked the sale paid.
+  paid_by: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by: string | null;
+  invoiced: boolean;
+  invoice_pending: boolean;
+  sale_complete: boolean;
 }
 
 export function mapListItem(item: RfqListItem): RfqRecord {
@@ -98,6 +118,11 @@ export function mapListItem(item: RfqListItem): RfqRecord {
     needsFollowup: item.needs_followup,
     followupFlaggedAt: item.followup_flagged_at,
     archived: item.archived_at != null,
+    paidAt: item.paid_at,
+    invoiceWaivedAt: item.invoice_waived_at,
+    invoiced: item.invoiced,
+    invoicePending: item.invoice_pending,
+    saleComplete: item.sale_complete,
   };
 }
 
@@ -110,7 +135,11 @@ export function formatRfqReference(quoteNumber: number | null | undefined): stri
 
 // Raw shape returned by GET /v1/rfqs/:rfqId — the detail view projection.
 export interface RfqDetailResponse {
+  publicRequest?: PublicRfqRequest;
   rfq: RfqListItem;
+  // The E.164 sender of the inbound WhatsApp message, used only as the editable send default.
+  inbound_whatsapp_phone: string | null;
+  inbound_email: string | null;
   quote: QuoteResponse | null;
   version: QuoteVersionResponse | null;
   items: QuoteItemResponse[];
@@ -121,6 +150,44 @@ export interface RfqDetailResponse {
   discounts?: QuoteDiscountResponse[];
   changes_requested?: ChangeRequestDiff;
   client_actions?: ClientActionResponse[];
+  conversation?: ConversationResponse;
+}
+
+interface PublicRfqDetailRaw extends RfqDetailResponse {
+  public_contact?: { tax_id: string; name: string; email: string; phone?: string };
+  public_original_text?: string;
+  public_attachments?: { id: string; url: string }[];
+}
+
+export interface PublicRfqRequest {
+  taxId: string;
+  name: string;
+  email: string;
+  phone?: string;
+  originalText?: string;
+  attachments: { id: string; url: string }[];
+}
+
+export function mapRfqDetail(raw: PublicRfqDetailRaw): RfqDetailResponse {
+  const {
+    public_contact: contact,
+    public_original_text: originalText,
+    public_attachments: attachments,
+    ...detail
+  } = raw;
+  return {
+    ...detail,
+    publicRequest: contact
+      ? {
+          taxId: contact.tax_id,
+          name: contact.name,
+          email: contact.email,
+          phone: contact.phone,
+          originalText,
+          attachments: attachments ?? [],
+        }
+      : detail.publicRequest,
+  };
 }
 
 export interface QuoteResponse {
@@ -137,6 +204,10 @@ export interface QuoteResponse {
   followup_flagged_at: string | null;
   created_at: string;
   updated_at: string;
+  paid_at: string | null;
+  paid_by_user_id: string | null;
+  invoice_waived_at: string | null;
+  invoice_waived_by_user_id: string | null;
 }
 
 export interface QuoteVersionResponse {
@@ -216,6 +287,7 @@ export interface QuoteStatusChangeResponse {
 export interface QuoteSendTrackingResponse {
   id: string;
   version_id: string;
+  operation_id: string;
   channel: string;
   destination: string;
   format: string;
@@ -253,10 +325,17 @@ export interface FileRfqDraftResponse {
   items: QuoteItemResponse[];
 }
 
-// Body of POST /v1/quotes/:quoteId/sends. WhatsApp and the public link always go; the email
-// copy is the optional one, so an absent email_delivery means "WhatsApp only".
+// Client identification for POST /v1/quotes/:quoteId/sends.
+export interface SendClientSelection {
+  taxId: string;
+  clientId?: string;
+  newClient?: { name: string; phone?: string; email?: string };
+  tagIds: string[];
+}
+
 export interface QuoteSendBody {
-  recipient_phone: string;
+  clientAssociation?: SendClientSelection;
+  recipient_phone?: string;
   email_delivery?: { address: string } | null;
   expiry_days?: number | null;
 }
@@ -323,31 +402,139 @@ export interface UpdateDiscountBody {
   suppressed_by_seller?: boolean;
 }
 
+export type DiffChange = 'UNCHANGED' | 'MODIFIED' | 'ADDED' | 'REMOVED';
+
+// One side of a compared line: what the customer received, or what the draft holds now.
 export interface DiffLineItem {
   description: string;
+  product_name: string | null;
   quantity: string;
   unit: string | null;
   unit_price: string | null;
-  changed: boolean;
-  change_type?: 'modified' | 'added' | 'removed';
 }
 
-export interface DiffDiscountLine {
-  name: string;
+// A sent line paired with the draft line copied from it; one side is null when added or removed.
+export interface DiffLine {
+  change: DiffChange;
+  original: DiffLineItem | null;
+  requested: DiffLineItem | null;
+}
+
+export interface DiffDiscountSide {
   amount: string;
-  changed: boolean;
+  suppressed: boolean;
+  origin: DiscountOrigin;
+}
+
+export interface DiffDiscount {
+  change: DiffChange;
+  name: string;
+  original: DiffDiscountSide | null;
+  requested: DiffDiscountSide | null;
+}
+
+// Why the conversation handler left a batch to the seller instead of changing the draft.
+export type HandlerNoMatchReason =
+  | 'REQUIRES_SELLER'
+  | 'AI_DISABLED'
+  | 'PROPOSAL_REFUSED'
+  | 'PIPELINE_EXHAUSTED'
+  | 'PROMOTION_NOT_EARNED';
+
+// One line the AI raised to reach a promotion; quantities and totals are decimal strings.
+export interface HandlerAdaptedLine {
+  item_id: string;
+  description: string;
+  from_quantity: string;
+  to_quantity: string;
+  promotion_id: string;
+  promotion_name: string;
+}
+
+// What reaching a promotion did to the draft. total_raised: the customer asked for that promotion
+// and reaching it costs more.
+export interface HandlerAdaptation {
+  lines: HandlerAdaptedLine[];
+  total_before: string;
+  total_after: string;
+  total_raised: boolean;
+}
+
+// The latest conversation handler decision on the draft: what the customer wrote and how the AI
+// read it.
+export interface HandlerDecisionNote {
+  client_input: string;
+  interpretation: string;
+  outcome: 'APPLIED' | 'NO_MATCH';
+  no_match_reason: HandlerNoMatchReason | null;
+  seller_decision?: HandlerSellerDecision | null;
+  // The recipes run for a complex goal, in run order.
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
+  created_at: string;
+}
+
+// What the seller did with a handler run, once they sent or discarded the draft.
+export type HandlerSellerDecision = 'APPROVED_AS_IS' | 'EDITED' | 'REJECTED' | 'MANUAL_OVERRIDE';
+
+export type ConversationBatchStatus = 'CLOSED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+
+// Why a batch failed; only one that ran out of attempts can be retried.
+export type ConversationFailureReason = 'UNPROCESSABLE' | 'ATTEMPTS_EXHAUSTED';
+
+// Where a seller message carried the quote's public link, which is never stored.
+export const QUOTE_LINK_PLACEHOLDER = '{{public_url}}';
+
+export interface ConversationMessage {
+  author: 'CLIENT' | 'SELLER' | 'SYSTEM';
+  body: string;
+  received_at: string;
+}
+
+export interface ConversationDecision {
+  interpretation: string;
+  outcome: 'APPLIED' | 'NO_MATCH';
+  no_match_reason: HandlerNoMatchReason | null;
+  seller_decision: HandlerSellerDecision | null;
+  strategies_tried?: HandlerStrategy[];
+  adaptation?: HandlerAdaptation | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ConversationBatch {
+  id: string;
+  status: ConversationBatchStatus;
+  closed_at: string | null;
+  failure_reason: ConversationFailureReason | null;
+  retryable: boolean;
+  messages: ConversationMessage[];
+  decision: ConversationDecision | null;
+}
+
+// A quote's messages after a send, grouped by the batch that carried them.
+export interface ConversationResponse {
+  batches: ConversationBatch[];
+  // Messages of a window still open, not yet handed to the AI.
+  pending: ConversationMessage[];
+  // The quote's sends; the public link arrives as QUOTE_LINK_PLACEHOLDER.
+  seller_messages: ConversationMessage[];
+  can_discard_ai_changes: boolean;
+}
+
+// One message the customer wrote, as received.
+export interface ClientMessage {
+  body: string;
+  received_at: string;
 }
 
 export interface ChangeRequestDiff {
   reason: string | null;
-  original: {
-    items: DiffLineItem[];
-    discounts: DiffDiscountLine[];
-    total: string;
-  };
-  requested: {
-    items: DiffLineItem[];
-    discounts: DiffDiscountLine[];
-    total: string;
-  };
+  handler?: HandlerDecisionNote;
+  // Every message the customer sent since the version they answered went out, oldest first.
+  client_messages?: ClientMessage[];
+  lines: DiffLine[];
+  discounts: DiffDiscount[];
+  original_total: string;
+  requested_total: string;
 }

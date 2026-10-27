@@ -1,17 +1,9 @@
 import 'server-only';
 
+import { customerFetch } from '@/lib/api/customer-orders';
 import { API_URL } from '@/lib/config';
 
-/*
- * The public quote read. There is no session here: the unguessable token in the URL is the whole
- * access control, so this module never sends a credential and never takes one.
- *
- * The API declares no CORS and the webapp answers on its own subdomain, so this runs server-side
- * only — a browser fetch would be refused. The logo is the exception and is meant to be: an <img>
- * is not CORS-restricted, so the URL below is handed to the browser to load directly.
- */
-
-const PUBLIC_QUOTE_PATH = '/v1/public/quote-sends';
+const PUBLIC_QUOTE_PATH = '/quote-sends';
 
 // --- Raw types (API JSON shape, snake_case) ---
 
@@ -82,8 +74,11 @@ interface QuoteDiscountRaw {
 
 // --- Frontend types (camelCase) ---
 
-// The API answers EXPIRED with no quote body, so the payload is what separates the two states.
-export type PublicQuoteStatus = 'ACTIVE' | 'EXPIRED';
+/*
+ * EXPIRED and UNAVAILABLE come with no quote body. UNAVAILABLE is a live link to a quote the
+ * corralón archived: the offer was withdrawn, not left to lapse.
+ */
+export type PublicQuoteStatus = 'ACTIVE' | 'EXPIRED' | 'UNAVAILABLE';
 
 // The wire value of client_action_type; this is the customer's deliberate decision on the frozen
 // version, so the approval pallet mirrors the backend enum exactly.
@@ -210,7 +205,7 @@ function mapQuotePayload(raw: QuotePayloadRaw): QuotePayload {
 function mapPublicQuoteSend(raw: PublicQuoteSendRaw): PublicQuoteSend {
   return {
     // Anything the wire adds later reads as expired rather than rendering a quote we cannot word.
-    status: raw.status === 'ACTIVE' ? 'ACTIVE' : 'EXPIRED',
+    status: raw.status === 'ACTIVE' || raw.status === 'UNAVAILABLE' ? raw.status : 'EXPIRED',
     expiresAt: raw.expires_at,
     quote: raw.quote ? mapQuotePayload(raw.quote) : undefined,
     message: raw.message,
@@ -233,7 +228,7 @@ function absoluteLogoUrl(stored: string | undefined): string | undefined {
 
 // Returns null for a token the API does not know, which the page renders as its 404.
 export async function getPublicQuoteByToken(token: string): Promise<PublicQuoteSend | null> {
-  const response = await fetch(`${API_URL}${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}`, {
+  const response = await customerFetch(`${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
@@ -243,14 +238,16 @@ export async function getPublicQuoteByToken(token: string): Promise<PublicQuoteS
   return mapPublicQuoteSend((await response.json()) as PublicQuoteSendRaw);
 }
 
-// PublicQuoteActionError carries the HTTP status behind a refused customer response, so the app
-// route can forward the right shape instead of guessing from a message string.
+// PublicQuoteActionError carries the HTTP status and the API's error code behind a refused customer
+// response, so the app route can forward the right shape instead of guessing from a message string.
 export class PublicQuoteActionError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number) {
+  constructor(status: number, code?: string) {
     super(`public quote action failed with ${status}`);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -264,16 +261,19 @@ export async function submitPublicQuoteAction(
   token: string,
   action: PublicQuoteAction,
 ): Promise<PublicQuoteActionResult> {
-  const response = await fetch(
-    `${API_URL}${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ type: action.type, message: action.message }),
-      cache: 'no-store',
-    },
-  );
-  if (!response.ok) throw new PublicQuoteActionError(response.status);
+  const response = await customerFetch(`${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ type: action.type, message: action.message }),
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+    throw new PublicQuoteActionError(
+      response.status,
+      typeof body?.code === 'string' ? body.code : undefined,
+    );
+  }
   const raw = (await response.json()) as PublicQuoteActionResultRaw;
   return {
     customerStatus: raw.customer_status as CustomerActionType,

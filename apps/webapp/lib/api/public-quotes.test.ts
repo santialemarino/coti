@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getPublicQuoteByToken, type PublicQuoteSend } from '@/lib/api/public-quotes';
+import {
+  getPublicQuoteByToken,
+  PublicQuoteActionError,
+  submitPublicQuoteAction,
+  type PublicQuoteSend,
+} from '@/lib/api/public-quotes';
 import { API_URL } from '@/lib/config';
+
+vi.mock('@/lib/auth/customer-session', () => ({
+  getCustomerToken: async () => 'customer-session',
+  customerApiPath: async (path: string) => API_URL + '/v1/customer/sites/supplier.test' + path,
+}));
 
 function rawSend(overrides: Record<string, unknown> = {}) {
   return {
@@ -109,13 +119,16 @@ describe('getPublicQuoteByToken', () => {
     await expect(getPublicQuoteByToken('tok-1')).resolves.toEqual(expected);
   });
 
-  it('sends the token url-encoded and attaches no credential', async () => {
+  it('encodes the delivery reference and forwards the customer session', async () => {
     const fetchMock = stubFetch(200, rawSend());
     await getPublicQuoteByToken('tok/with space');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${API_URL}/v1/public/quote-sends/tok%2Fwith%20space`);
-    expect(init.headers).toEqual({ Accept: 'application/json' });
+    expect(url).toBe(`${API_URL}/v1/customer/sites/supplier.test/quote-sends/tok%2Fwith%20space`);
+    expect(init.headers).toEqual({
+      Accept: 'application/json',
+      Authorization: 'Bearer customer-session',
+    });
     expect(init).not.toHaveProperty('credentials');
   });
 
@@ -150,6 +163,15 @@ describe('getPublicQuoteByToken', () => {
     });
   });
 
+  // A live link to an archived quote: the offer was withdrawn, which reads differently from lapsing.
+  it('keeps a withdrawn send apart from an expired one', async () => {
+    stubFetch(200, { status: 'UNAVAILABLE', expires_at: '2026-09-22T12:00:00Z' });
+    await expect(getPublicQuoteByToken('tok-1')).resolves.toMatchObject({
+      status: 'UNAVAILABLE',
+      quote: undefined,
+    });
+  });
+
   // A status this app cannot word must not fall through to rendering a quote as if it were live.
   it('treats an unknown status as expired', async () => {
     stubFetch(200, rawSend({ status: 'REVOKED' }));
@@ -174,3 +196,15 @@ function supplier(logoUrl: string | undefined) {
 function logoOf(send: PublicQuoteSend | null) {
   return send?.quote?.supplier.logoUrl;
 }
+
+describe('submitPublicQuoteAction', () => {
+  // The page words an archived quote on its own, so the refusal has to carry the API's code.
+  it('carries the code of a refused answer', async () => {
+    stubFetch(409, { error: 'conflict', code: 'QUOTE_ARCHIVED' });
+
+    const refusal = await submitPublicQuoteAction('tok-1', { type: 'ACCEPT' }).catch((e) => e);
+
+    expect(refusal).toBeInstanceOf(PublicQuoteActionError);
+    expect(refusal).toMatchObject({ status: 409, code: 'QUOTE_ARCHIVED' });
+  });
+});

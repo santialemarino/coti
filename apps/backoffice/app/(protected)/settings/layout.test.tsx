@@ -51,3 +51,20 @@ describe('SettingsLayout', () => {
     },
   );
 });
+
+describe('SettingsLayout inside a section', () => {
+  // The ARCA connection is opened from the invoicing page, so it leads back there at every width.
+  it('leads the ARCA connection back to invoicing', async () => {
+    navigation.pathname = ROUTES.arcaSettings;
+    vi.mocked(getSession).mockResolvedValue({ role: 'ADMIN' } as never);
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        {await SettingsLayout({ children: <p>pantalla</p> })}
+      </NextIntlClientProvider>,
+    );
+    const back = screen.getByRole('link', { name: messages.settings.backToInvoicing });
+
+    expect(back.getAttribute('href')).toBe(ROUTES.invoicingSettings);
+    expect(back.classList.contains('lg:hidden')).toBe(false);
+  });
+});

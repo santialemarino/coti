@@ -110,14 +110,26 @@ describe('SignupForm steps', () => {
     expect(link.closest('p')?.textContent).toBe(`${copy.haveAccount} ${copy.login}`);
   });
 
-  /*
-   * A CUIT is written with hyphens — the dev seed's own is `30-71234567-9` — and an `inputMode` of
-   * `numeric` gives iOS a keypad with no hyphen key, so the value cannot be typed on a phone.
-   */
-  it('leaves the tax id a plain text field', () => {
+  // Hyphens arrive by themselves, so the phone keypad's digits are all a CUIT needs.
+  it('formats the CUIT as it is typed on a numeric keypad, with its format described', () => {
+    const view = renderSignup();
+    const taxId = fieldOf(view, 'taxId');
+
+    fill(view, { taxId: '30a71234567 1' });
+
+    expect(taxId?.value).toBe('30-71234567-1');
+    expect(taxId?.getAttribute('inputmode')).toBe('numeric');
+    expect(view.getByText(copy.taxId.hint)).toBeTruthy();
+  });
+
+  it('keeps the account step until a typed CUIT carries its check digit', async () => {
     const view = renderSignup();
 
-    expect(fieldOf(view, 'taxId')?.getAttribute('inputmode')).toBeNull();
+    fill(view, { ...ACCOUNT, taxId: '30712345679' });
+    fireEvent.submit(view.form);
+
+    await waitFor(() => expect(isMessageShown(view.container, copy.taxId.checkDigit)).toBe(true));
+    expect(fieldOf(view, 'branchName')).toBeNull();
   });
 
   /*
@@ -240,6 +252,19 @@ describe('SignupForm steps', () => {
       taxId: '',
       branchAddress: '',
     });
+  });
+
+  it('submits the CUIT as its digits', async () => {
+    vi.mocked(signup).mockResolvedValue({ redirectTo: '/verify-email' });
+    const view = renderSignup();
+
+    fill(view, { taxId: '30-71234567-1' });
+    await reachAdminStep(view);
+    fill(view, ADMIN);
+    fireEvent.submit(view.form);
+
+    await waitFor(() => expect(signup).toHaveBeenCalledOnce());
+    expect(vi.mocked(signup).mock.calls[0]?.[0].taxId).toBe('30712345671');
   });
 });
 

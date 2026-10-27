@@ -34,26 +34,35 @@ func TestValidateRepresentationSource_AcceptsConsistentFrozenValues(t *testing.T
 
 func TestValidateRepresentationSource_RejectsIncompleteAndInconsistentQuotes(t *testing.T) {
 	t.Parallel()
+	unresolved := domain.CodeQuoteItemsUnresolved
+	invalid := domain.CodeQuoteRepresentationInvalid
 	cases := []struct {
 		name   string
 		mutate func(*domain.QuoteRepresentationSource)
+		code   domain.ErrorCode
 	}{
-		{"no items", func(source *domain.QuoteRepresentationSource) { source.Items = nil }},
+		{"no items", func(source *domain.QuoteRepresentationSource) { source.Items = nil }, invalid},
 		{"unpriced item", func(source *domain.QuoteRepresentationSource) {
 			source.Items[0].UnitPriceSnapshot = decimal.NullDecimal{}
-		}},
+		}, unresolved},
+		{"ambiguous item", func(source *domain.QuoteRepresentationSource) {
+			source.Items[0].MatchStatus = domain.ItemMatchStatusAmbiguous
+		}, unresolved},
+		{"item with no product", func(source *domain.QuoteRepresentationSource) {
+			source.Items[0].ProductID = nil
+		}, unresolved},
 		{"wrong subtotal", func(source *domain.QuoteRepresentationSource) {
 			source.Items[0].Subtotal = decimal.NewNullDecimal(decimal.RequireFromString("999.00"))
-		}},
+		}, invalid},
 		{"approved alternative without price", func(source *domain.QuoteRepresentationSource) {
 			source.Alternatives[source.Items[0].ID][0].PriceSnapshot = decimal.NullDecimal{}
-		}},
+		}, invalid},
 		{"negative discount", func(source *domain.QuoteRepresentationSource) {
 			source.Discounts[0].Amount = "-1.00"
-		}},
+		}, invalid},
 		{"wrong total", func(source *domain.QuoteRepresentationSource) {
 			source.Version.Total = decimal.RequireFromString("201.00")
-		}},
+		}, invalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -64,9 +73,8 @@ func TestValidateRepresentationSource_RejectsIncompleteAndInconsistentQuotes(t *
 			if !errors.Is(err, domain.ErrInvalidInput) {
 				t.Fatalf("error = %v, want ErrInvalidInput", err)
 			}
-			if domain.CodeOf(err) != domain.CodeQuoteRepresentationInvalid {
-				t.Fatalf("code = %q, want %q", domain.CodeOf(err),
-					domain.CodeQuoteRepresentationInvalid)
+			if domain.CodeOf(err) != tc.code {
+				t.Fatalf("code = %q, want %q", domain.CodeOf(err), tc.code)
 			}
 		})
 	}

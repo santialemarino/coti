@@ -286,6 +286,7 @@ func (h *RfqHandler) UpdateItem(c *gin.Context) {
 		ProductID:            req.ProductID,
 		RequestedDescription: req.RequestedDescription,
 		Unit:                 req.Unit,
+		ConfirmMatch:         req.ConfirmMatch,
 	}
 	if req.Quantity != nil {
 		qty, qtyErr := decimalFromString(*req.Quantity)
@@ -617,6 +618,13 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		ArchivedAt:        item.ArchivedAt,
 		NeedsFollowup:     item.NeedsFollowup,
 		FollowupFlaggedAt: item.FollowupFlaggedAt,
+		PaidAt:            item.Closure.PaidAt,
+		PaidBy:            item.Closure.PaidBy,
+		InvoiceWaivedAt:   item.Closure.InvoiceWaivedAt,
+		InvoiceWaivedBy:   item.Closure.InvoiceWaivedBy,
+		Invoiced:          item.Closure.Invoiced,
+		InvoicePending:    item.Closure.InvoicePending,
+		SaleComplete:      item.SaleComplete(),
 	}
 }
 
@@ -847,10 +855,18 @@ func toRfqDetailResponse(
 	detail domain.RfqDetail, highConfidence decimal.Decimal,
 ) dto.RfqDetailResponse {
 	resp := dto.RfqDetailResponse{
-		Rfq:          toListItemResponse(detail.Rfq),
-		RFQHistory:   toRFQStatusChangeResponses(detail.RFQStatusChanges),
-		QuoteHistory: toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
-		Deliveries:   toQuoteSendTrackingResponses(detail.Deliveries),
+		Rfq:                  toListItemResponse(detail.Rfq),
+		InboundWhatsAppPhone: detail.InboundWhatsAppPhone,
+		InboundEmail:         detail.InboundEmail,
+		RFQHistory:           toRFQStatusChangeResponses(detail.RFQStatusChanges),
+		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
+		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
+	}
+	if contact := detail.PublicContact; contact != nil {
+		resp.PublicOriginalText = detail.PublicOriginalText
+		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
+		resp.PublicContact = &dto.PublicRFQContactResponse{TaxID: contact.TaxID, Name: contact.Name,
+			Email: contact.Email, Phone: contact.Phone}
 	}
 
 	if detail.Quote != nil {
@@ -890,6 +906,62 @@ func toRfqDetailResponse(
 		resp.ClientActions = append(resp.ClientActions, toClientActionResponse(action))
 	}
 
+	if detail.Conversation != nil {
+		conversation := toConversationResponse(*detail.Conversation)
+		resp.Conversation = &conversation
+	}
+
+	return resp
+}
+
+func toConversationResponse(conversation domain.Conversation) dto.ConversationResponse {
+	resp := dto.ConversationResponse{
+		Batches:             make([]dto.ConversationBatchResponse, 0, len(conversation.Batches)),
+		Pending:             toConversationMessageResponses(conversation.Pending),
+		SellerMessages:      toConversationMessageResponses(conversation.SellerMessages),
+		CanDiscardAIChanges: conversation.CanDiscardAIChanges,
+	}
+	for _, entry := range conversation.Batches {
+		batch := toConversationBatchResponse(entry.Batch)
+		batch.Retryable = entry.Retryable
+		batch.Messages = toConversationMessageResponses(entry.Messages)
+		if review := entry.Decision; review != nil {
+			decision := dto.ConversationDecisionResponse{Interpretation: review.Interpretation,
+				Outcome: string(review.Outcome), DecidedAt: review.DecidedAt,
+				StrategiesTried: toStrategyNames(review.StrategiesTried),
+				Adaptation:      toHandlerAdaptationResponse(review.Adaptation),
+				CreatedAt:       review.CreatedAt}
+			if review.NoMatchReason != nil {
+				reason := string(*review.NoMatchReason)
+				decision.NoMatchReason = &reason
+			}
+			if review.SellerDecision != nil {
+				seller := string(*review.SellerDecision)
+				decision.SellerDecision = &seller
+			}
+			batch.Decision = &decision
+		}
+		resp.Batches = append(resp.Batches, batch)
+	}
+	return resp
+}
+
+func toConversationBatchResponse(batch domain.MessageBatch) dto.ConversationBatchResponse {
+	resp := dto.ConversationBatchResponse{ID: batch.ID, Status: string(batch.Status),
+		ClosedAt: batch.ClosedAt, Messages: []dto.ConversationMessageResponse{}}
+	if batch.FailureReason != nil {
+		reason := string(*batch.FailureReason)
+		resp.FailureReason = &reason
+	}
+	return resp
+}
+
+func toConversationMessageResponses(messages []domain.QuoteMessage) []dto.ConversationMessageResponse {
+	resp := make([]dto.ConversationMessageResponse, 0, len(messages))
+	for _, message := range messages {
+		resp = append(resp, dto.ConversationMessageResponse{Author: string(message.AuthorType),
+			Body: message.Body, ReceivedAt: message.ReceivedAt})
+	}
 	return resp
 }
 
@@ -900,45 +972,87 @@ func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse
 }
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {
-	return dto.ChangeRequestDiffResponse{
-		Reason:    diff.Reason,
-		Original:  toChangeRequestSideResponse(diff.Original),
-		Requested: toChangeRequestSideResponse(diff.Requested),
+	resp := dto.ChangeRequestDiffResponse{
+		Reason:         diff.Reason,
+		Lines:          make([]dto.DiffLineResponse, 0, len(diff.Lines)),
+		Discounts:      make([]dto.DiffDiscountResponse, 0, len(diff.Discounts)),
+		OriginalTotal:  diff.OriginalTotal.StringFixed(domain.MoneyScale),
+		RequestedTotal: diff.RequestedTotal.StringFixed(domain.MoneyScale),
+		ClientMessages: make([]dto.ClientMessageResponse, 0, len(diff.ClientMessages)),
 	}
+	for _, line := range diff.Lines {
+		resp.Lines = append(resp.Lines, dto.DiffLineResponse{Change: string(line.Change),
+			Original:  toDiffLineItemResponse(line.Original),
+			Requested: toDiffLineItemResponse(line.Requested)})
+	}
+	for _, discount := range diff.Discounts {
+		resp.Discounts = append(resp.Discounts, dto.DiffDiscountResponse{
+			Change: string(discount.Change), Name: discount.Name,
+			Original:  toDiffDiscountSideResponse(discount.Original),
+			Requested: toDiffDiscountSideResponse(discount.Requested)})
+	}
+	for _, message := range diff.ClientMessages {
+		resp.ClientMessages = append(resp.ClientMessages,
+			dto.ClientMessageResponse{Body: message.Body, ReceivedAt: message.ReceivedAt})
+	}
+	if note := diff.Handler; note != nil {
+		var reason *string
+		if note.NoMatchReason != nil {
+			value := string(*note.NoMatchReason)
+			reason = &value
+		}
+		var seller *string
+		if note.SellerDecision != nil {
+			value := string(*note.SellerDecision)
+			seller = &value
+		}
+		resp.Handler = &dto.HandlerDecisionResponse{ClientInput: note.ClientInput,
+			Interpretation: note.Interpretation, Outcome: string(note.Outcome),
+			NoMatchReason: reason, SellerDecision: seller,
+			StrategiesTried: toStrategyNames(note.StrategiesTried),
+			Adaptation:      toHandlerAdaptationResponse(note.Adaptation), CreatedAt: note.CreatedAt}
+	}
+	return resp
 }
 
-func toChangeRequestSideResponse(side domain.ChangeRequestSide) dto.ChangeRequestSideResponse {
-	lineItems := make([]dto.DiffLineItemResponse, 0, len(side.Items))
-	for _, item := range side.Items {
-		lineItems = append(lineItems, dto.DiffLineItemResponse{
-			Description: item.Description,
-			Quantity:    item.Quantity,
-			Unit:        item.Unit,
-			UnitPrice:   item.UnitPrice,
-			Changed:     item.Changed,
-			ChangeType:  changeTypePtr(item.ChangeType),
-		})
+func toStrategyNames(strategies []domain.HandlerStrategy) []string {
+	names := make([]string, 0, len(strategies))
+	for _, strategy := range strategies {
+		names = append(names, string(strategy))
 	}
-	discountLines := make([]dto.DiffDiscountLineResponse, 0, len(side.Discounts))
-	for _, discount := range side.Discounts {
-		discountLines = append(discountLines, dto.DiffDiscountLineResponse{
-			Name:    discount.Name,
-			Amount:  discount.Amount,
-			Changed: discount.Changed,
-		})
-	}
-	return dto.ChangeRequestSideResponse{
-		Items:     lineItems,
-		Discounts: discountLines,
-		Total:     side.Total.StringFixed(domain.MoneyScale),
-	}
+	return names
 }
 
-func changeTypePtr(changeType string) *string {
-	if changeType == "" {
+func toHandlerAdaptationResponse(adaptation *domain.HandlerAdaptation) *dto.HandlerAdaptationResponse {
+	if adaptation == nil {
 		return nil
 	}
-	return &changeType
+	resp := &dto.HandlerAdaptationResponse{TotalBefore: adaptation.TotalBefore,
+		TotalAfter: adaptation.TotalAfter, TotalRaised: adaptation.TotalRaised,
+		Lines: make([]dto.HandlerAdaptedLineResponse, 0, len(adaptation.Lines))}
+	for _, line := range adaptation.Lines {
+		resp.Lines = append(resp.Lines, dto.HandlerAdaptedLineResponse{ItemID: line.ItemID,
+			Description: line.Description, FromQuantity: line.FromQuantity,
+			ToQuantity: line.ToQuantity, PromotionID: line.PromotionID,
+			PromotionName: line.PromotionName})
+	}
+	return resp
+}
+
+func toDiffLineItemResponse(item *domain.DiffLineItem) *dto.DiffLineItemResponse {
+	if item == nil {
+		return nil
+	}
+	return &dto.DiffLineItemResponse{Description: item.Description, ProductName: item.ProductName,
+		Quantity: item.Quantity, Unit: item.Unit, UnitPrice: item.UnitPrice}
+}
+
+func toDiffDiscountSideResponse(side *domain.DiffDiscountSide) *dto.DiffDiscountSideResponse {
+	if side == nil {
+		return nil
+	}
+	return &dto.DiffDiscountSideResponse{Amount: side.Amount, Suppressed: side.Suppressed,
+		Origin: string(side.Origin)}
 }
 
 func toQuoteDiscountResponse(discount domain.QuoteDiscount) dto.QuoteDiscountResponse {
@@ -1020,7 +1134,8 @@ func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrack
 	responses := make([]dto.QuoteSendTrackingResponse, 0, len(sends))
 	for _, send := range sends {
 		responses = append(responses, dto.QuoteSendTrackingResponse{
-			ID: send.ID, VersionID: send.VersionID, Channel: string(send.ChannelType),
+			ID: send.ID, VersionID: send.VersionID, OperationID: send.IdempotencyKey,
+			Channel:     string(send.ChannelType),
 			Destination: send.Destination, Format: string(send.Format),
 			TrackingStatus: string(send.TrackingStatus), PublicURL: send.PublicURL,
 			SentAt: send.SentAt, ExpiresAt: send.ExpiresAt, CreatedAt: send.CreatedAt,

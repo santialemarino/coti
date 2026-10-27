@@ -58,6 +58,7 @@ type Product struct {
 	SubgroupID    *uuid.UUID
 	ImageID       *uuid.UUID
 	IsActive      bool
+	VATRate       VATRate
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -79,6 +80,7 @@ type NewProduct struct {
 	FamilyID      uuid.UUID
 	SubgroupID    *uuid.UUID
 	InitialPrice  *NewProductPrice
+	VATRate       *VATRate // nil takes DefaultVATRate.
 }
 
 // ProductUpdate replaces a product's editable attributes: a nil nullable field clears
@@ -91,6 +93,7 @@ type ProductUpdate struct {
 	FamilyID      uuid.UUID
 	SubgroupID    *uuid.UUID
 	IsActive      *bool
+	VATRate       *VATRate // nil keeps the current rate.
 }
 
 // ProductFilter narrows a catalog listing. The service resolves Limit and Offset against

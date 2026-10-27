@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 
+import { ROUTES } from '@/config/routes';
+
 /*
  * Web app manifest. Next serves it at /manifest.webmanifest and links it automatically.
  * The colours match the app surface rather than the brand blue, for the reason in layout.tsx.
@@ -11,7 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Coti — Backoffice',
     short_name: 'Coti',
     description: 'Vendor and admin workspace for AI-assisted quoting.',
-    start_url: '/',
+    // An installed app opens on the queue; the root is the public site.
+    start_url: ROUTES.home,
     display: 'standalone',
     lang: 'es-AR',
     dir: 'ltr',

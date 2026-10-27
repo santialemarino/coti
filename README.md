@@ -26,7 +26,7 @@ autopilot.
 ```
 apps/
   backoffice   Next.js — vendor & admin web app (authenticated)
-  webapp       Next.js — customer-facing public web app (no auth)
+  webapp       Next.js — customer portal with supplier-scoped login and request history
   api          Go + Gin — REST API, business logic, persistence, AI orchestration
 packages/
   ui                 Shared design system (@repo/ui) — tokens, type scale, motion,
@@ -101,9 +101,14 @@ MAIL_SMTP_STARTTLS=false
 | mailpit SMTP | localhost:1025        |
 
 To test quote delivery in development, run `pnpm db:seed` so both seeded branches have
-outbound channels. Use `MAIL_PROVIDER=smtp` with Mailpit and select the email copy in the
-send dialog; the WhatsApp adapter is not connected yet. A console mailer does not count as
-delivery, and Mailpit captures messages locally without contacting the recipient.
+outbound channels. Use `MAIL_PROVIDER=smtp` with Mailpit and select email in the
+send dialog. WhatsApp requires a configured Cloud API channel and app secret; see
+[WhatsApp Cloud API](docs/technical/whatsapp-cloud-api.md) and the [Meta App development testing
+guide](docs/technical/meta-app-development-testing.md). A console mailer does not count as delivery,
+and Mailpit captures messages locally without contacting the recipient.
+
+Branch mailboxes can also ingest new requests through Gmail or Google Workspace. Connecting one
+requires Google OAuth credentials and an encryption key; see [Gmail intake](docs/technical/gmail-intake.md).
 
 ## Common scripts
 
@@ -240,6 +245,9 @@ development-only route simulates an inbound WhatsApp message through the same pi
 
 See [docs/technical/rfq-pipeline.md](docs/technical/rfq-pipeline.md).
 
+Customer login, Google sign-in, history, supplier hostname setup and the request retry contract are documented in
+[Public RFQ intake](docs/technical/public-rfq-intake.md).
+
 ## File storage
 
 One port in `apps/api/internal/domain` — upload, download, signed link — with adapters under
@@ -266,6 +274,14 @@ classNames (`pnpm --filter @repo/ui build`, or its `dev` watcher). `pnpm dev` do
 first, so a cold start can't race it.
 
 See [docs/technical/design-system.md](docs/technical/design-system.md).
+
+## Public site
+
+Coti's landing, privacy policy and terms live in the backoffice's `(public)` route group on the
+primary domain: `/` is the landing for everyone, and a seller's home is the queue at `/inbox`.
+An unknown path answers 404 for anyone.
+
+See [docs/technical/public-site.md](docs/technical/public-site.md).
 
 ## Deployment
 

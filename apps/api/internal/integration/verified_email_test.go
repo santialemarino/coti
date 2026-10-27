@@ -256,7 +256,7 @@ func TestVerifiedEmail_EveryAuthenticatedRouteIsClosedExceptTheThree(t *testing.
 func authenticatedRoutes(e *env) []gin.RouteInfo {
 	var routes []gin.RouteInfo
 	for _, route := range e.router.Routes() {
-		if !strings.HasPrefix(route.Path, "/v1/") || strings.HasPrefix(route.Path, "/v1/public/") {
+		if !strings.HasPrefix(route.Path, "/v1/") || strings.HasPrefix(route.Path, "/v1/public/") || strings.HasPrefix(route.Path, "/v1/customer/") {
 			continue
 		}
 		// The signed link carries its whole authorization in the URL and resolves no tenant.

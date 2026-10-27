@@ -38,6 +38,7 @@ services:
         condition: service_healthy
     env_file:
       - .env
+      - ./apps/api/.env
     # The .env URLs point at the host, and inside the compose network the database is the
     # `postgres` service: in here localhost is the API's own container. Both are overridden for
     # that reason, and the port Postgres publishes to the host stops mattering to this stack.

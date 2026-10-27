@@ -16,21 +16,22 @@ import (
 
 const quoteColumns = `id, account_id, number, branch_id, client_id, rfq_id, seller_id,
 	current_version_id, current_status, expires_at, archived_at, needs_followup,
-	followup_flagged_at, created_at, updated_at`
+	followup_flagged_at, created_at, updated_at, paid_at, paid_by_user_id, invoice_waived_at,
+	invoice_waived_by_user_id`
 
 const quoteVersionColumns = `id, account_id, quote_id, author_id, version_number, currency, total,
 	is_immutable, frozen_at, comment, created_at`
 
 const quoteItemColumns = `id, account_id, version_id, product_id, requested_description,
 	quantity, unit, unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
-	match_status, quantity_rationale, created_at`
+	match_status, quantity_rationale, created_at, source_item_id`
 
 // ListItemsWithProduct joins product, whose id and unit columns would collide with the
 // unqualified ones, so this projection carries its table prefix.
 const quoteItemColumnsPrefixed = `qi.id, qi.account_id, qi.version_id, qi.product_id,
 	qi.requested_description, qi.quantity, qi.unit, qi.unit_price_snapshot,
 	qi.min_price_snapshot, qi.subtotal, qi.confidence_score, qi.match_status,
-	qi.quantity_rationale, qi.created_at`
+	qi.quantity_rationale, qi.created_at, qi.source_item_id`
 
 const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new_status,
 	user_id, changed_at, created_at`
@@ -68,6 +69,20 @@ func (r *QuoteRepository) GetByID(
 		accountID, branchID, id))
 }
 
+// HasLiveInvoice reports whether the quote has an invoice or credit note in flight with ARCA, or an
+// invoice issued in env or in production that no issued credit note cancelled.
+func (r *QuoteRepository) HasLiveInvoice(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, env domain.ARCAEnvironment,
+) (bool, error) {
+	var live bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM invoice i WHERE account_id = $1 AND quote_id = $2 AND branch_id = $3
+		   AND (status = 'PENDING' OR (status = 'ISSUED' AND kind = 'INVOICE'
+		     AND (environment = $4 OR environment = 'PRODUCTION') AND NOT `+invoiceCredited+`)))`,
+		accountID, quoteID, branchID, env).Scan(&live)
+	return live, err
+}
+
 // GetByIDForUpdate locks one branch-scoped quote while a delivery operation is prepared.
 func (r *QuoteRepository) GetByIDForUpdate(
 	ctx context.Context, q Querier, accountID, branchID, id uuid.UUID,
@@ -77,6 +92,18 @@ func (r *QuoteRepository) GetByIDForUpdate(
 		 FROM quote
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
 		 FOR UPDATE`, accountID, branchID, id))
+}
+
+// GetByIDForUpdateInAccount locks a quote found by id within the account alone, for background
+// work that starts from a row already scoped to the account rather than from a request.
+func (r *QuoteRepository) GetByIDForUpdateInAccount(
+	ctx context.Context, q Querier, accountID, id uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`SELECT `+quoteColumns+`
+		 FROM quote
+		 WHERE account_id = $1 AND id = $2
+		 FOR UPDATE`, accountID, id))
 }
 
 // GetByVersionID loads the quote a version belongs to, scoped to the account. It is what a public
@@ -159,10 +186,9 @@ func (r *QuoteRepository) UpdateStatus(
 	return quote, err
 }
 
-// Archive flags a quote as archived. Archived is an orthogonal flag, not a transition: it sets
-// the timestamp without touching current_status. It refuses (no row matched) when the quote is
-// absent, already archived, or closed as accepted or rejected — an archived or closed quote has
-// no reason to be boxed away again.
+// Archive flags a quote as archived in whatever status it is. Archived is an orthogonal flag, not
+// a transition: it sets the timestamp without touching current_status. It refuses (no row
+// matched) when the quote is absent or already archived.
 func (r *QuoteRepository) Archive(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
 ) (*domain.Quote, error) {
@@ -171,7 +197,6 @@ func (r *QuoteRepository) Archive(
 		 SET archived_at = now()
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
 		   AND archived_at IS NULL
-		   AND current_status NOT IN ('ACCEPTED', 'REJECTED')
 		 RETURNING `+quoteColumns,
 		accountID, branchID, quoteID))
 	if errors.Is(err, domain.ErrNotFound) {
@@ -194,6 +219,158 @@ func (r *QuoteRepository) Unarchive(
 		return nil, domain.ErrConflict
 	}
 	return quote, err
+}
+
+// ClaimForEdit locks a quote for an edit and records the edit as activity, in one statement: the
+// row lock keeps the inactivity sweep from archiving it between the guard and the write, and the
+// touched updated_at is what the sweep measures. A refused edit rolls both back with its transaction.
+func (r *QuoteRepository) ClaimForEdit(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET updated_at = now()
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID))
+}
+
+// SetPaid marks the quote paid by userID now, or clears the mark when userID is nil. A quote
+// already in the asked state is returned untouched, so a repeat neither moves updated_at nor
+// rewrites who marked it.
+func (r *QuoteRepository) SetPaid(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET paid_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END, paid_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (paid_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
+}
+
+// SetInvoiceWaived records «No requiere factura» by userID now, or clears it when userID is nil.
+// A quote already in the asked state is returned untouched.
+func (r *QuoteRepository) SetInvoiceWaived(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, userID *uuid.UUID,
+) (*domain.Quote, error) {
+	quote, err := scanQuote(q.QueryRow(ctx,
+		`UPDATE quote
+		 SET invoice_waived_at = CASE WHEN $4::uuid IS NULL THEN NULL ELSE now() END,
+		     invoice_waived_by_user_id = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3
+		   AND (invoice_waived_by_user_id IS NULL) <> ($4::uuid IS NULL)
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, userID))
+	if errors.Is(err, domain.ErrNotFound) {
+		return r.GetByID(ctx, q, accountID, branchID, quoteID)
+	}
+	return quote, err
+}
+
+// ArchiveInactiveCrossAccount archives up to limit quotes, across every account, that sit in one of
+// statuses and whose row has not changed since before; a SENT one also needs its offer to have
+// lapsed by now, so a live link is never withdrawn. Inactivity is quote.updated_at, which every
+// transition, send, assignment, line edit and unarchive moves. It runs on a scheduled job's owner
+// connection.
+func (r *QuoteRepository) ArchiveInactiveCrossAccount(
+	ctx context.Context, q Querier, statuses []domain.QuoteStatus, before, now time.Time, limit int,
+) ([]domain.ArchivedQuote, error) {
+	names := make([]string, len(statuses))
+	for i, status := range statuses {
+		names[i] = string(status)
+	}
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH stale AS (
+		   SELECT id, updated_at FROM quote
+		   WHERE archived_at IS NULL
+		     AND current_status = ANY($1::quote_status[])
+		     AND updated_at < $2
+		     AND (current_status <> 'SENT' OR expires_at < $4)
+		   ORDER BY updated_at, id
+		   LIMIT $3
+		   FOR UPDATE SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET archived_at = now()
+		 FROM stale
+		 WHERE quote.id = stale.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, stale.updated_at`,
+		names, before, limit, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	archived := make([]domain.ArchivedQuote, 0)
+	for rows.Next() {
+		var quote domain.ArchivedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		archived = append(archived, quote)
+	}
+	return archived, rows.Err()
+}
+
+// ArchiveClosedCrossAccount archives up to limit closed outcomes, across every account, whose row
+// has not changed since before: a REJECTED quote, or an ACCEPTED sale complete as
+// domain.SaleComplete defines it, with an invoice counted in env or in production. It runs on a
+// scheduled job's owner connection.
+func (r *QuoteRepository) ArchiveClosedCrossAccount(
+	ctx context.Context, q Querier, env domain.ARCAEnvironment, before time.Time, limit int,
+) ([]domain.ArchivedQuote, error) {
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH closed AS (
+		   SELECT q.id, q.updated_at FROM quote q
+		   JOIN account a ON a.id = q.account_id
+		   WHERE q.archived_at IS NULL
+		     AND q.updated_at < $1
+		     AND (q.current_status = 'REJECTED'
+		          OR (q.current_status = 'ACCEPTED' AND q.paid_at IS NOT NULL
+		              AND NOT EXISTS (SELECT 1 FROM invoice p
+		                WHERE p.account_id = q.account_id AND p.quote_id = q.id AND p.status = 'PENDING')
+		              AND (q.invoice_waived_at IS NOT NULL OR NOT a.invoicing_enabled
+		                   OR EXISTS (SELECT 1 FROM invoice i
+		                     WHERE i.account_id = q.account_id AND i.quote_id = q.id
+		                       AND i.kind = 'INVOICE' AND i.status = 'ISSUED'
+		                       AND (i.environment::text = $3 OR i.environment = 'PRODUCTION')
+		                       AND NOT `+invoiceCredited+`))))
+		   ORDER BY q.updated_at, q.id
+		   LIMIT $2
+		   FOR UPDATE OF q SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET archived_at = now()
+		 FROM closed
+		 WHERE quote.id = closed.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, closed.updated_at`,
+		before, limit, string(env))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	archived := make([]domain.ArchivedQuote, 0)
+	for rows.Next() {
+		var quote domain.ArchivedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		archived = append(archived, quote)
+	}
+	return archived, rows.Err()
 }
 
 // SetClient attaches the same account-scoped client used by the quote's RFQ.
@@ -323,8 +500,8 @@ func (r *QuoteRepository) UpdateVersionValuation(
 		accountID, versionID, total, currency))
 }
 
-// ListItems loads a version's lines. quote_item carries no ordinal column and one batch shares a
-// single created_at, so this separates batches and leaves each one in the order it was written.
+// ListItems loads a version's lines in the order they were written: each batch steps created_at
+// per line, and the id settles lines that predate that.
 func (r *QuoteRepository) ListItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
@@ -332,7 +509,7 @@ func (r *QuoteRepository) ListItems(
 		`SELECT `+quoteItemColumns+`
 		 FROM quote_item
 		 WHERE account_id = $1 AND version_id = $2
-		 ORDER BY created_at`,
+		 ORDER BY created_at, id`,
 		accountID, versionID)
 	if err != nil {
 		return nil, err
@@ -382,18 +559,22 @@ func (r *QuoteRepository) CreateItems(
 		     confidence_score numeric,
 		     match_status text,
 		     quantity_rationale text,
+		     source_item_id uuid,
 		     position int
 		   )
 		 )
 		 INSERT INTO quote_item (
 		   id, account_id, version_id, product_id, requested_description, quantity, unit,
 		   unit_price_snapshot, min_price_snapshot, subtotal, confidence_score,
-		   match_status, quantity_rationale
+		   match_status, quantity_rationale, source_item_id, created_at
 		 )
 		 SELECT incoming.id, $1, version.id, incoming.product_id, incoming.requested_description,
 		        incoming.quantity, incoming.unit, incoming.unit_price_snapshot,
 		        incoming.min_price_snapshot, incoming.subtotal, incoming.confidence_score,
-		        incoming.match_status::item_match_status, incoming.quantity_rationale
+		        incoming.match_status::item_match_status, incoming.quantity_rationale,
+		        incoming.source_item_id,
+		        -- One instant per line, so the lines keep the caller's order however they are rewritten.
+		        now() + incoming.position * interval '1 microsecond'
 		 FROM incoming
 		 JOIN quote_version version ON version.account_id = $1 AND version.id = $2
 		 ORDER BY incoming.position
@@ -421,6 +602,128 @@ func (r *QuoteRepository) CreateItems(
 		return nil, domain.ErrNotFound
 	}
 	return created, nil
+}
+
+// DeleteAlternativesByItemIDs removes stale candidate options from mutable version lines.
+func (r *QuoteRepository) DeleteAlternativesByItemIDs(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	_, err := q.Exec(ctx,
+		`DELETE FROM quote_item_alternative alternative
+		 USING quote_item item, quote_version version
+		 WHERE alternative.account_id = $1
+		   AND alternative.quote_item_id = item.id
+		   AND item.account_id = $1 AND item.version_id = $2 AND item.id = ANY($3)
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, itemIDs)
+	return err
+}
+
+// DeleteItems removes lines from a mutable quote version in one account-scoped statement.
+func (r *QuoteRepository) DeleteItems(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	if len(itemIDs) == 0 {
+		return nil
+	}
+	if err := deleteItemDiscountLinks(ctx, q, accountID, versionID, itemIDs); err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`DELETE FROM quote_item item
+		 USING quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = ANY($3)
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, itemIDs)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(itemIDs)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// UpdateItemQuantities applies the handler's quantity proposals to one mutable version.
+func (r *QuoteRepository) UpdateItemQuantities(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	updates []domain.QuoteItemQuantityUpdate,
+) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(quoteItemQuantityUpdatePayloads(updates))
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(item_id uuid, quantity numeric)
+		 )
+		 UPDATE quote_item item
+		 SET quantity = incoming.quantity,
+		     subtotal = CASE WHEN item.unit_price_snapshot IS NULL THEN NULL
+		                     ELSE incoming.quantity * item.unit_price_snapshot END
+		 FROM incoming, quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = incoming.item_id
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(updates)) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// ReplaceItems applies matched or unmatched material replacements to one mutable quote version.
+func (r *QuoteRepository) ReplaceItems(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	replacements []domain.QuoteItemReplacement,
+) error {
+	if len(replacements) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(quoteItemReplacementPayloads(replacements))
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`WITH incoming AS (
+		   SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(
+		     item_id uuid, product_id uuid, requested_description text, quantity numeric, unit text,
+		     confidence_score numeric, match_status text
+		   )
+		 )
+		 UPDATE quote_item item
+		 SET product_id = incoming.product_id,
+		     requested_description = incoming.requested_description,
+		     quantity = incoming.quantity,
+		     unit = incoming.unit,
+		     unit_price_snapshot = NULL,
+		     min_price_snapshot = NULL,
+		     subtotal = NULL,
+		     confidence_score = incoming.confidence_score,
+		     match_status = incoming.match_status::item_match_status,
+		     quantity_rationale = NULL
+		 FROM incoming, quote_version version
+		 WHERE item.account_id = $1 AND item.version_id = $2 AND item.id = incoming.item_id
+		   AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE
+		   AND (incoming.product_id IS NULL OR EXISTS (
+		     SELECT 1 FROM product WHERE product.account_id = $1 AND product.id = incoming.product_id
+		   ))`,
+		accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(replacements)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // ApplyPricing freezes every line's valuation in one statement, keyed by line id, the empty ones
@@ -689,6 +992,7 @@ type quoteItemPayload struct {
 	ConfidenceScore      *string    `json:"confidence_score"`
 	MatchStatus          string     `json:"match_status"`
 	QuantityRationale    *string    `json:"quantity_rationale"`
+	SourceItemID         *uuid.UUID `json:"source_item_id"`
 }
 
 type quoteItemPricingPayload struct {
@@ -696,6 +1000,21 @@ type quoteItemPricingPayload struct {
 	UnitPriceSnapshot *string   `json:"unit_price_snapshot"`
 	MinPriceSnapshot  *string   `json:"min_price_snapshot"`
 	Subtotal          *string   `json:"subtotal"`
+}
+
+type quoteItemQuantityUpdatePayload struct {
+	ItemID   uuid.UUID `json:"item_id"`
+	Quantity string    `json:"quantity"`
+}
+
+type quoteItemReplacementPayload struct {
+	ItemID               uuid.UUID  `json:"item_id"`
+	ProductID            *uuid.UUID `json:"product_id"`
+	RequestedDescription string     `json:"requested_description"`
+	Quantity             string     `json:"quantity"`
+	Unit                 *string    `json:"unit"`
+	ConfidenceScore      *string    `json:"confidence_score"`
+	MatchStatus          string     `json:"match_status"`
 }
 
 type quoteItemAlternativePayload struct {
@@ -725,6 +1044,7 @@ func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
 			ConfidenceScore:      nullDecimalString(item.ConfidenceScore),
 			MatchStatus:          string(item.MatchStatus),
 			QuantityRationale:    item.QuantityRationale,
+			SourceItemID:         item.SourceItemID,
 		})
 	}
 	return payloads
@@ -738,6 +1058,36 @@ func quoteItemPricingPayloads(pricings []domain.QuoteItemPricing) []quoteItemPri
 			UnitPriceSnapshot: nullDecimalString(pricing.UnitPriceSnapshot),
 			MinPriceSnapshot:  nullDecimalString(pricing.MinPriceSnapshot),
 			Subtotal:          nullDecimalString(pricing.Subtotal),
+		})
+	}
+	return payloads
+}
+
+func quoteItemQuantityUpdatePayloads(
+	updates []domain.QuoteItemQuantityUpdate,
+) []quoteItemQuantityUpdatePayload {
+	payloads := make([]quoteItemQuantityUpdatePayload, 0, len(updates))
+	for _, update := range updates {
+		payloads = append(payloads, quoteItemQuantityUpdatePayload{
+			ItemID: update.ItemID, Quantity: update.Quantity.String(),
+		})
+	}
+	return payloads
+}
+
+func quoteItemReplacementPayloads(
+	replacements []domain.QuoteItemReplacement,
+) []quoteItemReplacementPayload {
+	payloads := make([]quoteItemReplacementPayload, 0, len(replacements))
+	for _, replacement := range replacements {
+		payloads = append(payloads, quoteItemReplacementPayload{
+			ItemID:               replacement.ItemID,
+			ProductID:            replacement.ProductID,
+			RequestedDescription: replacement.RequestedDescription,
+			Quantity:             replacement.Quantity.String(),
+			Unit:                 replacement.Unit,
+			ConfidenceScore:      nullDecimalString(replacement.ConfidenceScore),
+			MatchStatus:          string(replacement.MatchStatus),
 		})
 	}
 	return payloads
@@ -762,6 +1112,45 @@ func quoteItemAlternativePayloads(
 	return payloads
 }
 
+// deleteItemDiscountLinks unties lines of a mutable version from the discounts that cover them, so
+// the lines can go. A line discount left covering nothing goes with them: it was put on those lines.
+func deleteItemDiscountLinks(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, itemIDs []uuid.UUID,
+) error {
+	rows, err := q.Query(ctx,
+		`DELETE FROM quote_discount_item qdi
+		 USING quote_item qi, quote_version qv
+		 WHERE qv.account_id = $1 AND qv.id = $2 AND qv.is_immutable = FALSE
+		   AND qi.account_id = $1 AND qi.version_id = qv.id AND qi.id = ANY($3)
+		   AND qdi.account_id = $1 AND qdi.quote_item_id = qi.id
+		 RETURNING qdi.quote_discount_id`,
+		accountID, versionID, itemIDs)
+	if err != nil {
+		return err
+	}
+	var touched []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		touched = append(touched, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(touched) == 0 {
+		return err
+	}
+	_, err = q.Exec(ctx,
+		`DELETE FROM quote_discount qd
+		 WHERE qd.account_id = $1 AND qd.quote_version_id = $2 AND qd.id = ANY($3)
+		   AND qd.scope <> 'TOTAL'::discount_scope
+		   AND NOT EXISTS (SELECT 1 FROM quote_discount_item qdi
+		                   WHERE qdi.account_id = $1 AND qdi.quote_discount_id = qd.id)`,
+		accountID, versionID, touched)
+	return err
+}
+
 func nullDecimalString(amount decimal.NullDecimal) *string {
 	if !amount.Valid {
 		return nil
@@ -775,7 +1164,8 @@ func scanQuote(row pgx.Row) (*domain.Quote, error) {
 	err := row.Scan(&quote.ID, &quote.AccountID, &quote.Number, &quote.BranchID, &quote.ClientID, &quote.RFQID,
 		&quote.SellerID, &quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
 		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt, &quote.CreatedAt,
-		&quote.UpdatedAt)
+		&quote.UpdatedAt, &quote.PaidAt, &quote.PaidByUserID, &quote.InvoiceWaivedAt,
+		&quote.InvoiceWaivedByUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -804,7 +1194,7 @@ func scanQuoteItemRow(row pgx.Row) (*domain.QuoteItem, error) {
 	err := row.Scan(&item.ID, &item.AccountID, &item.VersionID, &item.ProductID,
 		&item.RequestedDescription, &item.Quantity, &item.Unit, &item.UnitPriceSnapshot,
 		&item.MinPriceSnapshot, &item.Subtotal, &item.ConfidenceScore, &item.MatchStatus,
-		&item.QuantityRationale, &item.CreatedAt)
+		&item.QuantityRationale, &item.CreatedAt, &item.SourceItemID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -824,7 +1214,7 @@ func (r *QuoteRepository) ListItemsWithProduct(
 		 FROM quote_item qi
 		 LEFT JOIN product p ON p.account_id = qi.account_id AND p.id = qi.product_id
 		 WHERE qi.account_id = $1 AND qi.version_id = $2
-		 ORDER BY qi.created_at`,
+		 ORDER BY qi.created_at, qi.id`,
 		accountID, versionID)
 	if err != nil {
 		return nil, err
@@ -870,10 +1260,19 @@ func (r *QuoteRepository) UpdateItem(
 		// A person choosing the product settles the line, and the matcher's score described
 		// whatever it had proposed instead.
 		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
-		setClauses = append(setClauses, "min_price_snapshot = NULL")
+		if in.MinPriceSnapshot != nil {
+			setClauses = append(setClauses, fmt.Sprintf("min_price_snapshot = $%d", argIdx))
+			args = append(args, *in.MinPriceSnapshot)
+			argIdx++
+		} else {
+			setClauses = append(setClauses, "min_price_snapshot = NULL")
+		}
 		if in.UnitPriceSnapshot == nil {
 			setClauses = append(setClauses, "unit_price_snapshot = NULL", "subtotal = NULL")
 		}
+	}
+	if in.ConfirmMatch && in.ProductID == nil {
+		setClauses = append(setClauses, "match_status = 'MATCHED'", "confidence_score = NULL")
 	}
 	if in.RequestedDescription != nil {
 		setClauses = append(setClauses, fmt.Sprintf("requested_description = $%d", argIdx))
@@ -938,6 +1337,9 @@ func (r *QuoteRepository) UpdateItem(
 func (r *QuoteRepository) DeleteItem(
 	ctx context.Context, q Querier, accountID, versionID, itemID uuid.UUID,
 ) error {
+	if err := deleteItemDiscountLinks(ctx, q, accountID, versionID, []uuid.UUID{itemID}); err != nil {
+		return err
+	}
 	tag, err := q.Exec(ctx,
 		`DELETE FROM quote_item qi
 		 USING quote_version qv
@@ -984,7 +1386,7 @@ func scanQuoteItemWithProductRow(row pgx.Row) (*domain.QuoteItem, error) {
 	err := row.Scan(&item.ID, &item.AccountID, &item.VersionID, &item.ProductID,
 		&item.RequestedDescription, &item.Quantity, &item.Unit, &item.UnitPriceSnapshot,
 		&item.MinPriceSnapshot, &item.Subtotal, &item.ConfidenceScore, &item.MatchStatus,
-		&item.QuantityRationale, &item.CreatedAt,
+		&item.QuantityRationale, &item.CreatedAt, &item.SourceItemID,
 		&item.ProductCode, &item.ProductName, &item.ProductUnit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound

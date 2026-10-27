@@ -1014,6 +1014,140 @@ func TestQuoteRepository_UpdateItem_ChangesQuantityAndSubtotal(t *testing.T) {
 	}
 }
 
+// The change-request handler applies its reviewable proposal as batched draft mutations. This
+// covers the SQL-only guarantees a service fake cannot: mutable-version scoping, stale candidate
+// removal, replacement price invalidation, and the exact row count for a removed line.
+func TestQuoteRepository_ApplyChangeRequestMutations_UpdatesOnlyTheMutableDraft(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Change request mutations")
+	branchID := branchOf(t, db, accountID)
+	originalProductID := seedProduct(t, db, accountID, "Cemento Portland 50kg")
+	replacementProductID := seedProduct(t, db, accountID, "Cal hidratada 25kg")
+	priceCleanup(t, db, originalProductID)
+	priceCleanup(t, db, replacementProductID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, originalProductID)
+	extraItemID := seedUnmatchedLine(t, db, accountID, versionID)
+
+	repo := NewQuoteRepository()
+	tenant := domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin}
+	var afterQuantity *domain.QuoteItem
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		if err := repo.ApplyPricing(ctx, q, accountID, versionID, []domain.QuoteItemPricing{{
+			ItemID:            itemID,
+			UnitPriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(100)),
+			MinPriceSnapshot:  decimal.NewNullDecimal(decimal.NewFromInt(80)),
+			Subtotal:          decimal.NewNullDecimal(decimal.NewFromInt(1000)),
+		}}); err != nil {
+			return err
+		}
+		if err := repo.CreateAlternatives(ctx, q, accountID, []domain.NewQuoteItemAlternative{
+			newAlternative(itemID, replacementProductID, 1, "0.8400"),
+		}); err != nil {
+			return err
+		}
+		if err := repo.DeleteAlternativesByItemIDs(ctx, q, accountID, versionID,
+			[]uuid.UUID{itemID}); err != nil {
+			return err
+		}
+		if err := repo.UpdateItemQuantities(ctx, q, accountID, versionID,
+			[]domain.QuoteItemQuantityUpdate{{ItemID: itemID, Quantity: decimal.NewFromInt(7)}}); err != nil {
+			return err
+		}
+		var readErr error
+		afterQuantity, readErr = repo.GetItem(ctx, q, accountID, versionID, itemID)
+		if readErr != nil {
+			return readErr
+		}
+		if err := repo.ReplaceItems(ctx, q, accountID, versionID,
+			[]domain.QuoteItemReplacement{{
+				ItemID:               itemID,
+				ProductID:            &replacementProductID,
+				RequestedDescription: "cal hidratada 25 kg",
+				Quantity:             decimal.NewFromInt(5),
+				Unit:                 strPtr("bolsa"),
+				ConfidenceScore:      decimal.NewNullDecimal(decimal.RequireFromString("0.9300")),
+				MatchStatus:          domain.ItemMatchStatusMatched,
+			}}); err != nil {
+			return err
+		}
+		return repo.DeleteItems(ctx, q, accountID, versionID, []uuid.UUID{extraItemID})
+	}); err != nil {
+		t.Fatalf("apply change-request mutations: %v", err)
+	}
+
+	if !afterQuantity.Quantity.Equal(decimal.NewFromInt(7)) {
+		t.Errorf("quantity after update = %v, want 7", afterQuantity.Quantity)
+	}
+	if !afterQuantity.Subtotal.Valid || !afterQuantity.Subtotal.Decimal.Equal(decimal.NewFromInt(700)) {
+		t.Errorf("subtotal after update = %v, want 700", afterQuantity.Subtotal)
+	}
+
+	var item *domain.QuoteItem
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var readErr error
+		item, readErr = repo.GetItem(ctx, q, accountID, versionID, itemID)
+		return readErr
+	}); err != nil {
+		t.Fatalf("read replaced line: %v", err)
+	}
+	if item.ProductID == nil || *item.ProductID != replacementProductID {
+		t.Errorf("replacement product = %v, want %v", item.ProductID, replacementProductID)
+	}
+	if item.RequestedDescription != "cal hidratada 25 kg" || !item.Quantity.Equal(decimal.NewFromInt(5)) {
+		t.Errorf("replacement line = (%q, %v), want cal hidratada 25 kg and 5",
+			item.RequestedDescription, item.Quantity)
+	}
+	if item.Unit == nil || *item.Unit != "bolsa" {
+		t.Errorf("replacement unit = %v, want bolsa", item.Unit)
+	}
+	if item.UnitPriceSnapshot.Valid || item.MinPriceSnapshot.Valid || item.Subtotal.Valid {
+		t.Errorf("replacement retained price snapshots = (%v, %v, %v), want all null",
+			item.UnitPriceSnapshot, item.MinPriceSnapshot, item.Subtotal)
+	}
+	if item.MatchStatus != domain.ItemMatchStatusMatched || !item.ConfidenceScore.Valid ||
+		!item.ConfidenceScore.Decimal.Equal(decimal.RequireFromString("0.9300")) {
+		t.Errorf("replacement matching = (%q, %v), want MATCHED and 0.9300",
+			item.MatchStatus, item.ConfidenceScore)
+	}
+
+	var alternativeCount, itemCount int
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item_alternative WHERE quote_item_id = $1`, itemID).Scan(&alternativeCount); err != nil {
+		t.Fatalf("count stale alternatives: %v", err)
+	}
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT count(*) FROM quote_item WHERE version_id = $1`, versionID).Scan(&itemCount); err != nil {
+		t.Fatalf("count draft items: %v", err)
+	}
+	if alternativeCount != 0 {
+		t.Errorf("stale alternatives = %d, want 0", alternativeCount)
+	}
+	if itemCount != 1 {
+		t.Errorf("draft items = %d, want 1 after removing the extra line", itemCount)
+	}
+}
+
+func TestQuoteRepository_UpdateItemQuantities_RefusesAnotherAccountsVersion(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	victimAccountID := seedAccount(t, db, "Victim change request updates")
+	victimBranchID := branchOf(t, db, victimAccountID)
+	victimProductID := seedProduct(t, db, victimAccountID, "Cemento Portland 50kg")
+	priceCleanup(t, db, victimProductID)
+	_, victimVersionID, victimItemID := seedQuoteChain(t, db, victimAccountID, victimBranchID, victimProductID)
+	attackerAccountID := seedAccount(t, db, "Attacker change request updates")
+
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: attackerAccountID, Role: domain.UserRoleAdmin},
+		func(q Querier) error {
+			return NewQuoteRepository().UpdateItemQuantities(ctx, q, attackerAccountID, victimVersionID,
+				[]domain.QuoteItemQuantityUpdate{{ItemID: victimItemID, Quantity: decimal.NewFromInt(1)}})
+		})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("cross-account quantity update = %v, want ErrNotFound", err)
+	}
+}
+
 // GetPreviousVersion feeds the change-request diff: the newest frozen version older than a
 // mutable draft. The seed creates v1; freezing it and appending a mutable v2 must make the
 // call answer v1, and a second call for v1 itself must answer ErrNotFound (nothing older).

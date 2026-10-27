@@ -56,6 +56,12 @@ type QuoteRepresentationService struct {
 	signedURLExpiry time.Duration
 	now             func() time.Time
 	log             *slog.Logger
+	// settler records the seller's decision on the handler runs a frozen draft carries.
+	settler handlerDecisionSettler
+}
+
+type handlerDecisionSettler interface {
+	Settle(ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID) error
 }
 
 // NewQuoteRepresentationService builds the representation orchestrator.
@@ -74,6 +80,13 @@ func NewQuoteRepresentationService(
 	return &QuoteRepresentationService{db: db, representations: representations, quotes: quotes,
 		storage: storage, logos: logos, renderer: renderer, signedURLExpiry: signedURLExpiry,
 		now: now, log: log}
+}
+
+// WithHandlerDecisions settles the conversation handler's runs on a draft when it is frozen.
+func (s *QuoteRepresentationService) WithHandlerDecisions(settler handlerDecisionSettler,
+) *QuoteRepresentationService {
+	s.settler = settler
+	return s
 }
 
 // Ensure returns the existing representation or creates it after freezing the current version.
@@ -147,8 +160,11 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if quote.CurrentVersionID == nil {
 			return invalidRepresentation("quote has no current version")
 		}
-		if quote.ArchivedAt != nil || (quote.CurrentStatus != domain.QuoteStatusQuoted &&
-			quote.CurrentStatus != domain.QuoteStatusSent) {
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusQuoted &&
+			quote.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
@@ -163,7 +179,7 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		if quote.ArchivedAt != nil || quote.CurrentStatus != domain.QuoteStatusQuoted {
+		if quote.CurrentStatus != domain.QuoteStatusQuoted {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
 		source, err = s.representations.LoadSource(ctx, q, tenant.AccountID, tenant.BranchID,
@@ -178,13 +194,16 @@ func (s *QuoteRepresentationService) ensureLocked(
 			domain.QuotePublicURLPlaceholder) != 1 {
 			return invalidRepresentation("commercial text contains a reserved URL marker")
 		}
-		frozen, freezeErr := s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
+		frozen, err := s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
 			quoteID, version.ID)
-		if freezeErr == nil {
-			source.Version = *frozen
+		if err != nil {
+			return err
 		}
-		err = freezeErr
-		return err
+		source.Version = *frozen
+		if s.settler == nil {
+			return nil
+		}
+		return s.settler.Settle(ctx, q, tenant, frozen.ID)
 	})
 	if err != nil {
 		return nil, err
@@ -257,6 +276,17 @@ func (s *QuoteRepresentationService) loadLogo(
 }
 
 func validateRepresentationSource(source domain.QuoteRepresentationSource) error {
+	unresolved := 0
+	for _, item := range source.Items {
+		if item.MatchStatus != domain.ItemMatchStatusMatched || item.ProductID == nil ||
+			!item.UnitPriceSnapshot.Valid {
+			unresolved++
+		}
+	}
+	if unresolved > 0 {
+		return domain.WithCode(domain.CodeQuoteItemsUnresolved, fmt.Errorf(
+			"%w: %d lines need a confirmed, priced product", domain.ErrInvalidInput, unresolved))
+	}
 	var issues []string
 	if len(source.Items) == 0 {
 		issues = append(issues, "quote has no items")

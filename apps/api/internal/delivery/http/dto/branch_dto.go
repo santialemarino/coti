@@ -8,6 +8,7 @@ import (
 
 // BranchResponse is one branch the caller may operate on.
 type BranchResponse struct {
+	PointOfSale       *int      `json:"point_of_sale"`
 	ID                uuid.UUID `json:"id"`
 	Name              string    `json:"name"`
 	Address           *string   `json:"address"`

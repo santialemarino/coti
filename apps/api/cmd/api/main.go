@@ -21,17 +21,22 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/ai"
 	aiprovider "github.com/santialemarino/coti/apps/api/internal/ai/provider"
+	"github.com/santialemarino/coti/apps/api/internal/arca"
+	arcainvoice "github.com/santialemarino/coti/apps/api/internal/arca/invoicing"
 	"github.com/santialemarino/coti/apps/api/internal/branding"
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/customeridentity"
 	deliveryhttp "github.com/santialemarino/coti/apps/api/internal/delivery/http"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/gmail"
 	"github.com/santialemarino/coti/apps/api/internal/mail"
 	quotePDF "github.com/santialemarino/coti/apps/api/internal/pdf"
 	"github.com/santialemarino/coti/apps/api/internal/ratelimit"
@@ -88,14 +93,18 @@ func run() error {
 	quoteCorrectionRepo := repository.NewQuoteCorrectionRepository()
 	quoteQualityRepo := repository.NewQuoteQualityRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
+	inboundChannelMessageRepo := repository.NewInboundChannelMessageRepository()
 	clientActionRepo := repository.NewClientActionRepository()
 	quoteMessageRepo := repository.NewQuoteMessageRepository()
+	handlerDecisionRepo := repository.NewHandlerDecisionRepository()
+	messageBatchRepo := repository.NewMessageBatchRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
 	tagRepo := repository.NewTagRepository()
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
+	promotionRepo := repository.NewPromotionRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
 	limiter := ratelimit.NewMemory(nil)
@@ -133,6 +142,7 @@ func run() error {
 	}
 
 	tokenService := services.NewTokenService(cfg.Auth.JWTSecret, cfg.Auth.AccessTTL, nil)
+	customerAuthService := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil)
 	authService := services.NewAuthService(db, userRepo, branchRepo, refreshTokenRepo, tokenService, cfg.Auth, nil)
 	mailService := services.NewMailService(db, mailer, notificationRepo, accountRepo, nil)
 	quoteMailService := mailService
@@ -140,6 +150,7 @@ func run() error {
 		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
 			accountRepo, nil)
 	}
+	customerAuthService.WithIdentityProviders(repository.NewCustomerAuthRepository(), customeridentity.NewGoogle(cfg.CustomerAuth.GoogleClientID, cfg.CustomerAuth.GoogleClientSecret, cfg.CustomerAuth.GoogleTimeout), mailService)
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
@@ -148,7 +159,9 @@ func run() error {
 		mailService, verificationService, log, cfg.Auth, cfg.Web, cfg.Mail.Delivers(), nil)
 	branchService := services.NewBranchService(db, branchRepo, channelRepo, branchProductRepo,
 		cfg.Branch.DefaultExpiryDays)
-	accountService := services.NewAccountService(db, accountRepo, branchRepo, channelRepo,
+	arcaSetupRepo := repository.NewARCASetupRepository()
+	invoicingRepo := repository.NewInvoicingRepository()
+	accountService := services.NewAccountService(db, accountRepo, arcaSetupRepo, invoicingRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
@@ -161,6 +174,16 @@ func run() error {
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	arcaCipher, err := secrets.NewAESGCM(cfg.ARCA.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	// The env var spells the deployment in lowercase; records store the native enum.
+	arcaEnvironment := domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment))
+	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer()).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
+	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
+		arca.NewSetupConnector(), arcaEnvironment)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
 		cfg.Catalog)
 	catalogMatchService := services.NewCatalogMatchService(catalogSearchService, cfg.Catalog).
@@ -174,34 +197,112 @@ func run() error {
 		quoteAIGenerationRepo, channelRepo, userRepo, rfqExtractor, catalogMatchService, log, cfg.RFQ).
 		WithCorrectionMemory(quoteCorrectionService).
 		WithDiscounts(quoteDiscountRepo).
+		WithPromotions(promotionRepo).
+		WithPrices(productPriceRepo).
 		WithClientActions(clientActionRepo).
+		WithInboundMessages(inboundChannelMessageRepo).
+		WithPublicContacts(repository.NewPublicRFQRepository(), rfqAttachmentService).
+		WithHandlerDecisions(handlerDecisionRepo).
+		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
+		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
+		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
-	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, log)
+	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
+	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
+		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
+		cfg.RFQ, cfg.Storage.MaxFileSize)
+	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
+		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
+	var changeProposer domain.ChangeRequestHandler
+	if providers.LanguageModelBound() {
+		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
+	}
+	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
+		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
+		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
+			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
+	conversationTicker := services.NewConversationBatchTicker(
+		services.NewConversationBatchService(db, messageBatchRepo,
+			batchChangeHandler, cfg.Conversation, nil, log),
+		cfg.Conversation.TickerInterval, log)
+	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
+		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
+		WithConversations(conversationService)
+	var gmailHandler *handler.GmailHandler
+	var gmailWorker *services.GmailSyncWorker
+	var attachmentJobs *services.JobService
+	attachmentWake := make(chan struct{}, 1)
+	if cfg.Gmail.Enabled() {
+		oauth, err := gmail.NewOAuth(cfg.Gmail.ClientID, cfg.Gmail.ClientSecret, cfg.Gmail.RedirectURL,
+			cfg.Gmail.RequestTimeout, cfg.Gmail.MaxJSONBytes)
+		if err != nil {
+			return err
+		}
+		mailboxes := repository.NewGmailMailboxRepository()
+		gmailHandler = handler.NewGmailHandler(services.NewGmailAuthorizationService(db, mailboxes,
+			channelRepo, userRepo, oauth, channelSealer, cfg.Gmail.StateTTL,
+			cfg.Auth.RequireVerifiedEmail), cfg.Web.BackofficeURL)
+		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
+			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
+			WithRecordedCallback(func() {
+				select {
+				case attachmentWake <- struct{}{}:
+				default:
+				}
+			})
+		gmailWorker = services.NewGmailSyncWorker(db, mailboxes, channelSealer,
+			gmail.NewFactory(cfg.Gmail), services.NewEmailSyncService(intake), cfg.Gmail.PollInterval, log)
+		if providers.LanguageModelBound() {
+			reader := rfqAttachmentService.WithStoredReading(providers.Transcriber,
+				cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows)
+			attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
+				services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
+		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
+		WithInvoicingSwitch(invoicingRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
 		quoteRepresentationRepo, quoteRepo, objectStorage.Storage,
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
-		cfg.Storage.SignedURLExpiry, nil, log)
-	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo,
-		channelRepo, branchRepo, productPriceRepo, whatsapp.DisabledSender{}, quoteMailService,
+		cfg.Storage.SignedURLExpiry, nil, log).
+		WithHandlerDecisions(services.NewHandlerDecisionSettler(handlerDecisionRepo, quoteRepo,
+			quoteDiscountRepo))
+	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
+		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
+	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
+		channelRepo, branchRepo, productPriceRepo,
+		whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
+			cfg.WhatsApp.GraphAPIVersion).
+			WithArgentineTestRecipientFallback(cfg.Environment == config.EnvironmentDevelopment), quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
 		WithClientActions(clientActionRepo, userRepo).
-		WithMessages(quoteMessageRepo)
+		WithMessages(quoteMessageRepo, messageBatchRepo).
+		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
+		WithWhatsAppCredentials(channelSealer).
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo)
+		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment)
+	quoteDeliveryService.WithClientAssociations(clientService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
 	rateLimit := deliveryhttp.RateLimit{Limiter: limiter, Identify: identifyForRateLimit(tokenService)}
 	router := deliveryhttp.NewRouter(cfg, log,
 		deliveryhttp.Handlers{
-			Health:       handler.NewHealthHandler(db),
-			Auth:         handler.NewAuthHandler(authService),
-			Password:     handler.NewPasswordHandler(passwordService, mailTargetLimiter),
-			Verification: handler.NewVerificationHandler(verificationService, mailTargetLimiter),
+			Health:         handler.NewHealthHandler(db),
+			Auth:           handler.NewAuthHandler(authService),
+			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuthService),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
+			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
@@ -213,17 +314,25 @@ func run() error {
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
 			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
+			Conversation:  handler.NewConversationHandler(conversationReviewService),
 			Client:        handler.NewClientHandler(clientService),
 			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			Account:       handler.NewAccountHandler(accountService),
 			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:    handler.NewOnboardingHandler(onboardingService),
-			File:          fileHandler(objectStorage),
+			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
+			Gmail:     gmailHandler,
+			File:      fileHandler(objectStorage),
+			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
+			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
+			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
-		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService},
+		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuthService},
 		rateLimit,
 	)
 
@@ -233,6 +342,37 @@ func run() error {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
+
+	// Stopped and awaited before the pools close, whichever way run returns.
+	tickerCtx, stopTicker := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go func() {
+		defer close(tickerDone)
+		conversationTicker.Run(tickerCtx)
+	}()
+	var gmailDone chan struct{}
+	if gmailWorker != nil {
+		gmailDone = make(chan struct{})
+		go func() { defer close(gmailDone); gmailWorker.Run(tickerCtx) }()
+	}
+	var attachmentDone chan struct{}
+	if attachmentJobs != nil {
+		attachmentDone = make(chan struct{})
+		go func() {
+			defer close(attachmentDone)
+			runAttachmentWake(tickerCtx, attachmentWake, attachmentJobs, cfg.Gmail.PollInterval, cfg.Job.Timeout, log)
+		}()
+	}
+	defer func() {
+		stopTicker()
+		<-tickerDone
+		if gmailDone != nil {
+			<-gmailDone
+		}
+		if attachmentDone != nil {
+			<-attachmentDone
+		}
+	}()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -253,6 +393,34 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+func runAttachmentWake(ctx context.Context, wake chan struct{}, jobs *services.JobService,
+	interval, timeout time.Duration, log *slog.Logger) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		}
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		run, err := jobs.Run(runCtx, "attachment-extraction")
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			log.ErrorContext(ctx, "immediate attachment extraction failed", slog.Any("error", err))
+		}
+		if err == nil && (run == nil || run.Scanned > 0) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(interval):
+				select {
+				case wake <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}
 }
 
 func identifyForRateLimit(tokens *services.TokenService) func(string) (string, bool) {

@@ -52,6 +52,7 @@ type RFQ struct {
 
 // NewRFQ is the input for creating an RFQ source record.
 type NewRFQ struct {
+	ID          *uuid.UUID
 	BranchID    uuid.UUID
 	ClientID    *uuid.UUID
 	ChannelID   uuid.UUID
@@ -112,6 +113,12 @@ type RfqListItem struct {
 	NeedsFollowup bool
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
 	FollowupFlaggedAt *time.Time
+	Closure           SaleClosure
+}
+
+// SaleComplete reports whether the order is a fully closed sale.
+func (i RfqListItem) SaleComplete() bool {
+	return SaleComplete(QuoteStatus(i.Status), i.Closure)
 }
 
 // RFQStatusChange records an RFQ lifecycle transition.
@@ -174,6 +181,14 @@ type TextRFQDraftInput struct {
 	WorkType    *string
 }
 
+// InboundTextRFQDraftInput is the text payload an external channel delivered after routing.
+type InboundTextRFQDraftInput struct {
+	ClientID    *uuid.UUID
+	ClientLabel *string
+	RawText     string
+	WorkType    *string
+}
+
 // FileRFQDraftInput is one order that arrived as a file — a photo of a handwritten list, a PDF,
 // a spreadsheet, a voice note — to run through the RFQ pipeline.
 type FileRFQDraftInput struct {
@@ -213,13 +228,19 @@ type TextRFQDraft struct {
 // quote data, items, and alternatives. This is what the detail endpoint returns.
 type RfqDetail struct {
 	Rfq                RfqListItem
-	Quote              *Quote
-	Version            *QuoteVersion
-	Items              []QuoteItem
-	Alternatives       map[uuid.UUID][]QuoteItemAlternative
-	RFQStatusChanges   []RFQStatusChange
-	QuoteStatusChanges []QuoteStatusChange
-	Deliveries         []QuoteSend
+	PublicContact      *PublicRFQContact
+	PublicOriginalText *string
+	PublicAttachments  []AttachmentLink
+	// InboundWhatsAppPhone is the sender that opened this WhatsApp RFQ, when available.
+	InboundWhatsAppPhone *string
+	InboundEmail         *string
+	Quote                *Quote
+	Version              *QuoteVersion
+	Items                []QuoteItem
+	Alternatives         map[uuid.UUID][]QuoteItemAlternative
+	RFQStatusChanges     []RFQStatusChange
+	QuoteStatusChanges   []QuoteStatusChange
+	Deliveries           []QuoteSend
 	// Discounts are the current version's discount applications; empty when the version
 	// has none or the discount surface is not wired.
 	Discounts []QuoteDiscount
@@ -229,4 +250,7 @@ type RfqDetail struct {
 	// ClientActions are the customer responses recorded against the quote's versions,
 	// oldest first; empty when none were recorded or the surface is not wired.
 	ClientActions []ClientAction
+	// Conversation is the customer's messages after a send and what the handler did with them;
+	// nil when there are none.
+	Conversation *Conversation
 }

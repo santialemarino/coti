@@ -72,6 +72,19 @@ type RfqListItemResponse struct {
 	NeedsFollowup bool       `json:"needs_followup"`
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.
 	FollowupFlaggedAt *time.Time `json:"followup_flagged_at"`
+	// PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.
+	PaidAt *time.Time `json:"paid_at"`
+	PaidBy *string    `json:"paid_by"`
+	// InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.
+	InvoiceWaivedAt *time.Time `json:"invoice_waived_at"`
+	InvoiceWaivedBy *string    `json:"invoice_waived_by"`
+	// Invoiced is whether an issued invoice no credit note cancelled stands for the sale.
+	Invoiced bool `json:"invoiced"`
+	// InvoicePending is whether a voucher of the sale still waits for ARCA's answer.
+	InvoicePending bool `json:"invoice_pending"`
+	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
+	// account does not invoice with Coti.
+	SaleComplete bool `json:"sale_complete"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
@@ -134,6 +147,7 @@ type RFQAttachmentResponse struct {
 	URL              string    `json:"url"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	CreatedAt        time.Time `json:"created_at"`
+	OriginalFilename *string   `json:"original_filename"`
 }
 
 // RFQAttachmentListResponse is returned by GET /v1/rfqs/{rfqId}/attachments.
@@ -145,17 +159,23 @@ type RFQAttachmentListResponse struct {
 // list item projection plus the full quote, version, items, alternatives, discounts,
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
-	Rfq              RfqListItemResponse                       `json:"rfq"`
-	Quote            *QuoteResponse                            `json:"quote"`
-	Version          *QuoteVersionResponse                     `json:"version"`
-	Items            []QuoteItemResponse                       `json:"items"`
-	Alternatives     map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
-	RFQHistory       []RFQStatusChangeResponse                 `json:"rfq_status_history"`
-	QuoteHistory     []QuoteStatusChangeResponse               `json:"quote_status_history"`
-	Deliveries       []QuoteSendTrackingResponse               `json:"deliveries"`
-	Discounts        []QuoteDiscountResponse                   `json:"discounts"`
-	ChangesRequested *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
-	ClientActions    []ClientActionResponse                    `json:"client_actions"`
+	PublicContact        *PublicRFQContactResponse                 `json:"public_contact,omitempty"`
+	PublicOriginalText   *string                                   `json:"public_original_text,omitempty"`
+	PublicAttachments    []RFQAttachmentResponse                   `json:"public_attachments,omitempty"`
+	Rfq                  RfqListItemResponse                       `json:"rfq"`
+	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`
+	InboundEmail         *string                                   `json:"inbound_email"`
+	Quote                *QuoteResponse                            `json:"quote"`
+	Version              *QuoteVersionResponse                     `json:"version"`
+	Items                []QuoteItemResponse                       `json:"items"`
+	Alternatives         map[string][]QuoteItemAlternativeResponse `json:"alternatives"`
+	RFQHistory           []RFQStatusChangeResponse                 `json:"rfq_status_history"`
+	QuoteHistory         []QuoteStatusChangeResponse               `json:"quote_status_history"`
+	Deliveries           []QuoteSendTrackingResponse               `json:"deliveries"`
+	Discounts            []QuoteDiscountResponse                   `json:"discounts"`
+	ChangesRequested     *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
+	ClientActions        []ClientActionResponse                    `json:"client_actions"`
+	Conversation         *ConversationResponse                     `json:"conversation,omitempty"`
 }
 
 // ClientActionResponse is one customer response the quote's versions received. version_number
@@ -195,6 +215,7 @@ type QuoteStatusChangeResponse struct {
 type QuoteSendTrackingResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	VersionID      uuid.UUID  `json:"version_id"`
+	OperationID    uuid.UUID  `json:"operation_id"`
 	Channel        string     `json:"channel"`
 	Destination    string     `json:"destination"`
 	Format         string     `json:"format"`
@@ -205,37 +226,130 @@ type QuoteSendTrackingResponse struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
-// ChangeRequestDiffResponse is the frozen-vs-draft comparison the detail screen
-// renders for a CHANGE_REQUESTED quote with a frozen predecessor.
+// ChangeRequestDiffResponse is the frozen-vs-draft comparison the detail screen renders for a
+// CHANGE_REQUESTED quote with a frozen predecessor.
 type ChangeRequestDiffResponse struct {
-	Reason    *string                   `json:"reason"`
-	Original  ChangeRequestSideResponse `json:"original"`
-	Requested ChangeRequestSideResponse `json:"requested"`
+	Reason *string `json:"reason"`
+	// Lines pairs each sent line with the draft line copied from it, then the lines the draft added.
+	Lines          []DiffLineResponse       `json:"lines"`
+	Discounts      []DiffDiscountResponse   `json:"discounts"`
+	OriginalTotal  string                   `json:"original_total"`  // decimal string, never float.
+	RequestedTotal string                   `json:"requested_total"` // decimal string, never float.
+	Handler        *HandlerDecisionResponse `json:"handler,omitempty"`
+	// ClientMessages is every message the customer sent since the version they answered went out.
+	ClientMessages []ClientMessageResponse `json:"client_messages"`
 }
 
-// ChangeRequestSideResponse is one column (original or requested) of the diff.
-type ChangeRequestSideResponse struct {
-	Items     []DiffLineItemResponse     `json:"items"`
-	Discounts []DiffDiscountLineResponse `json:"discounts"`
-	Total     string                     `json:"total"` // decimal string, never float.
+// ConversationResponse is a quote's messages after a send, grouped by the batch that carried them.
+type ConversationResponse struct {
+	Batches []ConversationBatchResponse `json:"batches"`
+	// Pending are the messages of a window still open, not yet handed to the handler.
+	Pending []ConversationMessageResponse `json:"pending"`
+	// SellerMessages are the quote's sends; the public link reads as a placeholder.
+	SellerMessages      []ConversationMessageResponse `json:"seller_messages"`
+	CanDiscardAIChanges bool                          `json:"can_discard_ai_changes"`
 }
 
-// DiffLineItemResponse is one aligned line of the diff. Quantity and UnitPrice are
-// decimal strings; ChangeType is set only on the flagged (requested) side.
+// ConversationBatchResponse is one closed window and what the handler did with it.
+type ConversationBatchResponse struct {
+	ID            uuid.UUID                     `json:"id"`
+	Status        string                        `json:"status" enums:"CLOSED,PROCESSING,PROCESSED,FAILED"`
+	ClosedAt      *time.Time                    `json:"closed_at"`
+	FailureReason *string                       `json:"failure_reason" enums:"UNPROCESSABLE,ATTEMPTS_EXHAUSTED"`
+	Retryable     bool                          `json:"retryable"`
+	Messages      []ConversationMessageResponse `json:"messages"`
+	Decision      *ConversationDecisionResponse `json:"decision"`
+}
+
+// ConversationMessageResponse is one message of a quote's conversation, as received.
+type ConversationMessageResponse struct {
+	Author     string    `json:"author" enums:"CLIENT,SELLER,SYSTEM"`
+	Body       string    `json:"body"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// ConversationDecisionResponse is the handler's run on a batch and the seller's decision on it.
+type ConversationDecisionResponse struct {
+	Interpretation string  `json:"interpretation"`
+	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
+	// StrategiesTried are the recipes run for a complex goal, in run order.
+	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
+	Adaptation      *HandlerAdaptationResponse `json:"adaptation"`
+	DecidedAt       *time.Time                 `json:"decided_at"`
+	CreatedAt       time.Time                  `json:"created_at"`
+}
+
+// ClientMessageResponse is one message the customer wrote, as received.
+type ClientMessageResponse struct {
+	Body       string    `json:"body"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// HandlerDecisionResponse is the latest conversation handler decision on the draft: what the
+// customer wrote, how the AI read it, and why it was left to the seller when it was.
+type HandlerDecisionResponse struct {
+	ClientInput    string  `json:"client_input"`
+	Interpretation string  `json:"interpretation"`
+	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
+	// StrategiesTried are the recipes run for a complex goal, in run order.
+	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
+	Adaptation      *HandlerAdaptationResponse `json:"adaptation"`
+	CreatedAt       time.Time                  `json:"created_at"`
+}
+
+// HandlerAdaptationResponse is the quantities the AI raised to reach a promotion, with the totals
+// the engine computed before and after. Quantities and totals are decimal strings.
+type HandlerAdaptationResponse struct {
+	Lines       []HandlerAdaptedLineResponse `json:"lines"`
+	TotalBefore string                       `json:"total_before"`
+	TotalAfter  string                       `json:"total_after"`
+	// TotalRaised is true when the customer asked for the promotion and reaching it costs more.
+	TotalRaised bool `json:"total_raised"`
+}
+
+// HandlerAdaptedLineResponse is one line raised to reach a promotion.
+type HandlerAdaptedLineResponse struct {
+	ItemID        uuid.UUID `json:"item_id"`
+	Description   string    `json:"description"`
+	FromQuantity  string    `json:"from_quantity"`
+	ToQuantity    string    `json:"to_quantity"`
+	PromotionID   uuid.UUID `json:"promotion_id"`
+	PromotionName string    `json:"promotion_name"`
+}
+
+// DiffLineResponse is one compared line: the sent side, the draft side, or both.
+type DiffLineResponse struct {
+	Change    string                `json:"change" enums:"UNCHANGED,MODIFIED,ADDED,REMOVED"`
+	Original  *DiffLineItemResponse `json:"original"`
+	Requested *DiffLineItemResponse `json:"requested"`
+}
+
+// DiffLineItemResponse is one side of a compared line. Quantity and UnitPrice are decimal strings.
 type DiffLineItemResponse struct {
 	Description string  `json:"description"`
+	ProductName *string `json:"product_name"`
 	Quantity    string  `json:"quantity"`
 	Unit        *string `json:"unit"`
 	UnitPrice   *string `json:"unit_price"`
-	Changed     bool    `json:"changed"`
-	ChangeType  *string `json:"change_type,omitempty"`
 }
 
-// DiffDiscountLineResponse is one aligned discount row of the diff.
-type DiffDiscountLineResponse struct {
-	Name    string `json:"name"`
-	Amount  string `json:"amount"`
-	Changed bool   `json:"changed"`
+// DiffDiscountResponse is one discount of the comparison, paired by promotion, else by name.
+type DiffDiscountResponse struct {
+	Change    string                    `json:"change" enums:"UNCHANGED,MODIFIED,ADDED,REMOVED"`
+	Name      string                    `json:"name"`
+	Original  *DiffDiscountSideResponse `json:"original"`
+	Requested *DiffDiscountSideResponse `json:"requested"`
+}
+
+// DiffDiscountSideResponse is a discount's money and suppression on one side of the comparison.
+type DiffDiscountSideResponse struct {
+	Amount     string `json:"amount"`
+	Suppressed bool   `json:"suppressed"`
+	Origin     string `json:"origin" enums:"AUTOMATIC,AI_ADAPTATION,MANUAL_SELLER"`
 }
 
 // QuoteDiscountResponse is one discount application on the quote's current version.
@@ -290,6 +404,8 @@ type UpdateQuoteItemRequest struct {
 	Quantity             *string    `json:"quantity" binding:"omitempty,numeric"`
 	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
 	UnitPriceSnapshot    *string    `json:"unit_price_snapshot" binding:"omitempty,numeric"`
+	// ConfirmMatch settles a flagged line on the product it already carries.
+	ConfirmMatch bool `json:"confirm_match"`
 }
 
 // AddQuoteItemRequest is the body for POST /v1/quotes/{quoteId}/items.

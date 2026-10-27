@@ -1,4 +1,4 @@
-import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
+import { throwApiError } from '@/lib/api/errors';
 import type {
   CreateDiscountBody,
   FileRfqDraftResponse,
@@ -14,7 +14,7 @@ import type {
   RfqRecord,
   UpdateDiscountBody,
 } from '@/lib/api/rfqs';
-import { mapListItem } from '@/lib/api/rfqs';
+import { mapListItem, mapRfqDetail } from '@/lib/api/rfqs';
 
 interface CreateRfqBody {
   client_label?: string | null;
@@ -66,24 +66,7 @@ export async function createRfq(body: CreateRfqBody): Promise<CreateRfqResponse>
   });
 
   if (!response.ok) {
-    let code: string | undefined;
-    let detail = '';
-    try {
-      const payload = (await response.json()) as {
-        error?: string;
-        code?: string;
-        detail?: string;
-      };
-      code = payload.code;
-      detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-    } catch {
-      // A body that is not the envelope tells us nothing extra.
-    }
-    throw new ApiError(
-      knownErrorCode(code) ?? codeForStatus(response.status),
-      response.status,
-      detail || undefined,
-    );
+    await throwApiError(response);
   }
 
   return response.json() as Promise<CreateRfqResponse>;
@@ -121,16 +104,17 @@ export async function createFileRfqDraft(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<FileRfqDraftResponse>;
 }
 
-// The queue, archived orders included, read again from the browser.
-export async function fetchQueue(): Promise<RfqRecord[]> {
-  const response = await fetch('/api/rfqs', { method: 'GET', cache: 'no-store' });
+// The queue read again from the browser; archived orders come down only when asked for.
+export async function fetchQueue(includeArchived = false): Promise<RfqRecord[]> {
+  const path = includeArchived ? '/api/rfqs?include_archived=true' : '/api/rfqs';
+  const response = await fetch(path, { method: 'GET', cache: 'no-store' });
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   const items = (await response.json()) as RfqListItem[] | null;
   return (items ?? []).map(mapListItem);
@@ -147,27 +131,10 @@ export async function fetchRfqDetail(id: string): Promise<RfqDetailResponse> {
   });
 
   if (!response.ok) {
-    let code: string | undefined;
-    let detail = '';
-    try {
-      const payload = (await response.json()) as {
-        error?: string;
-        code?: string;
-        detail?: string;
-      };
-      code = payload.code;
-      detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-    } catch {
-      // A body that is not the envelope tells us nothing extra.
-    }
-    throw new ApiError(
-      knownErrorCode(code) ?? codeForStatus(response.status),
-      response.status,
-      detail || undefined,
-    );
+    await throwApiError(response);
   }
 
-  return response.json() as Promise<RfqDetailResponse>;
+  return mapRfqDetail(await response.json());
 }
 
 /*
@@ -183,31 +150,6 @@ function branchHeaders(branchId: string, json = false): Record<string, string> {
 }
 
 /*
- * Helper to throw an ApiError from a non-ok response. Extracts the code and
- * detail from the standard error envelope when present.
- */
-async function throwOnError(response: Response): Promise<never> {
-  let code: string | undefined;
-  let detail = '';
-  try {
-    const payload = (await response.json()) as {
-      error?: string;
-      code?: string;
-      detail?: string;
-    };
-    code = payload.code;
-    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-  } catch {
-    // A body that is not the envelope tells us nothing extra.
-  }
-  throw new ApiError(
-    knownErrorCode(code) ?? codeForStatus(response.status),
-    response.status,
-    detail || undefined,
-  );
-}
-
-/*
  * Claim an unassigned order for the signed-in seller. The backend answers 409
  * when a peer took it first; the caller surfaces that as a conflict toast.
  */
@@ -218,7 +160,7 @@ export async function assignRfqSeller(rfqId: string): Promise<QuoteResponse> {
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }
@@ -237,7 +179,7 @@ export async function setRfqSeller(rfqId: string, sellerId: string | null): Prom
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }
@@ -261,8 +203,38 @@ export async function setQuoteArchived(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
+}
+
+// Marks an accepted sale paid, or takes the mark back. A fact on the sale, never a status change.
+export async function setQuotePaid(
+  quoteId: string,
+  paid: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/payment`, {
+    method: paid ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
+}
+
+// Marks an accepted sale as needing no invoice, or puts it back to wait for one.
+export async function setInvoiceWaived(
+  quoteId: string,
+  waived: boolean,
+  branchId: string,
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${encodeURIComponent(quoteId)}/invoice-waiver`, {
+    method: waived ? 'POST' : 'DELETE',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return (await response.json()) as QuoteResponse;
 }
 
 /*
@@ -278,6 +250,8 @@ export async function updateQuoteItem(
     quantity?: string;
     unit?: string | null;
     unit_price_snapshot?: string;
+    // Settles a flagged line on the product it already carries.
+    confirm_match?: boolean;
   },
 ): Promise<QuoteItemResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/items/${itemId}`, {
@@ -288,7 +262,7 @@ export async function updateQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteItemResponse>;
 }
@@ -308,7 +282,7 @@ export async function deleteQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
 }
 
@@ -333,7 +307,7 @@ export async function addQuoteItem(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteItemResponse>;
 }
@@ -352,7 +326,7 @@ export async function generateQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json();
 }
@@ -374,7 +348,7 @@ export async function addDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteDiscountResponse>;
 }
@@ -397,7 +371,7 @@ export async function updateDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteDiscountResponse>;
 }
@@ -418,7 +392,7 @@ export async function deleteDiscount(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
 }
 
@@ -431,16 +405,31 @@ export async function sendQuote(
   quoteId: string,
   branchId: string,
   body: QuoteSendBody,
+  idempotencyKey: string = crypto.randomUUID(),
 ): Promise<QuoteSendResponse> {
   const response = await fetch(`/api/quotes/${quoteId}/sends`, {
     method: 'POST',
-    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': crypto.randomUUID() },
-    body: JSON.stringify(body),
+    headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({
+      recipient_phone: body.recipient_phone,
+      email_delivery: body.email_delivery,
+      expiry_days: body.expiry_days,
+      ...(body.clientAssociation
+        ? {
+            client_association: {
+              tax_id: body.clientAssociation.taxId,
+              client_id: body.clientAssociation.clientId,
+              new_client: body.clientAssociation.newClient,
+              tag_ids: body.clientAssociation.tagIds,
+            },
+          }
+        : {}),
+    }),
     cache: 'no-store',
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteSendResponse>;
 }
@@ -459,9 +448,43 @@ export async function transitionQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
+}
+
+// Reset a change-requested draft to the version the customer last received.
+export async function discardAIChanges(
+  quoteId: string,
+  branchId: string,
+): Promise<QuoteVersionResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/discard-ai-changes`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteVersionResponse>;
+}
+
+// Send a batch of customer messages that ran out of attempts back to the AI's queue.
+export async function retryConversationBatch(
+  quoteId: string,
+  batchId: string,
+  branchId: string,
+): Promise<void> {
+  const response = await fetch(`/api/quotes/${quoteId}/message-batches/${batchId}/retry`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
 }
 
 // Reopen a closed quote with its frozen version or a newly editable one.
@@ -478,7 +501,7 @@ export async function reactivateQuote(
   });
 
   if (!response.ok) {
-    await throwOnError(response);
+    await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
 }

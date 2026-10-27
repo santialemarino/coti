@@ -113,7 +113,8 @@ type QuoteRepresentationBranch struct {
 
 // QuoteRepresentationCustomer is the minimal public customer identity.
 type QuoteRepresentationCustomer struct {
-	Name *string `json:"name,omitempty"`
+	Address *string `json:"address,omitempty"`
+	Name    *string `json:"name,omitempty"`
 }
 
 // QuoteRepresentationItem is one fully priced client-facing line.
@@ -160,6 +161,10 @@ type QuoteRepresentationResult struct {
 	PDFURL         string
 	Replay         bool
 }
+
+// PublicQuoteStatusUnavailable answers a live link to a quote the seller archived: the offer is
+// withdrawn, so nothing of it is shown and no answer is taken.
+const PublicQuoteStatusUnavailable = "UNAVAILABLE"
 
 // PublicQuoteRepresentation is the active token response assembled without live commercial data.
 type PublicQuoteRepresentation struct {

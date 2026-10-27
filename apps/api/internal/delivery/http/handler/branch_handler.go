@@ -197,6 +197,7 @@ func (h *BranchHandler) Delete(c *gin.Context) {
 
 func toBranchResponse(b domain.Branch) dto.BranchResponse {
 	return dto.BranchResponse{
+		PointOfSale:       b.PointOfSale,
 		ID:                b.ID,
 		Name:              b.Name,
 		Address:           b.Address,

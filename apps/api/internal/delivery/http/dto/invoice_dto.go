@@ -1,0 +1,219 @@
+package dto
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// UpdateInvoicingSettingsRequest is the body for PUT /v1/invoicing/settings. Branches not listed
+// keep their point of sale; a null point_of_sale clears it.
+type UpdateInvoicingSettingsRequest struct {
+	Profile          *InvoiceIssuerProfileRequest `json:"profile" binding:"omitempty"`
+	IVACondition     *string                      `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
+	PricesIncludeVAT bool                         `json:"prices_include_vat"`
+	Branches         []BranchPointOfSaleInput     `json:"branches" binding:"dive"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.
+	InvoiceOnPayment *bool `json:"invoice_on_payment"`
+}
+
+// UpdatePointsOfSaleRequest is the body for PUT /v1/invoicing/points-of-sale. Branches not listed
+// keep their point of sale; a null point_of_sale clears it.
+type UpdatePointsOfSaleRequest struct {
+	Branches []BranchPointOfSaleInput `json:"branches" binding:"required,dive"`
+}
+
+// BranchPointOfSaleInput sets one branch's ARCA point of sale.
+type BranchPointOfSaleInput struct {
+	BranchID    uuid.UUID `json:"branch_id" binding:"required"`
+	PointOfSale *int      `json:"point_of_sale" binding:"omitempty,min=1,max=99998"`
+}
+
+// InvoicingSettingsResponse is returned by GET and PUT /v1/invoicing/settings.
+type InvoicingSettingsResponse struct {
+	Profile          InvoiceIssuerProfileRequest `json:"profile"`
+	Enabled          bool                        `json:"enabled"`
+	Environment      string                      `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
+	LegalName        *string                     `json:"legal_name"`
+	TaxID            *string                     `json:"tax_id"`
+	IVACondition     *string                     `json:"iva_condition"`
+	PricesIncludeVAT bool                        `json:"prices_include_vat"`
+	Branches         []BranchPointOfSaleResponse `json:"branches"`
+	Credential       *ARCACredentialResponse     `json:"credential"`
+	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
+	InvoiceOnPayment bool `json:"invoice_on_payment"`
+}
+
+// BranchPointOfSaleResponse is one branch and its point of sale.
+type BranchPointOfSaleResponse struct {
+	BranchID    uuid.UUID `json:"branch_id"`
+	Name        string    `json:"name"`
+	IsActive    bool      `json:"is_active"`
+	PointOfSale *int      `json:"point_of_sale"`
+}
+
+// ARCACredentialResponse describes the uploaded certificate; the key never leaves the server.
+type ARCACredentialResponse struct {
+	CUIT      string    `json:"cuit"`
+	Subject   string    `json:"subject"`
+	ExpiresAt time.Time `json:"expires_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// IssueInvoiceRequest is the body for POST /v1/quotes/:quoteId/invoice: the previewed invoice the
+// seller confirmed. Total is a decimal string.
+type IssueInvoiceRequest struct {
+	Fingerprint string    `json:"fingerprint" binding:"required,len=64,hexadecimal"`
+	VersionID   uuid.UUID `json:"version_id" binding:"required"`
+	Type        string    `json:"type" binding:"required,oneof=A B C"`
+	Total       string    `json:"total" binding:"required,numeric"`
+}
+
+// UpdateClientFiscalRequest is the body for PUT /v1/clients/:clientId/fiscal. Omitted fields clear;
+// the CUIT is never touched.
+type UpdateClientFiscalRequest struct {
+	Address   *string `json:"address" binding:"omitempty,max=255"`
+	LegalName *string `json:"legal_name" binding:"omitempty,max=255"`
+	// DNI identifies a consumidor final, beside any CUIT the customer's account carries.
+	DNI          *string `json:"dni" binding:"omitempty,max=32"`
+	IVACondition *string `json:"iva_condition" binding:"omitempty,oneof=REGISTERED MONOTRIBUTO EXEMPT FINAL_CONSUMER"`
+	// TaxID is refused with TAX_ID_READ_ONLY: only the customer loads a CUIT, by creating an account.
+	TaxID *string `json:"tax_id" binding:"omitempty,max=32" swaggerignore:"true"`
+}
+
+// ClientFiscalResponse is a client's fiscal identity.
+type ClientFiscalResponse struct {
+	Address      *string   `json:"address,omitempty"`
+	ID           uuid.UUID `json:"id"`
+	Name         *string   `json:"name"`
+	LegalName    *string   `json:"legal_name"`
+	TaxID        *string   `json:"tax_id"` // CUIT or CUIL, from the customer's account; read-only.
+	DNI          *string   `json:"dni"`
+	IVACondition *string   `json:"iva_condition"`
+}
+
+// VATAmountResponse is one rate of an invoice. Money is a decimal string.
+type VATAmountResponse struct {
+	Rate   string `json:"rate"`
+	Base   string `json:"base"`
+	Amount string `json:"amount"`
+}
+
+// InvoiceReceiverResponse is the buyer as the invoice names them.
+type InvoiceReceiverResponse struct {
+	Address      string `json:"address,omitempty"`
+	Name         string `json:"name"`
+	DocType      string `json:"doc_type"`
+	DocNumber    string `json:"doc_number"`
+	IVACondition string `json:"iva_condition"`
+}
+
+// InvoiceAmountsResponse is an invoice's money, as decimal strings.
+type InvoiceAmountsResponse struct {
+	Net    string              `json:"net"`
+	Exempt string              `json:"exempt"`
+	VAT    string              `json:"vat"`
+	Total  string              `json:"total"`
+	ByRate []VATAmountResponse `json:"by_rate"`
+}
+
+// InvoiceResponse is an invoice or credit note issued, pending or refused for a quote.
+type InvoiceResponse struct {
+	ID       uuid.UUID `json:"id"`
+	BranchID uuid.UUID `json:"branch_id"`
+	Kind     string    `json:"kind" enums:"INVOICE,CREDIT_NOTE"`
+	// Environment is where ARCA authorizes it; a HOMOLOGATION invoice has no fiscal validity.
+	Environment  string                  `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
+	Status       string                  `json:"status"`
+	Type         string                  `json:"type"`
+	PointOfSale  int                     `json:"point_of_sale"`
+	Number       *int64                  `json:"number"`
+	IssuedOn     string                  `json:"issued_on"`
+	CAE          *string                 `json:"cae"`
+	CAEExpiresOn *string                 `json:"cae_expires_on"`
+	IssuerCUIT   string                  `json:"issuer_cuit"`
+	Receiver     InvoiceReceiverResponse `json:"receiver"`
+	Amounts      InvoiceAmountsResponse  `json:"amounts"`
+	Currency     string                  `json:"currency"`
+	Issues       []string                `json:"issues"`
+	// QRURL is ARCA's verification link for an issued invoice (RG 4892), empty otherwise.
+	QRURL     string    `json:"qr_url"`
+	CreatedAt time.Time `json:"created_at"`
+	// CreditNote is an invoice's newest credit note; an ISSUED one cancels the invoice.
+	CreditNote *InvoiceResponse `json:"credit_note,omitempty"`
+	// CreditedInvoice is the invoice a credit note cancels.
+	CreditedInvoice *VoucherReferenceResponse `json:"credited_invoice,omitempty"`
+}
+
+// VoucherReferenceResponse names an authorized voucher.
+type VoucherReferenceResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Type        string    `json:"type"`
+	PointOfSale int       `json:"point_of_sale"`
+	Number      *int64    `json:"number"`
+	IssuedOn    string    `json:"issued_on"`
+}
+
+// InvoicePreviewResponse is returned by GET /v1/quotes/:quoteId/invoice: what would be issued now,
+// every gap that stops it, and the invoice the quote already has, if any.
+type InvoicePreviewResponse struct {
+	// Environment is where an invoice issued now would be authorized.
+	Environment string                  `json:"environment" enums:"HOMOLOGATION,PRODUCTION"`
+	IssuerCUIT  string                  `json:"issuer_cuit"`
+	Fingerprint string                  `json:"fingerprint"`
+	VersionID   uuid.UUID               `json:"version_id"` // what POST confirms, with type and total.
+	Type        string                  `json:"type"`
+	PointOfSale *int                    `json:"point_of_sale"`
+	Receiver    InvoiceReceiverResponse `json:"receiver"`
+	Amounts     InvoiceAmountsResponse  `json:"amounts"`
+	Currency    string                  `json:"currency"`
+	Issues      []string                `json:"issues"`
+	Invoice     *InvoiceResponse        `json:"invoice"`
+	// OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,
+	// shown as history; it does not stop an invoice in this one.
+	OtherEnvironmentInvoice *InvoiceResponse `json:"other_environment_invoice"`
+	// CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this
+	// environment, with that credit note: history, and what a new invoice follows.
+	CreditedInvoice *InvoiceResponse `json:"credited_invoice"`
+	// CustomerSignupURL is where the customer creates the account that carries their CUIT; present
+	// only while the issues ask for the receiver's CUIT or document and the supplier has its own
+	// customer site.
+	CustomerSignupURL string `json:"customer_signup_url,omitempty"`
+}
+
+// InvoiceListResponse is a bounded page of branch-scoped fiscal records.
+type InvoiceListResponse struct {
+	Items    []InvoiceResponse `json:"items"`
+	Total    int               `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
+}
+
+// SaleAwaitingInvoiceResponse is one accepted sale still waiting for an invoice.
+type SaleAwaitingInvoiceResponse struct {
+	QuoteID    uuid.UUID  `json:"quote_id"`
+	RFQID      uuid.UUID  `json:"rfq_id"`
+	Number     int64      `json:"quote_number"`
+	BranchID   uuid.UUID  `json:"branch_id"`
+	BranchName string     `json:"branch_name"`
+	ClientID   *uuid.UUID `json:"client_id"`
+	Client     string     `json:"client"`
+	Total      string     `json:"total"`
+	AcceptedAt time.Time  `json:"accepted_at"`
+	PaidAt     *time.Time `json:"paid_at"`
+}
+
+// SaleAwaitingInvoiceListResponse is returned by GET /v1/quotes/awaiting-invoice.
+type SaleAwaitingInvoiceListResponse struct {
+	Items    []SaleAwaitingInvoiceResponse `json:"items"`
+	Total    int                           `json:"total"`
+	Page     int                           `json:"page"`
+	PageSize int                           `json:"page_size"`
+}
+
+// InvoiceIssuerProfileRequest carries printable fiscal registration data.
+type InvoiceIssuerProfileRequest struct {
+	Address                 string `json:"address" binding:"required,max=255"`
+	GrossIncomeRegistration string `json:"gross_income_registration" binding:"required,max=50"`
+	ActivityStartedOn       string `json:"activity_started_on" binding:"required,datetime=2006-01-02"`
+}

@@ -20,6 +20,13 @@ const RAW: RfqListItem = {
   needs_followup: true,
   followup_flagged_at: '2026-09-27T09:00:00.000Z',
   archived_at: null,
+  paid_at: '2026-09-28T15:00:00.000Z',
+  paid_by: 'Ana',
+  invoice_waived_at: '2026-09-28T16:00:00.000Z',
+  invoice_waived_by: 'Ana',
+  invoiced: false,
+  invoice_pending: true,
+  sale_complete: true,
 };
 
 describe('normalizeRfqStatus', () => {
@@ -68,6 +75,11 @@ describe('mapListItem', () => {
       needsFollowup: true,
       followupFlaggedAt: '2026-09-27T09:00:00.000Z',
       archived: false,
+      paidAt: '2026-09-28T15:00:00.000Z',
+      invoiceWaivedAt: '2026-09-28T16:00:00.000Z',
+      invoiced: false,
+      invoicePending: true,
+      saleComplete: true,
     });
   });
 });

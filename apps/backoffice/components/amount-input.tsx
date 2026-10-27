@@ -1,30 +1,31 @@
 'use client';
 
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { useLocale } from 'next-intl';
 
 import { Input } from '@repo/ui/components';
+import { useCaretPlacement } from '@/hooks/use-caret-placement';
+import {
+  editKind,
+  useInputHistory,
+  type EditKind,
+  type InputSnapshot,
+} from '@/hooks/use-input-history';
 import { CURRENCY_DECIMALS } from '@/lib/i18n/currency';
 import {
   blockDecimalWhenIntegral,
   blockScientificKeys,
-  blockSecondDecimal,
   blockSignKeys,
-  blockWrongLocaleDecimal,
   composeKeyHandlers,
+  editAmount,
   formatAmountForInput,
-  getDecimalSeparator,
   getGroupSeparator,
   limitDecimalsInString,
-  mapCaretAfterRegroup,
   normalizeAmountFromInput,
-  sanitizeDecimalChars,
   sanitizeDecimalPaste,
   stepCanonical,
+  type AmountEdit,
 } from '@/lib/i18n/numeric-input';
-
-/* The caret has to be written before paint; on the server there is no paint and no warning to earn. */
-const useIsomorphicLayoutEffect = typeof document !== 'undefined' ? useLayoutEffect : useEffect;
 
 interface AmountInputProps {
   /* Canonical `.`-decimal string — exactly what the API sends and receives. */
@@ -61,9 +62,10 @@ interface AmountInputProps {
  * past a focused price rewrites it without a keystroke; the arrows people actually want are handled
  * here instead, over the canonical value.
  *
- * Every mutation runs one pipeline: sanitise the raw string → canonicalise → truncate to the
- * currency's precision → regroup for display → replace the caret by counting digits rather than
- * characters, because the group separators are what moved.
+ * Every edit runs one pipeline, `editAmount`: sanitise the raw string → canonicalise → truncate to
+ * the currency's precision → regroup for display → replace the caret by counting digits rather than
+ * characters, because the group separators are what moved. Each one is a step of the field's own
+ * undo history, since the browser keeps none for a value it did not write.
  */
 const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
   (
@@ -71,20 +73,15 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
     ref,
   ) => {
     const locale = useLocale();
-    const decimal = getDecimalSeparator(locale);
     const group = getGroupSeparator(locale);
     const cap = maxDecimals ?? (currency ? (CURRENCY_DECIMALS[currency] ?? 2) : undefined);
-
+    const placeCaret = useCaretPlacement();
     const [display, setDisplay] = useState(() => formatAmountForInput(value, locale));
-    const innerRef = useRef<HTMLInputElement | null>(null);
-    /* Caret to restore once the regrouped value has committed; null means nothing pending. */
-    const pendingCaret = useRef<number | null>(null);
-
-    function setRefs(node: HTMLInputElement | null) {
-      innerRef.current = node;
-      if (typeof ref === 'function') ref(node);
-      else if (ref) ref.current = node;
-    }
+    const history = useInputHistory({
+      ref,
+      value: display,
+      restore: (snapshot, input) => show(input, snapshot),
+    });
 
     /*
      * Re-sync when the canonical value changes from outside — a form reset, an edited row. Deps are
@@ -100,39 +97,44 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, locale]);
 
-    useIsomorphicLayoutEffect(() => {
-      const caret = pendingCaret.current;
-      if (caret === null || innerRef.current === null) return;
-      pendingCaret.current = null;
-      innerRef.current.setSelectionRange(caret, caret);
-    });
+    function show(input: HTMLInputElement, to: InputSnapshot) {
+      const canonical = normalizeAmountFromInput(to.value, locale);
+      setDisplay(to.value);
+      placeCaret(input, to.start, to.end);
+      if (canonical !== value) onChange?.(canonical);
+    }
 
-    function applyRaw(rawDisplay: string, rawCaret: number) {
-      const canonical = limitDecimalsInString(
-        normalizeAmountFromInput(sanitizeDecimalChars(rawDisplay, locale), locale),
-        '.',
-        cap,
-      );
-      const next = formatAmountForInput(canonical, locale);
-      /* Queue the caret only when the display really changes, so the ref is never left dangling. */
-      if (next !== display) {
-        pendingCaret.current = mapCaretAfterRegroup(rawDisplay, rawCaret, next, decimal);
-        setDisplay(next);
-      }
-      onChange?.(canonical);
+    function apply(
+      input: HTMLInputElement,
+      edited: EditKind,
+      edit: AmountEdit,
+      from: InputSnapshot,
+    ) {
+      const to = { value: edit.display, start: edit.caret, end: edit.caret };
+      history.record(edited, from, to);
+      show(input, to);
+    }
+
+    // A group separator typed at the end is shown only while typing; leaving the field drops it.
+    function settle(input: HTMLInputElement) {
+      const settled = formatAmountForInput(normalizeAmountFromInput(display, locale), locale);
+      if (settled === display) return;
+      const end = settled.length;
+      history.record('other', history.snapshot(input), { value: settled, start: end, end });
+      setDisplay(settled);
     }
 
     const runKeyRules = composeKeyHandlers(
       blockSignKeys,
       blockScientificKeys,
-      blockWrongLocaleDecimal(locale),
-      blockSecondDecimal(locale, display),
       blockDecimalWhenIntegral(locale, cap),
     );
 
     function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+      if (history.onKeyDown(event)) return;
       runKeyRules(event);
       if (event.defaultPrevented) return;
+      const input = event.currentTarget;
 
       const stepped = stepCanonical(event.key, normalizeAmountFromInput(display, locale), {
         step,
@@ -141,9 +143,8 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
       if (stepped !== null) {
         event.preventDefault();
         const next = formatAmountForInput(stepped, locale);
-        pendingCaret.current = next.length;
-        setDisplay(next);
-        onChange?.(stepped);
+        const edit = { canonical: stepped, display: next, caret: next.length };
+        apply(input, 'other', edit, history.snapshot(input));
         return;
       }
 
@@ -151,15 +152,19 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
        * Backspace or Delete onto a group separator takes the adjacent digit. Removing the separator
        * alone regroups it straight back, which traps the caret against it forever.
        */
-      const input = event.currentTarget;
       const start = input.selectionStart;
-      if (start === null || start !== input.selectionEnd) return;
-      if (event.key === 'Backspace' && start > 1 && display[start - 1] === group) {
-        event.preventDefault();
-        applyRaw(display.slice(0, start - 2) + display.slice(start - 1), start - 2);
-      } else if (event.key === 'Delete' && display[start] === group) {
-        event.preventDefault();
-        applyRaw(display.slice(0, start) + display.slice(start + 2), start);
+      const modified = event.altKey || event.metaKey || event.ctrlKey;
+      if (start !== null && start === input.selectionEnd && !modified) {
+        const from = history.snapshot(input);
+        if (event.key === 'Backspace' && start > 1 && display[start - 1] === group) {
+          event.preventDefault();
+          const raw = display.slice(0, start - 2) + display.slice(start - 1);
+          apply(input, 'delete', editAmount(raw, start - 2, display, locale, cap), from);
+        } else if (event.key === 'Delete' && display[start] === group) {
+          event.preventDefault();
+          const raw = display.slice(0, start) + display.slice(start + 2);
+          apply(input, 'delete', editAmount(raw, start, display, locale, cap), from);
+        }
       }
       if (!event.defaultPrevented) onKeyDown?.(event);
     }
@@ -167,26 +172,31 @@ const AmountInput = forwardRef<HTMLInputElement, AmountInputProps>(
     return (
       <Input
         {...rest}
-        ref={setRefs}
+        ref={history.inputRef}
         type="text"
         inputMode="decimal"
         name={name}
         value={display}
-        onChange={(event) =>
-          applyRaw(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)
-        }
-        onBlur={onBlur}
+        onChange={(event) => {
+          if (history.replay(event)) return;
+          const input = event.currentTarget;
+          const caret = input.selectionStart ?? input.value.length;
+          const edit = editAmount(input.value, caret, display, locale, cap);
+          apply(input, editKind(event.nativeEvent), edit, history.before());
+        }}
+        onBlur={(event) => {
+          settle(event.currentTarget);
+          onBlur?.();
+        }}
         onKeyDown={handleKeyDown}
         onPaste={(event) => {
           event.preventDefault();
           const input = event.currentTarget;
-          const start = input.selectionStart ?? input.value.length;
-          const end = input.selectionEnd ?? input.value.length;
+          const from = history.snapshot(input);
           const pasted = sanitizeDecimalPaste(event.clipboardData.getData('text/plain'), locale);
-          applyRaw(
-            input.value.slice(0, start) + pasted + input.value.slice(end),
-            start + pasted.length,
-          );
+          const raw = display.slice(0, from.start) + pasted + display.slice(from.end);
+          const edit = editAmount(raw, from.start + pasted.length, display, locale, cap);
+          apply(input, 'other', edit, from);
         }}
         autoComplete="off"
         className={rest.className}

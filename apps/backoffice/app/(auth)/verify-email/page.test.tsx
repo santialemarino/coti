@@ -1,6 +1,8 @@
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ROUTES } from '@/config/routes';
+
 vi.mock('@/app/(auth)/verify-email/_components/confirm-email-form', () => ({
   ConfirmEmailForm: vi.fn(() => null),
 }));
@@ -145,7 +147,9 @@ describe('with no token', () => {
 
     const view = await renderPage({});
 
-    expect(view.getByRole('link', { name: 'continueUnverified' }).getAttribute('href')).toBe('/');
+    expect(view.getByRole('link', { name: 'continueUnverified' }).getAttribute('href')).toBe(
+      ROUTES.home,
+    );
   });
 
   it('asks for an address when there is no session to name one', async () => {

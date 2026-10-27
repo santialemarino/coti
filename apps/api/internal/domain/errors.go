@@ -52,8 +52,20 @@ var (
 	// because nothing about the request can be changed to make it succeed.
 	ErrNotConfigured = errors.New("capability not configured")
 
+	// ErrInboundDestinationInactive signals that a known inbox cannot accept a delivery yet.
+	ErrInboundDestinationInactive = errors.New("inbound destination inactive")
+
 	// ErrDeliveryUnavailable is returned when every selected client delivery failed.
 	ErrDeliveryUnavailable = errors.New("delivery unavailable")
+
+	// ErrInvoicingUnavailable is returned when ARCA could not be reached or answered with a fault,
+	// as opposed to refusing the invoice. Nothing was authorized, so asking again is safe.
+	ErrInvoicingUnavailable = errors.New("invoicing unavailable")
+
+	// ErrInvoiceOutcomeUnknown is returned when an invoice request may have reached ARCA and
+	// whether it was authorized could not be confirmed. Retrying blindly could authorize a second
+	// invoice for the same sale, so the invoice stays pending until it is reconciled.
+	ErrInvoiceOutcomeUnknown = errors.New("invoice outcome unknown")
 
 	// ErrRepresentationUnavailable is returned when a PDF cannot be rendered or stored.
 	ErrRepresentationUnavailable = errors.New("quote representation unavailable")

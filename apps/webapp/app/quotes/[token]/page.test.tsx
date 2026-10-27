@@ -1,58 +1,65 @@
-import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 
-import { makePublicQuoteSend } from '@/lib/api/public-quotes.fixtures';
-import PublicQuotePage from './page';
+import PublicQuotePage from '@/app/quotes/[token]/page';
+import { getCustomerOrderByToken, getDeliveryHostname } from '@/lib/api/customer-orders';
+import { requireCustomer } from '@/lib/auth/customer-flow';
 
-const getPublicQuoteByToken = vi.hoisted(() => vi.fn());
-const { notFound } = vi.hoisted(() => ({
-  notFound: vi.fn(() => {
-    throw new Error('NEXT_NOT_FOUND');
-  }),
+vi.mock('@/lib/api/customer-orders', () => ({
+  getCustomerOrderByToken: vi.fn(),
+  getDeliveryHostname: vi.fn(),
 }));
-
-vi.mock('next-intl/server', async () => import('@/lib/i18n/server-intl.mock'));
-vi.mock('next/navigation', () => ({ notFound }));
-vi.mock('@/lib/api/public-quotes', () => ({ getPublicQuoteByToken }));
-
-/*
- * The route delegates its rendering to PublicQuoteView, which is covered by its own spec and is an
- * async server component the client renderer cannot await — so this spec keeps only what the route
- * decides: which send reaches the view and where an unknown token goes.
- */
-vi.mock('@/app/quotes/_components/public-quote-view', () => ({
-  PublicQuoteView: ({ send }: { send: { status: string } }) => (
-    <p data-testid="public-quote-view">{send.status}</p>
-  ),
+vi.mock('@/lib/auth/customer-flow', () => ({ requireCustomer: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  redirect: (path: string) => {
+    throw new Error('redirect:' + path);
+  },
+  notFound: () => {
+    throw new Error('not-found');
+  },
 }));
-
-function params(token = 'tok-1') {
-  return { params: Promise.resolve({ token }) };
-}
-
-describe('PublicQuotePage', () => {
-  it('hands an active send to the shared view', async () => {
-    vi.mocked(getPublicQuoteByToken).mockResolvedValue(makePublicQuoteSend({ status: 'ACTIVE' }));
-
-    const view = render(await PublicQuotePage(params()));
-
-    expect(view.getByTestId('public-quote-view').textContent).toBe('ACTIVE');
+vi.mock('@/lib/auth/customer-session', () => ({
+  getCustomerHostname: async () => 'supplier.coti.test',
+}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(getDeliveryHostname).mockResolvedValue('supplier.coti.test');
+});
+it('authenticates before resolving an old link', async () => {
+  vi.mocked(requireCustomer).mockRejectedValue(new Error('login-required'));
+  await expect(
+    PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
+  ).rejects.toThrow('login-required');
+  expect(requireCustomer).toHaveBeenCalledWith('/quotes/legacy-token');
+  expect(getCustomerOrderByToken).not.toHaveBeenCalled();
+});
+it('preserves the original link expiry reference in the unified detail', async () => {
+  vi.mocked(requireCustomer).mockResolvedValue({
+    customerId: 'c',
+    taxId: '20123456786',
+    name: null,
+    sessionExpiresAt: '2030-01-01T00:00:00Z',
   });
-
-  it('hands an expired send to the shared view so it answers with the expiry screen', async () => {
-    vi.mocked(getPublicQuoteByToken).mockResolvedValue(
-      makePublicQuoteSend({ status: 'EXPIRED', quote: undefined, pdfUrl: undefined }),
-    );
-
-    const view = render(await PublicQuotePage(params()));
-
-    expect(view.getByTestId('public-quote-view').textContent).toBe('EXPIRED');
+  vi.mocked(getCustomerOrderByToken).mockResolvedValue({
+    id: 'order-id',
+    branchName: 'Branch',
+    receivedAt: '',
+    status: 'SENT',
+    originalText: '',
+    deliveryToken: 'newer-token',
   });
-
-  it('answers an unknown token with the 404 the route declares', async () => {
-    vi.mocked(getPublicQuoteByToken).mockResolvedValue(null);
-
-    await expect(PublicQuotePage(params('nope'))).rejects.toThrow('NEXT_NOT_FOUND');
-    expect(notFound).toHaveBeenCalled();
+  await expect(
+    PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
+  ).rejects.toThrow('redirect:/orders/order-id?delivery=legacy-token');
+});
+it('does not reveal an unauthorized request', async () => {
+  vi.mocked(requireCustomer).mockResolvedValue({
+    customerId: 'c',
+    taxId: '20123456786',
+    name: null,
+    sessionExpiresAt: '2030-01-01T00:00:00Z',
   });
+  vi.mocked(getCustomerOrderByToken).mockResolvedValue(null);
+  await expect(
+    PublicQuotePage({ params: Promise.resolve({ token: 'other-token' }) }),
+  ).rejects.toThrow('not-found');
 });

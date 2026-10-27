@@ -2,6 +2,8 @@ import { render, waitFor, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ROUTES } from '@/config/routes';
+
 vi.mock('@/app/(auth)/verify-email/actions', () => ({ confirmEmail: vi.fn() }));
 vi.mock('@/app/(protected)/actions', () => ({ signOut: vi.fn() }));
 vi.mock('@/app/(auth)/verify-email/_components/resend-verification-form', () => ({
@@ -85,7 +87,7 @@ describe('with the caller address known', () => {
     const view = renderForm(EMAIL);
 
     expect(view.getByRole('button', { name: copy.signOut })).toBeTruthy();
-    expect(linkHrefs(view)).not.toContain('/');
-    expect(linkHrefs(view)).not.toContain('/login');
+    expect(linkHrefs(view)).not.toContain(ROUTES.home);
+    expect(linkHrefs(view)).not.toContain(ROUTES.login);
   });
 });

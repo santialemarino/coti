@@ -11,7 +11,7 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
 > this skill points at but does not restate. This skill covers _how_ to build the
 > page/component once placement is decided. Coti has two apps: **backoffice** (authenticated, port
 > 3000, uses `(auth)`/`(protected)` route groups) and **webapp** (public, port
-> 3001, no auth, no route groups). Product language is Argentine Spanish; i18n
+> 3001, separate customer sessions, routes directly under app). Product language is Argentine Spanish; i18n
 > runs on **next-intl** (single locale `es-AR`, no routing) — see "Copy, i18n,
 > and formatting".
 
@@ -29,9 +29,9 @@ description: How to create a component or a page in Coti's Next.js apps (backoff
    - **backoffice `(protected)`:** the layout already enforces a session; call
      `getSession()` in the page only if you need the user/branch. **backoffice
      `(auth)`:** redirect to `ROUTES.home` when already logged in.
-   - **webapp:** the page is public. A customer-scoped route (e.g.
-     `quotes/[token]`) resolves the **token** server-side and 404s an invalid one —
-     access control is the token, never a session.
+   - **webapp:** customer pages call `requireCustomer` and the backend authorizes each
+     request by supplier and authenticated CUIT/CUIL. Delivery tokens identify immutable
+     sends and preserve expiry; they do not authorize access without a customer session.
 4. **Metadata:** Use `generatePageMetadata(...)` from `lib/utils/page.tsx` for a
    page title/description, so tab titles stay consistent across the app.
 
@@ -65,9 +65,9 @@ catalogue:
 | Group    | Components                                                                                                                                                                                                 |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Controls | `Button` `PendingButton` `CopyButton` `Badge` `Input` `SearchInput` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `ToggleGroup` `Combobox` `MultiCombobox` `Pagination` `RowActionButton` `Dropzone` |
-| Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout`                                                                                                          |
+| Surfaces | `Card` `Separator` `Table` `ScrollArea` `Skeleton` `Spinner` `Progress` `Avatar` `Hint` `Callout` `ClampedText`                                                                                            |
 | Overlays | `Dialog` `Sheet` `Popover` `DropdownMenu` `Tooltip` `Collapsible` `Command` `ConfirmDialog`                                                                                                                |
-| Patterns | `StatusScreen` `Stepper` `StepList` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                             |
+| Patterns | `StatusScreen` `Stepper` `StepList` `StepGuide` `EmptyState` `TableEmptyRow` `SortableTableHead` `MetaList` `InlineLink` `DropdownChevron`                                                                 |
 | Forms    | `Form` `FormField` `FormItem` `FormLabel` `FormControl` `FormDescription` `FormMessage` `FormRootMessage`                                                                                                  |
 
 - **Reuse-first, in search order.** Look in this order: (1) the page's
@@ -178,6 +178,20 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   rejects that keystroke. The keystroke rules, the paste normaliser and the caret mapper live in
   `lib/i18n/numeric-input.ts` — compose from there rather than writing a third masker. The caret is
   mapped by counting digits, not characters, because the group separators are exactly what moved.
+- **A field that rewrites its own value keeps its own undo history** (`useInputHistory`, backoffice
+  `hooks/`). The browser leaves a programmatic write out of its stack, so a formatted or filtered
+  input otherwise undoes one character at a time, or not at all. The hook groups edits the way a
+  plain input does, answers ⌘Z / Ctrl+Z, ⌘⇧Z / Ctrl+Y and the `beforeinput` history events, takes
+  its own step for a browser undo that skips `beforeinput` (`replay`, first thing in `onChange`),
+  and resets when the value changes from outside. Every field that formats or filters its value
+  runs on it, with the caret placed by `useCaretPlacement` even when the edit changed nothing; state
+  the text does not hold rides on each step as its `context`, and a change to that state is a step
+  of its own. A field that only filters drops what it refuses with `keepAllowed` (`lib/utils/`).
+- **A literal the caller types is accepted where the mask puts one, stepped over when it is the
+  next character, and ignored anywhere else** — a separator, a decimal comma, a hyphen. Nothing
+  typed may look ignored when it was right, and nothing typed may double what the mask already
+  shows. A keystroke rule (`composeKeyHandlers`) never sees a shortcut, so ⌘− and ⌘E keep working
+  inside a field that refuses `-` and `e`.
 - **A phone number is `PhoneInput`** (backoffice `components/`): a searchable country `Combobox`,
   Argentina first, beside the national number, emitting E.164 or `''`. Validate with
   `isValidPhoneNumber` from `libphonenumber-js/min`, never a regex — the country supplies the code the
@@ -349,9 +363,14 @@ A table is the densest thing in the product, so every column has to earn its wid
   is centred**, under a centred heading, whatever else the table holds. Every table uses the
   component's own cell padding; a table that wants taller rows changes only the vertical padding.
 
-- **A quantity and its unit are one figure, in one cell** (`500 bolsas`, or the unit as the
+- **A quantity and its unit are one figure, in one cell** (`500 u.`, or the unit as the
   `AmountInput` suffix when it is editable). A right-aligned number beside a left-aligned unit leaves
-  a gap that changes width with every row.
+  a gap that changes width with every row. **Neither is ever cut**: a known unit shows its trade
+  abbreviation (`shortUnit`, in `lib/utils/units.ts`) inside an `<abbr>` titled with the original,
+  an unknown one shows as written, and the column widens to its longest figure instead of clipping.
+- **Long text in a cell stops at two lines with `ClampedText`**, which shows the full text in a
+  tooltip only when something was cut, and takes focus only then. Never a bare `truncate` that
+  loses the rest.
 - **Only a row that acts on click hovers.** `TableRow interactive` carries the pointer, the hover
   and the press; every other row has none, because a hover on a row that does nothing promises an
   action that is not there. A tinted row (an import error, a diff) just sets its `bg-*`; there is no
@@ -609,8 +628,8 @@ export async function getQuotes(branchId: string): Promise<Quote[]> {
 ```
 
 - **backoffice** reads/writes go through the **authenticated** fetch (JWT from
-  session). **webapp** reads are **unauthenticated** — a public/token-scoped fetch,
-  e.g. `getPublicQuoteByToken(token)` resolves a tokenized quote with no session.
+  session). **webapp** customer reads use the distinct opaque customer session through
+  `customerFetch`; only supplier metadata and credential entry endpoints are public.
 - **Actions (`actions.ts`) build explicit snake_case bodies:**
 
 ```ts

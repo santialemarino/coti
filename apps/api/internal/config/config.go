@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
@@ -74,6 +76,7 @@ type Config struct {
 	Server          ServerConfig
 	Database        DatabaseConfig
 	Auth            AuthConfig
+	CustomerAuth    CustomerAuthConfig
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -81,6 +84,8 @@ type Config struct {
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
+	QuoteArchive    QuoteArchiveConfig
+	Conversation    ConversationConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
 	RateLimit       RateLimitConfig
@@ -90,7 +95,92 @@ type Config struct {
 	PriceImport     SpreadsheetImportConfig
 	Storage         StorageConfig
 	Channel         ChannelConfig
+	WhatsApp        WhatsAppConfig
+	Gmail           GmailConfig
+	ARCA            ARCASetupConfig
 }
+
+// GmailConfig holds the OAuth settings and limits for branch mailbox synchronization.
+type GmailConfig struct {
+	ClientID       string
+	ClientSecret   string
+	RedirectURL    string
+	RequestTimeout time.Duration
+	PollInterval   time.Duration
+	StateTTL       time.Duration
+	MaxRawBytes    int64
+	MaxJSONBytes   int64
+	MaxParts       int
+}
+
+// Enabled reports whether an OAuth client has been configured.
+func (g GmailConfig) Enabled() bool {
+	return g.ClientID != "" && g.ClientSecret != "" && g.RedirectURL != ""
+}
+
+func (g GmailConfig) problems() []string {
+	var problems []string
+	if g.ClientID != "" || g.ClientSecret != "" || g.RedirectURL != "" {
+		if g.ClientID == "" {
+			problems = append(problems, "GMAIL_OAUTH_CLIENT_ID is required")
+		}
+		if g.ClientSecret == "" {
+			problems = append(problems, "GMAIL_OAUTH_CLIENT_SECRET is required")
+		}
+		if g.RedirectURL == "" {
+			problems = append(problems, "GMAIL_OAUTH_REDIRECT_URL is required")
+		}
+		if g.RedirectURL != "" {
+			u, err := url.Parse(g.RedirectURL)
+			if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" &&
+				(u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"))) ||
+				u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				problems = append(problems, "GMAIL_OAUTH_REDIRECT_URL must be an HTTPS URL or a local HTTP URL")
+			}
+		}
+	}
+	if g.RequestTimeout <= 0 {
+		problems = append(problems, "GMAIL_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if g.PollInterval <= 0 {
+		problems = append(problems, "GMAIL_POLL_INTERVAL_SECONDS must be greater than zero")
+	}
+	if g.StateTTL <= 0 {
+		problems = append(problems, "GMAIL_OAUTH_STATE_TTL_MINUTES must be greater than zero")
+	}
+	if g.MaxRawBytes <= 0 {
+		problems = append(problems, "GMAIL_MAX_RAW_BYTES must be greater than zero")
+	}
+	if g.MaxJSONBytes <= g.MaxRawBytes {
+		problems = append(problems, "GMAIL_MAX_JSON_BYTES must exceed GMAIL_MAX_RAW_BYTES")
+	}
+	if g.MaxParts <= 0 {
+		problems = append(problems, "GMAIL_MAX_MIME_PARTS must be greater than zero")
+	}
+	return problems
+}
+
+// ARCASetupConfig protects homologation credentials and bounds external calls.
+type ARCASetupConfig struct {
+	EncryptionKey  []byte
+	Timeout        time.Duration
+	IssueTimeout   time.Duration
+	ReconcileAfter time.Duration
+	// Environment is the ARCA deployment invoices are authorized in: ARCAEnvironmentHomologation or
+	// ARCAEnvironmentProduction.
+	Environment string
+	// ReceiverIDThreshold is the invoice total from which ARCA requires the buyer's CUIT or DNI.
+	ReceiverIDThreshold decimal.Decimal
+}
+
+// The ARCA deployments a server can authorize invoices in.
+const (
+	ARCAEnvironmentHomologation = "homologation"
+	ARCAEnvironmentProduction   = "production"
+)
+
+// defaultReceiverIDThreshold is ARCA's identification threshold for a final consumer, in pesos.
+const defaultReceiverIDThreshold = "10000000"
 
 // QuoteLogoConfig bounds retrieval of untrusted branding images.
 type QuoteLogoConfig struct {
@@ -123,6 +213,28 @@ type ChannelConfig struct {
 	// and still serves channels — storing a credential is the one thing refused, so a deployment
 	// that never set a key cannot end up keeping a provider token in the clear.
 	EncryptionKey []byte
+}
+
+// WhatsAppConfig holds app-wide WhatsApp Cloud API settings.
+type WhatsAppConfig struct {
+	AppSecret       string
+	GraphAPIVersion string
+	RequestTimeout  time.Duration
+	WebhookMaxBytes int64
+}
+
+func (w WhatsAppConfig) problems() []string {
+	var problems []string
+	if !isGraphAPIVersion(w.GraphAPIVersion) {
+		problems = append(problems, "WHATSAPP_GRAPH_API_VERSION must look like v25.0")
+	}
+	if w.RequestTimeout <= 0 {
+		problems = append(problems, "WHATSAPP_REQUEST_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if w.WebhookMaxBytes <= 0 {
+		problems = append(problems, "WHATSAPP_WEBHOOK_MAX_BYTES must be greater than zero")
+	}
+	return problems
 }
 
 // RateLimitConfig holds the request allowances, all of them settings rather than literals.
@@ -490,6 +602,35 @@ type QuoteQualityConfig struct {
 	ProcessingBatchSize int
 }
 
+// QuoteArchiveConfig drives the sweep that archives quotes nobody has moved.
+type QuoteArchiveConfig struct {
+	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
+	// (US-41) flags on the same measure, so this belongs above its threshold.
+	InactiveAfter time.Duration
+	// ClosedAfter is how long a closed outcome — a complete sale or a rejected quote — stays in the
+	// queue without a change before it is archived.
+	ClosedAfter time.Duration
+	BatchSize   int
+}
+
+// ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
+type ConversationConfig struct {
+	// WindowReset is how long a window stays open after the client's latest message.
+	WindowReset time.Duration
+	// WindowMax caps a window from its first message, however long the client keeps writing.
+	WindowMax time.Duration
+	// ContextMessages is how many earlier messages travel with a batch as context.
+	ContextMessages int
+	// TickerInterval is how often the API process closes due windows and works the queue.
+	TickerInterval time.Duration
+	// MaxAttempts is how many failed attempts leave a batch FAILED.
+	MaxAttempts int
+	// ProcessingTimeout bounds one handler attempt; a claim older than it is reclaimed.
+	ProcessingTimeout time.Duration
+	// SweepBatchSize bounds each close and reclaim statement, and the claims one pass makes.
+	SweepBatchSize int
+}
+
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
 // window is how long a claim stands: past it the row is taken again, so a run killed mid-work
 // releases its attachments instead of parking them at PROCESSING forever.
@@ -684,6 +825,7 @@ func Load() (*Config, error) {
 			MaxConnIdleTime: getDuration("DB_MAX_CONN_IDLE_MINUTES", 30*time.Minute, &problems),
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
+		CustomerAuth: loadCustomerAuth(&problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
@@ -812,6 +954,23 @@ func Load() (*Config, error) {
 		QuoteQuality: QuoteQualityConfig{
 			ProcessingBatchSize: getInt("QUOTE_QUALITY_PROCESSING_BATCH_SIZE", 100, &problems),
 		},
+		QuoteArchive: QuoteArchiveConfig{
+			InactiveAfter: getDuration("QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", 30*24*time.Hour,
+				&problems),
+			ClosedAfter: getDuration("QUOTE_AUTO_ARCHIVE_CLOSED_DAYS", 30*24*time.Hour,
+				&problems),
+			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
+		},
+		Conversation: ConversationConfig{
+			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
+			WindowMax:       getDuration("CONVERSATION_WINDOW_MAX_SECONDS", 600*time.Second, &problems),
+			ContextMessages: getInt("CONVERSATION_CONTEXT_MESSAGES", 10, &problems),
+			TickerInterval:  getDuration("CONVERSATION_TICKER_SECONDS", 30*time.Second, &problems),
+			MaxAttempts:     getInt("CONVERSATION_MAX_ATTEMPTS", 3, &problems),
+			ProcessingTimeout: getDuration("CONVERSATION_PROCESSING_TIMEOUT_SECONDS", 600*time.Second,
+				&problems),
+			SweepBatchSize: getInt("CONVERSATION_SWEEP_BATCH_SIZE", 100, &problems),
+		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
 			ExtractionReclaimAfter: getDuration("ATTACHMENT_EXTRACTION_RECLAIM_MINUTES",
@@ -832,10 +991,49 @@ func Load() (*Config, error) {
 		Channel: ChannelConfig{
 			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
+		WhatsApp: WhatsAppConfig{
+			AppSecret:       getString("WHATSAPP_APP_SECRET", ""),
+			GraphAPIVersion: getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
+			RequestTimeout:  getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
+			WebhookMaxBytes: int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
+		},
+		Gmail: GmailConfig{
+			ClientID:       getString("GMAIL_OAUTH_CLIENT_ID", ""),
+			ClientSecret:   getString("GMAIL_OAUTH_CLIENT_SECRET", ""),
+			RedirectURL:    getString("GMAIL_OAUTH_REDIRECT_URL", ""),
+			RequestTimeout: getDuration("GMAIL_REQUEST_TIMEOUT_SECONDS", 30*time.Second, &problems),
+			PollInterval:   getDuration("GMAIL_POLL_INTERVAL_SECONDS", 30*time.Second, &problems),
+			StateTTL:       getDuration("GMAIL_OAUTH_STATE_TTL_MINUTES", 10*time.Minute, &problems),
+			MaxRawBytes:    int64(getInt("GMAIL_MAX_RAW_BYTES", 50*1024*1024, &problems)),
+			MaxJSONBytes:   int64(getInt("GMAIL_MAX_JSON_BYTES", 72*1024*1024, &problems)),
+			MaxParts:       getInt("GMAIL_MAX_MIME_PARTS", 200, &problems),
+		},
+		ARCA: ARCASetupConfig{
+			EncryptionKey:  getBase64Key("ARCA_SETUP_ENCRYPTION_KEY", channelKeyLength, &problems),
+			Timeout:        getDuration("ARCA_SETUP_TIMEOUT_SECONDS", 10*time.Second, &problems),
+			IssueTimeout:   getDuration("ARCA_ISSUE_TIMEOUT_SECONDS", 25*time.Second, &problems),
+			ReconcileAfter: getDuration("INVOICE_PENDING_RECONCILE_SECONDS", 300*time.Second, &problems),
+			Environment:    getString("ARCA_ENVIRONMENT", ARCAEnvironmentHomologation),
+			ReceiverIDThreshold: getPositiveDecimal("INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
+				defaultReceiverIDThreshold, &problems),
+		},
 	}
 
+	if cfg.ARCA.IssueTimeout <= cfg.ARCA.Timeout || cfg.ARCA.IssueTimeout >= cfg.Server.WriteTimeout {
+		problems = append(problems, "ARCA_ISSUE_TIMEOUT_SECONDS must exceed ARCA_SETUP_TIMEOUT_SECONDS and stay below SERVER_WRITE_TIMEOUT_SECONDS")
+	}
+	if cfg.ARCA.Environment != ARCAEnvironmentHomologation && cfg.ARCA.Environment != ARCAEnvironmentProduction {
+		problems = append(problems, fmt.Sprintf("ARCA_ENVIRONMENT must be %q or %q, got %q",
+			ARCAEnvironmentHomologation, ARCAEnvironmentProduction, cfg.ARCA.Environment))
+	}
+	if cfg.ARCA.ReconcileAfter <= cfg.ARCA.IssueTimeout {
+		problems = append(problems, "INVOICE_PENDING_RECONCILE_SECONDS must exceed ARCA_ISSUE_TIMEOUT_SECONDS")
+	}
 	if cfg.Database.URL == "" {
 		problems = append(problems, "DATABASE_URL is required")
+	}
+	if cfg.ARCA.Timeout <= 0 || cfg.ARCA.Timeout > 15*time.Second {
+		problems = append(problems, "ARCA_SETUP_TIMEOUT_SECONDS must be between 1 and 15")
 	}
 	if cfg.Database.AdminURL == "" {
 		problems = append(problems, "DATABASE_ADMIN_URL is required")
@@ -914,6 +1112,11 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
+	problems = append(problems, cfg.WhatsApp.problems()...)
+	problems = append(problems, cfg.Gmail.problems()...)
+	if cfg.Gmail.Enabled() && len(cfg.Channel.EncryptionKey) == 0 {
+		problems = append(problems, "CHANNEL_CONFIG_ENCRYPTION_KEY is required when Gmail is configured")
+	}
 
 	// A base URL missing its scheme or host yields recovery links that go nowhere, and the
 	// only symptom is a user reporting that the mail does not work.
@@ -1009,6 +1212,47 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteQuality.ProcessingBatchSize < 1 {
 		problems = append(problems, "QUOTE_QUALITY_PROCESSING_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.QuoteArchive.InactiveAfter <= 0 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS must be greater than zero")
+	}
+	if cfg.QuoteArchive.ClosedAfter <= 0 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS must be greater than zero")
+	}
+	if cfg.QuoteArchive.BatchSize < 1 {
+		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.Conversation.WindowReset <= 0 {
+		problems = append(problems, "CONVERSATION_WINDOW_RESET_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.WindowMax <= cfg.Conversation.WindowReset {
+		problems = append(problems,
+			"CONVERSATION_WINDOW_MAX_SECONDS must be greater than CONVERSATION_WINDOW_RESET_SECONDS")
+	}
+	if cfg.Conversation.ContextMessages < 0 {
+		problems = append(problems, "CONVERSATION_CONTEXT_MESSAGES must be zero or more")
+	}
+	if cfg.Conversation.TickerInterval <= 0 {
+		problems = append(problems, "CONVERSATION_TICKER_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.MaxAttempts < 1 {
+		problems = append(problems, "CONVERSATION_MAX_ATTEMPTS must be greater than zero")
+	}
+	if cfg.Conversation.ProcessingTimeout <= 0 {
+		problems = append(problems, "CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if cfg.Conversation.ProcessingTimeout > 0 &&
+		cfg.Conversation.ProcessingTimeout <= cfg.Conversation.TickerInterval {
+		problems = append(problems,
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be greater than CONVERSATION_TICKER_SECONDS")
+	}
+	// The scheduled backstop runs a batch inside one job run.
+	if cfg.Job.Timeout > 0 && cfg.Conversation.ProcessingTimeout >= cfg.Job.Timeout {
+		problems = append(problems,
+			"CONVERSATION_PROCESSING_TIMEOUT_SECONDS must be below JOB_TIMEOUT_MINUTES")
+	}
+	if cfg.Conversation.SweepBatchSize < 1 {
+		problems = append(problems, "CONVERSATION_SWEEP_BATCH_SIZE must be greater than zero")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")
@@ -1151,6 +1395,18 @@ func getString(key, fallback string) string {
 	return fallback
 }
 
+func isGraphAPIVersion(value string) bool {
+	major, minor, found := strings.Cut(strings.TrimSpace(value), ".")
+	if !found || !strings.HasPrefix(major, "v") || len(major) == 1 || minor == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(strings.TrimPrefix(major, "v")); err != nil {
+		return false
+	}
+	_, err := strconv.Atoi(minor)
+	return err == nil
+}
+
 // getBase64Key decodes a base64 key of an exact byte width. An unset key yields nil, which the
 // capability behind it reads as "not configured"; a malformed one is a startup problem, so a typo
 // cannot quietly turn encryption off. The value is never echoed back — it is the key.
@@ -1227,6 +1483,17 @@ func getInt(key string, fallback int, problems *[]string) int {
 	if err != nil {
 		*problems = append(*problems, fmt.Sprintf("%s must be an integer, got %q", key, raw))
 		return fallback
+	}
+	return v
+}
+
+// getPositiveDecimal reads an amount as an exact decimal; money never passes through a float.
+func getPositiveDecimal(key, fallback string, problems *[]string) decimal.Decimal {
+	raw := getString(key, fallback)
+	v, err := decimal.NewFromString(raw)
+	if err != nil || !v.IsPositive() {
+		*problems = append(*problems, fmt.Sprintf("%s must be a positive amount, got %q", key, raw))
+		return decimal.RequireFromString(fallback)
 	}
 	return v
 }

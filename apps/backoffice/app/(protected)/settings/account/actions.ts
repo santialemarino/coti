@@ -16,6 +16,8 @@ export interface AccountResult {
 export async function updateAccount(
   values: AccountValues,
   logo?: File | null,
+  // Confirms that a new CUIT removes the ARCA connection made with the old one.
+  disconnectARCA = false,
 ): Promise<AccountResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = accountSchema().safeParse(values);
@@ -28,13 +30,14 @@ export async function updateAccount(
         : logo === null
           ? ''
           : await uploadAccountLogo(logo);
-    const body = bodyOf({ ...parsed.data, brandLogoUrl });
+    const body = { ...bodyOf({ ...parsed.data, brandLogoUrl }), disconnect_arca: disconnectARCA };
     await apiRequest({ path: '/v1/account', method: 'PUT', body });
   } catch (error) {
     return { error: errorCodeOf(error) };
   }
-  // Only this route: no other screen renders the account, so the shell has nothing to refresh.
   revalidatePath(ROUTES.accountSettings);
+  // Removing the connection changes what the invoicing screens show.
+  if (disconnectARCA) revalidatePath(ROUTES.invoicingSettings, 'layout');
   return { ok: true };
 }
 
@@ -50,5 +53,6 @@ function bodyOf(values: AccountValues) {
     tax_id: values.taxId || undefined,
     brand_logo_url: values.brandLogoUrl || undefined,
     brand_color: values.brandColor ? `#${values.brandColor}` : undefined,
+    preferred_lower_price_strategy: values.lowerPriceStrategy,
   };
 }

@@ -41,6 +41,12 @@ type QuoteResponse struct {
 	FollowupFlaggedAt *time.Time `json:"followup_flagged_at"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
+	// PaidAt and PaidByUserID record «Cobrado» on an accepted sale; null while it is not paid.
+	PaidAt       *time.Time `json:"paid_at"`
+	PaidByUserID *uuid.UUID `json:"paid_by_user_id"`
+	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
+	InvoiceWaivedAt       *time.Time `json:"invoice_waived_at"`
+	InvoiceWaivedByUserID *uuid.UUID `json:"invoice_waived_by_user_id"`
 }
 
 // QuoteVersionResponse represents a reviewable quote version.
@@ -110,12 +116,12 @@ type QuoteAlternativeApprovalRequest struct {
 	ApprovedBySeller *bool `json:"approved_by_seller" binding:"required"`
 }
 
-// QuoteSendRequest selects the optional email copy and validity override. WhatsApp and the
-// public webapp link are always included by the backend.
+// QuoteSendRequest selects delivery destinations and an optional validity override.
 type QuoteSendRequest struct {
-	RecipientPhone string                     `json:"recipient_phone" binding:"required"`
-	EmailDelivery  *QuoteEmailDeliveryRequest `json:"email_delivery"`
-	ExpiryDays     *int                       `json:"expiry_days"`
+	ClientAssociation *AssociateQuoteClientRequest `json:"client_association"`
+	RecipientPhone    string                       `json:"recipient_phone"`
+	EmailDelivery     *QuoteEmailDeliveryRequest   `json:"email_delivery"`
+	ExpiryDays        *int                         `json:"expiry_days"`
 }
 
 // QuoteEmailDeliveryRequest is the optional independent email destination.
@@ -142,9 +148,10 @@ type QuoteDeliveryResponse struct {
 	SentAt         *time.Time `json:"sent_at"`
 }
 
-// PublicQuoteSendResponse exposes immutable content only while the delivery token is active.
+// PublicQuoteSendResponse exposes immutable content only while the delivery token is active and
+// the quote is not archived.
 type PublicQuoteSendResponse struct {
-	Status    string                              `json:"status"`
+	Status    string                              `json:"status" enums:"ACTIVE,EXPIRED,UNAVAILABLE"`
 	ExpiresAt time.Time                           `json:"expires_at"`
 	Quote     *QuoteRepresentationPayloadResponse `json:"quote,omitempty"`
 	Message   *string                             `json:"message,omitempty"`

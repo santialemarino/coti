@@ -225,6 +225,107 @@
                 }
             }
         },
+        "/v1/arca/setup": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Get ARCA setup",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ARCASetupResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Generates the key and the certificate request for the CUIT on the account; 422 ACCOUNT_TAX_ID_REQUIRED when the account has none.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Create ARCA certificate request",
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ARCASetupResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Disconnect ARCA",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/v1/arca/setup/certificate": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "arca"
+                ],
+                "summary": "Install ARCA certificate",
+                "parameters": [
+                    {
+                        "description": "Public PEM certificate",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UploadARCACertificateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/v1/auth/change-email": {
             "post": {
                 "security": [
@@ -929,6 +1030,58 @@
                 }
             }
         },
+        "/v1/channels/{channelId}/gmail/authorization": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "channels"
+                ],
+                "summary": "Authorize a branch Gmail mailbox",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Email channel id",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.GmailAuthorizationResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients": {
             "get": {
                 "security": [
@@ -1038,6 +1191,125 @@
                 }
             }
         },
+        "/v1/clients/{clientId}/fiscal": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Get a client's fiscal data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientFiscalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update a client's fiscal data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fiscal data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientFiscalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientFiscalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVALID_TAX_ID, TAX_ID_READ_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/tags": {
             "put": {
                 "security": [
@@ -1100,6 +1372,800 @@
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/forgot-password": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Request customer password recovery",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL and recovery email",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Recovery request received"
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/google/complete": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Complete Google customer registration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Verified Google signup token and CUIT/CUIL",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerGoogleCompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/google/exchange": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Exchange a Google authorization code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Authorization code and PKCE verifier",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerGoogleExchangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerGoogleExchangeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/google/link": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Link Google to an authenticated customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Verified Google signup token and CUIT/CUIL",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerGoogleCompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/google/options": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Get customer Google sign-in configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerGoogleOptionsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/login": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Log in as a customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL and password",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerCredentialsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Log out as a customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Logged out"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/register": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Register a customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL and password",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerCredentialsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/reset-password": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Reset a customer password",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Recovery token and new password",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerPasswordResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Password reset"
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/verify-email": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Verify a customer recovery email",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Verification token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Email verified"
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Get the authenticated customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerIdentityResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-orders"
+                ],
+                "summary": "List customer requests",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number starting at one",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.CustomerOrderResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/orders/{rfqId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-orders"
+                ],
+                "summary": "Get a customer request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerOrderResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/quote-sends/{token}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public quote sends"
+                ],
+                "summary": "Resolve a public quote delivery token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Public delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteSendResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/quote-sends/{token}/order": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-orders"
+                ],
+                "summary": "Resolve a customer delivery to its request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerOrderResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/rfq-channels/{channelId}/requests": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepts JSON text or multipart contact fields and one file; request_id is a UUID v4 reused only for retries of the same submission.",
+                "consumes": [
+                    "application/json",
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-rfqs"
+                ],
+                "summary": "Submit a public RFQ",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "WEBAPP channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Text request; multipart uses the same fields and a file part",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreatePublicRFQRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicRFQReceiptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -1237,6 +2303,431 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "List invoices",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted lists every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceListResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices/{invoiceId}/credit-note": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Asks ARCA to authorize a credit note of the invoice's letter, lines, amounts and buyer, associated with it. Irreversible: once issued, the sale is no longer invoiced.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Issue a credit note for an invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The invoice's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "INVOICE_NOT_CREDITABLE, INVOICE_ALREADY_CREDITED, CREDIT_NOTE_IN_PROGRESS, ARCA_ENVIRONMENT_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVOICE_NOT_READY, INVOICE_REJECTED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "INVOICING_UNAVAILABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices/{invoiceId}/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Download invoice PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoices/{invoiceId}/recover": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Recover invoice authorization",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Invoice id",
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/enabled": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Off refuses issuing invoices and credit notes; issued ones stay readable and the ARCA setup is kept. Turning it off is refused with 409 INVOICE_PENDING while an invoice waits for ARCA.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Switch invoicing with Coti on or off",
+                "parameters": [
+                    {
+                        "description": "Switch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetInvoicingEnabledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/points-of-sale": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets the listed branches' ARCA points of sale in one write; 409 POINT_OF_SALE_TAKEN when two branches would share one.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Update points of sale",
+                "parameters": [
+                    {
+                        "description": "Points of sale",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdatePointsOfSaleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/invoicing/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the account's IVA condition, how its prices treat IVA, each branch's ARCA point of sale and the uploaded certificate.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Get invoicing settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the account's IVA condition and price treatment and the listed branches' points of sale.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Update invoicing settings",
+                "parameters": [
+                    {
+                        "description": "Invoicing settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateInvoicingSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicingSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3002,6 +4493,236 @@
                 }
             }
         },
+        "/v1/promotions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every promotion rule of the account, inactive ones included, highest priority first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "List promotions",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds a typed promotion rule. The engine applies it to every quote whose lines match, on its next discount sweep.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Create a promotion",
+                "parameters": [
+                    {
+                        "description": "Promotion",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/promotions/{promotionId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns one promotion rule with its conditions and tiers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Get a promotion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Promotion id",
+                        "name": "promotionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Rewrites the whole rule, conditions and tiers included. Deactivating or reactivating a promotion is is_active or its validity window changing here.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "promotions"
+                ],
+                "summary": "Replace a promotion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Promotion id",
+                        "name": "promotionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Promotion",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PromotionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/public/account-logos/{accountId}/{logoId}": {
             "get": {
                 "description": "Serves one account logo by its public, unguessable identifier.",
@@ -3433,42 +5154,13 @@
                 }
             }
         },
-        "/v1/public/quote-sends/{token}": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "public quote sends"
-                ],
-                "summary": "Resolve a public quote delivery token",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Public delivery token",
-                        "name": "token",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.PublicQuoteSendResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/v1/public/quote-sends/{token}/action": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -3480,6 +5172,13 @@
                 ],
                 "summary": "Record a customer response on a public quote",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Public delivery token",
@@ -3518,6 +5217,165 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/quote-sends/{token}/site": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Get supplier routing for a legacy delivery",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerDeliverySiteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/rfq-channels/{channelId}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-rfqs"
+                ],
+                "summary": "Get a public RFQ destination",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "WEBAPP channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicRFQDestinationResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/rfq-sites/{hostname}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-rfqs"
+                ],
+                "summary": "Get a public RFQ site",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicRFQSiteResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/awaiting-invoice": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepted, unarchived sales with no live invoice, no pending voucher and no waiver, in the caller's branch and seller reach; empty while the account does not invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "List sales awaiting an invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted lists every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SaleAwaitingInvoiceListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3675,7 +5533,7 @@
                 "tags": [
                     "clients"
                 ],
-                "summary": "Get accepted-sale client association",
+                "summary": "Get quotation-send client association",
                 "parameters": [
                     {
                         "type": "string",
@@ -3724,7 +5582,7 @@
                         }
                     },
                     "409": {
-                        "description": "Quote is not accepted",
+                        "description": "Quote cannot be sent",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3743,7 +5601,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Links the quote and its RFQ to exactly one seller-confirmed profile, and atomically replaces that profile's tags. Contact suggestions are never accepted automatically.",
+                "description": "Client selection is confirmed through quotation delivery. This standalone operation returns 409.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3753,7 +5611,8 @@
                 "tags": [
                     "clients"
                 ],
-                "summary": "Associate an accepted sale with a client",
+                "summary": "Reject standalone client association",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -3780,12 +5639,6 @@
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ClientMatchResponse"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -3811,13 +5664,78 @@
                         }
                     },
                     "409": {
-                        "description": "Quote is not accepted",
+                        "description": "Association is confirmed during quotation delivery",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/discard-ai-changes": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Resets the draft to the version the customer last received and records the pending AI changes as rejected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Discard the AI's changes to a draft",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteVersionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ARCHIVED or NO_AI_CHANGES",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -4049,6 +5967,280 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/invoice": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the invoice type, buyer and amounts the quote would be invoiced with now, every gap that stops it, and the invoice it already has.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Preview a quote's invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The quote's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoicePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Asks ARCA to authorize the electronic invoice for an accepted quote, as long as it is still the one previewed. Irreversible: a mistake is corrected with a credit note.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "invoicing"
+                ],
+                "summary": "Issue a quote's invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "The quote's branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The previewed invoice being confirmed",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.IssueInvoiceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ALREADY_INVOICED, INVOICE_IN_PROGRESS, INVOICE_STALE, QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "INVOICE_NOT_READY, INVOICE_REJECTED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "INVOICING_UNAVAILABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/invoice-waiver": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Takes the accepted sale out of the invoicing wait. Refused while invoicing is off or the sale has a live invoice; issuing an invoice later clears it.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale as needing no invoice",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED, QUOTE_ARCHIVED, ACCOUNT_INVOICING_OFF or QUOTE_ALREADY_INVOICED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "The accepted sale waits for its invoice again.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Undo «No requiere factura»",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -4398,6 +6590,206 @@
                 }
             }
         },
+        "/v1/quotes/{quoteId}/message-batches/{batchId}/retry": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Requeues a batch that ran out of attempts while the handler may still act on its quote.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Retry a failed conversation batch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Batch id",
+                        "name": "batchId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConversationBatchResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote or batch in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "BATCH_NOT_RETRYABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/payment": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Records who marked the accepted sale paid and when. A fact, not a status; repeating it keeps the first mark. Paying never issues an invoice.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a sale paid",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the paid mark of an accepted sale; a paid sale is reopened only after this.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Unmark a paid sale",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/reactivate": {
             "post": {
                 "security": [
@@ -4565,7 +6957,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Freezes the current seller-approved version, always attempts WhatsApp with a public webapp link, optionally attempts email independently, and moves QUOTED to SENT when at least one selected channel succeeds.",
+                "description": "Freezes the current seller-approved version, attempts each selected channel with a public webapp link, and moves QUOTED to SENT when at least one succeeds.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5983,6 +8375,66 @@
         }
     },
     "definitions": {
+        "dto.ARCACredentialResponse": {
+            "type": "object",
+            "properties": {
+                "cuit": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ARCASetupResponse": {
+            "type": "object",
+            "properties": {
+                "certificate": {
+                    "type": "string"
+                },
+                "certificate_expires_at": {
+                    "type": "string"
+                },
+                "csr": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "description": "Environment is where this server authorizes invoices: HOMOLOGATION (test mode) or PRODUCTION.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
+                "has_certificate": {
+                    "type": "boolean"
+                },
+                "reconnect_required": {
+                    "description": "ReconnectRequired is set when the connection was made for the other environment and has to\nbe started over before it can invoice.",
+                    "type": "boolean"
+                },
+                "setup_environment": {
+                    "description": "SetupEnvironment is the environment the connection was made for; null without one.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AccountResponse": {
             "type": "object",
             "properties": {
@@ -5995,8 +8447,20 @@
                 "created_at": {
                     "type": "string"
                 },
+                "has_invoices": {
+                    "description": "Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.",
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "string"
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
+                },
+                "invoicing_enabled": {
+                    "description": "Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.",
+                    "type": "boolean"
                 },
                 "is_active": {
                     "type": "boolean"
@@ -6005,6 +8469,10 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "preferred_lower_price_strategy": {
+                    "description": "FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.",
                     "type": "string"
                 },
                 "tax_id": {
@@ -6138,6 +8606,10 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
                 }
             }
         },
@@ -6190,6 +8662,39 @@
                 }
             }
         },
+        "dto.BranchPointOfSaleInput": {
+            "type": "object",
+            "required": [
+                "branch_id"
+            ],
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "point_of_sale": {
+                    "type": "integer",
+                    "maximum": 99998,
+                    "minimum": 1
+                }
+            }
+        },
+        "dto.BranchPointOfSaleResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.BranchResponse": {
             "type": "object",
             "properties": {
@@ -6213,6 +8718,9 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "point_of_sale": {
+                    "type": "integer"
                 },
                 "updated_at": {
                     "type": "string"
@@ -6364,33 +8872,37 @@
         "dto.ChangeRequestDiffResponse": {
             "type": "object",
             "properties": {
-                "original": {
-                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
+                "client_messages": {
+                    "description": "ClientMessages is every message the customer sent since the version they answered went out.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientMessageResponse"
+                    }
+                },
+                "discounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffDiscountResponse"
+                    }
+                },
+                "handler": {
+                    "$ref": "#/definitions/dto.HandlerDecisionResponse"
+                },
+                "lines": {
+                    "description": "Lines pairs each sent line with the draft line copied from it, then the lines the draft added.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiffLineResponse"
+                    }
+                },
+                "original_total": {
+                    "description": "decimal string, never float.",
+                    "type": "string"
                 },
                 "reason": {
                     "type": "string"
                 },
-                "requested": {
-                    "$ref": "#/definitions/dto.ChangeRequestSideResponse"
-                }
-            }
-        },
-        "dto.ChangeRequestSideResponse": {
-            "type": "object",
-            "properties": {
-                "discounts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.DiffDiscountLineResponse"
-                    }
-                },
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.DiffLineItemResponse"
-                    }
-                },
-                "total": {
+                "requested_total": {
                     "description": "decimal string, never float.",
                     "type": "string"
                 }
@@ -6465,7 +8977,40 @@
                 "email": {
                     "type": "string"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "phone": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ClientFiscalResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "dni": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "description": "CUIT or CUIL, from the customer's account; read-only.",
                     "type": "string"
                 }
             }
@@ -6492,6 +9037,17 @@
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                }
+            }
+        },
+        "dto.ClientMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
                 }
             }
         },
@@ -6539,6 +9095,9 @@
                 "phone": {
                     "type": "string"
                 },
+                "tax_id": {
+                    "type": "string"
+                },
                 "updated_at": {
                     "type": "string"
                 }
@@ -6555,6 +9114,16 @@
                 },
                 "branch_name": {
                     "type": "string"
+                },
+                "invoice_status": {
+                    "description": "InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the\naccount invoices.",
+                    "type": "string",
+                    "enum": [
+                        "INVOICED",
+                        "PENDING",
+                        "WAIVED",
+                        "UNINVOICED"
+                    ]
                 },
                 "quote_id": {
                     "type": "string"
@@ -6605,6 +9174,9 @@
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
                     }
+                },
+                "tax_id": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
@@ -6696,6 +9268,147 @@
             "properties": {
                 "imported_rows": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.ConversationBatchResponse": {
+            "type": "object",
+            "properties": {
+                "closed_at": {
+                    "type": "string"
+                },
+                "decision": {
+                    "$ref": "#/definitions/dto.ConversationDecisionResponse"
+                },
+                "failure_reason": {
+                    "type": "string",
+                    "enum": [
+                        "UNPROCESSABLE",
+                        "ATTEMPTS_EXHAUSTED"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
+                },
+                "retryable": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "CLOSED",
+                        "PROCESSING",
+                        "PROCESSED",
+                        "FAILED"
+                    ]
+                }
+            }
+        },
+        "dto.ConversationDecisionResponse": {
+            "type": "object",
+            "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "decided_at": {
+                    "type": "string"
+                },
+                "interpretation": {
+                    "type": "string"
+                },
+                "no_match_reason": {
+                    "type": "string",
+                    "enum": [
+                        "REQUIRES_SELLER",
+                        "AI_DISABLED",
+                        "PROPOSAL_REFUSED",
+                        "PIPELINE_EXHAUSTED",
+                        "PROMOTION_NOT_EARNED"
+                    ]
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "APPLIED",
+                        "NO_MATCH"
+                    ]
+                },
+                "seller_decision": {
+                    "type": "string",
+                    "enum": [
+                        "APPROVED_AS_IS",
+                        "EDITED",
+                        "REJECTED",
+                        "MANUAL_OVERRIDE"
+                    ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
+                }
+            }
+        },
+        "dto.ConversationMessageResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "enum": [
+                        "CLIENT",
+                        "SELLER",
+                        "SYSTEM"
+                    ]
+                },
+                "body": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ConversationResponse": {
+            "type": "object",
+            "properties": {
+                "batches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationBatchResponse"
+                    }
+                },
+                "can_discard_ai_changes": {
+                    "type": "boolean"
+                },
+                "pending": {
+                    "description": "Pending are the messages of a window still open, not yet handed to the handler.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
+                },
+                "seller_messages": {
+                    "description": "SellerMessages are the quote's sends; the public link reads as a placeholder.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ConversationMessageResponse"
+                    }
                 }
             }
         },
@@ -6853,6 +9566,50 @@
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                },
+                "vat_rate": {
+                    "type": "string",
+                    "enum": [
+                        "VAT_0",
+                        "VAT_2_5",
+                        "VAT_5",
+                        "VAT_10_5",
+                        "VAT_21",
+                        "VAT_27",
+                        "EXEMPT"
+                    ]
+                }
+            }
+        },
+        "dto.CreatePublicRFQRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "request_id",
+                "tax_id"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "phone": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "text": {
+                    "type": "string"
                 }
             }
         },
@@ -7006,30 +9763,248 @@
                 }
             }
         },
-        "dto.DiffDiscountLineResponse": {
+        "dto.CustomerCredentialsRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "tax_id"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "maxLength": 72
+                },
+                "recovery_email": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerDeliverySiteResponse": {
+            "type": "object",
+            "properties": {
+                "hostname": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerGoogleCompleteRequest": {
+            "type": "object",
+            "required": [
+                "tax_id",
+                "token"
+            ],
+            "properties": {
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerGoogleExchangeRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "nonce",
+                "verifier"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 4096
+                },
+                "nonce": {
+                    "type": "string"
+                },
+                "verifier": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 43
+                }
+            }
+        },
+        "dto.CustomerGoogleExchangeResponse": {
+            "type": "object",
+            "properties": {
+                "session": {
+                    "$ref": "#/definitions/dto.CustomerSessionResponse"
+                },
+                "signup_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerGoogleOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "password_min_length": {
+                    "type": "integer"
+                },
+                "redirect_uri": {
+                    "type": "string"
+                },
+                "supplier_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerIdentityResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "session_expires_at": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerOrderResponse": {
+            "type": "object",
+            "properties": {
+                "branch_name": {
+                    "type": "string"
+                },
+                "delivery_token": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "original_text": {
+                    "type": "string"
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerPasswordResetRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "token"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "maxLength": 72
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerRecoveryRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "tax_id"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerSessionResponse": {
+            "type": "object",
+            "properties": {
+                "customer": {
+                    "$ref": "#/definitions/dto.CustomerIdentityResponse"
+                },
+                "session_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerTokenRequest": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.DiffDiscountResponse": {
+            "type": "object",
+            "properties": {
+                "change": {
+                    "type": "string",
+                    "enum": [
+                        "UNCHANGED",
+                        "MODIFIED",
+                        "ADDED",
+                        "REMOVED"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "original": {
+                    "$ref": "#/definitions/dto.DiffDiscountSideResponse"
+                },
+                "requested": {
+                    "$ref": "#/definitions/dto.DiffDiscountSideResponse"
+                }
+            }
+        },
+        "dto.DiffDiscountSideResponse": {
             "type": "object",
             "properties": {
                 "amount": {
                     "type": "string"
                 },
-                "changed": {
-                    "type": "boolean"
+                "origin": {
+                    "type": "string",
+                    "enum": [
+                        "AUTOMATIC",
+                        "AI_ADAPTATION",
+                        "MANUAL_SELLER"
+                    ]
                 },
-                "name": {
-                    "type": "string"
+                "suppressed": {
+                    "type": "boolean"
                 }
             }
         },
         "dto.DiffLineItemResponse": {
             "type": "object",
             "properties": {
-                "change_type": {
+                "description": {
                     "type": "string"
                 },
-                "changed": {
-                    "type": "boolean"
-                },
-                "description": {
+                "product_name": {
                     "type": "string"
                 },
                 "quantity": {
@@ -7040,6 +10015,26 @@
                 },
                 "unit_price": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.DiffLineResponse": {
+            "type": "object",
+            "properties": {
+                "change": {
+                    "type": "string",
+                    "enum": [
+                        "UNCHANGED",
+                        "MODIFIED",
+                        "ADDED",
+                        "REMOVED"
+                    ]
+                },
+                "original": {
+                    "$ref": "#/definitions/dto.DiffLineItemResponse"
+                },
+                "requested": {
+                    "$ref": "#/definitions/dto.DiffLineItemResponse"
                 }
             }
         },
@@ -7077,6 +10072,113 @@
                 }
             }
         },
+        "dto.GmailAuthorizationResponse": {
+            "type": "object",
+            "properties": {
+                "authorization_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.HandlerAdaptationResponse": {
+            "type": "object",
+            "properties": {
+                "lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.HandlerAdaptedLineResponse"
+                    }
+                },
+                "total_after": {
+                    "type": "string"
+                },
+                "total_before": {
+                    "type": "string"
+                },
+                "total_raised": {
+                    "description": "TotalRaised is true when the customer asked for the promotion and reaching it costs more.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.HandlerAdaptedLineResponse": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "from_quantity": {
+                    "type": "string"
+                },
+                "item_id": {
+                    "type": "string"
+                },
+                "promotion_id": {
+                    "type": "string"
+                },
+                "promotion_name": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.HandlerDecisionResponse": {
+            "type": "object",
+            "properties": {
+                "adaptation": {
+                    "$ref": "#/definitions/dto.HandlerAdaptationResponse"
+                },
+                "client_input": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "interpretation": {
+                    "type": "string"
+                },
+                "no_match_reason": {
+                    "type": "string",
+                    "enum": [
+                        "REQUIRES_SELLER",
+                        "AI_DISABLED",
+                        "PROPOSAL_REFUSED",
+                        "PIPELINE_EXHAUSTED",
+                        "PROMOTION_NOT_EARNED"
+                    ]
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "APPLIED",
+                        "NO_MATCH"
+                    ]
+                },
+                "seller_decision": {
+                    "type": "string",
+                    "enum": [
+                        "APPROVED_AS_IS",
+                        "EDITED",
+                        "REJECTED",
+                        "MANUAL_OVERRIDE"
+                    ]
+                },
+                "strategies_tried": {
+                    "description": "StrategiesTried are the recipes run for a complex goal, in run order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "FIND_CHEAPER_ALTERNATIVES",
+                            "IMPROVE_QUALITY",
+                            "ADAPT_TO_REACH_DISCOUNT"
+                        ]
+                    }
+                }
+            }
+        },
         "dto.HealthResponse": {
             "type": "object",
             "properties": {
@@ -7084,6 +10186,316 @@
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceAmountsResponse": {
+            "type": "object",
+            "properties": {
+                "by_rate": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.VATAmountResponse"
+                    }
+                },
+                "exempt": {
+                    "type": "string"
+                },
+                "net": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "vat": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceIssuerProfileRequest": {
+            "type": "object",
+            "required": [
+                "activity_started_on",
+                "address",
+                "gross_income_registration"
+            ],
+            "properties": {
+                "activity_started_on": {
+                    "type": "string"
+                },
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "gross_income_registration": {
+                    "type": "string",
+                    "maxLength": 50
+                }
+            }
+        },
+        "dto.InvoiceListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InvoiceResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.InvoicePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/dto.InvoiceAmountsResponse"
+                },
+                "credited_invoice": {
+                    "description": "CreditedInvoice is the newest invoice of the sale an issued credit note cancelled in this\nenvironment, with that credit note: history, and what a new invoice follows.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "customer_signup_url": {
+                    "description": "CustomerSignupURL is where the customer creates the account that carries their CUIT; present\nonly while the issues ask for the receiver's CUIT or document and the supplier has its own\ncustomer site.",
+                    "type": "string"
+                },
+                "environment": {
+                    "description": "Environment is where an invoice issued now would be authorized.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
+                "fingerprint": {
+                    "type": "string"
+                },
+                "invoice": {
+                    "$ref": "#/definitions/dto.InvoiceResponse"
+                },
+                "issuer_cuit": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "other_environment_invoice": {
+                    "description": "OtherEnvironmentInvoice is the newest invoice issued for the sale in the other ARCA environment,\nshown as history; it does not stop an invoice in this one.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/dto.InvoiceReceiverResponse"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "version_id": {
+                    "description": "what POST confirms, with type and total.",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceReceiverResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "doc_number": {
+                    "type": "string"
+                },
+                "doc_type": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoiceResponse": {
+            "type": "object",
+            "properties": {
+                "amounts": {
+                    "$ref": "#/definitions/dto.InvoiceAmountsResponse"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "cae": {
+                    "type": "string"
+                },
+                "cae_expires_on": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "credit_note": {
+                    "description": "CreditNote is an invoice's newest credit note; an ISSUED one cancels the invoice.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.InvoiceResponse"
+                        }
+                    ]
+                },
+                "credited_invoice": {
+                    "description": "CreditedInvoice is the invoice a credit note cancels.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.VoucherReferenceResponse"
+                        }
+                    ]
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "environment": {
+                    "description": "Environment is where ARCA authorizes it; a HOMOLOGATION invoice has no fiscal validity.",
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "issued_on": {
+                    "type": "string"
+                },
+                "issuer_cuit": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "INVOICE",
+                        "CREDIT_NOTE"
+                    ]
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "qr_url": {
+                    "description": "QRURL is ARCA's verification link for an issued invoice (RG 4892), empty otherwise.",
+                    "type": "string"
+                },
+                "receiver": {
+                    "$ref": "#/definitions/dto.InvoiceReceiverResponse"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InvoicingSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleResponse"
+                    }
+                },
+                "credential": {
+                    "$ref": "#/definitions/dto.ARCACredentialResponse"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "type": "string",
+                    "enum": [
+                        "HOMOLOGATION",
+                        "PRODUCTION"
+                    ]
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.",
+                    "type": "boolean"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "prices_include_vat": {
+                    "type": "boolean"
+                },
+                "profile": {
+                    "$ref": "#/definitions/dto.InvoiceIssuerProfileRequest"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.IssueInvoiceRequest": {
+            "type": "object",
+            "required": [
+                "fingerprint",
+                "total",
+                "type",
+                "version_id"
+            ],
+            "properties": {
+                "fingerprint": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "A",
+                        "B",
+                        "C"
+                    ]
+                },
+                "version_id": {
                     "type": "string"
                 }
             }
@@ -7417,6 +10829,9 @@
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "vat_rate": {
+                    "type": "string"
                 }
             }
         },
@@ -7439,6 +10854,219 @@
                     "items": {
                         "$ref": "#/definitions/dto.ProductFamilyResponse"
                     }
+                }
+            }
+        },
+        "dto.PromotionConditionRequest": {
+            "type": "object",
+            "properties": {
+                "family_id": {
+                    "type": "string"
+                },
+                "min_quantity": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionConditionResponse": {
+            "type": "object",
+            "properties": {
+                "family_id": {
+                    "type": "string"
+                },
+                "min_quantity": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "subgroup_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionResponse"
+                    }
+                }
+            }
+        },
+        "dto.PromotionRequest": {
+            "type": "object",
+            "required": [
+                "action_type",
+                "condition_type",
+                "name"
+            ],
+            "properties": {
+                "action_type": {
+                    "type": "string",
+                    "enum": [
+                        "PERCENTAGE",
+                        "FIXED_AMOUNT",
+                        "SPECIAL_PRICE"
+                    ]
+                },
+                "action_value": {
+                    "description": "ignored for QUANTITY_TIERED.",
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "condition_type": {
+                    "type": "string",
+                    "enum": [
+                        "PER_ITEM",
+                        "QUANTITY_TIERED",
+                        "ITEM_SET",
+                        "ON_TOTAL"
+                    ]
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionConditionRequest"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "is_active": {
+                    "description": "defaults to true.",
+                    "type": "boolean"
+                },
+                "is_exclusive": {
+                    "type": "boolean"
+                },
+                "min_total": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "tiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionTierRequest"
+                    }
+                },
+                "valid_from": {
+                    "type": "string"
+                },
+                "valid_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionResponse": {
+            "type": "object",
+            "properties": {
+                "action_type": {
+                    "type": "string"
+                },
+                "action_value": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "condition_type": {
+                    "type": "string"
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionConditionResponse"
+                    }
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_exclusive": {
+                    "type": "boolean"
+                },
+                "min_total": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "tiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PromotionTierResponse"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "valid_from": {
+                    "type": "string"
+                },
+                "valid_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionTierRequest": {
+            "type": "object",
+            "required": [
+                "from_quantity",
+                "value"
+            ],
+            "properties": {
+                "from_quantity": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PromotionTierResponse": {
+            "type": "object",
+            "properties": {
+                "from_quantity": {
+                    "type": "string"
+                },
+                "to_quantity": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
                 }
             }
         },
@@ -7490,6 +11118,102 @@
                     "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
                 },
                 "status": {
+                    "type": "string",
+                    "enum": [
+                        "ACTIVE",
+                        "EXPIRED",
+                        "UNAVAILABLE"
+                    ]
+                }
+            }
+        },
+        "dto.PublicRFQContactResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicRFQDestinationResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_content_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "max_file_size": {
+                    "type": "integer"
+                },
+                "max_text_characters": {
+                    "type": "integer"
+                },
+                "supplier_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicRFQReceiptResponse": {
+            "type": "object",
+            "properties": {
+                "received": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.PublicRFQSiteBranchResponse": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicRFQSiteResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_content_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PublicRFQSiteBranchResponse"
+                    }
+                },
+                "logo_url": {
+                    "type": "string"
+                },
+                "max_file_size": {
+                    "type": "integer"
+                },
+                "max_text_characters": {
+                    "type": "integer"
+                },
+                "supplier_name": {
                     "type": "string"
                 }
             }
@@ -7928,11 +11652,25 @@
                 "id": {
                     "type": "string"
                 },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».",
+                    "type": "string"
+                },
+                "invoice_waived_by_user_id": {
+                    "type": "string"
+                },
                 "needs_followup": {
                     "type": "boolean"
                 },
                 "number": {
                     "type": "integer"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidByUserID record «Cobrado» on an accepted sale; null while it is not paid.",
+                    "type": "string"
+                },
+                "paid_by_user_id": {
+                    "type": "string"
                 },
                 "rfq_id": {
                     "type": "string"
@@ -7947,10 +11685,10 @@
         },
         "dto.QuoteSendRequest": {
             "type": "object",
-            "required": [
-                "recipient_phone"
-            ],
             "properties": {
+                "client_association": {
+                    "$ref": "#/definitions/dto.AssociateQuoteClientRequest"
+                },
                 "email_delivery": {
                     "$ref": "#/definitions/dto.QuoteEmailDeliveryRequest"
                 },
@@ -8004,6 +11742,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "operation_id": {
                     "type": "string"
                 },
                 "public_url": {
@@ -8102,6 +11843,9 @@
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "original_filename": {
                     "type": "string"
                 },
                 "processing_status": {
@@ -8284,6 +12028,9 @@
                         "$ref": "#/definitions/dto.ClientActionResponse"
                     }
                 },
+                "conversation": {
+                    "$ref": "#/definitions/dto.ConversationResponse"
+                },
                 "deliveries": {
                     "type": "array",
                     "items": {
@@ -8296,11 +12043,29 @@
                         "$ref": "#/definitions/dto.QuoteDiscountResponse"
                     }
                 },
+                "inbound_email": {
+                    "type": "string"
+                },
+                "inbound_whatsapp_phone": {
+                    "type": "string"
+                },
                 "items": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.QuoteItemResponse"
                     }
+                },
+                "public_attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RFQAttachmentResponse"
+                    }
+                },
+                "public_contact": {
+                    "$ref": "#/definitions/dto.PublicRFQContactResponse"
+                },
+                "public_original_text": {
+                    "type": "string"
                 },
                 "quote": {
                     "$ref": "#/definitions/dto.QuoteResponse"
@@ -8356,11 +12121,33 @@
                 "id": {
                     "type": "string"
                 },
+                "invoice_pending": {
+                    "description": "InvoicePending is whether a voucher of the sale still waits for ARCA's answer.",
+                    "type": "boolean"
+                },
+                "invoice_waived_at": {
+                    "description": "InvoiceWaivedAt and InvoiceWaivedBy record «No requiere factura»; null while it is not set.",
+                    "type": "string"
+                },
+                "invoice_waived_by": {
+                    "type": "string"
+                },
+                "invoiced": {
+                    "description": "Invoiced is whether an issued invoice no credit note cancelled stands for the sale.",
+                    "type": "boolean"
+                },
                 "item_count": {
                     "type": "integer"
                 },
                 "needs_followup": {
                     "type": "boolean"
+                },
+                "paid_at": {
+                    "description": "PaidAt and PaidBy (the user's name) record «Cobrado»; null while the sale is not paid.",
+                    "type": "string"
+                },
+                "paid_by": {
+                    "type": "string"
                 },
                 "quote_id": {
                     "type": "string"
@@ -8371,6 +12158,10 @@
                 "review_count": {
                     "description": "ReviewCount is how many of the current version's lines matching left for the seller.",
                     "type": "integer"
+                },
+                "sale_complete": {
+                    "description": "SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the\naccount does not invoice with Coti.",
+                    "type": "boolean"
                 },
                 "seller": {
                     "type": "string"
@@ -8414,6 +12205,61 @@
                     "type": "string"
                 },
                 "work_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SaleAwaitingInvoiceResponse"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "page_size": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SaleAwaitingInvoiceResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_at": {
+                    "type": "string"
+                },
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "client": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "paid_at": {
+                    "type": "string"
+                },
+                "quote_id": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
+                },
+                "total": {
                     "type": "string"
                 }
             }
@@ -8489,6 +12335,17 @@
                 },
                 "stock": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SetInvoicingEnabledRequest": {
+            "type": "object",
+            "required": [
+                "enabled"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -8676,6 +12533,10 @@
                     "type": "string",
                     "maxLength": 512
                 },
+                "disconnect_arca": {
+                    "description": "Confirms that a new tax_id removes the ARCA connection made with the old one; without it the\nchange is refused with 409 ARCA_CONNECTED.",
+                    "type": "boolean"
+                },
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
@@ -8684,6 +12545,14 @@
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "preferred_lower_price_strategy": {
+                    "description": "What a request for a lower price tries first when the customer did not say; omitted keeps it.",
+                    "type": "string",
+                    "enum": [
+                        "FIND_CHEAPER_ALTERNATIVES",
+                        "ADAPT_TO_REACH_DISCOUNT"
+                    ]
                 },
                 "tax_id": {
                     "type": "string",
@@ -8736,6 +12605,33 @@
                 }
             }
         },
+        "dto.UpdateClientFiscalRequest": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "dni": {
+                    "description": "DNI identifies a consumidor final, beside any CUIT the customer's account carries.",
+                    "type": "string",
+                    "maxLength": 32
+                },
+                "iva_condition": {
+                    "type": "string",
+                    "enum": [
+                        "REGISTERED",
+                        "MONOTRIBUTO",
+                        "EXEMPT",
+                        "FINAL_CONSUMER"
+                    ]
+                },
+                "legal_name": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.UpdateDiscountRequest": {
             "type": "object",
             "properties": {
@@ -8773,6 +12669,50 @@
                 }
             }
         },
+        "dto.UpdateInvoicingSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleInput"
+                    }
+                },
+                "invoice_on_payment": {
+                    "description": "InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid; omitted keeps it.",
+                    "type": "boolean"
+                },
+                "iva_condition": {
+                    "type": "string",
+                    "enum": [
+                        "REGISTERED",
+                        "MONOTRIBUTO",
+                        "EXEMPT",
+                        "FINAL_CONSUMER"
+                    ]
+                },
+                "prices_include_vat": {
+                    "type": "boolean"
+                },
+                "profile": {
+                    "$ref": "#/definitions/dto.InvoiceIssuerProfileRequest"
+                }
+            }
+        },
+        "dto.UpdatePointsOfSaleRequest": {
+            "type": "object",
+            "required": [
+                "branches"
+            ],
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchPointOfSaleInput"
+                    }
+                }
+            }
+        },
         "dto.UpdateProductRequest": {
             "type": "object",
             "required": [
@@ -8805,12 +12745,28 @@
                 "unit": {
                     "type": "string",
                     "maxLength": 64
+                },
+                "vat_rate": {
+                    "type": "string",
+                    "enum": [
+                        "VAT_0",
+                        "VAT_2_5",
+                        "VAT_5",
+                        "VAT_10_5",
+                        "VAT_21",
+                        "VAT_27",
+                        "EXEMPT"
+                    ]
                 }
             }
         },
         "dto.UpdateQuoteItemRequest": {
             "type": "object",
             "properties": {
+                "confirm_match": {
+                    "description": "ConfirmMatch settles a flagged line on the product it already carries.",
+                    "type": "boolean"
+                },
                 "product_id": {
                     "type": "string"
                 },
@@ -8863,6 +12819,18 @@
                         "ADMIN",
                         "SELLER"
                     ]
+                }
+            }
+        },
+        "dto.UploadARCACertificateRequest": {
+            "type": "object",
+            "required": [
+                "certificate"
+            ],
+            "properties": {
+                "certificate": {
+                    "type": "string",
+                    "maxLength": 16384
                 }
             }
         },
@@ -8930,6 +12898,40 @@
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.VATAmountResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "base": {
+                    "type": "string"
+                },
+                "rate": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.VoucherReferenceResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "issued_on": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "point_of_sale": {
+                    "type": "integer"
+                },
+                "type": {
                     "type": "string"
                 }
             }

@@ -30,6 +30,7 @@ import {
 } from '@repo/ui/components';
 import { productSchema, type ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
 import { AmountInput } from '@/components/amount-input';
+import { DEFAULT_VAT_RATE, VAT_RATES } from '@/lib/api/invoicing';
 import type { Product, ProductFamily } from '@/lib/api/products';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
@@ -40,6 +41,8 @@ interface ProductFormDialogProps {
   mode: 'create' | 'edit';
   product: Product | null;
   families: ProductFamily[];
+  // Off, the IVA rate is not asked for and the product keeps the one it has.
+  invoicingEnabled: boolean;
   pending: boolean;
   onSubmit: (values: ProductValues, image: File | null) => void;
 }
@@ -50,10 +53,12 @@ export function ProductFormDialog({
   mode,
   product,
   families,
+  invoicingEnabled,
   pending,
   onSubmit,
 }: ProductFormDialogProps) {
   const t = useTranslations('products');
+  const tRates = useTranslations('invoicing.vatRates');
   const tErrors = useTranslations('common.form.errors');
   const schema = useMemo(() => productSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const lastMode = useRef(mode);
@@ -79,6 +84,7 @@ export function ProductFormDialog({
       familyId: product?.familyId ?? '',
       subgroupId: product?.subgroupId ?? '',
       isActive: product?.isActive ?? true,
+      vatRate: product?.vatRate ?? DEFAULT_VAT_RATE,
       price: '',
       minPrice: '',
     });
@@ -184,6 +190,7 @@ export function ProductFormDialog({
                     <FormLabel required>{t('family.label')}</FormLabel>
                     <FormControl>
                       <Combobox
+                        ref={field.ref}
                         value={field.value || null}
                         onValueChange={(value) => {
                           field.onChange(value);
@@ -205,28 +212,55 @@ export function ProductFormDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="subgroupId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('subgroup.label')}</FormLabel>
-                  <FormControl>
-                    <Combobox
-                      value={field.value || null}
-                      onValueChange={field.onChange}
-                      options={subgroups.map((subgroup) => ({
-                        value: subgroup.id,
-                        label: subgroup.name,
-                      }))}
-                      placeholder={t('subgroup.placeholder')}
-                      disabled={!familyId || subgroups.length === 0}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="subgroupId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('subgroup.label')}</FormLabel>
+                    <FormControl>
+                      <Combobox
+                        ref={field.ref}
+                        value={field.value || null}
+                        onValueChange={field.onChange}
+                        options={subgroups.map((subgroup) => ({
+                          value: subgroup.id,
+                          label: subgroup.name,
+                        }))}
+                        placeholder={t('subgroup.placeholder')}
+                        disabled={!familyId || subgroups.length === 0}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {invoicingEnabled ? (
+                <FormField
+                  control={form.control}
+                  name="vatRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel required>{t('vatRate.label')}</FormLabel>
+                      <FormControl>
+                        <Combobox
+                          ref={field.ref}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          options={VAT_RATES.map((rate) => ({ value: rate, label: tRates(rate) }))}
+                          placeholder={t('vatRate.placeholder')}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('vatRate.hint', { rate: tRates(DEFAULT_VAT_RATE) })}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
+            </div>
 
             {copy === 'create' && (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -327,6 +361,7 @@ function emptyProduct(): ProductValues {
     familyId: '',
     subgroupId: '',
     isActive: true,
+    vatRate: DEFAULT_VAT_RATE,
     price: '',
     minPrice: '',
   };

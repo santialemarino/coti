@@ -33,7 +33,7 @@ Read and apply the skill(s) that match what you're touching:
 | **pr-format**            | Opening a pull request — title, body, branch name, base branch, labels.                                                                                                  |
 | **testing**              | Writing or running tests — where they live, how to run them, what to cover.                                                                                              |
 
-Use the **api-\*** skills for the backend, the **web-\*** skills for either frontend, and **both** when a change spans API and web. Know which web app you're in: **backoffice** is the authenticated vendor/admin app (port 3000); **webapp** is the public, no-auth customer app (port 3001) — they are separate surfaces with different auth assumptions.
+Use the **api-\*** skills for the backend, the **web-\*** skills for either frontend, and **both** when a change spans API and web. Know which web app you're in: **backoffice** is the authenticated vendor/admin app (port 3000); **webapp** is the customer app with supplier-scoped authentication (port 3001) — they are separate surfaces with different auth assumptions.
 
 Whenever the change is visual, **load `ux-motion` alongside the web skills** — it owns interaction states, the motion vocabulary, elevation and the reduced-motion contract, which the web skills reference but do not restate.
 

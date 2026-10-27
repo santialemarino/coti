@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,9 +16,18 @@ import (
 const channelColumns = `id, account_id, branch_id, type, is_active, identifier,
 	config IS NOT NULL AS is_configured, created_at, updated_at`
 
+const activeChannelOwner = `EXISTS (
+	SELECT 1 FROM account a
+	JOIN branch b ON b.account_id = a.id
+	WHERE a.id = channel.account_id AND b.id = channel.branch_id
+	  AND a.is_active = TRUE AND b.is_active = TRUE
+)`
+
 const (
-	channelIdentifierIndex   = "uq_channel_branch_type_identifier"
-	channelNoIdentifierIndex = "uq_channel_branch_type_no_identifier"
+	channelIdentifierIndex            = "uq_channel_branch_type_identifier"
+	channelNoIdentifierIndex          = "uq_channel_branch_type_no_identifier"
+	channelEmailIdentifierIndex       = "uq_channel_active_email_identifier_global"
+	channelWhatsAppPhoneNumberIDIndex = "uq_channel_active_whatsapp_phone_number_id"
 )
 
 // ChannelRepository owns persistence for channel.
@@ -77,14 +87,128 @@ func (r *ChannelRepository) ListActiveByType(
 	return scanChannels(rows)
 }
 
-// GetActiveByID returns an active channel in the requested branch.
+// GetActiveByTypeAndIdentifiersCrossAccount returns available inboxes and signals inactive owners.
+func (r *ChannelRepository) GetActiveByTypeAndIdentifiersCrossAccount(
+	ctx context.Context, q Querier, channelType domain.ChannelType, identifiers []string,
+) (map[string]domain.Channel, error) {
+	if len(identifiers) == 0 {
+		return map[string]domain.Channel{}, nil
+	}
+
+	switch channelType {
+	case domain.ChannelTypeWhatsApp:
+		return r.getActiveInboundChannels(ctx, q,
+			`SELECT `+channelColumns+`, config ->> 'phone_number_id', `+activeChannelOwner+`
+			 FROM channel
+			 WHERE type = 'WHATSAPP' AND is_active = TRUE
+			   AND config ->> 'phone_number_id' = ANY($1)`,
+			identifiers)
+	case domain.ChannelTypeEmail:
+		return r.getActiveInboundChannels(ctx, q,
+			`SELECT `+channelColumns+`, lower(identifier), `+activeChannelOwner+`
+			 FROM channel
+			 WHERE type = 'EMAIL' AND is_active = TRUE
+			   AND lower(identifier) = ANY($1)`,
+			identifiers)
+	default:
+		return nil, fmt.Errorf("%w: %s has no external inbox route", domain.ErrInvalidInput,
+			channelType)
+	}
+}
+
+// ListActiveWhatsAppConfigurationsCrossAccount loads encrypted configurations only to verify a
+// provider callback before a tenant is known.
+func (r *ChannelRepository) ListActiveWhatsAppConfigurationsCrossAccount(
+	ctx context.Context, q Querier,
+) ([]domain.ChannelConfiguration, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, account_id, branch_id, type, config
+		 FROM channel
+		 WHERE type = 'WHATSAPP' AND is_active = TRUE AND config IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := make([]domain.ChannelConfiguration, 0)
+	for rows.Next() {
+		var config domain.ChannelConfiguration
+		if err := rows.Scan(&config.ChannelID, &config.AccountID, &config.BranchID, &config.Type,
+			&config.Config); err != nil {
+			return nil, err
+		}
+		configs = append(configs, config)
+	}
+	return configs, rows.Err()
+}
+
+// GetActiveConfigurationsByIDs loads encrypted active channel settings for one branch in batch.
+func (r *ChannelRepository) GetActiveConfigurationsByIDs(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, channelIDs []uuid.UUID,
+) (map[uuid.UUID][]byte, error) {
+	if len(channelIDs) == 0 {
+		return map[uuid.UUID][]byte{}, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT id, config
+		 FROM channel
+		 WHERE account_id = $1 AND branch_id = $2 AND id = ANY($3)
+		   AND is_active = TRUE AND config IS NOT NULL`,
+		accountID, branchID, channelIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	configs := make(map[uuid.UUID][]byte, len(channelIDs))
+	for rows.Next() {
+		var channelID uuid.UUID
+		var config []byte
+		if err := rows.Scan(&channelID, &config); err != nil {
+			return nil, err
+		}
+		configs[channelID] = config
+	}
+	return configs, rows.Err()
+}
+
+// GetActiveByID returns an active channel in an active account and branch.
 func (r *ChannelRepository) GetActiveByID(
 	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
 ) (*domain.Channel, error) {
 	return r.getByID(ctx, q,
 		`SELECT `+channelColumns+`
 		 FROM channel
-		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE`,
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE
+		   AND `+activeChannelOwner,
+		accountID, branchID, channelID)
+}
+
+// GetActiveByIDForShare keeps the route stable until the caller's transaction commits.
+func (r *ChannelRepository) GetActiveByIDForShare(
+	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
+) (*domain.Channel, error) {
+	var active bool
+	if err := q.QueryRow(ctx, `SELECT is_active FROM account WHERE id = $1 AND is_active FOR SHARE`,
+		accountID).Scan(&active); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	if err := q.QueryRow(ctx,
+		`SELECT is_active FROM branch WHERE account_id = $1 AND id = $2 AND is_active FOR SHARE`,
+		accountID, branchID).Scan(&active); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return r.getByID(ctx, q,
+		`SELECT `+channelColumns+`
+		 FROM channel
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND is_active = TRUE
+		 FOR SHARE`,
 		accountID, branchID, channelID)
 }
 
@@ -118,16 +242,34 @@ func (r *ChannelRepository) Create(
 	return &channel, nil
 }
 
-// CreateDefaults opens the channels every branch is born with: manual entry, and the WhatsApp and
-// email routes a quote is sent through. email is the branch mailbox, nil when it has none yet.
+// CreateDefaults opens the four intake channels, using the branch mailbox when available.
 func (r *ChannelRepository) CreateDefaults(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID, email *string,
 ) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO channel (account_id, branch_id, type, identifier)
-		 VALUES ($1, $2, 'MANUAL_ENTRY', NULL), ($1, $2, 'WHATSAPP', NULL), ($1, $2, 'EMAIL', $3)
+		`INSERT INTO channel (account_id, branch_id, type)
+		 VALUES ($1, $2, 'MANUAL_ENTRY'), ($1, $2, 'WHATSAPP'), ($1, $2, 'WEBAPP')
 		 ON CONFLICT DO NOTHING`,
-		accountID, branchID, email)
+		accountID, branchID)
+	if err != nil {
+		return err
+	}
+	if email == nil {
+		_, err = q.Exec(ctx,
+			`INSERT INTO channel (account_id, branch_id, type, identifier)
+			 VALUES ($1, $2, 'EMAIL', NULL)
+			 ON CONFLICT DO NOTHING`,
+			accountID, branchID)
+	} else {
+		_, err = q.Exec(ctx,
+			`INSERT INTO channel (account_id, branch_id, type, identifier)
+			 VALUES ($1, $2, 'EMAIL', $3)
+			 ON CONFLICT (branch_id, type, identifier) DO NOTHING`,
+			accountID, branchID, email)
+	}
+	if isChannelConflict(err) {
+		return domain.ErrConflict
+	}
 	return err
 }
 
@@ -188,9 +330,21 @@ func (r *ChannelRepository) getByID(
 	return &channel, nil
 }
 
+func (r *ChannelRepository) getActiveInboundChannels(
+	ctx context.Context, q Querier, query string, identifiers []string,
+) (map[string]domain.Channel, error) {
+	rows, err := q.Query(ctx, query, identifiers)
+	if err != nil {
+		return nil, err
+	}
+	return scanInboundChannels(rows)
+}
+
 func isChannelConflict(err error) bool {
 	return isUniqueViolation(err, channelIdentifierIndex) ||
-		isUniqueViolation(err, channelNoIdentifierIndex)
+		isUniqueViolation(err, channelNoIdentifierIndex) ||
+		isUniqueViolation(err, channelEmailIdentifierIndex) ||
+		isUniqueViolation(err, channelWhatsAppPhoneNumberIDIndex)
 }
 
 type channelScanner interface {
@@ -211,10 +365,48 @@ func scanChannels(rows pgx.Rows) ([]domain.Channel, error) {
 	return channels, rows.Err()
 }
 
+func scanInboundChannels(rows pgx.Rows) (map[string]domain.Channel, error) {
+	defer rows.Close()
+
+	channels := make(map[string]domain.Channel)
+	unavailable := false
+	for rows.Next() {
+		channel, identifier, ownerActive, err := scanInboundChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		if !ownerActive {
+			unavailable = true
+			continue
+		}
+		if _, exists := channels[identifier]; exists {
+			return nil, domain.ErrConflict
+		}
+		channels[identifier] = channel
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if unavailable {
+		return channels, domain.ErrInboundDestinationInactive
+	}
+	return channels, nil
+}
+
 func scanChannel(row channelScanner) (domain.Channel, error) {
 	var channel domain.Channel
 	err := row.Scan(&channel.ID, &channel.AccountID, &channel.BranchID, &channel.Type,
 		&channel.IsActive, &channel.Identifier, &channel.IsConfigured,
 		&channel.CreatedAt, &channel.UpdatedAt)
 	return channel, err
+}
+
+func scanInboundChannel(row channelScanner) (domain.Channel, string, bool, error) {
+	var channel domain.Channel
+	var identifier string
+	var ownerActive bool
+	err := row.Scan(&channel.ID, &channel.AccountID, &channel.BranchID, &channel.Type,
+		&channel.IsActive, &channel.Identifier, &channel.IsConfigured,
+		&channel.CreatedAt, &channel.UpdatedAt, &identifier, &ownerActive)
+	return channel, identifier, ownerActive, err
 }

@@ -8,6 +8,7 @@ import (
 
 // ClientResponse represents one account-scoped client profile.
 type ClientResponse struct {
+	TaxID         *string   `json:"tax_id"`
 	ID            uuid.UUID `json:"id"`
 	Name          *string   `json:"name"`
 	Phone         *string   `json:"phone"`
@@ -47,6 +48,9 @@ type ClientSaleResponse struct {
 	BranchName string    `json:"branch_name"`
 	Total      string    `json:"total"`
 	AcceptedAt time.Time `json:"accepted_at"`
+	// InvoiceStatus is where the sale stands with its invoice; a screen shows it only while the
+	// account invoices.
+	InvoiceStatus string `json:"invoice_status" enums:"INVOICED,PENDING,WAIVED,UNINVOICED"`
 }
 
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.
@@ -71,7 +75,7 @@ type ReplaceClientTagsRequest struct {
 	TagIDs []uuid.UUID `json:"tag_ids"`
 }
 
-// CreateClientRequest is the new profile option in an accepted-sale association.
+// CreateClientRequest supplies a new profile for quotation delivery.
 type CreateClientRequest struct {
 	Name  *string `json:"name" binding:"omitempty,max=255"`
 	Phone *string `json:"phone" binding:"omitempty,max=64"`
@@ -80,6 +84,7 @@ type CreateClientRequest struct {
 
 // AssociateQuoteClientRequest is the body for PUT /v1/quotes/:quoteId/client-association.
 type AssociateQuoteClientRequest struct {
+	TaxID     string               `json:"tax_id" binding:"omitempty,max=20"`
 	ClientID  *uuid.UUID           `json:"client_id"`
 	NewClient *CreateClientRequest `json:"new_client"`
 	TagIDs    []uuid.UUID          `json:"tag_ids"`
@@ -93,11 +98,13 @@ type ClientMatchResponse struct {
 
 // ClientContactHintsResponse carries the last quote destinations as creation defaults.
 type ClientContactHintsResponse struct {
+	TaxID *string `json:"tax_id"`
+	Name  *string `json:"name"`
 	Phone *string `json:"phone"`
 	Email *string `json:"email"`
 }
 
-// QuoteClientAssociationResponse is the context for confirming an accepted sale's client.
+// QuoteClientAssociationResponse is the context for confirming a quotation's client.
 type QuoteClientAssociationResponse struct {
 	CurrentClient *ClientMatchResponse       `json:"current_client"`
 	Suggestions   []ClientMatchResponse      `json:"suggestions"`

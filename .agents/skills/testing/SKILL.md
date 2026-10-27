@@ -25,7 +25,8 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   nothing else could catch a teammate editing one side only. `ci.docker.yml` builds all three
   images, asserts the api one carries every `cmd/` binary and applies the migration chain from
   inside it, and boots each web one; `ci.deploy-spec.yml` validates the App Platform spec's schema
-  offline and refuses a `type: SECRET` entry that carries a value.
+  offline, refuses a `type: SECRET` entry that carries a value, and fails when a component's
+  `ARCA_ENVIRONMENT` differs from the api service's.
   **Three workflows stand up PostgreSQL + pgvector and apply the migration chain**: the API's
   second job runs the integration suite, which guards tenant isolation, the scripts' runs the
   commands for real, and the docker one applies the chain from inside the image the deploy will
@@ -319,6 +320,11 @@ setting that should hold everywhere in the shared package, not in one app. What 
   held and faded on its way out, so it is still in the DOM after it clears —
   `queryByText(...)` going null is the **defect**, not the expectation. These read `aria-hidden`
   instead, which is the one definition of "shown".
+- **`browserEdit` / `typeText` / `beforeInput`**, from `@repo/vitest-config/input-edits`, for a field
+  that handles its own edits: they fire `beforeinput` with the old selection, then the new text and
+  `input`, each carrying the `inputType` jsdom does not implement. `announced: false` skips the
+  `beforeinput`, as Chromium's scripted undo does; give such an edit a value that differs from the
+  field's, or React sees no change and fires no `onChange`.
 
 ### Fake timers, and the one that bites
 

@@ -34,8 +34,12 @@ export const API_ERROR_CODES = [
   'BRANCH_MAILBOX_REQUIRED',
   'QUOTE_ARCHIVED',
   'QUOTE_NOT_DRAFT',
+  'DISCOUNT_NOT_APPLICABLE',
   'QUOTE_NOT_REACTIVATABLE',
+  'NO_AI_CHANGES',
+  'BATCH_NOT_RETRYABLE',
   'QUOTE_NOT_SENDABLE',
+  'QUOTE_ITEMS_UNRESOLVED',
   'DELIVERY_CHANNEL',
   'CHANNEL_IDENTIFIER',
   'DELIVERY_UNAVAILABLE',
@@ -43,6 +47,26 @@ export const API_ERROR_CODES = [
   'UNSUPPORTED_FILE_TYPE',
   'LEGACY_EXCEL_FILE',
   'AI_UNAVAILABLE',
+  'INVOICE_NOT_READY',
+  'INVOICE_REJECTED',
+  'INVOICE_IN_PROGRESS',
+  'INVOICE_STALE',
+  'POINT_OF_SALE_TAKEN',
+  'QUOTE_ALREADY_INVOICED',
+  'ARCA_CREDENTIALS',
+  'INVOICING_UNAVAILABLE',
+  'INVALID_TAX_ID',
+  'TAX_ID_READ_ONLY',
+  'ACCOUNT_TAX_ID_REQUIRED',
+  'ARCA_CONNECTED',
+  'INVOICE_PENDING',
+  'ARCA_ENVIRONMENT_MISMATCH',
+  'INVOICE_NOT_CREDITABLE',
+  'INVOICE_ALREADY_CREDITED',
+  'CREDIT_NOTE_IN_PROGRESS',
+  'ACCOUNT_INVOICING_OFF',
+  'QUOTE_ALREADY_PAID',
+  'QUOTE_NOT_ACCEPTED',
   'INTERNAL',
   'UNREACHABLE',
   'SESSION_EXPIRED',
@@ -53,12 +77,15 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly status: number;
+  // What a refusal lists beside its code: the gaps that stop an invoice, or ARCA's own reasons.
+  readonly issues: string[];
 
-  constructor(code: ApiErrorCode, status: number, message?: string) {
+  constructor(code: ApiErrorCode, status: number, message?: string, issues: string[] = []) {
     super(message ?? code);
     this.name = 'ApiError';
     this.code = code;
     this.status = status;
+    this.issues = issues;
   }
 }
 
@@ -94,6 +121,35 @@ export function codeForStatus(status: number): ApiErrorCode {
     default:
       return 'INTERNAL';
   }
+}
+
+/*
+ * Turns a refused response from one of this app's route handlers into an ApiError, keeping the
+ * envelope's issues: the gaps that stop an invoice, or ARCA's own reasons for a refusal.
+ */
+export async function throwApiError(response: Response): Promise<never> {
+  let code: string | undefined;
+  let detail = '';
+  let issues: string[] = [];
+  try {
+    const payload = (await response.json()) as {
+      error?: string;
+      code?: string;
+      detail?: string;
+      issues?: string[] | null;
+    };
+    code = payload.code;
+    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
+    issues = payload.issues ?? [];
+  } catch {
+    // A body that is not the envelope adds nothing beyond the status.
+  }
+  throw new ApiError(
+    knownErrorCode(code) ?? codeForStatus(response.status),
+    response.status,
+    detail || undefined,
+    issues,
+  );
 }
 
 /*

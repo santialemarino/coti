@@ -20,6 +20,7 @@ const (
 
 // Client is the account-scoped customer attached to an RFQ and its quote.
 type Client struct {
+	TaxID         *string
 	ID            uuid.UUID
 	AccountID     uuid.UUID
 	Name          *string
@@ -31,8 +32,9 @@ type Client struct {
 	UpdatedAt     time.Time
 }
 
-// NewClient is the profile data a seller confirms before associating a sale.
+// NewClient is the profile data a seller confirms when sending a quotation.
 type NewClient struct {
+	TaxID         *string
 	Name          *string
 	Phone         *string
 	Email         *string
@@ -65,6 +67,7 @@ type ClientSale struct {
 	BranchName string
 	Total      decimal.Decimal
 	AcceptedAt time.Time
+	Closure    SaleClosure
 }
 
 // ClientProfile joins a client, their tags, and accepted sales visible to the caller.
@@ -76,6 +79,8 @@ type ClientProfile struct {
 
 // ClientContactHints are the latest destinations used to deliver a quote.
 type ClientContactHints struct {
+	TaxID *string
+	Name  *string
 	Phone *string
 	Email *string
 }
@@ -86,7 +91,7 @@ type ClientMatch struct {
 	Tags   []ClientTag
 }
 
-// QuoteClientAssociation is the context needed to confirm a sale's client profile.
+// QuoteClientAssociation is the context needed to confirm a quotation's client profile.
 type QuoteClientAssociation struct {
 	CurrentClient *ClientMatch
 	Suggestions   []ClientMatch
@@ -96,6 +101,7 @@ type QuoteClientAssociation struct {
 
 // AssociateQuoteClientInput selects an existing profile or creates one, then replaces its tags.
 type AssociateQuoteClientInput struct {
+	TaxID    string
 	ClientID *uuid.UUID
 	New      *NewClient
 	TagIDs   []uuid.UUID

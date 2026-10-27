@@ -109,6 +109,10 @@ func firstOperationalFlow(t *testing.T, e *env, name string) flowRun {
 	}
 
 	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel(account_id,branch_id,type) VALUES ($1,$2,'WEBAPP') ON CONFLICT DO NOTHING`, accountID, branchID); err != nil {
+		t.Fatal(err)
+	}
+	e.seedKnownDeliveryClient(t, tenant, draft.Quote.ID, draft.RFQ.ID)
 	publicToken, _ := e.sentQuoteToken(t, service, sendableQuote{tenant: tenant, draft: draft})
 	return flowRun{draft: draft, seller: seller, service: service, publicToken: publicToken}
 }

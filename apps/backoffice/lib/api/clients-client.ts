@@ -1,36 +1,30 @@
 import {
   clientMatchFromSummary,
-  mapClientMatch,
   mapClientSummary,
   mapClientTag,
   mapQuoteClientAssociation,
   type ClientListRaw,
   type ClientMatch,
-  type ClientMatchRaw,
   type ClientTag,
   type ClientTagListRaw,
   type ClientTagRaw,
   type QuoteClientAssociation,
   type QuoteClientAssociationRaw,
 } from '@/lib/api/client-profiles';
-import { ApiError, codeForStatus, knownErrorCode } from '@/lib/api/errors';
-
-export interface AssociateQuoteClientBody {
-  client_id?: string;
-  new_client?: {
-    name?: string;
-    phone?: string;
-    email?: string;
-  };
-  tag_ids: string[];
-}
+import { throwApiError } from '@/lib/api/errors';
+import {
+  mapClientFiscal,
+  type ClientFiscal,
+  type ClientFiscalRaw,
+  type IvaCondition,
+} from '@/lib/api/invoicing';
 
 export async function getClientDirectory(branchId: string): Promise<ClientMatch[]> {
   const response = await fetch('/api/clients', {
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as ClientListRaw;
   return raw.items.map(mapClientSummary).map(clientMatchFromSummary);
 }
@@ -43,24 +37,9 @@ export async function getQuoteClientAssociation(
     headers: { 'X-Branch-Id': branchId },
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as QuoteClientAssociationRaw;
   return mapQuoteClientAssociation(raw);
-}
-
-export async function associateQuoteClient(
-  quoteId: string,
-  branchId: string,
-  body: AssociateQuoteClientBody,
-): Promise<ClientMatch> {
-  const response = await fetch(`/api/quotes/${quoteId}/client-association`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Branch-Id': branchId },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
-  if (!response.ok) await throwOnError(response);
-  return mapClientMatch((await response.json()) as ClientMatchRaw);
 }
 
 export async function createClientTag(name: string): Promise<ClientTag> {
@@ -70,7 +49,7 @@ export async function createClientTag(name: string): Promise<ClientTag> {
     body: JSON.stringify({ name }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   return mapClientTag((await response.json()) as ClientTagRaw);
 }
 
@@ -81,28 +60,34 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
     body: JSON.stringify({ tag_ids: tagIds }),
     cache: 'no-store',
   });
-  if (!response.ok) await throwOnError(response);
+  if (!response.ok) await throwApiError(response);
   const raw = (await response.json()) as ClientTagListRaw;
   return raw.items.map(mapClientTag);
 }
 
-async function throwOnError(response: Response): Promise<never> {
-  let code: string | undefined;
-  let detail = '';
-  try {
-    const payload = (await response.json()) as {
-      error?: string;
-      code?: string;
-      detail?: string;
-    };
-    code = payload.code;
-    detail = [payload.error, payload.detail].filter(Boolean).join(': ');
-  } catch {
-    // A non-envelope body adds no information beyond the status.
-  }
-  throw new ApiError(
-    knownErrorCode(code) ?? codeForStatus(response.status),
-    response.status,
-    detail || undefined,
-  );
+export interface ClientFiscalInput {
+  address?: string;
+  legalName?: string;
+  // A consumidor final's DNI. A CUIT is never sent: only the customer loads one, with their account.
+  dni?: string;
+  ivaCondition?: IvaCondition;
+}
+
+export async function updateClientFiscal(
+  clientId: string,
+  values: ClientFiscalInput,
+): Promise<ClientFiscal> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/fiscal`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: values.address,
+      legal_name: values.legalName,
+      dni: values.dni,
+      iva_condition: values.ivaCondition,
+    }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapClientFiscal((await response.json()) as ClientFiscalRaw);
 }
