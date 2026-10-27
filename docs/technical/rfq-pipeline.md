@@ -3,7 +3,8 @@
 What happens between a client's informal message and a quote a seller can review. One text goes in;
 one `quote` in `DRAFT`, its first unfrozen `quote_version`, and one `quote_item` per material come
 out, each line carrying the product it matched, how confident that is, why its quantity is what it
-is, and — when the line needs the seller's eye — the candidates it was decided against.
+is, its configured economy and premium recommendations, and — when the line needs the seller's eye
+— the candidates it was decided against.
 
 That draft carries no prices. The seller accepting its materials is a second transition, and it is
 what freezes them — the last section here.
@@ -191,13 +192,22 @@ and the priced response.
 
 **A candidate that scored zero is dropped from both**, which is the one exception to that table.
 
-**`rank` is the candidate's place in the matcher's ranking, not a renumbering.** An `AMBIGUOUS`
-line's offers therefore start at two: rank one is the product on the line. The ranking is the
-matcher's own order by confidence — or the review's, when it settled the line — so the dropped zeros
-are always its tail. `confidence_score` is what the candidate scored, on
-`quote_item.confidence_score`'s own scale, so a 59% near miss reads differently from a 12% long
-shot. Neither figure exists anywhere else on the row — `created_at` is the transaction's timestamp,
-shared by every row of one insert — which is why the table carries both columns.
+Every generated line with a matched product also receives its active, same-unit outgoing
+`ECONOMY` and `PREMIUM` `product_alternative` links. These are `PRODUCT` alternatives with
+`origin = 'AI'` and their source relationship in `recommendation_type`; they have no
+`confidence_score` and start unapproved, so the client cannot see them before the seller decides.
+If the matcher already offered the same product, the existing row receives the
+`recommendation_type` rather than creating a duplicate.
+
+**`rank` preserves the candidate's place in the matcher's ranking, not a renumbering.** An
+`AMBIGUOUS` line's matcher offers therefore start at two: rank one is the product on the line. The
+ranking is the matcher's own order by confidence — or the review's, when it settled the line — so the
+dropped zeros are always its tail. Configured recommendations follow the existing offers in
+deterministic `ECONOMY`, then `PREMIUM`, catalog-name order. `confidence_score` is what a matcher
+candidate scored, on `quote_item.confidence_score`'s own scale, so a 59% near miss reads differently
+from a 12% long shot. Neither figure exists anywhere else on the row — `created_at` is the
+transaction's timestamp, shared by every row of one insert — which is why the table carries both
+columns.
 
 A zero means the product shares no word with the line and its vector sits under the calibration
 band: the search reached it only because the pool is wider than what resembles the line. Offering
@@ -216,8 +226,8 @@ row order would rest on an order Postgres does not promise, and a line offering 
 products is a wrong answer nothing downstream could notice. `CreateItems` refuses a line that
 carries no id: left unset, every line would insert the all-zeros uuid.
 
-The candidates are written in the same transaction as the lines, so a draft never exists with lines
-flagged and the candidates they were flagged against missing.
+The matcher candidates and configured recommendations are written in the same transaction as the
+lines, so a draft never exists with a line but without the offers its seller needs to review.
 
 ## The marks belong to the version
 

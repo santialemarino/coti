@@ -96,6 +96,11 @@ A product cannot be its own alternative (**422**). The link is deletable from ei
 the route's `productId` has to be one of the two: a link between two other products is not
 deletable through a third one.
 
+When an RFQ draft has a matched product, the recommendation engine copies every active, same-unit
+outgoing `ECONOMY` and `PREMIUM` link into the line's unapproved alternatives. The copied row keeps
+the relationship type, so seller review can distinguish a configured recommendation from a matcher
+candidate.
+
 ## The check the database does not do
 
 Before writing a synonym or an alternative, the service **reads the product inside the tenant

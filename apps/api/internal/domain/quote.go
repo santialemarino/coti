@@ -236,34 +236,36 @@ const (
 // QuoteItemAlternative is one candidate offered for a quote line, carrying the catalog identity a
 // seller needs to tell it apart.
 type QuoteItemAlternative struct {
-	ID               uuid.UUID
-	AccountID        uuid.UUID
-	QuoteItemID      uuid.UUID
-	ProductID        *uuid.UUID
-	ComboID          *uuid.UUID
-	Type             QuoteItemAlternativeType
-	Origin           QuoteItemAlternativeOrigin
-	Rank             int
-	ConfidenceScore  decimal.NullDecimal
-	PriceSnapshot    decimal.NullDecimal
-	ApprovedBySeller bool
-	ChosenByClient   bool
-	Code             *string
-	CanonicalName    *string
-	Unit             *string
-	CreatedAt        time.Time
+	ID                 uuid.UUID
+	AccountID          uuid.UUID
+	QuoteItemID        uuid.UUID
+	ProductID          *uuid.UUID
+	ComboID            *uuid.UUID
+	Type               QuoteItemAlternativeType
+	RecommendationType *ProductAlternativeType
+	Origin             QuoteItemAlternativeOrigin
+	Rank               int
+	ConfidenceScore    decimal.NullDecimal
+	PriceSnapshot      decimal.NullDecimal
+	ApprovedBySeller   bool
+	ChosenByClient     bool
+	Code               *string
+	CanonicalName      *string
+	Unit               *string
+	CreatedAt          time.Time
 }
 
 // NewQuoteItemAlternative is the input for creating a quote item alternative.
 type NewQuoteItemAlternative struct {
-	QuoteItemID     uuid.UUID
-	ProductID       *uuid.UUID
-	ComboID         *uuid.UUID
-	Type            QuoteItemAlternativeType
-	Origin          QuoteItemAlternativeOrigin
-	Rank            int
-	ConfidenceScore decimal.NullDecimal
-	PriceSnapshot   decimal.NullDecimal
+	QuoteItemID        uuid.UUID
+	ProductID          *uuid.UUID
+	ComboID            *uuid.UUID
+	Type               QuoteItemAlternativeType
+	RecommendationType *ProductAlternativeType
+	Origin             QuoteItemAlternativeOrigin
+	Rank               int
+	ConfidenceScore    decimal.NullDecimal
+	PriceSnapshot      decimal.NullDecimal
 }
 
 // QuoteItemAlternativePricing is the frozen catalog price for one offered product.

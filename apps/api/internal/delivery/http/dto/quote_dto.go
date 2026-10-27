@@ -92,23 +92,23 @@ type QuoteItemResponse struct {
 	CreatedAt          time.Time `json:"created_at"`
 }
 
-// QuoteItemAlternativeResponse is one candidate offered for a flagged line. rank is its place in
-// the matcher's ranking, so a line that kept the leading candidate offers none at rank one. The
-// catalog identity is read as it stands now rather than frozen with the line.
+// QuoteItemAlternativeResponse is one candidate or configured recommendation offered for a line.
+// recommendation_type is null for matcher and seller candidates.
 type QuoteItemAlternativeResponse struct {
-	ID               uuid.UUID  `json:"id"`
-	ProductID        *uuid.UUID `json:"product_id"`
-	ComboID          *uuid.UUID `json:"combo_id"`
-	Type             string     `json:"type"`
-	Origin           string     `json:"origin"`
-	Rank             int        `json:"rank"`
-	ConfidenceScore  *string    `json:"confidence_score"`
-	PriceSnapshot    *string    `json:"price_snapshot"`
-	ApprovedBySeller bool       `json:"approved_by_seller"`
-	ChosenByClient   bool       `json:"chosen_by_client"`
-	Code             *string    `json:"code"`
-	CanonicalName    *string    `json:"canonical_name"`
-	Unit             *string    `json:"unit"`
+	ID                 uuid.UUID  `json:"id"`
+	ProductID          *uuid.UUID `json:"product_id"`
+	ComboID            *uuid.UUID `json:"combo_id"`
+	Type               string     `json:"type"`
+	RecommendationType *string    `json:"recommendation_type" enums:"EQUIVALENT,PREMIUM,ECONOMY"`
+	Origin             string     `json:"origin"`
+	Rank               int        `json:"rank"`
+	ConfidenceScore    *string    `json:"confidence_score"`
+	PriceSnapshot      *string    `json:"price_snapshot"`
+	ApprovedBySeller   bool       `json:"approved_by_seller"`
+	ChosenByClient     bool       `json:"chosen_by_client"`
+	Code               *string    `json:"code"`
+	CanonicalName      *string    `json:"canonical_name"`
+	Unit               *string    `json:"unit"`
 }
 
 // QuoteAlternativeApprovalRequest records the seller's explicit publication decision.

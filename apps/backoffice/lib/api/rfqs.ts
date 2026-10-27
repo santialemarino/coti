@@ -222,6 +222,7 @@ export interface QuoteVersionResponse {
 }
 
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
+export type RecommendationType = 'EQUIVALENT' | 'PREMIUM' | 'ECONOMY';
 
 export interface QuoteItemResponse {
   id: string;
@@ -250,6 +251,7 @@ export interface QuoteItemAlternativeResponse {
   product_id: string | null;
   combo_id: string | null;
   type: string;
+  recommendation_type: RecommendationType | null;
   origin: string;
   rank: number;
   confidence_score: string | null;

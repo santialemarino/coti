@@ -199,6 +199,7 @@ func run() error {
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
 		WithPrices(productPriceRepo).
+		WithProductAlternatives(productAlternativeRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithPublicContacts(repository.NewPublicRFQRepository(), rfqAttachmentService).

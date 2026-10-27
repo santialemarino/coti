@@ -153,8 +153,13 @@ func (s *RFQService) persistDraftVersion(
 		if createItemsErr != nil {
 			return createItemsErr
 		}
+		allAlternatives, alternativesErr := s.withConfiguredAlternatives(ctx, q, tenant.AccountID,
+			createdItems, alternatives)
+		if alternativesErr != nil {
+			return alternativesErr
+		}
 		if _, candidatesErr := s.persistAlternatives(ctx, q, tenant.AccountID, createdItems,
-			alternatives); candidatesErr != nil {
+			allAlternatives); candidatesErr != nil {
 			return candidatesErr
 		}
 		generationItems, generationItemsErr := newQuoteAIGenerationItems(extraction.Lines, items)

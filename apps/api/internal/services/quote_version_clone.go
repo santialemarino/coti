@@ -169,7 +169,8 @@ func insertVersionCopy(
 		for _, alternative := range content.alternatives[item.ID] {
 			clonedAlternatives = append(clonedAlternatives, domain.NewQuoteItemAlternative{
 				QuoteItemID: newID, ProductID: alternative.ProductID,
-				ComboID: alternative.ComboID, Type: alternative.Type, Origin: alternative.Origin,
+				ComboID: alternative.ComboID, Type: alternative.Type,
+				RecommendationType: alternative.RecommendationType, Origin: alternative.Origin,
 				Rank: alternative.Rank, ConfidenceScore: alternative.ConfidenceScore,
 				PriceSnapshot: alternative.PriceSnapshot,
 			})

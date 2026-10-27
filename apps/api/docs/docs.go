@@ -11379,6 +11379,14 @@ const docTemplate = `{
                 "rank": {
                     "type": "integer"
                 },
+                "recommendation_type": {
+                    "type": "string",
+                    "enum": [
+                        "EQUIVALENT",
+                        "PREMIUM",
+                        "ECONOMY"
+                    ]
+                },
                 "type": {
                     "type": "string"
                 },

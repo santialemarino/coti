@@ -114,6 +114,13 @@ type catalogMatcher interface {
 	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
 }
 
+// productAlternativeReader supplies the configured replacement products for a batch of matched lines.
+type productAlternativeReader interface {
+	ListByBaseProductIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		baseProductIDs []uuid.UUID, kind domain.ProductAlternativeType,
+	) (map[uuid.UUID][]domain.ProductAlternativeView, error)
+}
+
 // interpretationMemoryFinder retrieves account-local examples of how this supplier has read
 // previous orders, which the extractor can lean on to disambiguate its own readings.
 type interpretationMemoryFinder interface {
@@ -154,19 +161,20 @@ type handlerDecisionReader interface {
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
 // entry flow.
 type RFQService struct {
-	db          tenantTxRunner
-	rfqs        rfqRepository
-	quotes      quoteDraftRepository
-	discounts   quoteDiscountRepository
-	promotions  promotionReader
-	prices      branchPriceReader
-	sends       quoteSendTracker
-	generations quoteAIGenerationRepository
-	channels    rfqChannelReader
-	sellers     sellerReach
-	extractor   domain.RFQExtractor
-	matcher     catalogMatcher
-	memories    interpretationMemoryFinder
+	db                  tenantTxRunner
+	rfqs                rfqRepository
+	quotes              quoteDraftRepository
+	discounts           quoteDiscountRepository
+	promotions          promotionReader
+	prices              branchPriceReader
+	sends               quoteSendTracker
+	generations         quoteAIGenerationRepository
+	channels            rfqChannelReader
+	sellers             sellerReach
+	extractor           domain.RFQExtractor
+	matcher             catalogMatcher
+	productAlternatives productAlternativeReader
+	memories            interpretationMemoryFinder
 	// clientActions trails the customer responses the quote's versions received; the detail
 	// only enriches when the surface is wired, so older surfaces stay lean.
 	clientActions rfqClientActionRepository
@@ -223,6 +231,12 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 // WithPrices lets a line on a priced quote take the branch price of the product chosen for it.
 func (s *RFQService) WithPrices(prices branchPriceReader) *RFQService {
 	s.prices = prices
+	return s
+}
+
+// WithProductAlternatives adds configured ECONOMY and PREMIUM offers to generated draft lines.
+func (s *RFQService) WithProductAlternatives(alternatives productAlternativeReader) *RFQService {
+	s.productAlternatives = alternatives
 	return s
 }
 
@@ -1618,8 +1632,13 @@ func (s *RFQService) persistGeneratedDraft(
 		if createItemsErr != nil {
 			return createItemsErr
 		}
+		allAlternatives, alternativesErr := s.withConfiguredAlternatives(ctx, q, tenant.AccountID,
+			createdItems, alternatives)
+		if alternativesErr != nil {
+			return alternativesErr
+		}
 		candidates, candidatesErr := s.persistAlternatives(ctx, q, tenant.AccountID, createdItems,
-			alternatives)
+			allAlternatives)
 		if candidatesErr != nil {
 			return candidatesErr
 		}
@@ -1704,9 +1723,8 @@ func newQuoteAIGenerationItems(
 	return snapshots, nil
 }
 
-// persistAlternatives writes the flagged lines' candidates and reads them back with the catalog
-// identity a seller needs to tell them apart, which the insert cannot return: RETURNING sees only
-// the row it wrote, and the product's name is a join away.
+// persistAlternatives writes matcher candidates and catalog recommendations, then reads them back
+// with the catalog identity the seller needs to tell them apart.
 func (s *RFQService) persistAlternatives(
 	ctx context.Context, q repository.Querier, accountID uuid.UUID, items []domain.QuoteItem,
 	alternatives []domain.NewQuoteItemAlternative,
@@ -1718,6 +1736,80 @@ func (s *RFQService) persistAlternatives(
 		return nil, err
 	}
 	return s.quotes.ListAlternativesByItemIDs(ctx, q, accountID, quoteItemIDs(items))
+}
+
+// withConfiguredAlternatives adds active same-unit ECONOMY and PREMIUM catalog links to each
+// matched draft line. The relationship type survives with the suggestion, while a product the
+// matcher already offered is annotated instead of written twice.
+func (s *RFQService) withConfiguredAlternatives(
+	ctx context.Context, q repository.Querier, accountID uuid.UUID, items []domain.QuoteItem,
+	alternatives []domain.NewQuoteItemAlternative,
+) ([]domain.NewQuoteItemAlternative, error) {
+	if s.productAlternatives == nil {
+		return alternatives, nil
+	}
+	productIDs := quoteItemProductIDs(items)
+	if len(productIDs) == 0 {
+		return alternatives, nil
+	}
+
+	result := append([]domain.NewQuoteItemAlternative(nil), alternatives...)
+	byItemProduct := make(map[uuid.UUID]map[uuid.UUID]int, len(items))
+	nextRank := make(map[uuid.UUID]int, len(items))
+	for _, item := range items {
+		nextRank[item.ID] = 1
+	}
+	for index, alternative := range result {
+		if alternative.Rank >= nextRank[alternative.QuoteItemID] {
+			nextRank[alternative.QuoteItemID] = alternative.Rank + 1
+		}
+		if alternative.ProductID == nil {
+			continue
+		}
+		if byItemProduct[alternative.QuoteItemID] == nil {
+			byItemProduct[alternative.QuoteItemID] = make(map[uuid.UUID]int)
+		}
+		byItemProduct[alternative.QuoteItemID][*alternative.ProductID] = index
+	}
+
+	for _, kind := range []domain.ProductAlternativeType{
+		domain.ProductAlternativeEconomy,
+		domain.ProductAlternativePremium,
+	} {
+		byBase, err := s.productAlternatives.ListByBaseProductIDs(ctx, q, accountID, productIDs, kind)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.ProductID == nil {
+				continue
+			}
+			if byItemProduct[item.ID] == nil {
+				byItemProduct[item.ID] = make(map[uuid.UUID]int)
+			}
+			for _, configured := range byBase[*item.ProductID] {
+				productID := configured.Product.ID
+				if productID == *item.ProductID {
+					continue
+				}
+				recommendationType := kind
+				if index, exists := byItemProduct[item.ID][productID]; exists {
+					result[index].RecommendationType = &recommendationType
+					continue
+				}
+				result = append(result, domain.NewQuoteItemAlternative{
+					QuoteItemID: item.ID, ProductID: &productID,
+					Type:               domain.QuoteItemAlternativeTypeProduct,
+					RecommendationType: &recommendationType,
+					Origin:             domain.QuoteItemAlternativeOriginAI,
+					Rank:               nextRank[item.ID],
+				})
+				byItemProduct[item.ID][productID] = len(result) - 1
+				nextRank[item.ID]++
+			}
+		}
+	}
+	return result, nil
 }
 
 func (s *RFQService) getActiveChannel(

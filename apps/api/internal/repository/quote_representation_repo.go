@@ -170,7 +170,7 @@ func (r *QuoteRepresentationRepository) listApprovedAlternatives(
 	}
 	rows, err := q.Query(ctx, `SELECT alternative.id, alternative.account_id,
 		alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
-		alternative.origin, alternative.rank, alternative.confidence_score,
+		alternative.recommendation_type, alternative.origin, alternative.rank, alternative.confidence_score,
 		alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
 		alternative.created_at, product.code, COALESCE(product.canonical_name, combo.name), product.unit
 	FROM quote_item_alternative alternative

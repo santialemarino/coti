@@ -702,10 +702,16 @@ func toQuoteVersionResponse(version domain.QuoteVersion) dto.QuoteVersionRespons
 func toQuoteItemAlternativeResponse(
 	alternative domain.QuoteItemAlternative,
 ) dto.QuoteItemAlternativeResponse {
+	var recommendationType *string
+	if alternative.RecommendationType != nil {
+		value := string(*alternative.RecommendationType)
+		recommendationType = &value
+	}
 	return dto.QuoteItemAlternativeResponse{
 		ID: alternative.ID, ProductID: alternative.ProductID, ComboID: alternative.ComboID,
-		Type: string(alternative.Type), Origin: string(alternative.Origin), Rank: alternative.Rank,
-		ConfidenceScore:  amountString(alternative.ConfidenceScore),
+		Type: string(alternative.Type), RecommendationType: recommendationType,
+		Origin: string(alternative.Origin), Rank: alternative.Rank,
+		ConfidenceScore:  confidenceString(alternative.ConfidenceScore),
 		PriceSnapshot:    amountString(alternative.PriceSnapshot),
 		ApprovedBySeller: alternative.ApprovedBySeller, ChosenByClient: alternative.ChosenByClient,
 		Code: alternative.Code, CanonicalName: alternative.CanonicalName, Unit: alternative.Unit,
@@ -749,21 +755,7 @@ func toQuoteItemAlternativeResponses(
 ) []dto.QuoteItemAlternativeResponse {
 	responses := make([]dto.QuoteItemAlternativeResponse, 0, len(alternatives))
 	for _, alternative := range alternatives {
-		responses = append(responses, dto.QuoteItemAlternativeResponse{
-			ID:               alternative.ID,
-			ProductID:        alternative.ProductID,
-			ComboID:          alternative.ComboID,
-			Type:             string(alternative.Type),
-			Origin:           string(alternative.Origin),
-			Rank:             alternative.Rank,
-			ConfidenceScore:  confidenceString(alternative.ConfidenceScore),
-			PriceSnapshot:    amountString(alternative.PriceSnapshot),
-			ApprovedBySeller: alternative.ApprovedBySeller,
-			ChosenByClient:   alternative.ChosenByClient,
-			Code:             alternative.Code,
-			CanonicalName:    alternative.CanonicalName,
-			Unit:             alternative.Unit,
-		})
+		responses = append(responses, toQuoteItemAlternativeResponse(alternative))
 	}
 	return responses
 }

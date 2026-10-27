@@ -669,6 +669,7 @@ CREATE TABLE quote_item_alternative (
   product_id         UUID,
   combo_id           UUID,
   type               quote_item_alternative_type NOT NULL,
+  recommendation_type product_alternative_type,
   origin             quote_item_alternative_origin NOT NULL,
   price_snapshot     NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
@@ -678,7 +679,9 @@ CREATE TABLE quote_item_alternative (
   -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
   rank               SMALLINT NOT NULL,
   confidence_score   NUMERIC(5,4),
-  CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL)
+  CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL),
+  CONSTRAINT ck_qia_recommendation_type
+    CHECK (recommendation_type IS NULL OR type = 'PRODUCT')
 );
 
 -- The original AI proposal is append-only and independent of the mutable commercial version.

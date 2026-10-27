@@ -40,7 +40,7 @@ const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new
 // alternative points at with nothing, so all three come back empty there.
 const quoteItemAlternativeColumns = `alternative.id, alternative.account_id,
 	alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
-	alternative.origin, alternative.rank, alternative.confidence_score,
+	alternative.recommendation_type, alternative.origin, alternative.rank, alternative.confidence_score,
 	alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
 	alternative.created_at, product.code, product.canonical_name, product.unit`
 
@@ -835,7 +835,8 @@ func (r *QuoteRepository) ListAlternativesByItemIDs(
 	for rows.Next() {
 		var alternative domain.QuoteItemAlternative
 		if scanErr := rows.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
-			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.Origin,
+			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
+			&alternative.Origin,
 			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
 			&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 			&alternative.Code, &alternative.CanonicalName, &alternative.Unit,
@@ -885,6 +886,7 @@ func (r *QuoteRepository) CreateAlternatives(
 		     product_id uuid,
 		     combo_id uuid,
 		     type text,
+		     recommendation_type text,
 		     origin text,
 		     rank int,
 		     confidence_score numeric,
@@ -892,11 +894,12 @@ func (r *QuoteRepository) CreateAlternatives(
 		   )
 		 )
 		 INSERT INTO quote_item_alternative (
-		   account_id, quote_item_id, product_id, combo_id, type, origin, rank,
+		   account_id, quote_item_id, product_id, combo_id, type, recommendation_type, origin, rank,
 		   confidence_score, price_snapshot
 		 )
 		 SELECT $1, item.id, incoming.product_id, incoming.combo_id,
 		        incoming.type::quote_item_alternative_type,
+		        incoming.recommendation_type::product_alternative_type,
 		        incoming.origin::quote_item_alternative_origin,
 		        incoming.rank, incoming.confidence_score, incoming.price_snapshot
 		 FROM incoming
@@ -927,7 +930,7 @@ func (r *QuoteRepository) UpdateAlternativeApproval(
 		RETURNING alternative.*
 	)
 	SELECT changed.id, changed.account_id, changed.quote_item_id, changed.product_id,
-	       changed.combo_id, changed.type, changed.origin, changed.rank,
+	       changed.combo_id, changed.type, changed.recommendation_type, changed.origin, changed.rank,
 	       changed.confidence_score, changed.price_snapshot, changed.approved_by_seller,
 	       changed.chosen_by_client, changed.created_at, product.code,
 	       product.canonical_name, product.unit
@@ -1018,14 +1021,15 @@ type quoteItemReplacementPayload struct {
 }
 
 type quoteItemAlternativePayload struct {
-	QuoteItemID     uuid.UUID  `json:"quote_item_id"`
-	ProductID       *uuid.UUID `json:"product_id"`
-	ComboID         *uuid.UUID `json:"combo_id"`
-	Type            string     `json:"type"`
-	Origin          string     `json:"origin"`
-	Rank            int        `json:"rank"`
-	ConfidenceScore *string    `json:"confidence_score"`
-	PriceSnapshot   *string    `json:"price_snapshot"`
+	QuoteItemID        uuid.UUID  `json:"quote_item_id"`
+	ProductID          *uuid.UUID `json:"product_id"`
+	ComboID            *uuid.UUID `json:"combo_id"`
+	Type               string     `json:"type"`
+	RecommendationType *string    `json:"recommendation_type"`
+	Origin             string     `json:"origin"`
+	Rank               int        `json:"rank"`
+	ConfidenceScore    *string    `json:"confidence_score"`
+	PriceSnapshot      *string    `json:"price_snapshot"`
 }
 
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
@@ -1098,15 +1102,21 @@ func quoteItemAlternativePayloads(
 ) []quoteItemAlternativePayload {
 	payloads := make([]quoteItemAlternativePayload, 0, len(alternatives))
 	for _, alternative := range alternatives {
+		var recommendationType *string
+		if alternative.RecommendationType != nil {
+			value := string(*alternative.RecommendationType)
+			recommendationType = &value
+		}
 		payloads = append(payloads, quoteItemAlternativePayload{
-			QuoteItemID:     alternative.QuoteItemID,
-			ProductID:       alternative.ProductID,
-			ComboID:         alternative.ComboID,
-			Type:            string(alternative.Type),
-			Origin:          string(alternative.Origin),
-			Rank:            alternative.Rank,
-			ConfidenceScore: nullDecimalString(alternative.ConfidenceScore),
-			PriceSnapshot:   nullDecimalString(alternative.PriceSnapshot),
+			QuoteItemID:        alternative.QuoteItemID,
+			ProductID:          alternative.ProductID,
+			ComboID:            alternative.ComboID,
+			Type:               string(alternative.Type),
+			RecommendationType: recommendationType,
+			Origin:             string(alternative.Origin),
+			Rank:               alternative.Rank,
+			ConfidenceScore:    nullDecimalString(alternative.ConfidenceScore),
+			PriceSnapshot:      nullDecimalString(alternative.PriceSnapshot),
 		})
 	}
 	return payloads
@@ -1400,7 +1410,8 @@ func scanQuoteItemWithProductRow(row pgx.Row) (*domain.QuoteItem, error) {
 func scanQuoteItemAlternative(row pgx.Row) (*domain.QuoteItemAlternative, error) {
 	var alternative domain.QuoteItemAlternative
 	err := row.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
-		&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.Origin,
+		&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
+		&alternative.Origin,
 		&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
 		&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 		&alternative.Code, &alternative.CanonicalName, &alternative.Unit)
