@@ -53,13 +53,25 @@ func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier
 }
 
 // MarkVerified activates exactly the destination whose ownership was proved.
-func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
-	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, accountID, clientID, kind, value)
+func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, p.AccountID, clientID, kind, value)
 	if isUniqueViolation(err, "uq_verified_client_contact") {
 		return domain.ErrConflict
 	}
 	if err == nil && result.RowsAffected() != 1 {
 		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	result, err = q.Exec(ctx, `INSERT INTO customer_contact_ownership(account_id,customer_id,contact_id,includes_profile_history)
+ SELECT c.account_id,i.id,c.id,(c.created_at<i.created_at OR profile.created_at>=i.created_at) FROM client_contact c
+ JOIN client profile ON profile.account_id=c.account_id AND profile.id=c.client_id
+ JOIN customer_identity i ON i.account_id=c.account_id AND i.id=$5 AND i.disabled_at IS NULL
+ WHERE c.account_id=$1 AND c.client_id=$2 AND c.kind=$3 AND c.value=$4 AND c.retired_at IS NULL
+ ON CONFLICT(account_id,customer_id,contact_id) DO UPDATE SET verified_at=now()`, p.AccountID, clientID, kind, value, p.CustomerID)
+	if err == nil && result.RowsAffected() != 1 {
+		return domain.ErrUnauthenticated
 	}
 	return err
 }
@@ -80,4 +92,13 @@ func (r *ClientContactRepository) GetMessagingConfiguration(ctx context.Context,
 	}
 	c.AccountID = accountID
 	return c, err
+}
+
+// GrantProvisionalHistory retains the proved source's orders before its profile is merged.
+func (r *ClientContactRepository) GrantProvisionalHistory(ctx context.Context, q Querier, p domain.CustomerPrincipal, sourceID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `INSERT INTO customer_contact_history(account_id,customer_id,rfq_id,kind,value)
+ SELECT r.account_id,$2,r.id,$4,$5 FROM rfq r LEFT JOIN quote qt ON qt.account_id=r.account_id AND qt.branch_id=r.branch_id AND qt.rfq_id=r.id
+ WHERE r.account_id=$1 AND COALESCE(qt.client_id,r.client_id)=$3
+ ON CONFLICT(account_id,customer_id,rfq_id,kind,value) DO NOTHING`, p.AccountID, p.CustomerID, sourceID, kind, value)
+	return err
 }

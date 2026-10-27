@@ -20,8 +20,7 @@ func (r *ClientContactRepository) AttachContactObservations(ctx context.Context,
 	if _, err := q.Exec(ctx, `UPDATE client_contact_observation SET source_client_id=$4 WHERE account_id=$1 AND kind=$2 AND value=$3 AND source_client_id IS NULL`, accountID, kind, value, clientID); err != nil {
 		return err
 	}
-	_, err := q.Exec(ctx, `UPDATE client_contact_outbox SET status='COMPLETED' WHERE account_id=$1 AND kind=$2 AND value=$3`, accountID, kind, value)
-	return err
+	return nil
 }
 
 // AssociateObservedRequests attaches retained sender history without changing an existing selection.
@@ -56,9 +55,19 @@ func (r *ClientContactRepository) FinishNameRequest(ctx context.Context, q Queri
 // PendingNameRFQ locates a retained request awaiting the same sender's declared name.
 func (r *ClientContactRepository) PendingNameRFQ(ctx context.Context, q Querier, route domain.InboundChannelRoute, kind domain.ChannelType, value string) (*uuid.UUID, error) {
 	var id uuid.UUID
-	err := q.QueryRow(ctx, `SELECT r.id FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id JOIN rfq r ON r.account_id=m.account_id AND r.branch_id=m.branch_id AND r.id=m.rfq_id WHERE o.account_id=$1 AND m.account_id=$1 AND r.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND o.kind=$4 AND o.value=$5 AND o.source_client_id IS NULL ORDER BY m.created_at,m.id LIMIT 1`, route.AccountID, route.BranchID, route.ChannelID, kind, value).Scan(&id)
+	err := q.QueryRow(ctx, `SELECT r.id FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id JOIN rfq r ON r.account_id=m.account_id AND r.branch_id=m.branch_id AND r.id=m.rfq_id WHERE o.account_id=$1 AND m.account_id=$1 AND r.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND o.kind=$4 AND o.value=$5 AND EXISTS(SELECT 1 FROM client_contact_outbox pending WHERE pending.account_id=o.account_id AND pending.kind=o.kind AND pending.value=o.value AND pending.status<>'COMPLETED') ORDER BY m.created_at,m.id LIMIT 1`, route.AccountID, route.BranchID, route.ChannelID, kind, value).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return &id, err
+}
+
+// CompleteNameRequest accepts a declared name only while this provisional sender awaits one.
+func (r *ClientContactRepository) CompleteNameRequest(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value, name string) error {
+	if _, err := q.Exec(ctx, `UPDATE client SET name=$5 WHERE account_id=$1 AND id=$2 AND tax_id IS NULL
+ AND EXISTS(SELECT 1 FROM client_contact_outbox pending WHERE pending.account_id=$1 AND pending.kind=$3 AND pending.value=$4 AND pending.status<>'COMPLETED')`, accountID, clientID, kind, value, name); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx, `UPDATE client_contact_outbox SET status='COMPLETED' WHERE account_id=$1 AND kind=$2 AND value=$3`, accountID, kind, value)
+	return err
 }

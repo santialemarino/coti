@@ -70,19 +70,21 @@ customers can continue using their previously linked Google identity.
 
 ## History authorization and immutable quotations
 
-The product's access rule is exact CUIT/CUIL matching within the authenticated supplier. Registration
-therefore grants access to earlier matching requests. CUIT/CUIL is treated as a declared identifier;
-this flow does not verify fiscal ownership. Queries match a request's associated commercial client
-or the retained, normalized web declaration. They never infer identity from a loose name. Customer
-credentials do not merge commercial profiles. Commercial data saves and authenticated request
-declarations can create the unique supplier-scoped fiscal profile; credential registration alone
-does not. The seller confirms the client association
-in the same transaction that publishes a quotation, so all-channel requests become accessible
-before customer acceptance.
+History authorizes the authenticated customer identity within the supplier. New portal requests
+retain the backend-authenticated customer ID in their immutable inbound envelope; CUIT declarations
+never grant access. Those own requests remain available before contact verification.
 
-GET /orders provides bounded pages; GET /orders/{rfqId} checks the same supplier and CUIT/CUIL
-before returning the original request and a successful immutable delivery reference. Draft contents
-and AI results are not returned. Until a quotation has been sent, the projection reports RECEIVED.
+Previous channel or counter requests require a contact proof performed by that customer. Migration
+00063 records successful ownership separately from commercial contact trust. A contact already
+present on a legacy profile before registration can unlock that profile's earlier orders. A newly
+added contact on an adopted legacy profile unlocks only its proved channel/provisional history.
+A profile without previous contacts exposes no old history through CUIT matching. Historical portal
+envelopes without a recorded author require contact proof too; registration cannot reconstruct their
+author from the declared CUIT. Failed, superseded or cancelled challenges grant no access.
+
+GET /orders provides bounded pages; GET /orders/{rfqId} and legacy delivery-token resolution enforce
+the same ownership predicate. Draft contents and AI results are not returned. Until a quotation has
+been sent, the projection reports RECEIVED.
 Sent versions remain available while the seller edits another version internally.
 
 Every seller send confirms the client profile and creates a WEBAPP publication alongside the

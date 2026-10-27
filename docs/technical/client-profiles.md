@@ -41,20 +41,23 @@ Successful proof can absorb the matching provisional profile. The transaction re
 profile and its provenance, sets merged_into, retires its old contacts, unions commercial contacts
 and tags, and moves RFQ, quotation and notification history to the fiscal profile. The registered
 name prevails. Only the proved contact becomes verified; other newly imported contacts remain
-pending. Delivery destinations already recorded on sends remain immutable. Staff cannot bypass
+pending. Successful proof also records customer-specific contact ownership and snapshots access
+to the source orders before the merge. Delivery destinations already recorded on sends remain immutable. Staff cannot bypass
 proof using the retired contact suggestion mutation endpoint, which returns 403.
 
 ## Deterministic channel onboarding
 
 WhatsApp and Gmail intake identify senders by verified channel contact, never by a claimed CUIT or
 an inferred name. A known contact uses its existing profile without asking for a name again. An
-unknown sender with an explicitly labeled full name creates a provisional profile without CUIT.
-Otherwise the original message and request are retained and a fixed backend message asks for the
-full name through the same channel. The accepted response starts with the full-name label shown
+unknown sender immediately receives a provisional profile without CUIT, using the channel display
+name, or the contact value if the provider supplies none. An explicit full-name declaration takes
+precedence. The request continues processing while a fixed backend message asks for the full name
+through the same channel. The accepted response starts with the full-name label shown
 in the prompt. AI does not draft, decide or initiate this automatic onboarding request.
 
-A name-only reply to a pending request completes its identity without creating another RFQ. The
-original request text and provider messages are preserved. Email retains the original reply MIME
+A name-only reply to a pending prompt updates the provisional name without creating another RFQ.
+Known contacts are not prompted again. Later requests do not overwrite the confirmed name; portal
+requests never overwrite an existing profile name. The original request text and provider messages are preserved. Email retains the original reply MIME
 without adding its name text to the extraction queue. Event replays remain idempotent. Observations
 retain the source event, branch, contact, declared name/CUIT and original text.
 
@@ -117,7 +120,10 @@ when set; production uses the supplier's HTTPS hostname. Tests use fake mail/con
 Migration 00060 adds the supplier-scoped unique fiscal index. Migration 00061 creates contact
 collections and retained observations. Migration 00062 adds contact verification, a verified-live
 unique index, challenges, onboarding outbox, composite channel scope and immutable-CUIT protection.
-Existing contacts are treated as trusted and merged sources are retired. Conflicting live contacts
+Existing contacts are treated as trusted for channel routing and merged sources are retired.
+Migration 00063 stores customer-specific ownership and proof-gated provisional history with RLS
+and composite tenant foreign keys. Legacy commercial verification does not substitute for a
+customer proof; My data shows those contacts as pending until this account verifies them. Conflicting live contacts
 stop the migration without deleting or silently merging records. Migrations are executable; the
 consolidated database schema is a reference only.
 

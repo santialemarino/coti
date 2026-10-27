@@ -151,7 +151,7 @@ func TestCustomerProfile_SavesOwnContactsAndKeepsRecoverySeparate(t *testing.T) 
 	}
 }
 
-func TestClientContacts_UnknownSendersRequireNameAndNeverClaimCUIT(t *testing.T) {
+func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *testing.T) {
 	e := newEnv(t)
 	account, branch := e.seedAccount(t, "Contact onboarding")
 	ctx := context.Background()
@@ -175,7 +175,8 @@ func TestClientContacts_UnknownSendersRequireNameAndNeverClaimCUIT(t *testing.T)
 			t.Fatal(err)
 		}
 	}
-	record(message, domain.ClientContactHints{TaxID: &taxID})
+	displayName := "WhatsApp Profile"
+	record(message, domain.ClientContactHints{TaxID: &taxID, DisplayName: &displayName})
 	record(message, domain.ClientContactHints{TaxID: &taxID})
 	for range 2 {
 		if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value); err != nil {
@@ -189,8 +190,15 @@ func TestClientContacts_UnknownSendersRequireNameAndNeverClaimCUIT(t *testing.T)
 	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT count(*) FROM client WHERE account_id=$1`, account).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Fatal("an unnamed message created a profile")
+	if count != 1 {
+		t.Fatal("an unknown sender did not receive one provisional profile")
+	}
+	var initialName string
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT name FROM client WHERE account_id=$1`, account).Scan(&initialName); err != nil {
+		t.Fatal(err)
+	}
+	if initialName != displayName {
+		t.Fatalf("provisional name=%q", initialName)
 	}
 	name := "Juan Perez"
 	record(uuid.New(), domain.ClientContactHints{Name: &name, TaxID: &taxID})
@@ -204,6 +212,14 @@ func TestClientContacts_UnknownSendersRequireNameAndNeverClaimCUIT(t *testing.T)
 	}
 	if storedName != name || storedTax != nil || len(messenger.messages) != 1 {
 		t.Fatal("onboarding did not retain a name-only provisional identity")
+	}
+	changed := "Unrequested Rename"
+	record(uuid.New(), domain.ClientContactHints{Name: &changed})
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT name FROM client WHERE account_id=$1`, account).Scan(&storedName); err != nil {
+		t.Fatal(err)
+	}
+	if storedName != name {
+		t.Fatalf("later message overwrote confirmed name: %q", storedName)
 	}
 	other, _ := e.seedAccount(t, "Contact isolation")
 	err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: other}, func(q repository.Querier) error {
@@ -331,7 +347,7 @@ func (m *captureContactMessenger) SendContact(_ context.Context, message domain.
 	return "test-reference", nil
 }
 
-func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string, kind domain.ChannelType, value string) {
+func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string, kind domain.ChannelType, value string, preserve ...bool) {
 	t.Helper()
 	ctx := context.Background()
 	p := domain.CustomerPrincipal{AccountID: account, TaxID: tax}
@@ -340,8 +356,10 @@ func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string,
 	}
 	store := repository.NewClientContactRepository()
 	service := services.NewClientContactService(e.db, repository.NewClientRepository(), store)
-	if err := service.UpdateProfile(ctx, p, domain.ClientContactUpdate{Name: "Registered Name", Contacts: []domain.ClientContact{{Kind: kind, Value: value, Primary: true}}}); err != nil {
-		t.Fatal(err)
+	if len(preserve) == 0 {
+		if err := service.UpdateProfile(ctx, p, domain.ClientContactUpdate{Name: "Registered Name", Contacts: []domain.ClientContact{{Kind: kind, Value: value, Primary: true}}}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	messenger := &captureContactMessenger{}
 	verifier := services.NewClientContactVerificationService(service, store, messenger, config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3})

@@ -118,8 +118,8 @@ func TestClientContactService_RecordInbound_UsesOnlyContactIdentity(t *testing.T
 	}
 	service, profiles, contacts := newContactHarness()
 	err := service.RecordInbound(context.Background(), nil, domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID}, uuid.New(), domain.ChannelTypeEmail, "unknown@example.test", "An order without a name", domain.ClientContactHints{})
-	if err != nil || profiles.created != nil || contacts.writes != 0 {
-		t.Fatalf("unnamed sender created a profile: %v", err)
+	if err != nil || profiles.created == nil || contacts.writes != 1 {
+		t.Fatalf("unnamed sender did not receive a provisional profile: %v", err)
 	}
 }
 
@@ -167,4 +167,8 @@ func TestDeclaredClientData_RejectsAmbiguousAndInferredData(t *testing.T) {
 			t.Fatalf("%q: %#v", tc.body, h)
 		}
 	}
+}
+
+func (f *fakeContactStore) ListForCustomer(_ context.Context, _ repository.Querier, _ domain.CustomerPrincipal, id uuid.UUID) ([]domain.ClientContact, error) {
+	return f.contacts[id], nil
 }

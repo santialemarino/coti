@@ -17,12 +17,13 @@ import (
 )
 
 type contactVerificationStore interface {
+	GrantProvisionalHistory(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	GetChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	LockChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	HasRecentChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string, time.Time) (bool, error)
 	CreateChallenge(context.Context, repository.Querier, domain.ContactChallenge) error
 	FinishChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) error
-	MarkVerified(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	MarkVerified(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	GetContactHostname(context.Context, repository.Querier, uuid.UUID) (string, error)
 }
 
@@ -89,9 +90,6 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		found := false
 		for _, contact := range collections[c.ClientID] {
 			if contact.Kind == kind && contact.Value == value {
-				if contact.Verified {
-					return domain.ErrConflict
-				}
 				found = true
 			}
 		}
@@ -215,6 +213,9 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			}
 		}
 		if sourceID != nil {
+			if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, c.Kind, c.Value); err != nil {
+				return err
+			}
 			if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, c.ClientID); err != nil {
 				return err
 			}
@@ -237,7 +238,7 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if err := s.contacts.contacts.Save(ctx, q, p.AccountID, c.ClientID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
-		if err := s.store.MarkVerified(ctx, q, p.AccountID, c.ClientID, c.Kind, c.Value); err != nil {
+		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
 			return err
 		}
 		return s.store.FinishChallenge(ctx, q, p, id, true)

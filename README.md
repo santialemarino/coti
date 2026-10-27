@@ -11,7 +11,9 @@ autopilot.
 
 The customer portal includes authenticated request history and commercial profiles. Registration
 requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
-without CUIT. Customers verify new contacts before claiming their earlier requests and manage a
+without CUIT. History requires the authenticated portal author or customer-specific contact proof;
+CUIT matching alone grants no access. Unknown channel senders get a provisional profile immediately.
+Customers verify new contacts before claiming their earlier requests and manage a
 separate optional recovery email from **My data**. See [Client profiles](docs/technical/client-profiles.md)
 for identity rules, migrations, contact delivery configuration and recovery separation.
 

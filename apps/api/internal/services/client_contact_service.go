@@ -18,6 +18,7 @@ type contactProfiles interface {
 }
 
 type contactStore interface {
+	ListForCustomer(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) ([]domain.ClientContact, error)
 	AttachSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
 	PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error)
 	HasAssociations(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
@@ -94,12 +95,12 @@ func (s *ClientContactService) GetProfile(ctx context.Context, p domain.Customer
 		if c.Name != nil {
 			result.Name = *c.Name
 		}
-		contacts, err := s.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ID})
+		contacts, err := s.contacts.ListForCustomer(ctx, q, p, c.ID)
 		if err != nil {
 			return err
 		}
-		if contacts[c.ID] != nil {
-			result.Contacts = contacts[c.ID]
+		if contacts != nil {
+			result.Contacts = contacts
 		}
 		return nil
 	})
@@ -199,9 +200,19 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 	}
 	if len(profiles) == 1 {
 		observation.SourceClientID = &profiles[0].ID
-	} else if observation.Name != nil {
+	} else {
+		name := value
+		if declared.DisplayName != nil {
+			label := strings.TrimSpace(*declared.DisplayName)
+			if label != "" && utf8.RuneCountInString(label) <= maxClientNameLength && !strings.ContainsFunc(label, unicode.IsControl) {
+				name = label
+			}
+		}
+		if observation.Name != nil {
+			name = *observation.Name
+		}
 		origin := domain.ClientOrigin(kind)
-		profile, err := s.profiles.Create(ctx, q, route.AccountID, domain.NewClient{Name: observation.Name, OriginChannel: &origin})
+		profile, err := s.profiles.Create(ctx, q, route.AccountID, domain.NewClient{Name: &name, OriginChannel: &origin})
 		if err != nil {
 			return err
 		}
@@ -214,8 +225,15 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 		return err
 	}
 	if store, ok := s.contacts.(contactOnboardingStore); ok {
-		if observation.SourceClientID == nil {
-			return store.QueueNameRequest(ctx, q, route, kind, value)
+		if len(profiles) == 0 && observation.Name == nil {
+			if err := store.QueueNameRequest(ctx, q, route, kind, value); err != nil {
+				return err
+			}
+		}
+		if observation.Name != nil {
+			if err := store.CompleteNameRequest(ctx, q, route.AccountID, *observation.SourceClientID, kind, value, *observation.Name); err != nil {
+				return err
+			}
 		}
 		return store.AttachContactObservations(ctx, q, route.AccountID, *observation.SourceClientID, kind, value)
 	}

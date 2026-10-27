@@ -225,7 +225,7 @@ func (s *WhatsAppInboundService) ingestOne(
 				return errInboundAlreadyReserved
 			}
 			if s.contacts != nil {
-				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, declaredClientData(message.Body))
+				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, channelClientData(message.Body, message.SenderLabel))
 			}
 			return nil
 		})

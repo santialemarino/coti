@@ -335,6 +335,8 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM customer_contact_history WHERE account_id=$1`,
+			`DELETE FROM customer_contact_ownership WHERE account_id=$1`,
 			`DELETE FROM client_contact_challenge WHERE account_id=$1`,
 			`DELETE FROM client_contact_outbox WHERE account_id=$1`,
 			`DELETE FROM client_contact_observation WHERE account_id=$1`,

@@ -14,6 +14,12 @@ import (
 var declaredTaxPattern = regexp.MustCompile(`(?i)\b(?:CUIT|CUIL)\s*:?\s*([0-9]{2}[ .-]?[0-9]{8}[ .-]?[0-9])\b`)
 var declaredNamePattern = regexp.MustCompile(`(?i)^nombre y apellido\s*:\s*([\p{L}][\p{L}\p{M}\x{27}\- ]*)[.!]?$`)
 
+func channelClientData(body string, label *string) domain.ClientContactHints {
+	hints := declaredClientData(body)
+	hints.DisplayName = label
+	return hints
+}
+
 type inboundContactRecorder interface {
 	RecordInbound(context.Context, repository.Querier, domain.InboundChannelRoute, uuid.UUID, domain.ChannelType, string, string, domain.ClientContactHints) error
 }
@@ -118,9 +124,6 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 				contact.Primary = !hasKind
 				contacts = append(contacts, contact)
 			}
-		}
-		if err := s.contacts.UpdateName(ctx, q, p.AccountID, client.ID, in.Name); err != nil {
-			return err
 		}
 		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
 			return err
