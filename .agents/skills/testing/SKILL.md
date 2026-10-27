@@ -25,7 +25,8 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   nothing else could catch a teammate editing one side only. `ci.docker.yml` builds all three
   images, asserts the api one carries every `cmd/` binary and applies the migration chain from
   inside it, and boots each web one; `ci.deploy-spec.yml` validates the App Platform spec's schema
-  offline and refuses a `type: SECRET` entry that carries a value.
+  offline, refuses a `type: SECRET` entry that carries a value, and fails when a component's
+  `ARCA_ENVIRONMENT` differs from the api service's.
   **Three workflows stand up PostgreSQL + pgvector and apply the migration chain**: the API's
   second job runs the integration suite, which guards tenant isolation, the scripts' runs the
   commands for real, and the docker one applies the chain from inside the image the deploy will
