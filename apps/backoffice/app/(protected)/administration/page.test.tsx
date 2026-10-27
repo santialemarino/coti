@@ -236,6 +236,24 @@ describe('AdministrationPage «Por facturar»', () => {
     expect(getSalesAwaitingInvoice).toHaveBeenCalledWith(2);
     expect(screen.getByRole('navigation', { name: messages.common.pagination.label })).toBeTruthy();
   });
+
+  // Invoicing the only row of the last page leaves that page empty while sales remain before it.
+  it('falls back to the page that is now last once the requested one is gone', async () => {
+    vi.mocked(getSalesAwaitingInvoice)
+      .mockResolvedValueOnce({ items: [], total: 26, page: 3, pageSize: 25 })
+      .mockResolvedValueOnce({
+        items: [{ quoteId: 'q26' }] as never,
+        total: 26,
+        page: 2,
+        pageSize: 25,
+      });
+    await renderPage('moron', [], 0, { view: 'pending', page: '3' });
+
+    expect(getSalesAwaitingInvoice).toHaveBeenNthCalledWith(2, 2);
+    expect(screen.getByTestId('pending-table').textContent).toBe('q26');
+    const pagination = screen.getByRole('navigation', { name: messages.common.pagination.label });
+    expect(within(pagination).getByRole('button', { current: 'page' }).textContent).toBe('2');
+  });
 });
 
 describe('AdministrationPage with invoicing off', () => {
