@@ -68,6 +68,21 @@ under [Abuse limits](#abuse-limits). To prove ownership the customer
 declares a contact the profile already had and verifies it; from then on GET and PUT work on the
 whole profile, which keeps its earlier name until the customer changes it.
 
+## Order history
+
+GET /orders lists a request when any of these holds:
+
+- the customer authored it in the portal;
+- it belongs to a profile the customer proved (`includes_profile_history`), with its whole past;
+- it belonged to a provisional profile merged into theirs on proof, which the merge snapshots;
+- it arrived from a contact the customer proved, at or after that proof.
+
+The last rule compares the inbound message's `provider_received_at`, the provider's arrival time,
+with `customer_contact_ownership.verified_at`. A phone or email that changes hands therefore opens
+only what its new owner sent: an order from a recycled company number stays with the customer who
+had it then. Ownership is timed by the first proof; repeating the proof keeps that time, and
+removing the contact deletes the row, so adding it again starts a new period.
+
 ## Deterministic channel onboarding
 
 WhatsApp and Gmail intake identify senders by verified channel contact, never by a claimed CUIT or
@@ -250,7 +265,8 @@ customer-entered contacts to the identity that entered them. Migration 00065 add
 delivery lease. Migrations are executable; the
 consolidated database schema is a reference only.
 
-Integration tests cover proof-gated history movement, registered-name precedence, earlier-profile
+Integration tests cover proof-gated history movement, contact history bounded by the ownership
+period, registered-name precedence, earlier-profile
 adoption hidden until proof, immutable data,
 recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
 They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, a

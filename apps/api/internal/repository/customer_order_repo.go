@@ -9,6 +9,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
+// customerOrderFrom opens a request through a contact only if it arrived after this customer proved that contact.
 const customerOrderFrom = ` FROM rfq r
  JOIN branch b ON b.account_id=r.account_id AND b.id=r.branch_id
  LEFT JOIN quote qt ON qt.account_id=r.account_id AND qt.branch_id=r.branch_id AND qt.rfq_id=r.id
@@ -34,7 +35,7 @@ const customerOrderFrom = ` FROM rfq r
      SELECT 1 FROM client_contact_observation observation
      JOIN inbound_channel_message observed ON observed.account_id=observation.account_id AND observed.id=observation.message_id
      WHERE observation.account_id=$1 AND observed.account_id=$1 AND observed.branch_id=r.branch_id AND observed.rfq_id=r.id
-       AND observation.kind=contact.kind AND observation.value=contact.value
+       AND observation.kind=contact.kind AND observation.value=contact.value AND observed.provider_received_at>=ownership.verified_at
    ))
  ))`
 

@@ -66,7 +66,8 @@ func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier
 	return err
 }
 
-// MarkVerified activates exactly the destination whose ownership was proved.
+// MarkVerified activates exactly the destination whose ownership was proved. A repeated proof keeps
+// the first ownership time, which bounds the history the contact opens.
 func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
 	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, p.AccountID, clientID, kind, value)
 	if isUniqueViolation(err, "uq_verified_client_contact") {
@@ -83,7 +84,7 @@ func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, p
  JOIN client profile ON profile.account_id=c.account_id AND profile.id=c.client_id
  JOIN customer_identity i ON i.account_id=c.account_id AND i.id=$5 AND i.disabled_at IS NULL
  WHERE c.account_id=$1 AND c.client_id=$2 AND c.kind=$3 AND c.value=$4 AND c.retired_at IS NULL
- ON CONFLICT(account_id,customer_id,contact_id) DO UPDATE SET verified_at=now()`, p.AccountID, clientID, kind, value, p.CustomerID)
+ ON CONFLICT(account_id,customer_id,contact_id) DO UPDATE SET verified_at=customer_contact_ownership.verified_at`, p.AccountID, clientID, kind, value, p.CustomerID)
 	if err == nil && result.RowsAffected() != 1 {
 		return domain.ErrUnauthenticated
 	}
