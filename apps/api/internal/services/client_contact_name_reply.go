@@ -1,6 +1,7 @@
 package services
 
 import (
+	_ "embed"
 	"regexp"
 	"strings"
 	"time"
@@ -65,6 +66,16 @@ var nameReplyCourtesyWords = wordSet(`hola buenas buen buenos dia dias tardes no
 // nameReplyClosings end the reply: what follows is a signature.
 var nameReplyClosings = wordSet(`gracias saludos slds atte atentamente abrazo cordiales chau`)
 
+// givenNamesList holds common Spanish and Argentine given names, lowercase and unaccented. Compiled
+// for Coti from common usage (names are facts); no third-party list is copied.
+//
+//go:embed given_names.txt
+var givenNamesList string
+
+// nameReplyGivenNames anchors the rule: a reply is a name only when its first word is a given name, so
+// an unknown short message stays a message rather than becoming the customer's name.
+var nameReplyGivenNames = wordSet(givenNamesList)
+
 func wordSet(words string) map[string]bool {
 	set := map[string]bool{}
 	for _, word := range strings.Fields(words) {
@@ -73,9 +84,10 @@ func wordSet(words string) map[string]bool {
 	return set
 }
 
-// contactNameReply recognizes a reply to the name prompt: one short line of two to five name words,
-// letters only, with no digits, link, order or confirmation vocabulary, after greetings, «soy» and
-// closings are removed. The account's own catalog is checked separately by the caller.
+// contactNameReply recognizes a reply to the name prompt: one short line of two to five name words
+// that starts with a known given name, letters only, with no digits, link, order or confirmation
+// vocabulary, after greetings, «soy» and closings are removed. The account's own catalog is checked
+// separately by the caller.
 func contactNameReply(text string) (string, bool) {
 	var content []string
 	for _, line := range strings.Split(text, "\n") {
@@ -113,7 +125,7 @@ func contactNameReply(text string) (string, bool) {
 		}
 	}
 	words := foldedWords(name)
-	if letters < 2 || anyIn(words, nameReplyOrderWords) || allIn(words, nameReplyCourtesyWords) {
+	if letters < 2 || !nameReplyGivenNames[words[0]] || anyIn(words, nameReplyOrderWords) || allIn(words, nameReplyCourtesyWords) {
 		return "", false
 	}
 	nameWords := 0

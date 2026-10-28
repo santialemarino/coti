@@ -166,7 +166,7 @@ func TestContactNameReply_WhatsAppNameIsRefusedAfterAQuoteOrForACatalogWord(t *t
 	e := newEnv(t)
 	box := e.nameReplyInbox(t, "Name reply refusals", true)
 	ctx := context.Background()
-	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO product(account_id,canonical_name) VALUES($1,'Adhesivo Kerakoll Flex')`, box.account); err != nil {
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO product(account_id,canonical_name) VALUES($1,'Adhesivo Kerakoll Flex'),($1,'Arena gruesa')`, box.account); err != nil {
 		t.Fatal(err)
 	}
 	quoted, catalog := "+5491155550105", "+5491155550106"
@@ -176,9 +176,24 @@ func TestContactNameReply_WhatsAppNameIsRefusedAfterAQuoteOrForACatalogWord(t *t
 		destination: quoted, status: domain.QuoteStatusSent, expiresIn: 24 * time.Hour, archived: true})
 	box.send(t, quoted, "Juan Pérez")
 	box.send(t, catalog, "10 ladrillos")
-	box.send(t, catalog, "Kerakoll Gris")
+	box.send(t, catalog, "Juan Kerakoll")
 	if box.rfqs.created() != 4 || e.promptStatus(t, box.account, quoted) != "SENT" || e.promptStatus(t, box.account, catalog) != "SENT" {
 		t.Fatalf("refused replies: rfqs=%d", box.rfqs.created())
+	}
+	store := repository.NewClientContactRepository()
+	if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: box.account}, func(q repository.Querier) error {
+		for text, want := range map[string]bool{"Juan Gruesa": true, "Gruesa": true, "Juan Pérez": false, "de la": false} {
+			got, err := store.MentionsCatalog(ctx, q, box.account, text)
+			if err != nil {
+				return err
+			}
+			if got != want {
+				t.Errorf("MentionsCatalog(%q) = %v, want %v", text, got, want)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -288,10 +303,10 @@ func TestContactNameReply_AnAutoReplyIsNeverTheName(t *testing.T) {
 	}
 	away := order
 	away.ExternalMessageID = uuid.NewString()
-	away.Body = "Fuera de la oficina"
+	away.Body = "Ana López"
 	away.Automated = true
 	actual, err := service.Ingest(ctx, route, away)
-	if err != nil || actual == id || e.promptStatus(t, account, "compras@constructora.test") != "SENT" || e.profileName(t, account) == "Fuera de la oficina" {
+	if err != nil || actual == id || e.promptStatus(t, account, "compras@constructora.test") != "SENT" || e.profileName(t, account) == "Ana López" {
 		t.Fatalf("auto-reply was taken as the name: %v %v", actual == id, err)
 	}
 }
