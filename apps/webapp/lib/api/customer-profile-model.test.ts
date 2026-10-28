@@ -9,6 +9,7 @@ it('maps the complete commercial profile boundary independently of credentials',
       tax_id: '20123456786',
       name: 'Customer',
       review_pending: true,
+      ownership_unproved: true,
       contacts: [{ kind: 'EMAIL', value: 'one@example.test', primary: true }],
     }),
   ).toEqual({
@@ -19,6 +20,7 @@ it('maps the complete commercial profile boundary independently of credentials',
     taxId: '20123456786',
     name: 'Customer',
     reviewPending: true,
+    ownershipUnproved: true,
     contacts: [{ kind: 'EMAIL', value: 'one@example.test', primary: true }],
   });
 });
