@@ -275,8 +275,7 @@
     "backToLogin": "Volver al ingreso",
     "errors": {
       "invalid": "Revisá los datos ingresados.",
-      "wait": "Esperá un minuto antes de pedir otro código.",
-      "locked": "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+      "locked": "Hubo demasiados intentos. Esperá un rato y probá de nuevo.",
       "code": "El código no es válido, venció o ya se usó. Pedí uno nuevo.",
       "unavailable": "No pudimos completar la operación. Intentá de nuevo."
     }
@@ -338,9 +337,12 @@
       "invalid": "Revisá los datos ingresados.",
       "conflict": "Los datos cambiaron. Volvé a cargar la página e intentá de nuevo.",
       "unavailable": "No pudimos guardar tus datos. Intentá de nuevo.",
-      "verificationWait": "Esperá un minuto antes de pedir otro código o enlace.",
+      "verificationWait": "Pediste varios códigos para este contacto. Esperá un rato y probá de nuevo.",
       "verificationUnavailable": "No pudimos enviar la verificación. Intentá más tarde.",
       "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo.",
+      "verificationLocked": "Hubo demasiados intentos con este contacto. Esperá un rato y probá de nuevo.",
+      "tooManyRequests": "Hiciste muchos cambios seguidos. Esperá un minuto y probá de nuevo.",
+      "contactLimit": "Cargaste más contactos de los que admite la ficha. Quitá alguno y guardá de nuevo.",
       "mainUnverified": "Solo podés elegir un contacto verificado."
     },
     "reviewPending": "Recibimos datos de contacto nuevos con tu CUIT/CUIL. Revisá tus datos y agregalos si corresponden.",

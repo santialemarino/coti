@@ -51,12 +51,19 @@ type ClientContactService struct {
 	contacts    contactStore
 	messenger   domain.ContactMessenger
 	localOrigin string
+	maxContacts int
 	prompts     namePromptSettings
 }
 
 // NewClientContactService builds the commercial contact use cases.
 func NewClientContactService(db tenantTxRunner, profiles contactProfiles, contacts contactStore) *ClientContactService {
 	return &ClientContactService{db: db, profiles: profiles, contacts: contacts}
+}
+
+// WithContactLimit bounds how many contacts a customer can save on a profile.
+func (s *ClientContactService) WithContactLimit(max int) *ClientContactService {
+	s.maxContacts = max
+	return s
 }
 
 // ListSuggestions returns durable pending cases within the seller's branch reach.
@@ -172,6 +179,13 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 		if err != nil {
 			return err
 		}
+		stored, err := s.contacts.ListForCustomer(ctx, q, p, client.ID, access.Proved)
+		if err != nil {
+			return err
+		}
+		if err := s.checkContactLimit(contacts, len(stored)); err != nil {
+			return err
+		}
 		if !access.Proved {
 			if in.LegalName != nil || in.IVACondition != nil || in.Address != nil {
 				return domain.WithCode(domain.CodeProfileOwnershipUnproved, domain.ErrForbidden)
@@ -216,6 +230,15 @@ func (s *ClientContactService) SetMainContact(ctx context.Context, p domain.Cust
 		}
 		return s.contacts.SetMain(ctx, q, p, profiles[0].ID, kind, value)
 	})
+}
+
+// checkContactLimit refuses a save that grows the profile past the cap, so a profile a merge already
+// took past it can still be saved as it is.
+func (s *ClientContactService) checkContactLimit(contacts []domain.ClientContact, stored int) error {
+	if s.maxContacts > 0 && len(contacts) > max(stored, s.maxContacts) {
+		return domain.WithCode(domain.CodeContactLimit, domain.ErrInvalidInput)
+	}
+	return nil
 }
 
 // markDisplayedPrimary shows the first contact of each kind as primary, so a declared value that

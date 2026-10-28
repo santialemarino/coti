@@ -121,7 +121,7 @@ func TestCustomerProfile_AdoptedLegacyProfileStaysHiddenUntilOwnershipProof(t *t
 	store := repository.NewClientContactRepository()
 	messenger := &captureContactMessenger{}
 	service := services.NewClientContactService(e.db, repository.NewClientRepository(), store)
-	verifier := services.NewClientContactVerificationService(service, store, messenger, config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3})
+	verifier := services.NewClientContactVerificationService(service, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3}))
 	if _, err := verifier.Request(ctx, p, domain.ChannelTypeWhatsApp, "+5491155557777"); !errors.Is(err, domain.ErrNotFound) || len(messenger.messages) != 0 {
 		t.Fatalf("code sent to a contact the customer never entered: %v", err)
 	}

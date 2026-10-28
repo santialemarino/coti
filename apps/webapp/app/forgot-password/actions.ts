@@ -25,10 +25,10 @@ export interface RecoveryContact {
   preselected: boolean;
 }
 
-export type RecoveryError = 'invalid' | 'wait' | 'locked' | 'code' | 'unavailable';
+export type RecoveryError = 'invalid' | 'locked' | 'code' | 'unavailable';
 
 function errorForStatus(status: number): RecoveryError {
-  if (status === 423) return 'wait';
+  // A cooldown, a destination cap or lockout and the rate limit all answer 429.
   if (status === 429) return 'locked';
   if (status === 401) return 'code';
   if (status === 400 || status === 422) return 'invalid';

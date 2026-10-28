@@ -274,6 +274,9 @@ backoffice is one of those proxies — its calls are server-side, so until a hop
 user in the product shares one rate-limit allowance, which is the one switch worth flipping early.
 `WEB_TRUSTED_PROXY_HOPS` on the backoffice moves with it, and what each is worth depends on how many
 proxies the platform actually puts in front; the spec leaves both at the `.env.example` default.
+The customer webapp is the same case: its `WEB_TRUSTED_PROXY_HOPS` decides whether it forwards the
+visitor's address, and until the API trusts it every portal customer shares one bucket on the
+per-address limits — customer login and the contact verification and profile routes alike.
 
 The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
 

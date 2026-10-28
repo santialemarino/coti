@@ -41,6 +41,9 @@ type RateLimitOptions struct {
 	// Identify reads a stable caller identity from a bearer, when there is one. It is here
 	// only to have something to count by and never stands in for session validation.
 	Identify func(token string) (string, bool)
+	// PerCustomer counts by the customer RequireCustomer authenticated, so it only means something
+	// on a route mounted after it.
+	PerCustomer bool
 }
 
 // Allowance reports whether a caller may go on, and has already answered 429 when not. It is
@@ -93,6 +96,11 @@ func refuseRateLimited(c *gin.Context, retryIn time.Duration) {
 }
 
 func callerKey(c *gin.Context, opts RateLimitOptions) string {
+	if opts.PerCustomer {
+		if p, ok := CustomerFrom(c); ok {
+			return "customer:" + p.AccountID.String() + ":" + p.CustomerID.String()
+		}
+	}
 	if opts.Identify != nil {
 		if raw := bearerToken(c); raw != "" {
 			if id, valid := opts.Identify(raw); valid {

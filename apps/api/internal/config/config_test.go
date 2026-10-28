@@ -31,7 +31,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REQUIRE_VERIFIED_EMAIL", "AUTH_INVITE_TTL_HOURS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
-		"RATE_LIMIT_AI_MAX",
+		"RATE_LIMIT_AI_MAX", "RATE_LIMIT_CONTACT_VERIFICATION_MAX", "RATE_LIMIT_PROFILE_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
@@ -179,6 +179,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.RateLimit.AI != 10 {
 		t.Errorf("RateLimit.AI = %d, want 10", cfg.RateLimit.AI)
+	}
+	if cfg.RateLimit.ContactVerification != 5 || cfg.RateLimit.Profile != 10 {
+		t.Errorf("RateLimit.ContactVerification, Profile = %d, %d, want 5, 10", cfg.RateLimit.ContactVerification, cfg.RateLimit.Profile)
 	}
 	if !cfg.RateLimit.Enabled {
 		t.Error("RateLimit.Enabled = false, want true by default")
@@ -769,6 +772,16 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "an AI allowance wider than the global one",
 			mutate:  func(e map[string]string) { e["RATE_LIMIT_AI_MAX"] = "301" },
 			wantSub: "RATE_LIMIT_AI_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
+		},
+		{
+			name:    "a contact verification allowance of nothing",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_CONTACT_VERIFICATION_MAX"] = "0" },
+			wantSub: "RATE_LIMIT_CONTACT_VERIFICATION_MAX must be at least 1",
+		},
+		{
+			name:    "a profile allowance wider than the global one",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_PROFILE_MAX"] = "301" },
+			wantSub: "RATE_LIMIT_PROFILE_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
 		},
 		{
 			name:    "an order bounded at nothing",

@@ -85,7 +85,8 @@ func (h *ClientContactHandler) WithVerification(service contactVerificationServi
 // @Param hostname path string true "Registered supplier hostname"
 // @Param body body dto.ContactVerificationRequest true "Saved contact destination"
 // @Success 200 {object} dto.ContactVerificationResponse
-// @Failure 401,404,409,422,423,503 {object} dto.ErrorResponse
+// @Failure 401,404,409,422,503 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout"
 // @Router /v1/customer/sites/{hostname}/profile/contacts/verification [post]
 func (h *ClientContactHandler) RequestVerification(c *gin.Context) {
 	p, ok := middleware.CustomerFrom(c)
@@ -119,6 +120,7 @@ func (h *ClientContactHandler) RequestVerification(c *gin.Context) {
 // @Param body body dto.ContactVerificationConfirmation true "Challenge and received proof"
 // @Success 204
 // @Failure 401,403,404,409,422 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout"
 // @Router /v1/customer/sites/{hostname}/profile/contacts/verification/confirm [post]
 func (h *ClientContactHandler) ConfirmVerification(c *gin.Context) {
 	p, ok := middleware.CustomerFrom(c)
@@ -183,6 +185,7 @@ func (h *ClientContactHandler) GetProfile(c *gin.Context) {
 // @Param body body dto.UpdateCustomerProfileRequest true "Commercial profile"
 // @Success 204
 // @Failure 400,401,403,409,422 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "Rate limit spent; retry_after_seconds says when"
 // @Router /v1/customer/sites/{hostname}/profile [put]
 func (h *ClientContactHandler) UpdateProfile(c *gin.Context) {
 	p, ok := middleware.CustomerFrom(c)

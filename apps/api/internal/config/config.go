@@ -249,6 +249,10 @@ type RateLimitConfig struct {
 	// AI bounds the routes billed per call by a provider, the way Mail bounds the ones whose
 	// effect is a message. The global allowance is far too wide for a route that costs money.
 	AI int
+	// ContactVerification bounds requesting and confirming a customer contact proof, per customer and per address.
+	ContactVerification int
+	// Profile bounds a customer's profile saves, per customer and per address.
+	Profile int
 	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
 	// mailbox receives however many callers ask for it.
 	MailPerAddress int
@@ -920,16 +924,18 @@ func Load() (*Config, error) {
 			SignedURLExpiry: getDuration("STORAGE_SIGNED_URL_EXPIRY_MINUTES", 15*time.Minute, &problems),
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
-			Window:           getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
-			Global:           getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
-			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
-			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
-			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
-			AI:               getInt("RATE_LIMIT_AI_MAX", 10, &problems),
-			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
-			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
-			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
+			Enabled:             getBool("RATE_LIMIT_ENABLED", true, &problems),
+			Window:              getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
+			Global:              getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
+			Credentials:         getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
+			Signup:              getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
+			Mail:                getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			AI:                  getInt("RATE_LIMIT_AI_MAX", 10, &problems),
+			ContactVerification: getInt("RATE_LIMIT_CONTACT_VERIFICATION_MAX", 5, &problems),
+			Profile:             getInt("RATE_LIMIT_PROFILE_MAX", 10, &problems),
+			MailPerAddress:      getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
+			TrustedProxyHops:    getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
+			TrustedProxies:      getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		RFQ: RFQConfig{
 			MaxTextCharacters:  getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
@@ -1333,6 +1339,8 @@ func Load() (*Config, error) {
 			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
 			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
 			{"RATE_LIMIT_AI_MAX", cfg.RateLimit.AI},
+			{"RATE_LIMIT_CONTACT_VERIFICATION_MAX", cfg.RateLimit.ContactVerification},
+			{"RATE_LIMIT_PROFILE_MAX", cfg.RateLimit.Profile},
 		}
 		if cfg.RateLimit.Global < 1 {
 			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")
