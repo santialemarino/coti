@@ -259,13 +259,15 @@ A global allowance over all of `/v1`, plus tighter ones on the surfaces a strang
 flood the database or someone's mailbox, and on the ones a **provider bills per call**. It sits
 **ahead of `Authenticate`**, so a flood is refused before it costs a query.
 
-| Scope         | Setting                      | Routes                                                                                    |
-| ------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
-| `global`      | `RATE_LIMIT_GLOBAL_MAX`      | all of `/v1`                                                                              |
-| `credentials` | `RATE_LIMIT_CREDENTIALS_MAX` | login, reset-password, verify-email                                                       |
-| `signup`      | `RATE_LIMIT_SIGNUP_MAX`      | public account registration                                                               |
-| `mail`        | `RATE_LIMIT_MAIL_MAX`        | forgot-password, resend-verification, change-email, admin reset, invite create and resend |
-| `ai`          | `RATE_LIMIT_AI_MAX`          | the RFQ text draft and the development intake                                             |
+| Scope                                | Setting                               | Routes                                                                                    |
+| ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `global`                             | `RATE_LIMIT_GLOBAL_MAX`               | all of `/v1`                                                                              |
+| `credentials`                        | `RATE_LIMIT_CREDENTIALS_MAX`          | login, reset-password, verify-email                                                       |
+| `signup`                             | `RATE_LIMIT_SIGNUP_MAX`               | public account registration                                                               |
+| `mail`                               | `RATE_LIMIT_MAIL_MAX`                 | forgot-password, resend-verification, change-email, admin reset, invite create and resend |
+| `ai`                                 | `RATE_LIMIT_AI_MAX`                   | the RFQ text draft and the development intake                                             |
+| `contact-request`, `contact-confirm` | `RATE_LIMIT_CONTACT_VERIFICATION_MAX` | customer contact proof request and confirm, per customer and per address                  |
+| `customer-profile`                   | `RATE_LIMIT_PROFILE_MAX`              | customer PUT /profile, per customer and per address                                       |
 
 Creating a user spends the `mail` allowance only with `"invite": true`, since a password handed over
 mails nobody. The route cannot carry the middleware for that, so the handler runs the same check
