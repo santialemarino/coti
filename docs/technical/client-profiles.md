@@ -95,16 +95,20 @@ contact and no quote sent to it. The message must have no attachments and pass t
 `client_contact_name_reply.go`. Greeting and closing lines («Hola», «Saludos», «Gracias») and a
 leading «soy», «me llamo», «mi nombre es» or «Nombre y apellido:» are dropped. Exactly one line must
 then remain, of at most 60 characters, with two to five name words (particles such as «de», «la»,
-«del», «van» do not count), made of letters (plus spaces, apostrophes, hyphens and periods). It must
+«del», «van» do not count), made of letters (plus spaces, apostrophes, hyphens and periods). Its
+first word must be a known given name: the rule is anchored on an allow-list, `given_names.txt`
+(common Spanish and Argentine given names, lowercase and unaccented, embedded in the binary). It must
 contain no digit, link or address, no order or confirmation word (quantities, units, «necesito»,
 «precio», «confirmo», «cancel…», «paso», «factura», «foto», «ya», common materials and brands such as
 «cemento» or «Klaukol»), and no word of the supplier's own catalog (product names and synonyms). A
 match joins the request the prompt answered, updates the provisional name and creates no RFQ.
 Anything else follows the normal flow and the prompt stays pending.
 
-The rule is conservative, not exhaustive. A two-word reply made of words it does not know, inside
-the window and with no exchange since, is still taken as a name; the 24-hour window, the
-no-exchange check and the catalog check are what keep that case rare. In email, the quoted message
+The rule is anchored rather than exhaustive because its two errors do not cost the same: taking an
+order change as a name loses it, while missing a name only leaves one extra RFQ draft the seller can
+discard. So a reply that does not start with a known given name, such as «Agregá dos», «Todo bien»,
+a nickname or an initial, is an ordinary message: it follows the normal flow and the question stays
+pending. A name missing from the list is added to the file. In email, the quoted message
 (`>` lines, «El … escribió:», «On … wrote:», forwarded/original-message markers, Outlook headers and
 the rule of `_`, `-` or `=` above them), the `-- ` signature and common mobile signatures are removed
 before the rule runs, and automated mail is never a reply. The thresholds are constants, not
