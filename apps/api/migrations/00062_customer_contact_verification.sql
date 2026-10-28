@@ -3,8 +3,27 @@ ALTER TABLE channel ADD CONSTRAINT uq_channel_account_branch UNIQUE(account_id,b
 ALTER TABLE client_contact ADD COLUMN verified_at TIMESTAMPTZ;
 ALTER TABLE client_contact ALTER COLUMN verified_at SET DEFAULT now();
 ALTER TABLE client_contact ADD COLUMN retired_at TIMESTAMPTZ;
-UPDATE client_contact SET verified_at=created_at;
+SELECT assert_migration_sees_all_rows('client','client_contact','client_contact_observation','rfq','quote','branch');
 UPDATE client_contact SET retired_at=now() WHERE client_id IN (SELECT id FROM client WHERE merged_into IS NOT NULL);
+-- Only values shaped as NormalizeClientContact requires are trusted. Each live value keeps one owner: the
+-- profile with a CUIT, else the newest; every other copy stays unverified and goes to seller review.
+WITH valid AS (
+ SELECT c.id,c.account_id,c.client_id,c.kind,c.value,c.original_value,c.created_at,c.retired_at,cl.tax_id,cl.name,
+  row_number() OVER owners AS owner_rank,first_value(c.client_id) OVER owners AS owner_id
+ FROM client_contact c JOIN client cl ON cl.account_id=c.account_id AND cl.id=c.client_id
+ WHERE CASE c.kind WHEN 'WHATSAPP' THEN c.value ~ '^\+[1-9][0-9]{6,14}$' ELSE c.value ~ '^[^[:space:]@]+@[^[:space:]@]+$' END
+ WINDOW owners AS (PARTITION BY c.account_id,c.kind,c.value,c.retired_at IS NULL ORDER BY cl.tax_id IS NOT NULL DESC,cl.created_at DESC,cl.id DESC)
+), verified AS (
+ UPDATE client_contact c SET verified_at=v.created_at FROM valid v WHERE c.id=v.id AND (v.owner_rank=1 OR v.retired_at IS NOT NULL)
+)
+INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status)
+SELECT account_id,branch_id,client_id,owner_id,tax_id,kind,value,name,original_text,'PENDING' FROM (
+ SELECT v.*,COALESCE(v.original_value,v.value) AS original_text,COALESCE(
+  (SELECT branch_id FROM rfq WHERE account_id=v.account_id AND client_id=v.client_id ORDER BY created_at DESC,id DESC LIMIT 1),
+  (SELECT branch_id FROM quote WHERE account_id=v.account_id AND client_id=v.client_id ORDER BY created_at DESC,id DESC LIMIT 1),
+  (SELECT id FROM branch WHERE account_id=v.account_id ORDER BY created_at,id LIMIT 1)) AS branch_id
+ FROM valid v WHERE v.owner_rank>1 AND v.retired_at IS NULL
+) duplicate WHERE branch_id IS NOT NULL;
 CREATE UNIQUE INDEX uq_verified_client_contact ON client_contact(account_id,kind,value) WHERE verified_at IS NOT NULL AND retired_at IS NULL;
 
 CREATE TABLE client_contact_challenge (
