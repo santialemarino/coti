@@ -124,23 +124,25 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		if rfqID != uuid.Nil {
 			return nil
 		}
-		reuse := false
-		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && declaredNamePattern.MatchString(strings.TrimSpace(message.Body)) {
+		var nameReply *string
+		// An out-of-office answer to the prompt is short too; automated mail never counts as the reply.
+		human := !message.Automated && !automatedEmailSender(message.SenderID)
+		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && human {
 			if err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
-				pending, err := resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeEmail, message.SenderID)
+				pending, name, err := resolver.NameReply(ctx, q, route, domain.ChannelTypeEmail, message.SenderID, emailReplyText(message.Body))
 				if err == nil && pending != nil {
 					rfqID = *pending
-					reuse = true
+					nameReply = &name
 				}
 				return err
 			}); err != nil {
 				return err
 			}
 		}
-		if !reuse {
+		if nameReply == nil {
 			rfqID = uuid.New()
 		}
-		if err := s.storeOne(ctx, route, rfqID, message, reuse); err != nil {
+		if err := s.storeOne(ctx, route, rfqID, message, nameReply); err != nil {
 			return err
 		}
 		if s.onRecorded != nil {
@@ -152,16 +154,21 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		return uuid.Nil, err
 	}
 	if completer, ok := s.contacts.(inboundContactCompleter); ok {
-		if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeEmail, message.SenderID); err != nil {
+		reply := domain.ContactReplyContext{Automated: message.Automated || automatedEmailSender(message.SenderID),
+			MessageID: message.InternetMessageID}
+		if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeEmail, message.SenderID, reply); err != nil {
 			return uuid.Nil, err
 		}
 	}
 	return rfqID, nil
 }
 
+// storeOne retains the message under rfqID; a recognized name reply joins the pending request
+// instead of opening one.
 func (s *EmailInboundService) storeOne(ctx context.Context, route domain.InboundChannelRoute,
-	rfqID uuid.UUID, message domain.InboundEmailMessage, reuse bool,
+	rfqID uuid.UUID, message domain.InboundEmailMessage, nameReply *string,
 ) error {
+	reuse := nameReply != nil
 	files := make([]domain.NewRetainedAttachment, 0, len(message.Attachments)+2)
 	addFile := func(filename, contentType, extension string, kind domain.AttachmentType,
 		status domain.AttachmentProcessingStatus, data []byte) error {
@@ -280,7 +287,11 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			return errInboundAlreadyReserved
 		}
 		if s.contacts != nil {
-			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, channelClientData(message.Body, &message.SenderLabel)); err != nil {
+			hints := channelClientData(message.Body, &message.SenderLabel)
+			if nameReply != nil {
+				hints.Name = nameReply
+			}
+			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, hints); err != nil {
 				return err
 			}
 		}

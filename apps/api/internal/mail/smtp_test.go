@@ -186,6 +186,41 @@ func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
 	}
 }
 
+// A name prompt answers the customer's own mail, so it carries the supplier's name and threads
+// under that mail, while the sending address stays the platform's.
+func TestSMTPMailer_Send_ActsForTheSupplierInTheCustomersThread(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, inReplyTo, want string
+	}{
+		{name: "a valid id", inReplyTo: "<abc@mail.gmail.test>", want: "<abc@mail.gmail.test>"},
+		{name: "an injected header", inReplyTo: "<abc@x.test>\r\nBcc: victim@x.test"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			server := startFakeSMTP(t, nil)
+			err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(),
+				domain.EmailMessage{To: testTo, Subject: smtpSubject, TextBody: smtpText,
+					FromName: "Corralón San Martín", InReplyTo: tc.inReplyTo})
+			if err != nil {
+				t.Fatalf("Send() = %v, want no error", err)
+			}
+			got := server.delivered(t)
+			msg, err := netmail.ReadMessage(strings.NewReader(got.data))
+			if err != nil {
+				t.Fatalf("the adapter wrote no parseable message: %v", err)
+			}
+			from, err := netmail.ParseAddress(msg.Header.Get("From"))
+			if err != nil || from.Name != "Corralón San Martín" || from.Address != testFrom {
+				t.Fatalf("From = %q (%v), want the supplier's name at the platform address", msg.Header.Get("From"), err)
+			}
+			if msg.Header.Get("In-Reply-To") != tc.want || msg.Header.Get("References") != tc.want || msg.Header.Get("Bcc") != "" {
+				t.Fatalf("threading headers = %q / %q, bcc %q", msg.Header.Get("In-Reply-To"), msg.Header.Get("References"), msg.Header.Get("Bcc"))
+			}
+		})
+	}
+}
+
 func TestSMTPMailer_Send_AuthenticatesWhenTheServerOffersIt(t *testing.T) {
 	t.Parallel()
 	server := startFakeSMTP(t, []string{"AUTH PLAIN"})

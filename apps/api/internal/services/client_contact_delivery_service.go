@@ -10,6 +10,7 @@ import (
 )
 
 type contactChannelStore interface {
+	GetContactMailbox(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ContactMailbox, error)
 	GetMessagingConfiguration(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType) (*domain.ChannelConfiguration, error)
 }
 
@@ -34,11 +35,7 @@ func (s *ClientContactDeliveryService) SendContact(ctx context.Context, message 
 		return "", domain.ErrForbidden
 	}
 	if message.Kind == domain.ChannelTypeEmail {
-		if s.mail == nil {
-			return "", domain.ErrNotConfigured
-		}
-		err := s.mail.Send(ctx, domain.EmailMessage{To: message.To, Subject: "Completá tus datos en Coti", TextBody: message.Body})
-		return "", err
+		return "", s.sendEmail(ctx, message)
 	}
 	if message.Kind != domain.ChannelTypeWhatsApp || s.whatsapp == nil || s.opener == nil {
 		return "", domain.ErrNotConfigured
@@ -71,4 +68,37 @@ func (s *ClientContactDeliveryService) SendContact(ctx context.Context, message 
 		return "", domain.ErrNotConfigured
 	}
 	return receipt.ProviderReference, nil
+}
+
+// sendEmail answers a name prompt as the supplier's branch mailbox; customer proofs keep the
+// platform sender because they do not answer anything the customer wrote to a branch.
+func (s *ClientContactDeliveryService) sendEmail(ctx context.Context, message domain.ContactMessage) error {
+	if s.mail == nil {
+		return domain.ErrNotConfigured
+	}
+	email := domain.EmailMessage{To: message.To, TextBody: message.Body}
+	switch message.Purpose {
+	case domain.ContactPurposeVerification:
+		email.Subject = contactVerificationSubject
+	case domain.ContactPurposeRegistrationLink:
+		email.Subject = contactRegistrationLinkSubject
+	case domain.ContactPurposeNameRequest:
+		var mailbox *domain.ContactMailbox
+		err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: message.AccountID}, func(q repository.Querier) error {
+			var err error
+			mailbox, err = s.store.GetContactMailbox(ctx, q, message.AccountID, message.BranchID, message.ChannelID)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		email.Subject = contactNamePromptSubject(mailbox.SupplierName)
+		email.FromName = mailbox.SupplierName
+		email.ReplyTo = mailbox.Address
+		email.ReplyToName = mailbox.SupplierName + " — " + mailbox.BranchName
+		email.InReplyTo = message.InReplyTo
+	default:
+		return domain.ErrInvalidInput
+	}
+	return s.mail.Send(ctx, email)
 }

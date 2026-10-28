@@ -74,19 +74,59 @@ WhatsApp and Gmail intake identify senders by verified channel contact, never by
 an inferred name. A known contact uses its existing profile without asking for a name again. An
 unknown sender immediately receives a provisional profile without CUIT, using the channel display
 name, or the contact value if the provider supplies none. An explicit full-name declaration takes
-precedence. The request continues processing while a fixed backend message asks for the full name
-through the same channel. The accepted response starts with the full-name label shown
-in the prompt. AI does not draft, decide or initiate this automatic onboarding request.
+precedence. The request continues processing while a fixed backend message (decision 79) asks for
+the full name through the same channel. The text is the same for every unknown sender, so it reveals
+no profile data. AI does not draft, decide or initiate this automatic onboarding request.
 
-A name-only reply to a pending prompt updates the provisional name without creating another RFQ.
+By email the prompt answers as the supplier: it goes through the platform mailer (the only address the
+provider lets Coti send as) with the supplier's name as the sender name, the subject "Tu pedido a
+<supplier>", Reply-To set to the branch mailbox, and In-Reply-To/References set to the customer's
+Message-ID so it threads under their mail. The Gmail connection is read-only, so it cannot send from
+the mailbox itself. Mail from a `no-reply`, `mailer-daemon`, `postmaster` or `bounce*` address, or
+carrying `Auto-Submitted` (other than `no`), `Precedence: bulk|list|junk`, `List-Id` or
+`List-Unsubscribe`, `X-Autoreply` or `X-Autorespond`, a null `Return-Path` or a `multipart/report`
+body (a bounce), never gets a prompt. Contact verification and the registration link keep their
+own subjects.
+
+A message only counts as the name reply when nothing else claims it. A live quote conversation
+takes it first, so «Confirmo» answers the quote. Otherwise the prompt must be answerable: status
+SENT, delivered less than 24 hours ago, and no exchange since, meaning no later message from that
+contact and no quote sent to it. The message must have no attachments and pass the rule in
+`client_contact_name_reply.go`. Greeting and closing lines («Hola», «Saludos», «Gracias») and a
+leading «soy», «me llamo», «mi nombre es» or «Nombre y apellido:» are dropped. Exactly one line must
+then remain, of at most 60 characters, with two to five name words (particles such as «de», «la»,
+«del», «van» do not count), made of letters (plus spaces, apostrophes, hyphens and periods). Its
+first word must be a known given name: the rule is anchored on an allow-list, `given_names.txt`
+(common Spanish and Argentine given names, lowercase and unaccented, embedded in the binary). It must
+contain no digit, link or address, no order or confirmation word (quantities, units, «necesito»,
+«precio», «confirmo», «cancel…», «paso», «factura», «foto», «ya», number words and edit verbs such as
+«dos», «más», «agregá» or «sumale», common materials and brands such as «cemento» or «Klaukol»), and
+no word of the supplier's own catalog (product names and synonyms). A
+match joins the request the prompt answered, updates the provisional name and creates no RFQ.
+Anything else follows the normal flow and the prompt stays pending.
+
+The rule is anchored rather than exhaustive because its two errors do not cost the same: taking an
+order change as a name loses it, while missing a name only leaves one extra RFQ draft the seller can
+discard. So a reply that does not start with a known given name, such as «Agregá dos», «Todo bien»,
+a nickname or an initial, is an ordinary message: it follows the normal flow and the question stays
+pending. Given names that are also everyday words (days, months, «Franco», «Ángel», «Victoria»,
+«Vale») are left out of the list on purpose. A name missing from the list is added to the file. In email, the quoted message
+(`>` lines, «El … escribió:», «On … wrote:», forwarded/original-message markers, Outlook headers and
+the rule of `_`, `-` or `=` above them), the `-- ` signature and common mobile signatures are removed
+before the rule runs, and automated mail is never a reply. The thresholds are constants, not
+settings: raising them lets orders through as names.
+
 Known contacts are not prompted again. Later requests do not overwrite the confirmed name; portal
-requests never overwrite an existing profile name. The original request text and provider messages are preserved. Email retains the original reply MIME
-without adding its name text to the extraction queue. Event replays remain idempotent. Observations
-retain the source event, branch, contact, declared name/CUIT and original text.
+requests never overwrite an existing profile name. The original request text and provider messages
+are preserved. Email retains the original reply MIME without adding its name text to the extraction
+queue. Event replays remain idempotent. Observations retain the source event, branch, contact,
+declared name/CUIT and original text.
 
-A durable outbox records prompt status and provider acknowledgement. Delivery occurs after the
-ingestion transaction. Failed dispatch is retried on subsequent intake/replay. An uncertain SENDING
-entry needs operational reconciliation before retry, to avoid duplicate customer messages.
+A durable outbox records prompt status, the time of the last status change and provider
+acknowledgement. Delivery occurs after the ingestion transaction. Failed dispatch is retried on the
+contact's next message. An entry left in SENDING by a crash is claimed again once it is older than
+CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES, so it is never stranded; a delivery still inside its lease is
+not claimed twice.
 
 Contact detection locks normalized contact keys and then fiscal/profile keys using transaction-level
 PostgreSQL advisory locks, with stable ordering. Unrelated contacts of the same supplier do not
@@ -133,6 +173,7 @@ send channel messages; they do not create browser/device push notifications.
 | CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES      | 10      | Contact proof lifetime                          |
 | CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS | 60      | Minimum interval between proofs                 |
 | CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS     | 5       | Failed-attempt limit                            |
+| CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES          | 5       | Age at which a stuck name prompt is reclaimed   |
 | WHATSAPP_CONTACT_CODE_TEMPLATE                 | empty   | Approved Meta authentication copy-code template |
 | WHATSAPP_CONTACT_CODE_LANGUAGE                 | es_AR   | Approved template language                      |
 
@@ -154,12 +195,19 @@ Migration 00063 stores customer-specific ownership and proof-gated provisional h
 and composite tenant foreign keys. Legacy commercial verification does not substitute for a
 customer proof; My data shows those contacts as pending until this account verifies them. No shared contact is deleted
 or silently merged. Migration 00064 adds `client_contact.declared_by` and attributes existing
-customer-entered contacts to the identity that entered them. Migrations are executable; the
+customer-entered contacts to the identity that entered them. Migration 00065 adds the outbox's
+`status_changed_at`, backfilled from `created_at`, which bounds both the reply window and the
+delivery lease. Migrations are executable; the
 consolidated database schema is a reference only.
 
 Integration tests cover proof-gated history movement, registered-name precedence, earlier-profile
 adoption hidden until proof, immutable data,
 recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
+They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, a
+quote reply that stays in its conversation, refusals after a quote or for a catalog word, the
+delivered-prompt and 24-hour conditions, auto-replies and automated senders, the supplier-named
+email prompt and the reclaimed delivery lease; unit tests cover the reply rule and the email
+stripping case by case, and a scripts test covers the 00065 backfill.
 
 ## Profiles and accepted sales
 

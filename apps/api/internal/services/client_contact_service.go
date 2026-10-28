@@ -50,6 +50,7 @@ type ClientContactService struct {
 	contacts    contactStore
 	messenger   domain.ContactMessenger
 	localOrigin string
+	prompts     namePromptSettings
 }
 
 // NewClientContactService builds the commercial contact use cases.
