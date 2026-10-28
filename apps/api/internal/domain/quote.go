@@ -247,6 +247,7 @@ type QuoteItemAlternative struct {
 	Rank               int
 	ConfidenceScore    decimal.NullDecimal
 	PriceSnapshot      decimal.NullDecimal
+	MinPriceSnapshot   decimal.NullDecimal
 	ApprovedBySeller   bool
 	ChosenByClient     bool
 	Code               *string
@@ -266,12 +267,14 @@ type NewQuoteItemAlternative struct {
 	Rank               int
 	ConfidenceScore    decimal.NullDecimal
 	PriceSnapshot      decimal.NullDecimal
+	MinPriceSnapshot   decimal.NullDecimal
 }
 
 // QuoteItemAlternativePricing is the frozen catalog price for one offered product.
 type QuoteItemAlternativePricing struct {
-	AlternativeID uuid.UUID
-	PriceSnapshot decimal.NullDecimal
+	AlternativeID    uuid.UUID
+	PriceSnapshot    decimal.NullDecimal
+	MinPriceSnapshot decimal.NullDecimal
 }
 
 // QuoteItemUpdate is the mutable surface of a quote item. All fields are optional:

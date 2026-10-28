@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -23,6 +24,11 @@ type quoteVersionCloneRepository interface {
 		itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
 	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		alternatives []domain.NewQuoteItemAlternative) error
+}
+
+type quoteVersionFreezer interface {
+	FreezeVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
+		versionID uuid.UUID) (*domain.QuoteVersion, error)
 }
 
 // draftDiscountCopier copies the seller's discount decisions from a version into a draft cloned
@@ -63,9 +69,137 @@ func (c *draftCarry) apply(ctx context.Context, q repository.Querier,
 	return c.totals.UpdateVersionTotal(ctx, q, accountID, draftID, total)
 }
 
+func (c *draftCarry) applySelectionSnapshot(ctx context.Context, q repository.Querier,
+	quotes quoteVersionCloneRepository, accountID, branchID, sourceID, draftID uuid.UUID,
+	snapshot domain.QuoteSelectionPricingSnapshot,
+) (*domain.QuoteVersion, error) {
+	if err := c.discounts.CopySellerDecisions(ctx, q, accountID, sourceID, draftID); err != nil {
+		return nil, err
+	}
+	items, err := quotes.ListItems(ctx, q, accountID, draftID)
+	if err != nil {
+		return nil, err
+	}
+	total, err := c.sweep.settleWithSnapshot(ctx, q, accountID, branchID, draftID, items, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	return c.totals.UpdateVersionTotal(ctx, q, accountID, draftID, total)
+}
+
 type quoteVersionClone struct {
 	Draft         *domain.QuoteVersion
 	SourceItemIDs map[uuid.UUID]uuid.UUID
+}
+
+// cloneQuoteVersionForClientSelection materializes an answer to a sent offer without rewriting
+// that offer. The new version keeps every sent line's snapshots except the approved products the
+// customer explicitly selected.
+func cloneQuoteVersionForClientSelection(
+	ctx context.Context, q repository.Querier, quotes quoteVersionCloneRepository,
+	freezer quoteVersionFreezer,
+	accountID, branchID, quoteID uuid.UUID, source domain.QuoteVersion,
+	selections []domain.ClientAlternativeSelection, carry *draftCarry,
+	snapshot domain.QuoteSelectionPricingSnapshot,
+) (*domain.QuoteVersion, error) {
+	if carry == nil || snapshot.CapturedAt.IsZero() {
+		return nil, domain.ErrNotConfigured
+	}
+	items, err := quotes.ListItems(ctx, q, accountID, source.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, domain.ErrInvalidInput
+	}
+	alternatives, err := quotes.ListAlternativesByItemIDs(ctx, q, accountID, quoteItemIDs(items))
+	if err != nil {
+		return nil, err
+	}
+	selected, err := selectedAlternatives(items, alternatives, selections)
+	if err != nil {
+		return nil, err
+	}
+	comment := "Customer-selected alternatives"
+	draft, err := quotes.CreateVersion(ctx, q, accountID, domain.NewQuoteVersion{
+		QuoteID: quoteID, VersionNumber: source.VersionNumber + 1, Currency: source.Currency,
+		Total: decimal.Zero, Comment: &comment,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cloned := make([]domain.NewQuoteItem, 0, len(items))
+	for _, item := range items {
+		copy := domain.NewQuoteItem{ID: uuid.New(), ProductID: item.ProductID,
+			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity, Unit: item.Unit,
+			UnitPriceSnapshot: item.UnitPriceSnapshot, MinPriceSnapshot: item.MinPriceSnapshot,
+			Subtotal: item.Subtotal, ConfidenceScore: item.ConfidenceScore, MatchStatus: item.MatchStatus,
+			QuantityRationale: item.QuantityRationale, SourceItemID: &item.ID}
+		if alternative, chosen := selected[item.ID]; chosen {
+			copy.ProductID = alternative.ProductID
+			copy.UnitPriceSnapshot = alternative.PriceSnapshot
+			copy.MinPriceSnapshot = alternative.MinPriceSnapshot
+			copy.Subtotal = decimal.NewNullDecimal(roundMoney(item.Quantity.Mul(alternative.PriceSnapshot.Decimal)))
+			copy.ConfidenceScore = decimal.NullDecimal{}
+			copy.MatchStatus = domain.ItemMatchStatusMatched
+		}
+		cloned = append(cloned, copy)
+	}
+	if _, err := quotes.CreateItems(ctx, q, accountID, draft.ID, cloned); err != nil {
+		return nil, err
+	}
+	draft, err = carry.applySelectionSnapshot(ctx, q, quotes, accountID, branchID, source.ID, draft.ID, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := quotes.UpdateCurrentVersion(ctx, q, accountID, quoteID, draft.ID); err != nil {
+		return nil, err
+	}
+	frozen, err := freezer.FreezeVersion(ctx, q, accountID, branchID, quoteID, draft.ID)
+	if err != nil {
+		return nil, err
+	}
+	return frozen, nil
+}
+
+func selectedAlternatives(
+	items []domain.QuoteItem, alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
+	selections []domain.ClientAlternativeSelection,
+) (map[uuid.UUID]domain.QuoteItemAlternative, error) {
+	knownItems := make(map[uuid.UUID]struct{}, len(items))
+	for _, item := range items {
+		knownItems[item.ID] = struct{}{}
+	}
+	selected := make(map[uuid.UUID]domain.QuoteItemAlternative, len(selections))
+	for _, selection := range selections {
+		if selection.ItemID == uuid.Nil || selection.AlternativeID == uuid.Nil {
+			return nil, fmt.Errorf("%w: an alternative selection is incomplete", domain.ErrInvalidInput)
+		}
+		if _, exists := knownItems[selection.ItemID]; !exists {
+			return nil, domain.ErrNotFound
+		}
+		if _, exists := selected[selection.ItemID]; exists {
+			return nil, fmt.Errorf("%w: a line can only select one alternative", domain.ErrInvalidInput)
+		}
+		var candidate *domain.QuoteItemAlternative
+		for i := range alternatives[selection.ItemID] {
+			alternative := &alternatives[selection.ItemID][i]
+			if alternative.ID == selection.AlternativeID {
+				candidate = alternative
+				break
+			}
+		}
+		if candidate == nil || !candidate.ApprovedBySeller ||
+			candidate.Type != domain.QuoteItemAlternativeTypeProduct || candidate.ProductID == nil ||
+			!candidate.PriceSnapshot.Valid {
+			return nil, domain.ErrNotFound
+		}
+		if err := validateAmount(candidate.PriceSnapshot.Decimal, "alternative price"); err != nil {
+			return nil, err
+		}
+		selected[selection.ItemID] = *candidate
+	}
+	return selected, nil
 }
 
 func cloneQuoteVersionForEditing(

@@ -270,14 +270,20 @@ func (h *QuoteHandler) RespondPublic(c *gin.Context) {
 		RespondBindError(c, err)
 		return
 	}
+	selections := make([]domain.ClientAlternativeSelection, 0, len(request.Selections))
+	for _, selection := range request.Selections {
+		selections = append(selections, domain.ClientAlternativeSelection{ItemID: selection.ItemID,
+			AlternativeID: selection.AlternativeID})
+	}
 	result, err := h.delivery.RespondPublic(c.Request.Context(), c.Param("token"),
-		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message})
+		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message,
+			Selections: selections})
 	if err != nil {
 		Respond(c, err)
 		return
 	}
 	response := dto.PublicQuoteActionResponse{CustomerStatus: string(result.CustomerStatus),
-		CreatedAt: result.CreatedAt}
+		CreatedAt: result.CreatedAt, Total: result.Total}
 	status := string(result.QuoteStatus)
 	response.QuoteStatus = &status
 	c.Header("Cache-Control", "no-store")
@@ -317,12 +323,18 @@ func toQuoteRepresentationPayloadResponse(
 		alternatives := make([]dto.QuoteRepresentationAlternativeResponse, 0,
 			len(item.Alternatives))
 		for _, alternative := range item.Alternatives {
+			var recommendationType *string
+			if alternative.RecommendationType != nil {
+				value := string(*alternative.RecommendationType)
+				recommendationType = &value
+			}
 			alternatives = append(alternatives, dto.QuoteRepresentationAlternativeResponse{
-				Code: alternative.Code, Name: alternative.Name, Unit: alternative.Unit,
-				UnitPrice: alternative.UnitPrice})
+				ID: alternative.ID, Code: alternative.Code, Name: alternative.Name, Unit: alternative.Unit,
+				UnitPrice: alternative.UnitPrice, RecommendationType: recommendationType,
+				Selectable: alternative.Selectable})
 		}
 		items = append(items, dto.QuoteRepresentationItemResponse{
-			RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
+			ID: item.ID, RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
 			ProductName: item.ProductName, Quantity: item.Quantity, Unit: item.Unit,
 			UnitPrice: item.UnitPrice, Subtotal: item.Subtotal, Alternatives: alternatives})
 	}

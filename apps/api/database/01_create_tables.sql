@@ -628,10 +628,14 @@ CREATE TABLE quote_representation (
   pdf_size_bytes     BIGINT NOT NULL,
   pdf_sha256         CHAR(64) NOT NULL,
   logo_fallback_used BOOLEAN NOT NULL DEFAULT FALSE,
+  selection_pricing_snapshot JSONB,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_quote_representation_version UNIQUE (account_id, version_id),
   CONSTRAINT ck_quote_representation_schema CHECK (schema_version = 1),
   CONSTRAINT ck_quote_representation_payload CHECK (jsonb_typeof(payload) = 'object'),
+  CONSTRAINT ck_quote_representation_selection_snapshot CHECK (
+    selection_pricing_snapshot IS NULL OR jsonb_typeof(selection_pricing_snapshot) = 'object'
+  ),
   CONSTRAINT ck_quote_representation_message CHECK (length(message) > 0),
   CONSTRAINT ck_quote_representation_pdf_type CHECK (pdf_content_type = 'application/pdf'),
   CONSTRAINT ck_quote_representation_pdf_size CHECK (pdf_size_bytes > 0),
@@ -672,6 +676,7 @@ CREATE TABLE quote_item_alternative (
   recommendation_type product_alternative_type,
   origin             quote_item_alternative_origin NOT NULL,
   price_snapshot     NUMERIC(14,2),
+  min_price_snapshot NUMERIC(14,2),
   approved_by_seller BOOLEAN NOT NULL DEFAULT FALSE,
   chosen_by_client   BOOLEAN NOT NULL DEFAULT FALSE,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

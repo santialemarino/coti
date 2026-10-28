@@ -61,6 +61,8 @@ type quoteDeliveryQuoteRepository interface {
 		items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
 	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
+	MarkAlternativesChosenByClient(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		selections []domain.ClientAlternativeSelection) error
 	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		alternatives []domain.NewQuoteItemAlternative) error
 	DeleteAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
@@ -117,6 +119,11 @@ type quoteRepresentationEnsurer interface {
 		publicURL string) (*domain.PublicQuoteRepresentation, error)
 }
 
+type quoteDeliveryRepresentationReader interface {
+	GetByVersionID(ctx context.Context, q repository.Querier, accountID,
+		versionID uuid.UUID) (*domain.QuoteRepresentation, error)
+}
+
 type quotePublicDB interface {
 	tenantTxRunner
 	CrossAccount() repository.Querier
@@ -138,6 +145,7 @@ type QuoteDeliveryService struct {
 	email               quoteEmailSender
 	evaluator           QuoteQualityEvaluator
 	representations     quoteRepresentationEnsurer
+	selectionSnapshots  quoteDeliveryRepresentationReader
 	actions             clientActionRecorder
 	sellers             quoteSellerReader
 	windows             changeRequestQueue
@@ -163,6 +171,14 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 	representations quoteRepresentationEnsurer,
 ) *QuoteDeliveryService {
 	s.representations = representations
+	return s
+}
+
+// WithSelectionSnapshots supplies the private commercial snapshot attached to a sent offer.
+func (s *QuoteDeliveryService) WithSelectionSnapshots(
+	representations quoteDeliveryRepresentationReader,
+) *QuoteDeliveryService {
+	s.selectionSnapshots = representations
 	return s
 }
 
@@ -807,6 +823,37 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			if !ok {
 				return domain.ErrInvalidInput
 			}
+			var acceptedVersion *domain.QuoteVersion
+			if in.Type == domain.ClientActionAccept {
+				current, currentErr := s.quotes.GetCurrentVersion(ctx, q, accountID, quote.BranchID, quote.ID)
+				if currentErr != nil {
+					return currentErr
+				}
+				acceptedVersion = current
+				if len(in.Selections) > 0 {
+					if s.selectionSnapshots == nil || s.draftCarry == nil {
+						return domain.ErrNotConfigured
+					}
+					representation, representationErr := s.selectionSnapshots.GetByVersionID(ctx, q,
+						accountID, send.VersionID)
+					if representationErr != nil {
+						return representationErr
+					}
+					if representation.SelectionPricing == nil {
+						return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+					}
+					acceptedVersion, currentErr = cloneQuoteVersionForClientSelection(ctx, q, s.quotes, s.quotes,
+						accountID, quote.BranchID, quote.ID, *current, in.Selections, s.draftCarry,
+						*representation.SelectionPricing)
+					if currentErr != nil {
+						return currentErr
+					}
+					if currentErr = s.quotes.MarkAlternativesChosenByClient(ctx, q, accountID,
+						send.VersionID, in.Selections); currentErr != nil {
+						return currentErr
+					}
+				}
+			}
 			created, err := s.actions.Create(ctx, q, accountID, domain.NewClientAction{
 				ID: uuid.New(), QuoteSendID: &send.ID, VersionID: send.VersionID, Type: in.Type,
 				Comment: in.Message})
@@ -831,6 +878,10 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			}
 			result = &domain.PublicQuoteActionResult{CustomerStatus: created.Type,
 				CreatedAt: created.CreatedAt, QuoteStatus: target}
+			if acceptedVersion != nil {
+				total := acceptedVersion.Total.StringFixed(domain.MoneyScale)
+				result.Total = &total
+			}
 			if in.Type == domain.ClientActionAccept || in.Type == domain.ClientActionReject {
 				moved = &domain.ClientQuoteOutcome{QuoteID: updated.ID,
 					Reference: string(domain.QuoteReference(updated.Number)), Status: target,
@@ -946,6 +997,9 @@ func normalizeClientAction(in *domain.ClientActionInput) error {
 		utf8.RuneCountInString(*in.Message) > maxClientActionComment {
 		return fmt.Errorf("%w: comment must be at most %d characters",
 			domain.ErrInvalidInput, maxClientActionComment)
+	}
+	if in.Type != domain.ClientActionAccept && len(in.Selections) > 0 {
+		return fmt.Errorf("%w: alternatives can only be selected when accepting", domain.ErrInvalidInput)
 	}
 	return nil
 }

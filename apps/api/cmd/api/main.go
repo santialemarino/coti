@@ -274,7 +274,8 @@ func run() error {
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
 		cfg.Storage.SignedURLExpiry, nil, log).
 		WithHandlerDecisions(services.NewHandlerDecisionSettler(handlerDecisionRepo, quoteRepo,
-			quoteDiscountRepo))
+			quoteDiscountRepo)).
+		WithSelectionPricing(promotionRepo)
 	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
 		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
@@ -284,6 +285,7 @@ func run() error {
 			WithArgentineTestRecipientFallback(cfg.Environment == config.EnvironmentDevelopment), quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
+		WithSelectionSnapshots(quoteRepresentationRepo).
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).

@@ -14,7 +14,7 @@ import (
 
 const quoteRepresentationColumns = `id, account_id, branch_id, quote_id, version_id,
 	schema_version, payload, message, pdf_storage_key, pdf_content_type, pdf_size_bytes,
-	pdf_sha256, logo_fallback_used, created_at`
+	pdf_sha256, logo_fallback_used, selection_pricing_snapshot, created_at`
 
 // QuoteRepresentationRepository owns immutable representation persistence and its source read.
 type QuoteRepresentationRepository struct{}
@@ -51,12 +51,20 @@ func (r *QuoteRepresentationRepository) Create(
 	if err != nil {
 		return nil, err
 	}
+	var selectionPricing []byte
+	if in.SelectionPricing != nil {
+		selectionPricing, err = json.Marshal(in.SelectionPricing)
+		if err != nil {
+			return nil, err
+		}
+	}
 	representation, err := scanQuoteRepresentation(q.QueryRow(ctx,
 		`INSERT INTO quote_representation (
 		   id, account_id, branch_id, quote_id, version_id, schema_version, payload, message,
-		   pdf_storage_key, pdf_content_type, pdf_size_bytes, pdf_sha256, logo_fallback_used
+		   pdf_storage_key, pdf_content_type, pdf_size_bytes, pdf_sha256, logo_fallback_used,
+		   selection_pricing_snapshot
 		 )
-		 SELECT $2, $1, quote.branch_id, quote.id, version.id, $6, $7, $8, $9, $10, $11, $12, $13
+		 SELECT $2, $1, quote.branch_id, quote.id, version.id, $6, $7, $8, $9, $10, $11, $12, $13, $14
 		 FROM quote
 		 JOIN quote_version version ON version.account_id = $1 AND version.id = $5
 		                           AND version.quote_id = quote.id AND version.is_immutable = TRUE
@@ -64,7 +72,7 @@ func (r *QuoteRepresentationRepository) Create(
 		 RETURNING `+quoteRepresentationColumns,
 		accountID, in.ID, in.BranchID, in.QuoteID, in.VersionID, in.SchemaVersion, payload,
 		in.Message, in.PDFStorageKey, in.PDFContentType, in.PDFSizeBytes, in.PDFSHA256,
-		in.LogoFallbackUsed))
+		in.LogoFallbackUsed, selectionPricing))
 	if isUniqueViolation(err, "uq_quote_representation_version") {
 		return nil, domain.ErrConflict
 	}
@@ -171,7 +179,7 @@ func (r *QuoteRepresentationRepository) listApprovedAlternatives(
 	rows, err := q.Query(ctx, `SELECT alternative.id, alternative.account_id,
 		alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
 		alternative.recommendation_type, alternative.origin, alternative.rank, alternative.confidence_score,
-		alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
+		alternative.price_snapshot, alternative.min_price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
 		alternative.created_at, product.code, COALESCE(product.canonical_name, combo.name), product.unit
 	FROM quote_item_alternative alternative
 	JOIN quote_item item ON item.account_id = $1 AND item.version_id = $2
@@ -230,11 +238,13 @@ func quoteItemIDsForRepresentation(items []domain.QuoteItem) []uuid.UUID {
 func scanQuoteRepresentation(row pgx.Row) (*domain.QuoteRepresentation, error) {
 	var representation domain.QuoteRepresentation
 	var payload []byte
+	var selectionPricing []byte
 	err := row.Scan(&representation.ID, &representation.AccountID, &representation.BranchID,
 		&representation.QuoteID, &representation.VersionID, &representation.SchemaVersion,
 		&payload, &representation.Message, &representation.PDFStorageKey,
 		&representation.PDFContentType, &representation.PDFSizeBytes,
-		&representation.PDFSHA256, &representation.LogoFallbackUsed, &representation.CreatedAt)
+		&representation.PDFSHA256, &representation.LogoFallbackUsed, &selectionPricing,
+		&representation.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -243,6 +253,13 @@ func scanQuoteRepresentation(row pgx.Row) (*domain.QuoteRepresentation, error) {
 	}
 	if err := json.Unmarshal(payload, &representation.Payload); err != nil {
 		return nil, err
+	}
+	if len(selectionPricing) > 0 && string(selectionPricing) != "null" {
+		var snapshot domain.QuoteSelectionPricingSnapshot
+		if err := json.Unmarshal(selectionPricing, &snapshot); err != nil {
+			return nil, err
+		}
+		representation.SelectionPricing = &snapshot
 	}
 	return &representation, nil
 }

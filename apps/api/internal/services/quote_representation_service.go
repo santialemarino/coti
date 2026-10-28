@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,10 +59,18 @@ type QuoteRepresentationService struct {
 	log             *slog.Logger
 	// settler records the seller's decision on the handler runs a frozen draft carries.
 	settler handlerDecisionSettler
+	pricing quoteSelectionPricingReader
 }
 
 type handlerDecisionSettler interface {
 	Settle(ctx context.Context, q repository.Querier, tenant domain.Tenant, versionID uuid.UUID) error
+}
+
+type quoteSelectionPricingReader interface {
+	ListInForce(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
+		at time.Time) ([]domain.Promotion, error)
+	ListProductGroups(ctx context.Context, q repository.Querier, accountID uuid.UUID,
+		productIDs []uuid.UUID) (map[uuid.UUID]domain.ProductGroup, error)
 }
 
 // NewQuoteRepresentationService builds the representation orchestrator.
@@ -86,6 +95,14 @@ func NewQuoteRepresentationService(
 func (s *QuoteRepresentationService) WithHandlerDecisions(settler handlerDecisionSettler,
 ) *QuoteRepresentationService {
 	s.settler = settler
+	return s
+}
+
+// WithSelectionPricing freezes the promotion rules and taxonomy client-selectable offers need.
+func (s *QuoteRepresentationService) WithSelectionPricing(
+	pricing quoteSelectionPricingReader,
+) *QuoteRepresentationService {
+	s.pricing = pricing
 	return s
 }
 
@@ -152,6 +169,7 @@ func (s *QuoteRepresentationService) ensureLocked(
 ) (*domain.QuoteRepresentationResult, error) {
 	var source *domain.QuoteRepresentationSource
 	var existing *domain.QuoteRepresentation
+	var selectionPricing *domain.QuoteSelectionPricingSnapshot
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
@@ -193,6 +211,10 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if strings.Count(buildQuoteMessage(buildRepresentationPayload(*source, s.now())),
 			domain.QuotePublicURLPlaceholder) != 1 {
 			return invalidRepresentation("commercial text contains a reserved URL marker")
+		}
+		selectionPricing, err = s.captureSelectionPricing(ctx, q, tenant, *source)
+		if err != nil {
+			return err
 		}
 		frozen, err := s.quotes.FreezeVersion(ctx, q, tenant.AccountID, tenant.BranchID,
 			quoteID, version.ID)
@@ -240,13 +262,62 @@ func (s *QuoteRepresentationService) ensureLocked(
 				SchemaVersion: domain.QuoteRepresentationSchemaVersion, Payload: payload,
 				Message: message, PDFStorageKey: key, PDFContentType: quotePDFContentType,
 				PDFSizeBytes: int64(len(pdfBytes)), PDFSHA256: hex.EncodeToString(checksum[:]),
-				LogoFallbackUsed: fallback})
+				LogoFallbackUsed: fallback, SelectionPricing: selectionPricing})
 		return createErr
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s.decorate(ctx, *created, false)
+}
+
+func (s *QuoteRepresentationService) captureSelectionPricing(
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, source domain.QuoteRepresentationSource,
+) (*domain.QuoteSelectionPricingSnapshot, error) {
+	if s.pricing == nil {
+		return nil, nil
+	}
+	productIDs := make([]uuid.UUID, 0, len(source.Items))
+	seen := make(map[uuid.UUID]struct{})
+	addProduct := func(productID *uuid.UUID) {
+		if productID == nil {
+			return
+		}
+		if _, exists := seen[*productID]; exists {
+			return
+		}
+		seen[*productID] = struct{}{}
+		productIDs = append(productIDs, *productID)
+	}
+	for _, item := range source.Items {
+		addProduct(item.ProductID)
+		for _, alternative := range source.Alternatives[item.ID] {
+			if alternative.ApprovedBySeller && alternative.Type == domain.QuoteItemAlternativeTypeProduct &&
+				alternative.PriceSnapshot.Valid {
+				addProduct(alternative.ProductID)
+			}
+		}
+	}
+	capturedAt := s.now().UTC()
+	promotions, err := s.pricing.ListInForce(ctx, q, tenant.AccountID, tenant.BranchID, capturedAt)
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.pricing.ListProductGroups(ctx, q, tenant.AccountID, productIDs)
+	if err != nil {
+		return nil, err
+	}
+	productGroups := make([]domain.QuoteSelectionProductGroup, 0, len(groups))
+	for productID, group := range groups {
+		productGroups = append(productGroups, domain.QuoteSelectionProductGroup{
+			ProductID: productID, Group: group,
+		})
+	}
+	sort.Slice(productGroups, func(i, j int) bool {
+		return strings.Compare(productGroups[i].ProductID.String(), productGroups[j].ProductID.String()) < 0
+	})
+	return &domain.QuoteSelectionPricingSnapshot{CapturedAt: capturedAt, Promotions: promotions,
+		ProductGroups: productGroups}, nil
 }
 
 func (s *QuoteRepresentationService) decorate(
@@ -363,15 +434,19 @@ func buildRepresentationPayload(
 			len(source.Alternatives[item.ID]))
 		for _, alternative := range source.Alternatives[item.ID] {
 			alternatives = append(alternatives, domain.QuoteRepresentationAlternative{
-				Code: alternative.Code, Name: *alternative.CanonicalName, Unit: alternative.Unit,
-				UnitPrice: alternative.PriceSnapshot.Decimal.StringFixed(domain.MoneyScale)})
+				ID: alternative.ID, Code: alternative.Code, Name: *alternative.CanonicalName,
+				Unit:               alternative.Unit,
+				UnitPrice:          alternative.PriceSnapshot.Decimal.StringFixed(domain.MoneyScale),
+				RecommendationType: alternative.RecommendationType,
+				Selectable: alternative.Type == domain.QuoteItemAlternativeTypeProduct &&
+					alternative.ProductID != nil && alternative.PriceSnapshot.Valid})
 		}
 		unit := item.Unit
 		if unit == nil {
 			unit = item.ProductUnit
 		}
 		items = append(items, domain.QuoteRepresentationItem{
-			RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
+			ID: item.ID, RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
 			ProductName: *item.ProductName, Quantity: item.Quantity.StringFixed(domain.MoneyScale),
 			Unit: unit, UnitPrice: item.UnitPriceSnapshot.Decimal.StringFixed(domain.MoneyScale),
 			Subtotal: item.Subtotal.Decimal.StringFixed(domain.MoneyScale), Alternatives: alternatives})

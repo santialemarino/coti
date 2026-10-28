@@ -41,7 +41,7 @@ const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new
 const quoteItemAlternativeColumns = `alternative.id, alternative.account_id,
 	alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
 	alternative.recommendation_type, alternative.origin, alternative.rank, alternative.confidence_score,
-	alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
+	alternative.price_snapshot, alternative.min_price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
 	alternative.created_at, product.code, product.canonical_name, product.unit`
 
 const quoteRFQIndex = "uq_quote_rfq"
@@ -775,13 +775,15 @@ func (r *QuoteRepository) ApplyAlternativePricing(
 		return nil
 	}
 	type payload struct {
-		AlternativeID uuid.UUID `json:"alternative_id"`
-		PriceSnapshot *string   `json:"price_snapshot"`
+		AlternativeID    uuid.UUID `json:"alternative_id"`
+		PriceSnapshot    *string   `json:"price_snapshot"`
+		MinPriceSnapshot *string   `json:"min_price_snapshot"`
 	}
 	rows := make([]payload, len(pricings))
 	for i, pricing := range pricings {
 		rows[i] = payload{AlternativeID: pricing.AlternativeID,
-			PriceSnapshot: nullDecimalString(pricing.PriceSnapshot)}
+			PriceSnapshot:    nullDecimalString(pricing.PriceSnapshot),
+			MinPriceSnapshot: nullDecimalString(pricing.MinPriceSnapshot)}
 	}
 	encoded, err := json.Marshal(rows)
 	if err != nil {
@@ -789,11 +791,12 @@ func (r *QuoteRepository) ApplyAlternativePricing(
 	}
 	tag, err := q.Exec(ctx, `WITH incoming AS (
 		  SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(
-		    alternative_id uuid, price_snapshot numeric
+		    alternative_id uuid, price_snapshot numeric, min_price_snapshot numeric
 		  )
 		)
 		UPDATE quote_item_alternative alternative
-		SET price_snapshot = incoming.price_snapshot
+		SET price_snapshot = incoming.price_snapshot,
+		    min_price_snapshot = incoming.min_price_snapshot
 		FROM incoming
 		JOIN quote_item item ON item.account_id = $1 AND item.version_id = $2
 		WHERE alternative.account_id = $1 AND alternative.id = incoming.alternative_id
@@ -837,7 +840,7 @@ func (r *QuoteRepository) ListAlternativesByItemIDs(
 		if scanErr := rows.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
 			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
 			&alternative.Origin,
-			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
+			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot, &alternative.MinPriceSnapshot,
 			&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 			&alternative.Code, &alternative.CanonicalName, &alternative.Unit,
 		); scanErr != nil {
@@ -890,18 +893,19 @@ func (r *QuoteRepository) CreateAlternatives(
 		     origin text,
 		     rank int,
 		     confidence_score numeric,
-		     price_snapshot numeric
+		     price_snapshot numeric,
+		     min_price_snapshot numeric
 		   )
 		 )
 		 INSERT INTO quote_item_alternative (
 		   account_id, quote_item_id, product_id, combo_id, type, recommendation_type, origin, rank,
-		   confidence_score, price_snapshot
+		   confidence_score, price_snapshot, min_price_snapshot
 		 )
 		 SELECT $1, item.id, incoming.product_id, incoming.combo_id,
 		        incoming.type::quote_item_alternative_type,
 		        incoming.recommendation_type::product_alternative_type,
 		        incoming.origin::quote_item_alternative_origin,
-		        incoming.rank, incoming.confidence_score, incoming.price_snapshot
+		        incoming.rank, incoming.confidence_score, incoming.price_snapshot, incoming.min_price_snapshot
 		 FROM incoming
 		 JOIN quote_item item ON item.account_id = $1 AND item.id = incoming.quote_item_id`,
 		accountID, payload)
@@ -931,13 +935,45 @@ func (r *QuoteRepository) UpdateAlternativeApproval(
 	)
 	SELECT changed.id, changed.account_id, changed.quote_item_id, changed.product_id,
 	       changed.combo_id, changed.type, changed.recommendation_type, changed.origin, changed.rank,
-	       changed.confidence_score, changed.price_snapshot, changed.approved_by_seller,
+	       changed.confidence_score, changed.price_snapshot, changed.min_price_snapshot, changed.approved_by_seller,
 	       changed.chosen_by_client, changed.created_at, product.code,
 	       product.canonical_name, product.unit
 	FROM changed
 	LEFT JOIN product ON product.account_id = changed.account_id AND product.id = changed.product_id`,
 		accountID, versionID, itemID, alternativeID, approved)
 	return scanQuoteItemAlternative(row)
+}
+
+// MarkAlternativesChosenByClient stores the customer's answer as response metadata on the sent version.
+func (r *QuoteRepository) MarkAlternativesChosenByClient(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	selections []domain.ClientAlternativeSelection,
+) error {
+	if len(selections) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(selections)
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx, `WITH incoming AS (
+		SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(item_id uuid, alternative_id uuid)
+	)
+	UPDATE quote_item_alternative alternative
+	SET chosen_by_client = TRUE
+	FROM incoming
+	JOIN quote_item item ON item.account_id = $1 AND item.version_id = $2
+	                    AND item.id = incoming.item_id
+	WHERE alternative.account_id = $1
+	  AND alternative.quote_item_id = item.id
+	  AND alternative.id = incoming.alternative_id`, accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(selections)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // AppendStatusChange records a quote lifecycle transition.
@@ -1030,6 +1066,7 @@ type quoteItemAlternativePayload struct {
 	Rank               int        `json:"rank"`
 	ConfidenceScore    *string    `json:"confidence_score"`
 	PriceSnapshot      *string    `json:"price_snapshot"`
+	MinPriceSnapshot   *string    `json:"min_price_snapshot"`
 }
 
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
@@ -1117,6 +1154,7 @@ func quoteItemAlternativePayloads(
 			Rank:               alternative.Rank,
 			ConfidenceScore:    nullDecimalString(alternative.ConfidenceScore),
 			PriceSnapshot:      nullDecimalString(alternative.PriceSnapshot),
+			MinPriceSnapshot:   nullDecimalString(alternative.MinPriceSnapshot),
 		})
 	}
 	return payloads
@@ -1412,7 +1450,7 @@ func scanQuoteItemAlternative(row pgx.Row) (*domain.QuoteItemAlternative, error)
 	err := row.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
 		&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
 		&alternative.Origin,
-		&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
+		&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot, &alternative.MinPriceSnapshot,
 		&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 		&alternative.Code, &alternative.CanonicalName, &alternative.Unit)
 	if errors.Is(err, pgx.ErrNoRows) {

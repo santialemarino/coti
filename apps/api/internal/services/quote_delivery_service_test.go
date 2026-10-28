@@ -96,6 +96,7 @@ type fakePublicQuoteQuotes struct {
 	newVersion   *domain.QuoteVersion
 	newItems     []domain.NewQuoteItem
 	newAlts      []domain.NewQuoteItemAlternative
+	chosenAlts   []domain.ClientAlternativeSelection
 	itemBatches  [][]domain.NewQuoteItem
 	deletedItems []uuid.UUID
 	deletedAlts  []uuid.UUID
@@ -205,6 +206,13 @@ func (f *fakePublicQuoteQuotes) CreateItems(_ context.Context, _ repository.Quer
 func (f *fakePublicQuoteQuotes) ListAlternativesByItemIDs(context.Context, repository.Querier,
 	uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
 	return f.alternatives, nil
+}
+
+func (f *fakePublicQuoteQuotes) MarkAlternativesChosenByClient(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, selections []domain.ClientAlternativeSelection,
+) error {
+	f.chosenAlts = append(f.chosenAlts, selections...)
+	return nil
 }
 
 func (f *fakePublicQuoteQuotes) CreateAlternatives(_ context.Context, _ repository.Querier,
@@ -467,6 +475,10 @@ func (h *quoteActionHarness) seedActiveSend(versionID uuid.UUID) *domain.QuoteSe
 	if h.quotes.quote == nil {
 		h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
 			CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusSent}
+	}
+	if h.quotes.version == nil {
+		h.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: testQuoteID,
+			VersionNumber: 1, Currency: "ARS", IsImmutable: true}
 	}
 	return send
 }

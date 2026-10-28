@@ -26,6 +26,9 @@ vi.mock('@/app/quotes/[token]/_components/quote-header', () => ({
 vi.mock('@/app/quotes/[token]/_components/quote-items', () => ({
   QuoteItems: () => <p data-testid="quote-items" />,
 }));
+vi.mock('@/app/quotes/[token]/_components/quote-option-selector', () => ({
+  QuoteOptionSelector: () => <p data-testid="quote-option-selector" />,
+}));
 vi.mock('@/app/quotes/[token]/_components/quote-info', () => ({
   QuoteInfo: () => <p data-testid="quote-info" />,
 }));

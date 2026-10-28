@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     token?: unknown;
     type?: unknown;
     message?: unknown;
+    selections?: unknown;
   } | null;
   if (
     !body ||
@@ -33,6 +34,29 @@ export async function POST(request: NextRequest) {
   ) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 });
   }
+
+  const selections = Array.isArray(body.selections)
+    ? body.selections.map((selection) => {
+        if (
+          !selection ||
+          typeof selection !== 'object' ||
+          typeof (selection as { item_id?: unknown }).item_id !== 'string' ||
+          typeof (selection as { alternative_id?: unknown }).alternative_id !== 'string'
+        ) {
+          return null;
+        }
+        return {
+          itemId: (selection as { item_id: string }).item_id,
+          alternativeId: (selection as { alternative_id: string }).alternative_id,
+        };
+      })
+    : undefined;
+  if (selections?.some((selection) => selection === null)) {
+    return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 });
+  }
+  const validSelections = selections?.filter(
+    (selection): selection is { itemId: string; alternativeId: string } => selection !== null,
+  );
   const message =
     typeof body.message === 'string' && body.message.trim() !== ''
       ? body.message.trim()
@@ -41,6 +65,7 @@ export async function POST(request: NextRequest) {
     const result = await submitPublicQuoteAction(body.token, {
       type: body.type as CustomerActionType,
       message,
+      selections: validSelections,
     });
     return NextResponse.json(result);
   } catch (error) {

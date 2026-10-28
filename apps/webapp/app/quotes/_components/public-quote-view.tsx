@@ -6,6 +6,8 @@ import { QuoteActions } from '@/app/quotes/[token]/_components/quote-actions';
 import { QuoteHeader } from '@/app/quotes/[token]/_components/quote-header';
 import { QuoteInfo } from '@/app/quotes/[token]/_components/quote-info';
 import { QuoteItems } from '@/app/quotes/[token]/_components/quote-items';
+import { QuoteOptionSelector } from '@/app/quotes/[token]/_components/quote-option-selector';
+import { QuoteSelectionProvider } from '@/app/quotes/[token]/_components/quote-selection-context';
 import { Brand } from '@/components/brand';
 import type { PublicQuoteSend } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
@@ -71,20 +73,32 @@ export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
           <p className="text-paragraph text-foreground-muted">{t('intro')}</p>
         </div>
 
-        <QuoteItems
-          items={quote.items}
-          discounts={quote.discounts}
-          total={quote.total}
-          currency={quote.currency}
-        />
+        <QuoteSelectionProvider>
+          <QuoteItems
+            items={quote.items}
+            discounts={quote.discounts}
+            total={quote.total}
+            currency={quote.currency}
+          />
 
-        <QuoteInfo
-          expiresAt={send.expiresAt}
-          validityNote={quote.validityNote}
-          pdfUrl={send.pdfUrl}
-        />
+          <QuoteOptionSelector
+            items={quote.items}
+            currency={quote.currency}
+            disabled={send.customerStatus !== undefined}
+          />
 
-        <QuoteActions token={token} customerStatus={send.customerStatus} />
+          <QuoteInfo
+            expiresAt={send.expiresAt}
+            validityNote={quote.validityNote}
+            pdfUrl={send.pdfUrl}
+          />
+
+          <QuoteActions
+            token={token}
+            customerStatus={send.customerStatus}
+            currency={quote.currency}
+          />
+        </QuoteSelectionProvider>
 
         <footer className="flex flex-col gap-y-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <Brand variant="wordmark" size="sm" label={tCommon('appName')} />

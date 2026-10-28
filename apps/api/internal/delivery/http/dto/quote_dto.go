@@ -163,8 +163,15 @@ type PublicQuoteSendResponse struct {
 
 // PublicQuoteActionRequest is the customer's response to the frozen quote.
 type PublicQuoteActionRequest struct {
-	Type    string  `json:"type" binding:"required"`
-	Message *string `json:"message"`
+	Type       string                                   `json:"type" binding:"required"`
+	Message    *string                                  `json:"message"`
+	Selections []PublicQuoteAlternativeSelectionRequest `json:"selections"`
+}
+
+// PublicQuoteAlternativeSelectionRequest elects a seller-approved alternative for one sent line.
+type PublicQuoteAlternativeSelectionRequest struct {
+	ItemID        uuid.UUID `json:"item_id" binding:"required"`
+	AlternativeID uuid.UUID `json:"alternative_id" binding:"required"`
 }
 
 // PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
@@ -173,6 +180,7 @@ type PublicQuoteActionResponse struct {
 	CustomerStatus string    `json:"customer_status"`
 	CreatedAt      time.Time `json:"created_at"`
 	QuoteStatus    *string   `json:"quote_status"`
+	Total          *string   `json:"total,omitempty"`
 }
 
 // QuoteRepresentationResponse is one authenticated immutable output bundle.
@@ -223,6 +231,7 @@ type QuoteRepresentationCustomerResponse struct {
 
 // QuoteRepresentationItemResponse is one priced public line.
 type QuoteRepresentationItemResponse struct {
+	ID                   uuid.UUID                                `json:"id"`
 	RequestedDescription string                                   `json:"requested_description"`
 	ProductCode          *string                                  `json:"product_code,omitempty"`
 	ProductName          string                                   `json:"product_name"`
@@ -235,10 +244,13 @@ type QuoteRepresentationItemResponse struct {
 
 // QuoteRepresentationAlternativeResponse is one approved public alternative.
 type QuoteRepresentationAlternativeResponse struct {
-	Code      *string `json:"code,omitempty"`
-	Name      string  `json:"name"`
-	Unit      *string `json:"unit,omitempty"`
-	UnitPrice string  `json:"unit_price"`
+	ID                 uuid.UUID `json:"id"`
+	Code               *string   `json:"code,omitempty"`
+	Name               string    `json:"name"`
+	Unit               *string   `json:"unit,omitempty"`
+	UnitPrice          string    `json:"unit_price"`
+	RecommendationType *string   `json:"recommendation_type,omitempty" enums:"EQUIVALENT,PREMIUM,ECONOMY"`
+	Selectable         bool      `json:"selectable"`
 }
 
 // QuoteRepresentationDiscountResponse is one applied public discount.

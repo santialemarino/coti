@@ -53,8 +53,16 @@ type NewClientAction struct {
 
 // ClientActionInput is the public-page response the service validates before persisting it.
 type ClientActionInput struct {
-	Type    ClientActionType
-	Message *string
+	Type       ClientActionType
+	Message    *string
+	Selections []ClientAlternativeSelection
+}
+
+// ClientAlternativeSelection elects one seller-approved product alternative for a sent line.
+// Omitting a line keeps the product in the sent quote.
+type ClientAlternativeSelection struct {
+	ItemID        uuid.UUID `json:"item_id"`
+	AlternativeID uuid.UUID `json:"alternative_id"`
 }
 
 // PublicQuoteActionResult reports the answer the customer gave and the state it left the quote in.
@@ -62,6 +70,7 @@ type PublicQuoteActionResult struct {
 	CustomerStatus ClientActionType
 	CreatedAt      time.Time
 	QuoteStatus    QuoteStatus
+	Total          *string
 }
 
 // ClientQuoteOutcome is the quote's state after a customer answered, for the caller that has to

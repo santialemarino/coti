@@ -62,6 +62,15 @@ and quote-wide discount. No application is negative, and the version total botto
 
 The floor binds the engine, not people: a seller can still price a line below it by hand.
 
+## Client-selected alternatives
+
+An approved alternative carries its own unit-price and floor snapshots. When a customer accepts a
+sent quote with selected alternatives, Coti copies the sent version into a new final version,
+substitutes only the selected lines, and runs the deterministic sweep again. The sweep reads the
+promotion rules and product taxonomy captured when the quote was sent, not current catalog or
+promotion state. Therefore a selection may form or dissolve an automatic promotion while neither a
+later price update nor an expired or edited promotion can change the accepted offer.
+
 ## Rounding
 
 One rule, shared with invoicing: money is rounded **half-up to two decimals** (`decimal.Round(2)`,

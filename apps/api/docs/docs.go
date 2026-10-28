@@ -11086,6 +11086,12 @@ const docTemplate = `{
                 "message": {
                     "type": "string"
                 },
+                "selections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PublicQuoteAlternativeSelectionRequest"
+                    }
+                },
                 "type": {
                     "type": "string"
                 }
@@ -11101,6 +11107,24 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "quote_status": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicQuoteAlternativeSelectionRequest": {
+            "type": "object",
+            "required": [
+                "alternative_id",
+                "item_id"
+            ],
+            "properties": {
+                "alternative_id": {
+                    "type": "string"
+                },
+                "item_id": {
                     "type": "string"
                 }
             }
@@ -11474,8 +11498,22 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
+                "id": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
+                },
+                "recommendation_type": {
+                    "type": "string",
+                    "enum": [
+                        "EQUIVALENT",
+                        "PREMIUM",
+                        "ECONOMY"
+                    ]
+                },
+                "selectable": {
+                    "type": "boolean"
                 },
                 "unit": {
                     "type": "string"
@@ -11523,6 +11561,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.QuoteRepresentationAlternativeResponse"
                     }
+                },
+                "id": {
+                    "type": "string"
                 },
                 "product_code": {
                     "type": "string"

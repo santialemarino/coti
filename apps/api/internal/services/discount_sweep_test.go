@@ -168,3 +168,22 @@ func TestDiscountSweep_ReadsTheRulesAtItsOwnClock(t *testing.T) {
 		t.Fatalf("rules read at %s, want %s", at, engineAt)
 	}
 }
+
+func TestDiscountSweep_UsesTheRulesFrozenWithAClientSelection(t *testing.T) {
+	t.Parallel()
+	f := newSweepFixture()
+	snapshot := domain.QuoteSelectionPricingSnapshot{CapturedAt: engineAt,
+		Promotions: []domain.Promotion{tenPercentOnCement()}}
+
+	total, err := f.sweep.settleWithSnapshot(context.Background(), nil, f.account, engineBranch,
+		f.version, f.items, snapshot)
+	if err != nil {
+		t.Fatalf("settleWithSnapshot() = %v", err)
+	}
+	if !total.Equal(dec("14000.00")) {
+		t.Fatalf("total = %s, want 14000.00 from the sent promotion", total)
+	}
+	if applications := f.automatic(); len(applications) != 1 || !applications[0].Amount.Equal(dec("1000.00")) {
+		t.Fatalf("applications = %+v, want the sent 1000.00 promotion", applications)
+	}
+}

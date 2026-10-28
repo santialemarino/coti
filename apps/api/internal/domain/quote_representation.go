@@ -61,6 +61,7 @@ type QuoteRepresentation struct {
 	PDFSizeBytes     int64
 	PDFSHA256        string
 	LogoFallbackUsed bool
+	SelectionPricing *QuoteSelectionPricingSnapshot
 	CreatedAt        time.Time
 }
 
@@ -78,6 +79,7 @@ type NewQuoteRepresentation struct {
 	PDFSizeBytes     int64
 	PDFSHA256        string
 	LogoFallbackUsed bool
+	SelectionPricing *QuoteSelectionPricingSnapshot
 }
 
 // QuoteRepresentationPayload is the versioned, client-safe source shared by every format.
@@ -119,6 +121,7 @@ type QuoteRepresentationCustomer struct {
 
 // QuoteRepresentationItem is one fully priced client-facing line.
 type QuoteRepresentationItem struct {
+	ID                   uuid.UUID                        `json:"id"`
 	RequestedDescription string                           `json:"requested_description"`
 	ProductCode          *string                          `json:"product_code,omitempty"`
 	ProductName          string                           `json:"product_name"`
@@ -131,10 +134,28 @@ type QuoteRepresentationItem struct {
 
 // QuoteRepresentationAlternative is one seller-approved priced option.
 type QuoteRepresentationAlternative struct {
-	Code      *string `json:"code,omitempty"`
-	Name      string  `json:"name"`
-	Unit      *string `json:"unit,omitempty"`
-	UnitPrice string  `json:"unit_price"`
+	ID                 uuid.UUID               `json:"id"`
+	Code               *string                 `json:"code,omitempty"`
+	Name               string                  `json:"name"`
+	Unit               *string                 `json:"unit,omitempty"`
+	UnitPrice          string                  `json:"unit_price"`
+	RecommendationType *ProductAlternativeType `json:"recommendation_type,omitempty"`
+	Selectable         bool                    `json:"selectable"`
+}
+
+// QuoteSelectionPricingSnapshot preserves the commercial rules available when a selectable offer
+// was sent. It stays separate from the public payload because floors and rule definitions are not
+// customer-facing data.
+type QuoteSelectionPricingSnapshot struct {
+	CapturedAt    time.Time                    `json:"captured_at"`
+	Promotions    []Promotion                  `json:"promotions"`
+	ProductGroups []QuoteSelectionProductGroup `json:"product_groups"`
+}
+
+// QuoteSelectionProductGroup freezes the taxonomy the promotion engine uses for one offered item.
+type QuoteSelectionProductGroup struct {
+	ProductID uuid.UUID    `json:"product_id"`
+	Group     ProductGroup `json:"group"`
 }
 
 // QuoteRepresentationDiscount is one persisted discount the seller did not suppress.

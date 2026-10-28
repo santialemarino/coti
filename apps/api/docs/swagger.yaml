@@ -1857,6 +1857,10 @@ definitions:
     properties:
       message:
         type: string
+      selections:
+        items:
+          $ref: '#/definitions/dto.PublicQuoteAlternativeSelectionRequest'
+        type: array
       type:
         type: string
     required:
@@ -1870,6 +1874,18 @@ definitions:
         type: string
       quote_status:
         type: string
+      total:
+        type: string
+    type: object
+  dto.PublicQuoteAlternativeSelectionRequest:
+    properties:
+      alternative_id:
+        type: string
+      item_id:
+        type: string
+    required:
+    - alternative_id
+    - item_id
     type: object
   dto.PublicQuoteSendResponse:
     properties:
@@ -2124,8 +2140,18 @@ definitions:
     properties:
       code:
         type: string
+      id:
+        type: string
       name:
         type: string
+      recommendation_type:
+        enum:
+        - EQUIVALENT
+        - PREMIUM
+        - ECONOMY
+        type: string
+      selectable:
+        type: boolean
       unit:
         type: string
       unit_price:
@@ -2156,6 +2182,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteRepresentationAlternativeResponse'
         type: array
+      id:
+        type: string
       product_code:
         type: string
       product_name:

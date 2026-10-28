@@ -158,6 +158,17 @@
     "unavailableTitle": "Esta cotización ya no está disponible",
     "unavailableDescription": "El corralón la retiró. Escribile y pedile una cotización actualizada.",
     "questions": "¿Tenés dudas? Contactanos",
+    "options": {
+      "heading": "Elegí la opción que preferís",
+      "intro": "Podés mantener el material cotizado o elegir una alternativa aprobada por el corralón. Al confirmar, recalculamos las promociones y descuentos de la opción elegida.",
+      "forRequest": "Para: {request}",
+      "groupLabel": "Opciones para {product}",
+      "base": "Opción cotizada",
+      "economy": "Alternativa económica",
+      "premium": "Alternativa premium",
+      "alternative": "Alternativa",
+      "perUnit": "Precio unitario por {unit}"
+    },
     "actions": {
       "heading": "¿Qué querés hacer?",
       "intro": "Tu respuesta nos ayuda a seguir adelante con el pedido.",
@@ -180,6 +191,7 @@
       "errorUnavailable": "Esta cotización ya no está disponible. Escribile al corralón para pedir una nueva.",
       "resultTitle": "Tu respuesta se registró",
       "resultAccept": "Aceptaste la cotización. El corralón avanza con tu pedido.",
+      "resultTotal": "Total confirmado: {amount}",
       "resultRequestChange": "Enviamos tu solicitud de cambios. El corralón va a preparar una nueva versión.",
       "resultReject": "Anotamos tu rechazo.",
       "respondedTitle": "Ya respondiste esta cotización",

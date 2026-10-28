@@ -23,6 +23,18 @@ function answer() {
   });
 }
 
+function answerWithSelection() {
+  return new NextRequest('http://localhost/api/public-quote-action', {
+    method: 'POST',
+    headers: { origin: 'http://localhost' },
+    body: JSON.stringify({
+      token: 'tok-1',
+      type: 'ACCEPT',
+      selections: [{ item_id: 'item-1', alternative_id: 'alternative-1' }],
+    }),
+  });
+}
+
 describe('POST /api/public-quote-action', () => {
   // The page words an archived quote on its own, so this refusal crosses the proxy by name.
   it('forwards an archived quote by its code', async () => {
@@ -44,5 +56,23 @@ describe('POST /api/public-quote-action', () => {
     const response = await POST(answer());
 
     expect(await response.json()).toEqual({ error: 'CONFLICT' });
+  });
+
+  it('forwards a customer-selected alternative in camel case', async () => {
+    vi.mocked(submitPublicQuoteAction).mockResolvedValue({
+      customerStatus: 'ACCEPT',
+      createdAt: '2026-10-28T12:00:00Z',
+      quoteStatus: 'ACCEPTED',
+      total: '900.00',
+    });
+
+    const response = await POST(answerWithSelection());
+
+    expect(response.status).toBe(200);
+    expect(submitPublicQuoteAction).toHaveBeenCalledWith('tok-1', {
+      type: 'ACCEPT',
+      message: undefined,
+      selections: [{ itemId: 'item-1', alternativeId: 'alternative-1' }],
+    });
   });
 });
