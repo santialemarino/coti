@@ -84,21 +84,31 @@ provider lets Coti send as) with the supplier's name as the sender name, the sub
 Message-ID so it threads under their mail. The Gmail connection is read-only, so it cannot send from
 the mailbox itself. Mail from a `no-reply`, `mailer-daemon`, `postmaster` or `bounce*` address, or
 carrying `Auto-Submitted` (other than `no`), `Precedence: bulk|list|junk`, `List-Id` or
-`List-Unsubscribe`, never gets a prompt. Contact verification and the registration link keep their
+`List-Unsubscribe`, `X-Autoreply` or `X-Autorespond`, a null `Return-Path` or a `multipart/report`
+body (a bounce), never gets a prompt. Contact verification and the registration link keep their
 own subjects.
 
-While the prompt is answerable (status SENT, within 24 hours of delivery), a short text with no
-attachments from that contact is taken as the name reply: it joins the request the prompt answered,
-updates the provisional name, and creates no RFQ. The rule lives in `client_contact_name_reply.go`:
-after dropping greeting and closing lines («Hola», «Saludos», «Gracias») and a leading «soy», «me
-llamo», «mi nombre es» or «Nombre y apellido:», exactly one line must remain, of at most 60
-characters and 5 words, letters only (plus spaces, apostrophes, hyphens and periods), with no digit
-and no order word (quantities, units, «necesito», «precio», common materials such as «cemento» or
-«arena»). Anything else follows the normal flow and the prompt stays pending, so a short order
-(«2 bolsas de cemento», «necesito arena») is never swallowed. In email, the quoted message (`>`
-lines, «El … escribió:», «On … wrote:», forwarded/original-message markers, Outlook headers), the
-`-- ` signature and common mobile signatures are removed before the rule runs, and automated mail is
-never a reply. The thresholds are constants, not settings: raising them lets orders through as names.
+A message only counts as the name reply when nothing else claims it. A live quote conversation
+takes it first, so «Confirmo» answers the quote. Otherwise the prompt must be answerable: status
+SENT, delivered less than 24 hours ago, and no exchange since, meaning no later message from that
+contact and no quote sent to it. The message must have no attachments and pass the rule in
+`client_contact_name_reply.go`. Greeting and closing lines («Hola», «Saludos», «Gracias») and a
+leading «soy», «me llamo», «mi nombre es» or «Nombre y apellido:» are dropped. Exactly one line must
+then remain, of at most 60 characters, with two to five name words (particles such as «de», «la»,
+«del», «van» do not count), made of letters (plus spaces, apostrophes, hyphens and periods). It must
+contain no digit, link or address, no order or confirmation word (quantities, units, «necesito»,
+«precio», «confirmo», «cancel…», «paso», «factura», «foto», «ya», common materials and brands such as
+«cemento» or «Klaukol»), and no word of the supplier's own catalog (product names and synonyms). A
+match joins the request the prompt answered, updates the provisional name and creates no RFQ.
+Anything else follows the normal flow and the prompt stays pending.
+
+The rule is conservative, not exhaustive. A two-word reply made of words it does not know, inside
+the window and with no exchange since, is still taken as a name; the 24-hour window, the
+no-exchange check and the catalog check are what keep that case rare. In email, the quoted message
+(`>` lines, «El … escribió:», «On … wrote:», forwarded/original-message markers, Outlook headers and
+the rule of `_`, `-` or `=` above them), the `-- ` signature and common mobile signatures are removed
+before the rule runs, and automated mail is never a reply. The thresholds are constants, not
+settings: raising them lets orders through as names.
 
 Known contacts are not prompted again. Later requests do not overwrite the confirmed name; portal
 requests never overwrite an existing profile name. The original request text and provider messages
@@ -187,9 +197,11 @@ consolidated database schema is a reference only.
 Integration tests cover proof-gated history movement, registered-name precedence, earlier-profile
 adoption hidden until proof, immutable data,
 recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
-They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, the
-24-hour reply window, automated senders that get no prompt, the supplier-named email prompt and
-the reclaimed delivery lease; unit tests cover the reply rule and the email stripping case by case.
+They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, a
+quote reply that stays in its conversation, refusals after a quote or for a catalog word, the
+delivered-prompt and 24-hour conditions, auto-replies and automated senders, the supplier-named
+email prompt and the reclaimed delivery lease; unit tests cover the reply rule and the email
+stripping case by case, and a scripts test covers the 00065 backfill.
 
 ## Profiles and accepted sales
 

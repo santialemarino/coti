@@ -2,8 +2,9 @@
 
 Clients can request quotations before creating an account. A request from an unknown WhatsApp or
 email sender is processed right away, under a provisional profile named after the sender's WhatsApp
-or email display name. Coti then asks, once and in the supplier's name, for the full name; a reply is
-saved on that profile and never becomes a new request. A seller creating a profile also supplies a full name and at least one contact, without CUIT.
+or email display name. Coti then asks, once and in the supplier's name, for the full name. A short
+reply with the name is saved on that profile instead of opening a new request; a message that reads
+like an order or answers a quote is handled as usual. A seller creating a profile also supplies a full name and at least one contact, without CUIT.
 
 Creating an account in the customer portal requires CUIT/CUIL, full name and at least one phone or
 email. Each supplier keeps one profile per CUIT, and that identifier cannot subsequently be edited
