@@ -211,6 +211,7 @@ func newEnvWithRFQProviders(
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
 		WithPrices(repository.NewProductPriceRepository()).
+		WithProductAlternatives(repository.NewProductAlternativeRepository()).
 		WithHandlerDecisions(repository.NewHandlerDecisionRepository()).
 		WithConversation(repository.NewMessageBatchRepository(), repository.NewQuoteMessageRepository(),
 			repository.NewHandlerDecisionRepository()).

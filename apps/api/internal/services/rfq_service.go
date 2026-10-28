@@ -234,7 +234,7 @@ func (s *RFQService) WithPrices(prices branchPriceReader) *RFQService {
 	return s
 }
 
-// WithProductAlternatives adds configured ECONOMY and PREMIUM offers to generated draft lines.
+// WithProductAlternatives adds configured ECONOMY and PREMIUM offers to eligible draft lines.
 func (s *RFQService) WithProductAlternatives(alternatives productAlternativeReader) *RFQService {
 	s.productAlternatives = alternatives
 	return s
@@ -1111,7 +1111,20 @@ func (s *RFQService) CreateManual(
 		}
 		var createErr error
 		creation, createErr = s.rfqs.CreateManualEntry(ctx, q, tenant, channelID, in, now)
-		return createErr
+		if createErr != nil || s.productAlternatives == nil {
+			return createErr
+		}
+		items, itemsErr := s.quotes.ListItems(ctx, q, tenant.AccountID, creation.Version.ID)
+		if itemsErr != nil {
+			return itemsErr
+		}
+		alternatives, alternativesErr := s.withConfiguredAlternatives(ctx, q, tenant.AccountID,
+			items, nil)
+		if alternativesErr != nil {
+			return alternativesErr
+		}
+		_, persistErr := s.persistAlternatives(ctx, q, tenant.AccountID, items, alternatives)
+		return persistErr
 	}); err != nil {
 		return nil, err
 	}

@@ -228,6 +228,66 @@ func TestRfqService_CreateManual_BornGeneratedAndDraft(t *testing.T) {
 	}
 }
 
+func TestRfqService_CreateManual_AddsConfiguredAlternatives(t *testing.T) {
+	itemID, economy, premium := uuid.New(), uuid.New(), uuid.New()
+	repo := &fakeRfqRepoManual{
+		channelID: manualChannelID,
+		owned:     1,
+		creation:  &domain.RfqCreation{Version: domain.QuoteVersion{ID: testVersionID}},
+	}
+	quotes := &fakeQuoteDrafts{itemsByVersionID: []domain.QuoteItem{{
+		ID: itemID, ProductID: &knownProduct, MatchStatus: domain.ItemMatchStatusMatched,
+	}}}
+	configured := &fakeProductAlternatives{
+		byType: map[domain.ProductAlternativeType]map[uuid.UUID][]domain.ProductAlternativeView{
+			domain.ProductAlternativeEconomy: {
+				knownProduct: {{
+					Link: domain.ProductAlternative{
+						BaseProductID: knownProduct, AlternativeProductID: economy,
+						Type: domain.ProductAlternativeEconomy,
+					},
+					Product: domain.Product{ID: economy, CanonicalName: "Economy cement", IsActive: true},
+				}},
+			},
+			domain.ProductAlternativePremium: {
+				knownProduct: {{
+					Link: domain.ProductAlternative{
+						BaseProductID: knownProduct, AlternativeProductID: premium,
+						Type: domain.ProductAlternativePremium,
+					},
+					Product: domain.Product{ID: premium, CanonicalName: "Premium cement", IsActive: true},
+				}},
+			},
+		},
+	}
+	svc := NewRFQService(&fakeDB{}, repo, quotes, nil, nil, nil, &fakeSellerReach{serves: true},
+		nil, nil, nil, config.RFQConfig{}).WithProductAlternatives(configured)
+
+	if _, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{Items: manualItems()}); err != nil {
+		t.Fatalf("CreateManual() error = %v", err)
+	}
+	if len(configured.calls) != 2 {
+		t.Fatalf("configured alternative reads = %d, want 2", len(configured.calls))
+	}
+	if len(quotes.alternativeBatches) != 1 {
+		t.Fatalf("alternative batches = %d, want 1", len(quotes.alternativeBatches))
+	}
+	byProduct := make(map[uuid.UUID]domain.QuoteItemAlternative)
+	for _, alternative := range quotes.storedAlternatives {
+		if alternative.ProductID != nil {
+			byProduct[*alternative.ProductID] = alternative
+		}
+	}
+	if alternative, ok := byProduct[economy]; !ok || alternative.RecommendationType == nil ||
+		*alternative.RecommendationType != domain.ProductAlternativeEconomy || alternative.ApprovedBySeller {
+		t.Errorf("economy alternative = %+v, want unapproved ECONOMY", alternative)
+	}
+	if alternative, ok := byProduct[premium]; !ok || alternative.RecommendationType == nil ||
+		*alternative.RecommendationType != domain.ProductAlternativePremium || alternative.ApprovedBySeller {
+		t.Errorf("premium alternative = %+v, want unapproved PREMIUM", alternative)
+	}
+}
+
 func TestRfqService_CreateManual_NeedsAnActiveBranch(t *testing.T) {
 	repo := &fakeRfqRepoManual{channelID: manualChannelID}
 	svc, _ := manualHarness(repo)

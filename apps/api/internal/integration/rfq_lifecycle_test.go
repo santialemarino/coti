@@ -158,6 +158,108 @@ func TestRfq_CreateAndList(t *testing.T) {
 	}
 }
 
+func TestRfq_CreateManualAddsConfiguredAlternatives(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Manual recommendations")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	token := e.tokenFor(t, admin)
+	_ = seedManualEntryChannel(t, e, accountID, branchID)
+	base := e.seedPricedProduct(t, accountID, branchID, "Base cement", "9500", nil)
+	economy := e.seedPricedProduct(t, accountID, branchID, "Economy cement", "8900", nil)
+	premium := e.seedPricedProduct(t, accountID, branchID, "Premium cement", "12000", nil)
+	for _, alternative := range []struct {
+		productID uuid.UUID
+		kind      domain.ProductAlternativeType
+	}{
+		{economy, domain.ProductAlternativeEconomy},
+		{premium, domain.ProductAlternativePremium},
+	} {
+		if _, err := e.db.CrossAccount().Exec(context.Background(),
+			`INSERT INTO product_alternative (account_id, base_product_id, alternative_product_id, type)
+			 VALUES ($1, $2, $3, $4)`, accountID, base, alternative.productID, alternative.kind); err != nil {
+			t.Fatalf("seed configured alternative: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM product_alternative WHERE account_id = $1 AND base_product_id = $2`,
+			accountID, base)
+	})
+
+	body, err := json.Marshal(map[string]any{
+		"client_label": "Manual recommendations client",
+		"items": []map[string]any{{
+			"product_id":            base.String(),
+			"requested_description": "Base cement",
+			"quantity":              "10",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal manual RFQ: %v", err)
+	}
+	created := e.do(t, request{
+		method: http.MethodPost,
+		path:   "/v1/rfqs",
+		token:  token,
+		branch: branchID.String(),
+		body:   json.RawMessage(body),
+	})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("POST /v1/rfqs = %d, want 201 (body %s)", created.Code, created.Body.String())
+	}
+	var payload struct {
+		Rfq struct {
+			ID string `json:"id"`
+		} `json:"rfq"`
+		Quote struct {
+			ID string `json:"id"`
+		} `json:"quote"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode manual RFQ response: %v", err)
+	}
+	rfqID, err := uuid.Parse(payload.Rfq.ID)
+	if err != nil {
+		t.Fatalf("parse manual RFQ id: %v", err)
+	}
+	e.dropDraft(t, rfqID)
+
+	rows, err := e.db.CrossAccount().Query(context.Background(),
+		`SELECT alternative.product_id, alternative.recommendation_type, alternative.approved_by_seller
+		 FROM quote_item_alternative alternative
+		 JOIN quote_item item ON item.id = alternative.quote_item_id
+		 JOIN quote_version version ON version.id = item.version_id
+		 WHERE alternative.account_id = $1 AND version.quote_id = $2`, accountID, payload.Quote.ID)
+	if err != nil {
+		t.Fatalf("read manual alternatives: %v", err)
+	}
+	defer rows.Close()
+	type storedAlternative struct {
+		productID uuid.UUID
+		kind      domain.ProductAlternativeType
+		approved  bool
+	}
+	stored := make(map[uuid.UUID]storedAlternative, 2)
+	for rows.Next() {
+		var alternative storedAlternative
+		if err := rows.Scan(&alternative.productID, &alternative.kind, &alternative.approved); err != nil {
+			t.Fatalf("scan manual alternative: %v", err)
+		}
+		stored[alternative.productID] = alternative
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate manual alternatives: %v", err)
+	}
+	if len(stored) != 2 {
+		t.Fatalf("manual alternatives = %d, want 2", len(stored))
+	}
+	if alternative, ok := stored[economy]; !ok || alternative.kind != domain.ProductAlternativeEconomy || alternative.approved {
+		t.Errorf("economy alternative = %+v, want unapproved economy %s", alternative, economy)
+	}
+	if alternative, ok := stored[premium]; !ok || alternative.kind != domain.ProductAlternativePremium || alternative.approved {
+		t.Errorf("premium alternative = %+v, want unapproved premium %s", alternative, premium)
+	}
+}
+
 func TestRfq_ListShowsItemsFromMultipleAccounts(t *testing.T) {
 	e := newEnv(t)
 
