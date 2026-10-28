@@ -272,6 +272,12 @@ mails nobody. The route cannot carry the middleware for that, so the handler run
 (`middleware.Allowance`) once the body is bound, counting into the same bucket. Like the mail routes,
 it counts before the service validates, so a refused invite still spends its slot.
 
+Customer account recovery (`/v1/customer/sites/{hostname}/auth/recovery/*`) counts each request
+twice: by caller address and by what it names — the CUIT/CUIL, or the code being redeemed — so one
+account cannot be probed from many addresses. Listing and resetting use the `credentials` allowance,
+sending a code the `mail` one. `middleware.RateLimitBy` reads the key from the body and leaves it for
+the handler; the flow itself is in `client-profiles.md`.
+
 Refresh is deliberately left on the global allowance alone: the backoffice renews on a
 schedule the user does not control, and a tighter limit there would log people out.
 
