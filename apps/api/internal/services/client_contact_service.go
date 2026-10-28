@@ -51,6 +51,7 @@ type ClientContactService struct {
 	messenger   domain.ContactMessenger
 	localOrigin string
 	maxContacts int
+	prompts     namePromptSettings
 }
 
 // NewClientContactService builds the commercial contact use cases.

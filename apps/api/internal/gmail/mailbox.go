@@ -94,6 +94,8 @@ func (m *Mailbox) ReadMessage(ctx context.Context, id string) (domain.InboundEma
 	result.SenderLabel = parsed.SenderName
 	result.Subject = parsed.Subject
 	result.Body = parsed.Text
+	result.InternetMessageID = parsed.MessageID
+	result.Automated = parsed.Automated
 	for _, part := range parsed.Attachments {
 		result.Attachments = append(result.Attachments, domain.InboundEmailAttachment{
 			Filename: part.Filename, ContentType: part.ContentType,

@@ -34,6 +34,7 @@ type CustomerAuthConfig struct {
 	ContactSpamMax      int
 	ContactSpamWindow   time.Duration
 	ProfileContactsMax  int
+	ContactPromptLease  time.Duration
 	ContactCodeTemplate string
 	ContactCodeLanguage string
 }
@@ -51,6 +52,7 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 		ContactSpamMax:              getInt("CUSTOMER_CONTACT_VERIFICATION_SPAM_MAX", 20, problems),
 		ContactSpamWindow:           getDuration("CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS", 24*time.Hour, problems),
 		ProfileContactsMax:          getInt("CUSTOMER_PROFILE_CONTACTS_MAX", 10, problems),
+		ContactPromptLease:          getDuration("CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES", 5*time.Minute, problems),
 		ContactCodeTemplate:         os.Getenv("WHATSAPP_CONTACT_CODE_TEMPLATE"),
 		ContactCodeLanguage:         getString("WHATSAPP_CONTACT_CODE_LANGUAGE", "es_AR"),
 		GoogleClientSecret:          os.Getenv("CUSTOMER_GOOGLE_CLIENT_SECRET"),
@@ -82,6 +84,9 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 	}
 	if cfg.ContactDestinationWindow <= 0 || cfg.ContactLockout <= 0 || cfg.ContactSpamWindow <= 0 {
 		*problems = append(*problems, "CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS, CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES and CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS must be positive")
+	}
+	if cfg.ContactPromptLease <= 0 {
+		*problems = append(*problems, "CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES must be positive")
 	}
 	if cfg.GoogleTimeout <= 0 || cfg.SignupTTL <= 0 || cfg.RecoveryTTL <= 0 || cfg.VerificationTTL <= 0 {
 		*problems = append(*problems, "CUSTOMER_GOOGLE_TIMEOUT_SECONDS, CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES, CUSTOMER_RECOVERY_TTL_MINUTES and CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS must be positive")

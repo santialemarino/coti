@@ -51,7 +51,7 @@ func (s *ClientContactService) SendRegistrationLink(ctx context.Context, tenant 
 	if s.localOrigin != "" {
 		origin = strings.TrimRight(s.localOrigin, "/")
 	}
-	body := "Para completar tus datos de facturación, ingresá a tu cuenta o creala en " + origin + "/login?next=%2Fprofile. Si ya tenés una cuenta con tu CUIT/CUIL, usá esa misma cuenta y agregá el contacto con el que hiciste el pedido."
-	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: tenant.AccountID, BranchID: tenant.BranchID, Kind: kind, To: destination, Body: body})
+	body := contactRegistrationLink(origin + "/login?next=%2Fprofile")
+	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: tenant.AccountID, BranchID: tenant.BranchID, Purpose: domain.ContactPurposeRegistrationLink, Kind: kind, To: destination, Body: body})
 	return err
 }

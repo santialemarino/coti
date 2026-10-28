@@ -14,6 +14,9 @@ import (
 	"golang.org/x/net/html"
 )
 
+// maxMessageIDLength bounds an echoed Message-ID well inside RFC 5322's 998-octet line limit.
+const maxMessageIDLength = 250
+
 // ParsedMessage is the readable material retained from one original email.
 type ParsedMessage struct {
 	Sender      string
@@ -21,6 +24,10 @@ type ParsedMessage struct {
 	Subject     string
 	Text        string
 	Attachments []Attachment
+	// MessageID is the Message-ID header with its angle brackets, blank when absent or malformed.
+	MessageID string
+	// Automated marks mail no automatic reply may answer (RFC 3834 and mailing-list headers).
+	Automated bool
 }
 
 // Attachment holds a decoded MIME part and its original name and media type.
@@ -68,6 +75,10 @@ func ParseMessage(raw []byte, maxPartBytes int64, maxParts int) (ParsedMessage, 
 	if subject, subjectErr := reader.Header.Subject(); subjectErr == nil {
 		result.Subject = subject
 	}
+	if id, idErr := reader.Header.MessageID(); idErr == nil && validMessageID(id) {
+		result.MessageID = "<" + id + ">"
+	}
+	result.Automated = automatedMail(reader.Header)
 	var plain, rich []string
 	for count := 0; ; count++ {
 		part, nextErr := reader.NextPart()
@@ -126,6 +137,39 @@ func ParseMessage(raw []byte, maxPartBytes int64, maxParts int) (ParsedMessage, 
 		result.Text = strings.TrimSpace(strings.Join(rich, "\n\n"))
 	}
 	return result, nil
+}
+
+// validMessageID keeps a header value safe to echo in In-Reply-To: one token, no folding.
+func validMessageID(id string) bool {
+	if len(id) == 0 || len(id) > maxMessageIDLength || !strings.Contains(id, "@") {
+		return false
+	}
+	return !strings.ContainsFunc(id, func(r rune) bool {
+		return r <= ' ' || r >= 0x7f || r == '<' || r == '>'
+	})
+}
+
+// automatedMail reads RFC 3834 auto-submission, bulk and list headers, a null Return-Path and a
+// delivery report, the marks of mail no person wrote.
+func automatedMail(header mimemail.Header) bool {
+	switch strings.ToLower(strings.TrimSpace(header.Get("Precedence"))) {
+	case "bulk", "list", "junk":
+		return true
+	}
+	autoSubmitted := strings.ToLower(strings.TrimSpace(header.Get("Auto-Submitted")))
+	if autoSubmitted != "" && autoSubmitted != "no" {
+		return true
+	}
+	for _, key := range []string{"List-Id", "List-Unsubscribe", "X-Autoreply", "X-Autorespond"} {
+		if header.Get(key) != "" {
+			return true
+		}
+	}
+	if strings.TrimSpace(header.Get("Return-Path")) == "<>" {
+		return true
+	}
+	mediaType, _, err := header.ContentType()
+	return err == nil && strings.EqualFold(mediaType, "multipart/report")
 }
 
 func htmlText(data []byte) string {

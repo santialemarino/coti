@@ -68,8 +68,12 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		return nil, fmt.Errorf("compose email: %w", err)
 	}
 
+	fromName := m.cfg.FromName
+	if msg.FromName != "" {
+		fromName = msg.FromName
+	}
 	headers := []string{
-		"From: " + (&netmail.Address{Name: m.cfg.FromName, Address: m.cfg.FromAddress}).String(),
+		"From: " + (&netmail.Address{Name: fromName, Address: m.cfg.FromAddress}).String(),
 		"To: " + (&netmail.Address{Name: msg.ToName, Address: msg.To}).String(),
 		"Subject: " + mime.QEncoding.Encode("utf-8", msg.Subject),
 		"Date: " + time.Now().Format(time.RFC1123Z),
@@ -79,6 +83,10 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 	if msg.ReplyTo != "" {
 		headers = append(headers,
 			"Reply-To: "+(&netmail.Address{Name: msg.ReplyToName, Address: msg.ReplyTo}).String())
+	}
+	// The ID comes from inbound mail, so anything that could fold or end the header is refused.
+	if msg.InReplyTo != "" && !strings.ContainsAny(msg.InReplyTo, "\r\n") {
+		headers = append(headers, "In-Reply-To: "+msg.InReplyTo, "References: "+msg.InReplyTo)
 	}
 	return append([]byte(strings.Join(headers, "\r\n")+"\r\n\r\n"), body.Bytes()...), nil
 }

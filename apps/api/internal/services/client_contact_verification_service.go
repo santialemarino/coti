@@ -122,13 +122,13 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 	if s.cfg.GoogleLocalOrigin != "" {
 		origin = strings.TrimRight(s.cfg.GoogleLocalOrigin, "/")
 	}
-	body := "Confirmá tu contacto para asociarlo a tu cuenta: " + origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret)
+	body := contactVerificationLink(origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret))
 	code := ""
 	if kind == domain.ChannelTypeWhatsApp {
 		code = secret
-		body = "Tu código para confirmar el teléfono en Coti es: " + secret
+		body = contactVerificationCode(secret)
 	}
-	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: p.AccountID, Kind: kind, To: value, Body: body, Code: code})
+	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: p.AccountID, Purpose: domain.ContactPurposeVerification, Kind: kind, To: value, Body: body, Code: code})
 	if err != nil {
 		_ = s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error { return s.store.FinishChallenge(ctx, q, p, c.ID, true) })
 		return nil, err
