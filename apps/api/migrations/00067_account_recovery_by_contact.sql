@@ -21,6 +21,7 @@ ALTER TABLE client_contact ADD CONSTRAINT ck_client_contact_main CHECK (NOT is_m
 CREATE UNIQUE INDEX uq_client_contact_main ON client_contact(account_id,client_id) WHERE is_main;
 
 -- +goose Down
+SELECT assert_migration_sees_all_rows('client_contact_challenge','customer_auth_challenge');
 DROP INDEX uq_client_contact_main;
 ALTER TABLE client_contact DROP CONSTRAINT ck_client_contact_main;
 ALTER TABLE client_contact DROP COLUMN is_main;

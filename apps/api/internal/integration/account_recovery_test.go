@@ -325,3 +325,63 @@ func TestAccountRecovery_SeparateRecoveryEmailIsGone(t *testing.T) {
 		t.Fatal("registration sent a recovery message")
 	}
 }
+
+// TestAccountRecovery_CodeDiesWithItsContact sends a code, takes the contact away from the customer
+// before the code comes back, and expects the right code to recover nothing.
+func TestAccountRecovery_CodeDiesWithItsContact(t *testing.T) {
+	cases := []struct {
+		name     string
+		takeAway func(t *testing.T, e *env, account uuid.UUID, host, token, kept, lost string)
+	}{
+		{"removed from the profile", func(t *testing.T, e *env, _ uuid.UUID, host, token, kept, _ string) {
+			body := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{{"kind": "EMAIL", "value": kept, "primary": true}}}
+			if rec := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + host + "/profile", token: token, body: body}); rec.Code != http.StatusNoContent {
+				t.Fatalf("profile: %d %s", rec.Code, rec.Body)
+			}
+		}},
+		{"proof of ownership withdrawn", func(t *testing.T, e *env, account uuid.UUID, _, _, _, lost string) {
+			if _, err := e.db.CrossAccount().Exec(context.Background(), `DELETE FROM customer_contact_ownership o USING client_contact c WHERE o.account_id=$1 AND c.account_id=o.account_id AND c.id=o.contact_id AND c.value=$2`, account, lost); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"moved to another profile by a merge", func(t *testing.T, e *env, account uuid.UUID, _, _, _, lost string) {
+			ctx := context.Background()
+			var other uuid.UUID
+			if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client(account_id,name) VALUES($1,'Otra ficha') RETURNING id`, account).Scan(&other); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact SET client_id=$3,is_main=FALSE WHERE account_id=$1 AND value=$2`, account, lost, other); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			account, _ := e.seedAccount(t, "Recovery takeover")
+			host, token := e.registerCustomer(t, account, recoveryTaxID)
+			kept, lost := customerEmail(recoveryTaxID), "lost+"+uuid.NewString()+"@example.test"
+			contacts := []map[string]any{{"kind": "EMAIL", "value": kept, "primary": true}, {"kind": "EMAIL", "value": lost}}
+			if rec := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + host + "/profile", token: token, body: map[string]any{"name": "Juan Perez", "contacts": contacts}}); rec.Code != http.StatusNoContent {
+				t.Fatalf("profile: %d %s", rec.Code, rec.Body)
+			}
+			e.verifyCustomerContact(t, account, recoveryTaxID, domain.ChannelTypeEmail, kept, true)
+			e.verifyCustomerContact(t, account, recoveryTaxID, domain.ChannelTypeEmail, lost, true)
+			options, _ := e.recoveryOptions(t, host, recoveryTaxID)
+			var target uuid.UUID
+			for _, option := range options {
+				if option.Masked == "l•••@example.test" {
+					target = option.ID
+				}
+			}
+			if target == uuid.Nil {
+				t.Fatalf("options=%+v", options)
+			}
+			challenge, code := e.requestRecoveryCode(t, host, recoveryTaxID, target)
+			tc.takeAway(t, e, account, host, token, kept, lost)
+			if status, _ := e.resetWithRecoveryCode(t, host, challenge, code, "Replacement-pass123!"); status != http.StatusUnauthorized {
+				t.Fatalf("code for a contact the customer no longer holds: %d, want 401", status)
+			}
+		})
+	}
+}
