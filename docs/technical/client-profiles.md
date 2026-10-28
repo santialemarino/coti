@@ -158,7 +158,7 @@ A profile's CUIT or CUIL comes from the customer, when they create their account
 webapp; neither the seller nor the AI loads, changes or deletes it. It lives in `client.tax_id`
 (11 digits). A consumidor final's DNI lives apart in `client.dni` (7 or 8 digits, not unique: one
 person may have several profiles). A DNI never makes a client registered — registered means a CUIT
-— and never substitutes for the CUIT required for invoicing.
+— and never substitutes for the CUIT an invoice A requires.
 
 `PUT /v1/clients/{id}/fiscal` replaces the legal name, fiscal address, IVA condition and DNI, and an
 omitted field clears. It never writes `tax_id`:
@@ -169,16 +169,18 @@ omitted field clears. It never writes `tax_id`:
   `INVALID_TAX_ID`.
 
 The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
-its own immutable copy of the registered receiver and their CUIT.
+its own immutable copy of the receiver, which names the CUIT when there is one and the DNI otherwise.
 
 Migration `00059_client_dni.sql` moved every 7–8 digit `tax_id` into `dni` and narrowed `tax_id` to
 11 digits. It refuses to run, naming the count, if any `tax_id` is neither shape: no route ever
 stored one, so such a value is hand-edited data for a person to settle rather than for the
 migration to guess at.
 
-Every invoice requires a registered customer's CUIT, including consumer-final invoices below
-`INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT`. A DNI cannot satisfy that requirement. While the preview
-(`GET /v1/quotes/{quoteId}/invoice`) reports `RECEIVER_CUIT_REQUIRED`, it also carries
+An invoice A needs the receiver's CUIT, which only the customer's registered account provides, so
+a DNI never satisfies it (`RECEIVER_CUIT_REQUIRED`). An invoice B at or above
+`INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT` needs a CUIT or a DNI (`RECEIVER_ID_REQUIRED`), and an
+invoice B below it goes to an unidentified consumidor final with no document at all. While the
+preview (`GET /v1/quotes/{quoteId}/invoice`) reports either receiver issue, it also carries
 `customer_signup_url`: the supplier's customer sign-up page at `https://<public_hostname>/signup`,
 or under `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local stack. An account with no `public_hostname` gets
 no link, because customer sign-up resolves the supplier by its hostname; the card then says the
