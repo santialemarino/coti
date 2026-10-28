@@ -1,5 +1,8 @@
 import 'server-only';
 
+import { headers } from 'next/headers';
+
+import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import { customerApiPath, CustomerAuthError, getCustomerToken } from '@/lib/auth/customer-session';
 import { API_URL } from '@/lib/config';
 
@@ -34,10 +37,16 @@ function mapOrder(raw: CustomerOrderRaw): CustomerOrder {
 export async function customerFetch(path: string, options?: RequestInit): Promise<Response> {
   const token = await getCustomerToken();
   if (!token) throw new CustomerAuthError(401);
+  // The API's per-address limits would otherwise count every customer as this server.
+  const callerAddress = forwardedClientAddress(await headers());
   return fetch(await customerApiPath(path), {
     ...options,
     cache: 'no-store',
-    headers: { ...options?.headers, Authorization: `Bearer ${token}` },
+    headers: {
+      ...options?.headers,
+      Authorization: `Bearer ${token}`,
+      ...(callerAddress ? { 'X-Forwarded-For': callerAddress } : {}),
+    },
   });
 }
 
