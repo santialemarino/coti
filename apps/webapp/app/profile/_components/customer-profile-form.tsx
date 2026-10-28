@@ -97,6 +97,7 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(submit)} noValidate className="flex flex-col gap-y-6">
+        {profile.ownershipUnproved ? <Callout>{t('ownershipUnproved')}</Callout> : null}
         {profile.reviewPending ? <Callout>{t('reviewPending')}</Callout> : null}
         <Card className="px-6 gap-y-5">
           <div className="flex flex-col gap-y-2">
@@ -222,21 +223,45 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
             </Button>
           </Card>
         ))}
-        <Card className="px-6 gap-y-5">
-          <h2 className="text-heading-5">{t('fiscalTitle')}</h2>
-          {(['legalName', 'address'] as const).map((name) => (
+        {profile.ownershipUnproved ? null : (
+          <Card className="px-6 gap-y-5">
+            <h2 className="text-heading-5">{t('fiscalTitle')}</h2>
+            {(['legalName', 'address'] as const).map((name) => (
+              <FormField
+                key={name}
+                control={form.control}
+                name={name}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t(name)}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value || ''}
+                        maxLength={255}
+                        disabled={pending}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ))}
             <FormField
-              key={name}
               control={form.control}
-              name={name}
+              name="ivaCondition"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t(name)}</FormLabel>
+                  <FormLabel>{t('ivaCondition')}</FormLabel>
                   <FormControl>
-                    <Input
-                      {...field}
+                    <Combobox
                       value={field.value || ''}
-                      maxLength={255}
+                      onValueChange={field.onChange}
+                      resetValue=""
+                      placeholder={t('ivaPlaceholder')}
+                      options={['', 'REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER'].map(
+                        (value) => ({ value, label: t(value ? `iva.${value}` : 'ivaEmpty') }),
+                      )}
                       disabled={pending}
                     />
                   </FormControl>
@@ -244,30 +269,8 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
                 </FormItem>
               )}
             />
-          ))}
-          <FormField
-            control={form.control}
-            name="ivaCondition"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('ivaCondition')}</FormLabel>
-                <FormControl>
-                  <Combobox
-                    value={field.value || ''}
-                    onValueChange={field.onChange}
-                    resetValue=""
-                    placeholder={t('ivaPlaceholder')}
-                    options={['', 'REGISTERED', 'MONOTRIBUTO', 'EXEMPT', 'FINAL_CONSUMER'].map(
-                      (value) => ({ value, label: t(value ? `iva.${value}` : 'ivaEmpty') }),
-                    )}
-                    disabled={pending}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </Card>
+          </Card>
+        )}
         <FormRootMessage />
         <PendingButton
           type="submit"

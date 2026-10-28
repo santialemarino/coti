@@ -83,12 +83,16 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 			return domain.ErrNotFound
 		}
 		c.ClientID = profiles[0].ID
-		collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ClientID})
+		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
+		if err != nil {
+			return err
+		}
+		visible, err := s.contacts.contacts.ListForCustomer(ctx, q, p, c.ClientID, access.Proved)
 		if err != nil {
 			return err
 		}
 		found := false
-		for _, contact := range collections[c.ClientID] {
+		for _, contact := range visible {
 			if contact.Kind == kind && contact.Value == value {
 				found = true
 			}
@@ -204,6 +208,7 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			return domain.ErrNotFound
 		}
 		var sourceID *uuid.UUID
+		var merged []domain.ClientContact
 		for i := range candidates {
 			if candidates[i].ID != c.ClientID {
 				if sourceID != nil {
@@ -219,6 +224,16 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, c.ClientID); err != nil {
 				return err
 			}
+		}
+		// Verifying first lets the proof this confirm establishes decide the merged primaries.
+		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
+			return err
+		}
+		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
+		if err != nil {
+			return err
+		}
+		if sourceID != nil {
 			for _, incoming := range collections[*sourceID] {
 				found, hasKind := false, false
 				for _, existing := range contacts {
@@ -230,16 +245,22 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 					}
 				}
 				if !found {
-					incoming.Primary = !hasKind
+					incoming.Primary = !hasKind && access.Proved
 					contacts = append(contacts, incoming)
+					merged = append(merged, incoming)
 				}
 			}
 		}
 		if err := s.contacts.contacts.Save(ctx, q, p.AccountID, c.ClientID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
-		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
+		if err := s.contacts.contacts.Declare(ctx, q, p, c.ClientID, merged); err != nil {
 			return err
+		}
+		if access.Proved {
+			if err := s.contacts.contacts.ProjectPrimaries(ctx, q, p.AccountID, c.ClientID); err != nil {
+				return err
+			}
 		}
 		return s.store.FinishChallenge(ctx, q, p, id, true)
 	})

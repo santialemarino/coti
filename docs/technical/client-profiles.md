@@ -8,7 +8,7 @@ boolean. New profiles require a full name and at least one phone or email. Selle
 and unknown channel senders never receive a CUIT from seller input or message declarations.
 
 Customer registration requires a checksum-valid CUIT/CUIL, full name, credentials and at least one
-contact. Registration creates or adopts the supplier's unique fiscal profile in the same transaction
+contact. Registration creates or adopts (see below) the supplier's unique fiscal profile in the same transaction
 as the identity and session. Only registration assigns the CUIT. Subsequent profile, quotation-send
 and fiscal edits cannot assign, replace or clear it; PostgreSQL also rejects changing a non-null
 client tax identifier. Credentials remain supplier-scoped and separate from commercial contacts.
@@ -44,6 +44,29 @@ name prevails. Only the proved contact becomes verified; other newly imported co
 pending. Successful proof also records customer-specific contact ownership and snapshots access
 to the source orders before the merge. Delivery destinations already recorded on sends remain immutable. Staff cannot bypass
 proof using the retired contact suggestion mutation endpoint, which returns 403.
+
+## Adopting an earlier profile
+
+A CUIT is public, so registering one that an earlier seller-entered profile already carries links
+the identity to that profile without showing or changing it. The profile counts as proved once the
+customer verifies a contact it had before the identity existed — the ownership row with
+`includes_profile_history`, the same proof that opens the profile's earlier orders. A profile created
+with or after the identity is proved from the start.
+
+Until then the profile keeps its name, fiscal data, contacts and primaries, and the seller sees it
+unchanged. `client_contact.declared_by` records which identity entered each contact. GET /profile
+returns `ownership_unproved: true`, the name the customer entered (held on `customer_identity.name`)
+and only the contacts it declared, ordered by value with the first of each kind shown as primary, so
+neither tells which of them the profile already had. No fiscal data is returned. PUT /profile writes
+the name to the identity and replaces only the customer's own contacts: an earlier contact it omits
+is kept. No customer path (PUT, a portal request, a merge on proof) sets a primary on the profile or
+writes `client.phone`/`client.email` before proof, since the seller quotes and routes through them.
+Fiscal data is refused with 403 `PROFILE_OWNERSHIP_UNPROVED`. A verification code goes only to a
+contact the customer declared, so the owner's phone or email cannot be probed by a code request
+alone. A customer can still declare the owner's value and request a code to it once per resend
+cooldown (60 s by default); the verification routes have no per-route rate limit yet. To prove ownership the customer
+declares a contact the profile already had and verifies it; from then on GET and PUT work on the
+whole profile, which keeps its earlier name until the customer changes it.
 
 ## Deterministic channel onboarding
 
@@ -155,11 +178,14 @@ Merged sources are retired.
 Migration 00063 stores customer-specific ownership and proof-gated provisional history with RLS
 and composite tenant foreign keys. Legacy commercial verification does not substitute for a
 customer proof; My data shows those contacts as pending until this account verifies them. No shared contact is deleted
-or silently merged. Migration 00065 adds the outbox's `status_changed_at`, which bounds both the
-reply window and the delivery lease. Migrations are executable; the
+or silently merged. Migration 00064 adds `client_contact.declared_by` and attributes existing
+customer-entered contacts to the identity that entered them. Migration 00065 adds the outbox's
+`status_changed_at`, backfilled from `created_at`, which bounds both the reply window and the
+delivery lease. Migrations are executable; the
 consolidated database schema is a reference only.
 
-Integration tests cover proof-gated history movement, registered-name precedence, immutable data,
+Integration tests cover proof-gated history movement, registered-name precedence, earlier-profile
+adoption hidden until proof, immutable data,
 recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
 They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, the
 24-hour reply window, automated senders that get no prompt, the supplier-named email prompt and

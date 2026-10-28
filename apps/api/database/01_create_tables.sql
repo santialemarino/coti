@@ -1695,8 +1695,10 @@ CREATE TABLE client_contact (
  original_value VARCHAR(255),
  verified_at TIMESTAMPTZ DEFAULT now(),
  retired_at TIMESTAMPTZ,
+ declared_by UUID,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  FOREIGN KEY (account_id,client_id) REFERENCES client(account_id,id) ON DELETE CASCADE,
+ CONSTRAINT fk_client_contact_declared_by FOREIGN KEY (account_id,declared_by) REFERENCES customer_identity(account_id,id),
  UNIQUE(account_id,client_id,kind,value)
 );
 CREATE UNIQUE INDEX uq_client_contact_primary ON client_contact(account_id,client_id,kind) WHERE is_primary;

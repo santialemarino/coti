@@ -122,6 +122,13 @@ func TestCustomerHistoryRequiresContactProofAndIsolatesCustomersAndSuppliers(t *
 	if len(orders) != 0 {
 		t.Fatalf("new signup contact unlocked legacy history: %s", rec.Body)
 	}
+	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{
+		{"kind": "EMAIL", "value": "customer20123456786@example.test", "primary": true},
+		{"kind": "EMAIL", "value": "legacy@example.test", "primary": false},
+	}}
+	if rec = e.do(t, request{method: http.MethodPut, path: base + "/profile", token: token, body: declare}); rec.Code != http.StatusNoContent {
+		t.Fatalf("declare legacy contact: %d %s", rec.Code, rec.Body)
+	}
 	e.verifyCustomerContact(t, accountID, "20123456786", "EMAIL", "legacy@example.test", true)
 	rec = e.do(t, request{method: http.MethodGet, path: base + "/orders", token: token})
 	if err = json.Unmarshal(rec.Body.Bytes(), &orders); err != nil {

@@ -96,11 +96,16 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 		} else {
 			return domain.ErrConflict
 		}
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
+		if err != nil {
+			return err
+		}
 		current, err := s.contacts.List(ctx, q, p.AccountID, []uuid.UUID{client.ID})
 		if err != nil {
 			return err
 		}
 		contacts := current[client.ID]
+		declared := make([]domain.ClientContact, 0, len(incoming))
 		for _, contact := range incoming {
 			if contact.Value == "" {
 				continue
@@ -110,6 +115,7 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 				continue
 			}
 			contact.Value = value
+			declared = append(declared, contact)
 			found, hasKind := false, false
 			for _, c := range contacts {
 				if c.Kind == contact.Kind {
@@ -121,11 +127,20 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 				}
 			}
 			if !found {
-				contact.Primary = !hasKind
+				// An unproved customer never sets the earlier profile's primary, which feeds client.phone/email.
+				contact.Primary = !hasKind && access.Proved
 				contacts = append(contacts, contact)
 			}
 		}
 		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
+			return err
+		}
+		if access.Proved {
+			if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, client.ID); err != nil {
+				return err
+			}
+		}
+		if err := s.contacts.Declare(ctx, q, p, client.ID, declared); err != nil {
 			return err
 		}
 		original, err := json.Marshal(in)
