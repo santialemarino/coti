@@ -37,11 +37,12 @@ func (r *ClientContactRepository) HasRecentChallenge(ctx context.Context, q Quer
 	return found, err
 }
 
-// GetDestinationActivity counts every supplier's proofs and failed guesses for one destination.
-func (r *ClientContactRepository) GetDestinationActivity(ctx context.Context, q Querier, kind domain.ChannelType, value string, challengesSince, failuresSince time.Time) (int, int, error) {
-	var challenges, failures int
-	err := q.QueryRow(ctx, `SELECT challenges,failures FROM contact_destination_activity($1,$2,$3,$4)`, kind, value, challengesSince, failuresSince).Scan(&challenges, &failures)
-	return challenges, failures, err
+// GetDestinationActivity counts one supplier's proofs and failed guesses for a destination, plus every
+// supplier's proofs for it.
+func (r *ClientContactRepository) GetDestinationActivity(ctx context.Context, q Querier, accountID uuid.UUID, kind domain.ChannelType, value string, since domain.DestinationWindows) (*domain.DestinationActivity, error) {
+	a := &domain.DestinationActivity{}
+	err := q.QueryRow(ctx, `SELECT supplier_challenges,supplier_failures,all_challenges FROM contact_destination_activity($1,$2,$3,$4,$5,$6)`, accountID, kind, value, since.Challenges, since.Failures, since.AllSuppliers).Scan(&a.SupplierChallenges, &a.SupplierFailures, &a.AllChallenges)
+	return a, err
 }
 
 // CreateChallenge persists only a hash and invalidates earlier proofs for the same destination.

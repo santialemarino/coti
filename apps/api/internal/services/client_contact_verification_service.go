@@ -21,7 +21,7 @@ type contactVerificationStore interface {
 	GetChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	LockChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	HasRecentChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string, time.Time) (bool, error)
-	GetDestinationActivity(context.Context, repository.Querier, domain.ChannelType, string, time.Time, time.Time) (int, int, error)
+	GetDestinationActivity(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string, domain.DestinationWindows) (*domain.DestinationActivity, error)
 	CreateChallenge(context.Context, repository.Querier, domain.ContactChallenge) error
 	CreateFailure(context.Context, repository.Querier, domain.ContactChallenge) error
 	FinishChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) error
@@ -106,7 +106,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		if err := s.store.LockDestination(ctx, q, kind, value); err != nil {
 			return err
 		}
-		if err := s.checkDestination(ctx, q, kind, value, true); err != nil {
+		if err := s.checkDestination(ctx, q, p.AccountID, kind, value, true); err != nil {
 			return err
 		}
 		hostname, err = s.store.GetContactHostname(ctx, q, p.AccountID)
@@ -176,7 +176,7 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 			return domain.ErrUnauthenticated
 		}
-		if err := s.checkDestination(ctx, q, c.Kind, c.Value, false); err != nil {
+		if err := s.checkDestination(ctx, q, p.AccountID, c.Kind, c.Value, false); err != nil {
 			return err
 		}
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 {
@@ -288,15 +288,24 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 	return denied
 }
 
-// checkDestination applies the caps every supplier shares for one destination; the caller holds its
-// lock. A refusal reads like the per-customer cooldown, so it says nothing about who else asked.
-func (s *ClientContactVerificationService) checkDestination(ctx context.Context, q repository.Querier, kind domain.ChannelType, value string, sending bool) error {
+// checkDestination applies the destination caps; the caller holds its lock. The daily cap and the
+// failure lockout count within the supplier, since a code only works there, so one supplier's abuse
+// cannot lock the owner out of another. Only the anti-spam cap spans every supplier. A refusal reads
+// like the per-customer cooldown, so it says nothing about who else asked.
+func (s *ClientContactVerificationService) checkDestination(ctx context.Context, q repository.Querier, accountID uuid.UUID, kind domain.ChannelType, value string, sending bool) error {
 	now := s.now()
-	challenges, failures, err := s.store.GetDestinationActivity(ctx, q, kind, value, now.Add(-s.cfg.ContactDestinationWindow), now.Add(-s.cfg.ContactLockout))
+	activity, err := s.store.GetDestinationActivity(ctx, q, accountID, kind, value, domain.DestinationWindows{
+		Challenges:   now.Add(-s.cfg.ContactDestinationWindow),
+		Failures:     now.Add(-s.cfg.ContactLockout),
+		AllSuppliers: now.Add(-s.cfg.ContactSpamWindow),
+	})
 	if err != nil {
 		return err
 	}
-	if failures >= s.cfg.ContactFailureMax || (sending && challenges >= s.cfg.ContactDestinationMax) {
+	if activity.SupplierFailures >= s.cfg.ContactFailureMax {
+		return domain.ErrLocked
+	}
+	if sending && (activity.SupplierChallenges >= s.cfg.ContactDestinationMax || activity.AllChallenges >= s.cfg.ContactSpamMax) {
 		return domain.ErrLocked
 	}
 	return nil
