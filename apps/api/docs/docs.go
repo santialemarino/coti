@@ -1588,40 +1588,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/customer/sites/{hostname}/auth/forgot-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Request customer password recovery",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "CUIT/CUIL and recovery email",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerRecoveryRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Recovery request received"
-                    }
-                }
-            }
-        },
         "/v1/customer/sites/{hostname}/auth/google/complete": {
             "post": {
                 "consumes": [
@@ -1923,12 +1889,10 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/customer/sites/{hostname}/auth/recovery-email": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
+        "/v1/customer/sites/{hostname}/auth/recovery/code": {
+            "post": {
+                "consumes": [
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -1936,7 +1900,7 @@ const docTemplate = `{
                 "tags": [
                     "customer-auth"
                 ],
-                "summary": "Get customer recovery email",
+                "summary": "Send an account recovery code",
                 "parameters": [
                     {
                         "type": "string",
@@ -1944,36 +1908,139 @@ const docTemplate = `{
                         "name": "hostname",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL and the chosen contact",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryCodeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryCodeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "423": {
+                        "description": "Locked",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/recovery/options": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "List account recovery contacts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL of the account",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryOptionsRequest"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.CustomerRecoveryEmailResponse"
+                            "$ref": "#/definitions/dto.CustomerRecoveryOptionsResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
                     }
                 }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/recovery/reset": {
+            "post": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "customer-auth"
                 ],
-                "summary": "Update customer recovery email",
+                "summary": "Reset a customer password with a recovery code",
                 "parameters": [
                     {
                         "type": "string",
@@ -1983,18 +2050,21 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Optional recovery email",
+                        "description": "Code and new password",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.CustomerRecoveryEmailRequest"
+                            "$ref": "#/definitions/dto.CustomerRecoveryResetRequest"
                         }
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Recovery email saved"
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -2008,10 +2078,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
-                    "429": {
-                        "description": "Too Many Requests",
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     }
                 }
@@ -2077,74 +2153,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
-                    }
-                }
-            }
-        },
-        "/v1/customer/sites/{hostname}/auth/reset-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Reset a customer password",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Recovery token and new password",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerPasswordResetRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Password reset"
-                    }
-                }
-            }
-        },
-        "/v1/customer/sites/{hostname}/auth/verify-email": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Verify a customer recovery email",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Verification token",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerTokenRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Email verified"
                     }
                 }
             }
@@ -2537,6 +2545,63 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/main-contact": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Choose the customer's main contact",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "A verified contact of the profile",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerMainContactRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -9590,6 +9655,10 @@ const docTemplate = `{
                         "EMAIL"
                     ]
                 },
+                "main": {
+                    "description": "Main marks the contact account recovery preselects; it is always a verified one.",
+                    "type": "boolean"
+                },
                 "primary": {
                     "type": "boolean"
                 },
@@ -10485,10 +10554,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 72
                 },
-                "recovery_email": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 20
@@ -10593,6 +10658,26 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CustomerMainContactRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "EMAIL",
+                        "WHATSAPP"
+                    ]
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.CustomerOrderResponse": {
             "type": "object",
             "properties": {
@@ -10612,22 +10697,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.CustomerPasswordResetRequest": {
-            "type": "object",
-            "required": [
-                "password",
-                "token"
-            ],
-            "properties": {
-                "password": {
-                    "type": "string",
-                    "maxLength": 72
-                },
-                "token": {
                     "type": "string"
                 }
             }
@@ -10668,40 +10737,98 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.CustomerRecoveryEmailRequest": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string",
-                    "maxLength": 255
-                }
-            }
-        },
-        "dto.CustomerRecoveryEmailResponse": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "verified": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "dto.CustomerRecoveryRequest": {
+        "dto.CustomerRecoveryCodeRequest": {
             "type": "object",
             "required": [
-                "email",
+                "contact_id",
                 "tax_id"
             ],
             "properties": {
-                "email": {
-                    "type": "string",
-                    "maxLength": 255
+                "contact_id": {
+                    "type": "string"
                 },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerRecoveryCodeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerRecoveryContactResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available is false while no code can reach the contact's channel.",
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "main": {
+                    "type": "boolean"
+                },
+                "masked": {
+                    "type": "string"
+                },
+                "preselected": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.CustomerRecoveryOptionsRequest": {
+            "type": "object",
+            "required": [
+                "tax_id"
+            ],
+            "properties": {
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerRecoveryOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.CustomerRecoveryContactResponse"
+                    }
+                }
+            }
+        },
+        "dto.CustomerRecoveryResetRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "id",
+                "password"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "id": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 72
                 }
             }
         },
@@ -10729,10 +10856,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 72
                 },
-                "recovery_email": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 20
@@ -10746,17 +10869,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/dto.CustomerIdentityResponse"
                 },
                 "session_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.CustomerTokenRequest": {
-            "type": "object",
-            "required": [
-                "token"
-            ],
-            "properties": {
-                "token": {
                     "type": "string"
                 }
             }

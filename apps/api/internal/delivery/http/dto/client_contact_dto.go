@@ -12,6 +12,12 @@ type ContactVerificationRequest struct {
 	Value string `json:"value" binding:"required,max=255"`
 }
 
+// CustomerMainContactRequest is the body for PUT /v1/customer/sites/{hostname}/profile/main-contact.
+type CustomerMainContactRequest struct {
+	Kind  string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
+	Value string `json:"value" binding:"required,max=255"`
+}
+
 // ContactRegistrationLinkRequest selects the customer's primary contact channel.
 type ContactRegistrationLinkRequest struct {
 	Kind string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
@@ -42,6 +48,8 @@ type ClientContactResponse struct {
 	Value    string `json:"value" binding:"required,max=255"`
 	Primary  bool   `json:"primary"`
 	Verified bool   `json:"verified"`
+	// Main marks the contact account recovery preselects; it is always a verified one.
+	Main bool `json:"main"`
 }
 
 // CustomerProfileResponse is returned by GET /v1/customer/sites/{hostname}/profile.

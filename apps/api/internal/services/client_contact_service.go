@@ -23,6 +23,7 @@ type contactStore interface {
 	SaveDeclared(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
 	Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
 	ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
+	SetMain(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
 	AttachSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
 	PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error)
@@ -193,6 +194,27 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 			return err
 		}
 		return s.contacts.Declare(ctx, q, p, client.ID, contacts)
+	})
+}
+
+// SetMainContact makes one of the customer's verified contacts the profile's main one.
+func (s *ClientContactService) SetMainContact(ctx context.Context, p domain.CustomerPrincipal, kind domain.ChannelType, value string) error {
+	if p.CustomerID == uuid.Nil || !domain.ValidCUIT(p.TaxID) {
+		return domain.ErrUnauthenticated
+	}
+	value, err := domain.NormalizeClientContact(kind, value)
+	if err != nil {
+		return err
+	}
+	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
+		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
+		if err != nil {
+			return err
+		}
+		if len(profiles) != 1 {
+			return domain.ErrNotFound
+		}
+		return s.contacts.SetMain(ctx, q, p, profiles[0].ID, kind, value)
 	})
 }
 

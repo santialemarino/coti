@@ -18,6 +18,8 @@ import (
 
 type contactVerificationStore interface {
 	GrantProvisionalHistory(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
+	ListRecoveryContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) ([]domain.ClientContact, error)
+	LockRecoveryChallenge(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ContactChallenge, error)
 	GetChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	LockChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	HasRecentChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string, time.Time) (bool, error)
@@ -61,7 +63,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		}
 		secret = fmt.Sprintf("%06d", n.Int64())
 	}
-	c := &domain.ContactChallenge{ID: uuid.New(), AccountID: p.AccountID, CustomerID: p.CustomerID, Kind: kind, Value: value, ExpiresAt: s.now().Add(s.cfg.ContactVerificationTTL)}
+	c := &domain.ContactChallenge{ID: uuid.New(), AccountID: p.AccountID, CustomerID: p.CustomerID, Purpose: domain.ContactChallengeVerify, Kind: kind, Value: value, ExpiresAt: s.now().Add(s.cfg.ContactVerificationTTL)}
 	c.TokenHash = hashToken(c.ID.String() + ":" + secret)
 	hostname := ""
 	err = s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {

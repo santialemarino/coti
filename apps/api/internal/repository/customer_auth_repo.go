@@ -10,7 +10,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-const customerIdentityColumns = `id, account_id, tax_id, COALESCE(password_hash,''), name, google_subject, recovery_email, recovery_email_verified_at,
+const customerIdentityColumns = `id, account_id, tax_id, COALESCE(password_hash,''), name, google_subject,
  failed_attempts, locked_until, disabled_at, created_at`
 
 // CustomerAuthRepository stores customer credentials without accessing commercial client profiles.
@@ -85,9 +85,9 @@ func (r *CustomerAuthRepository) GetSession(ctx context.Context, q Querier, acco
 // CreateIdentity registers credentials without associating preexisting RFQs or client profiles.
 func (r *CustomerAuthRepository) CreateIdentity(ctx context.Context, q Querier, in domain.CustomerIdentity) (*domain.CustomerIdentity, error) {
 	identity, err := scanCustomerIdentity(q.QueryRow(ctx, `INSERT INTO customer_identity
-  (id, account_id, tax_id, password_hash, recovery_email, name) VALUES ($1,$2,$3,$4,$5,$6)
+  (id, account_id, tax_id, password_hash, name) VALUES ($1,$2,$3,$4,$5)
   ON CONFLICT (account_id, tax_id) WHERE disabled_at IS NULL DO NOTHING RETURNING `+customerIdentityColumns,
-		in.ID, in.AccountID, in.TaxID, in.PasswordHash, in.RecoveryEmail, in.Name))
+		in.ID, in.AccountID, in.TaxID, in.PasswordHash, in.Name))
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, domain.ErrConflict
 	}
@@ -127,7 +127,7 @@ func (r *CustomerAuthRepository) RevokeSession(ctx context.Context, q Querier, a
 func scanCustomerIdentity(row pgx.Row) (*domain.CustomerIdentity, error) {
 	var identity domain.CustomerIdentity
 	err := row.Scan(&identity.ID, &identity.AccountID, &identity.TaxID, &identity.PasswordHash,
-		&identity.Name, &identity.GoogleSubject, &identity.RecoveryEmail, &identity.RecoveryEmailVerifiedAt, &identity.FailedAttempts, &identity.LockedUntil, &identity.DisabledAt, &identity.CreatedAt)
+		&identity.Name, &identity.GoogleSubject, &identity.FailedAttempts, &identity.LockedUntil, &identity.DisabledAt, &identity.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

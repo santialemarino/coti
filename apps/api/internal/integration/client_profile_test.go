@@ -42,7 +42,7 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 	if clientID != requestClientID || taxID != nil || status != "SENT" || len(result.Deliveries) != 2 {
 		t.Fatalf("association at publication: %s %s %v %s", clientID, requestClientID, taxID, status)
 	}
-	host, token := e.registerCustomer(t, seed.tenant.AccountID, "30712345671", "")
+	host, token := e.registerCustomer(t, seed.tenant.AccountID, "30712345671")
 	e.verifyCustomerContact(t, seed.tenant.AccountID, "30712345671", domain.ChannelTypeWhatsApp, phone)
 	response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String(), token: token})
 	var order struct {

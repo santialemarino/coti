@@ -150,7 +150,7 @@ func run() error {
 		quoteMailService = services.NewMailService(db, mail.DisabledMailer{}, notificationRepo,
 			accountRepo, nil)
 	}
-	customerAuthService.WithIdentityProviders(repository.NewCustomerAuthRepository(), customeridentity.NewGoogle(cfg.CustomerAuth.GoogleClientID, cfg.CustomerAuth.GoogleClientSecret, cfg.CustomerAuth.GoogleTimeout), mailService)
+	customerAuthService.WithIdentityProviders(repository.NewCustomerAuthRepository(), customeridentity.NewGoogle(cfg.CustomerAuth.GoogleClientID, cfg.CustomerAuth.GoogleClientSecret, cfg.CustomerAuth.GoogleTimeout))
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo, refreshTokenRepo,
 		mailService, authService, log, cfg.Auth, cfg.Web, nil)
 	verificationService := services.NewVerificationService(db, userRepo, authTokenRepo,
@@ -214,6 +214,7 @@ func run() error {
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
+	customerAuthService.WithContactRecovery(contactVerification)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
 		cfg.RFQ, cfg.Storage.MaxFileSize).WithContacts(contactService)

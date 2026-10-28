@@ -15,7 +15,6 @@ type CustomerAuthConfig struct {
 	GoogleTimeout               time.Duration
 	SignupTTL                   time.Duration
 	RecoveryTTL                 time.Duration
-	VerificationTTL             time.Duration
 	OrderPageSize               int
 	SessionTTL                  time.Duration
 	MaxFailedAttempts           int
@@ -42,8 +41,7 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 		GoogleLocalOrigin:           os.Getenv("CUSTOMER_GOOGLE_LOCAL_ORIGIN"),
 		GoogleTimeout:               getDuration("CUSTOMER_GOOGLE_TIMEOUT_SECONDS", 10*time.Second, problems),
 		SignupTTL:                   getDuration("CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES", 10*time.Minute, problems),
-		RecoveryTTL:                 getDuration("CUSTOMER_RECOVERY_TTL_MINUTES", time.Hour, problems),
-		VerificationTTL:             getDuration("CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS", 24*time.Hour, problems),
+		RecoveryTTL:                 getDuration("CUSTOMER_RECOVERY_TTL_MINUTES", 15*time.Minute, problems),
 		OrderPageSize:               getInt("CUSTOMER_ORDER_PAGE_SIZE", 20, problems),
 		SessionTTL:                  getDuration("CUSTOMER_SESSION_TTL_DAYS", 30*24*time.Hour, problems),
 		MaxFailedAttempts:           getInt("CUSTOMER_MAX_FAILED_ATTEMPTS", 5, problems),
@@ -65,8 +63,8 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 	if cfg.ContactPromptLease <= 0 {
 		*problems = append(*problems, "CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES must be positive")
 	}
-	if cfg.GoogleTimeout <= 0 || cfg.SignupTTL <= 0 || cfg.RecoveryTTL <= 0 || cfg.VerificationTTL <= 0 {
-		*problems = append(*problems, "CUSTOMER_GOOGLE_TIMEOUT_SECONDS, CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES, CUSTOMER_RECOVERY_TTL_MINUTES and CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS must be positive")
+	if cfg.GoogleTimeout <= 0 || cfg.SignupTTL <= 0 || cfg.RecoveryTTL <= 0 {
+		*problems = append(*problems, "CUSTOMER_GOOGLE_TIMEOUT_SECONDS, CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES and CUSTOMER_RECOVERY_TTL_MINUTES must be positive")
 	}
 	if cfg.GoogleLocalOrigin != "" {
 		u, err := url.Parse(cfg.GoogleLocalOrigin)

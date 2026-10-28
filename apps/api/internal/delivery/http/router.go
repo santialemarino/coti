@@ -14,6 +14,7 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
 
 	// The generated spec registers itself on import. It is regenerated from the handler
@@ -106,17 +107,21 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		customers.GET("/auth/google/options", h.CustomerAuth.GoogleOptions)
 		customers.POST("/auth/google/exchange", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.GoogleExchange)
 		customers.POST("/auth/google/complete", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.CompleteGoogle)
-		customers.POST("/auth/forgot-password", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.Forgot)
-		customers.POST("/auth/verify-email", credentialBody, limit("customer-verify", cfg.RateLimit.Credentials), h.CustomerAuth.VerifyEmail)
-		customers.POST("/auth/reset-password", credentialBody, limit("customer-reset", cfg.RateLimit.Credentials), h.CustomerAuth.Reset)
+		// Recovery is counted per address and per account named, so neither side gets around it.
+		byTaxID := middleware.JSONBodyKey("tax_id", domain.NormalizeTaxID)
+		perAccount := func(scope string, max int) gin.HandlerFunc {
+			return middleware.RateLimitBy(rl.Limiter, rateLimitOptions(cfg, rl, scope, max), byTaxID)
+		}
+		customers.POST("/auth/recovery/options", credentialBody, limit("customer-recovery", cfg.RateLimit.Credentials), perAccount("customer-recovery-account", cfg.RateLimit.Credentials), h.CustomerAuth.RecoveryOptions)
+		customers.POST("/auth/recovery/code", credentialBody, limit("customer-recovery-code", cfg.RateLimit.Mail), perAccount("customer-recovery-code-account", cfg.RateLimit.Mail), h.CustomerAuth.RecoveryCode)
+		customers.POST("/auth/recovery/reset", credentialBody, limit("customer-recovery-reset", cfg.RateLimit.Credentials), middleware.RateLimitBy(rl.Limiter, rateLimitOptions(cfg, rl, "customer-recovery-reset-code", cfg.RateLimit.Credentials), middleware.JSONBodyKey("id", strings.ToLower)), h.CustomerAuth.RecoveryReset)
 		customers.POST("/auth/register", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.Register)
 		customers.POST("/auth/login", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.Login)
 		customers.Use(middleware.RequireCustomer(auth.Customer))
 		customers.GET("/me", h.CustomerAuth.Me)
-		customers.GET("/auth/recovery-email", h.CustomerAuth.GetRecoveryEmail)
-		customers.PUT("/auth/recovery-email", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.UpdateRecoveryEmail)
 		if h.ClientContacts != nil {
 			customers.GET("/profile", h.ClientContacts.GetProfile)
+			customers.PUT("/profile/main-contact", h.ClientContacts.SetMainContact)
 			customers.PUT("/profile", h.ClientContacts.UpdateProfile)
 			customers.POST("/profile/contacts/verification", h.ClientContacts.RequestVerification)
 			customers.POST("/profile/contacts/verification/confirm", h.ClientContacts.ConfirmVerification)

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/mail"
-	"net/url"
 	"strings"
 	"time"
 
@@ -15,16 +14,12 @@ import (
 )
 
 type customerCredentialStore interface {
-	GetChallengeCustomer(context.Context, repository.Querier, uuid.UUID, string, domain.CustomerChallengePurpose, time.Time) (uuid.UUID, error)
-	SetRecoveryEmail(context.Context, repository.Querier, uuid.UUID, uuid.UUID, *string) error
 	GetHostnameByDeliveryTokenCrossAccount(context.Context, repository.Querier, string) (string, error)
 	GetIdentityByGoogleSubject(context.Context, repository.Querier, uuid.UUID, string) (*domain.CustomerIdentity, error)
-	GetVerifiedRecoveryIdentity(context.Context, repository.Querier, uuid.UUID, string, string) (*domain.CustomerIdentity, error)
 	ConsumeChallenge(context.Context, repository.Querier, uuid.UUID, string, domain.CustomerChallengePurpose, time.Time) (*domain.CustomerChallenge, error)
 	CreateGoogleIdentity(context.Context, repository.Querier, domain.CustomerIdentity) (*domain.CustomerIdentity, error)
 	CreateChallenge(context.Context, repository.Querier, domain.CustomerChallenge) error
 	LinkGoogle(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
-	VerifyRecoveryEmail(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 	ResetCustomerPassword(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 }
 
@@ -45,11 +40,10 @@ type customerChallengePayload struct {
 	Name    string `json:"name,omitempty"`
 }
 
-// WithIdentityProviders enables Google and recovery mail through explicit adapter wiring.
-func (s *CustomerAuthService) WithIdentityProviders(store customerCredentialStore, google domain.CustomerGoogleProvider, mail mailSender) *CustomerAuthService {
+// WithIdentityProviders enables Google sign-in and credential recovery through explicit adapter wiring.
+func (s *CustomerAuthService) WithIdentityProviders(store customerCredentialStore, google domain.CustomerGoogleProvider) *CustomerAuthService {
 	s.credentials = store
 	s.google = google
-	s.mail = mail
 	return s
 }
 
@@ -175,130 +169,6 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 		return err
 	})
 	return login, err
-}
-
-// ForgotCustomerPassword sends only to the matching verified recovery address and conceals account existence.
-func (s *CustomerAuthService) ForgotCustomerPassword(ctx context.Context, hostname, taxID, email string) error {
-	if s.credentials == nil || s.mail == nil {
-		return domain.ErrNotConfigured
-	}
-	site, err := s.resolveSite(ctx, hostname)
-	if err != nil {
-		return err
-	}
-	taxID = domain.NormalizeTaxID(taxID)
-	email = domain.NormalizeEmail(email)
-	if !domain.ValidCUIT(taxID) || !validCustomerEmail(email) {
-		return nil
-	}
-	var identity *domain.CustomerIdentity
-	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		var err error
-		identity, err = s.credentials.GetVerifiedRecoveryIdentity(ctx, q, site.AccountID, taxID, email)
-		return err
-	})
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return s.sendCustomerChallenge(ctx, *site, *identity, "RESET_PASSWORD", email, false)
-}
-
-// VerifyCustomerEmail enables recovery only after the one-use link confirms the saved address.
-func (s *CustomerAuthService) VerifyCustomerEmail(ctx context.Context, hostname, raw string) error {
-	return s.redeemCustomerChallenge(ctx, hostname, raw, "VERIFY_EMAIL", func(q repository.Querier, token domain.CustomerChallenge, payload customerChallengePayload) error {
-		if token.CustomerID == nil {
-			return domain.ErrUnauthenticated
-		}
-		return s.credentials.VerifyRecoveryEmail(ctx, q, token.AccountID, *token.CustomerID, payload.Email, s.now())
-	})
-}
-
-// ResetCustomerPassword consumes one recovery capability and revokes every previous session.
-func (s *CustomerAuthService) ResetCustomerPassword(ctx context.Context, hostname, raw, password string) error {
-	if err := (domain.PasswordPolicy{MinLength: s.cfg.PasswordMinLength}).Validate(password); err != nil {
-		return err
-	}
-	hash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
-	return s.redeemCustomerChallenge(ctx, hostname, raw, "RESET_PASSWORD", func(q repository.Querier, token domain.CustomerChallenge, payload customerChallengePayload) error {
-		if token.CustomerID == nil {
-			return domain.ErrUnauthenticated
-		}
-		identity, err := s.store.GetIdentityForUpdate(ctx, q, token.AccountID, *token.CustomerID)
-		if err != nil {
-			return err
-		}
-		if identity.RecoveryEmail == nil || identity.RecoveryEmailVerifiedAt == nil || *identity.RecoveryEmail != payload.Email {
-			return domain.ErrUnauthenticated
-		}
-		return s.credentials.ResetCustomerPassword(ctx, q, token.AccountID, *token.CustomerID, hash, s.now())
-	})
-}
-
-func (s *CustomerAuthService) redeemCustomerChallenge(ctx context.Context, hostname, raw string, purpose domain.CustomerChallengePurpose, apply func(repository.Querier, domain.CustomerChallenge, customerChallengePayload) error) error {
-	if s.credentials == nil {
-		return domain.ErrNotConfigured
-	}
-	if !validCustomerSecret(raw) {
-		return domain.ErrUnauthenticated
-	}
-	site, err := s.resolveSite(ctx, hostname)
-	if err != nil {
-		return err
-	}
-	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		customerID, err := s.credentials.GetChallengeCustomer(ctx, q, site.AccountID, hashToken(raw), purpose, s.now())
-		if err != nil {
-			return err
-		}
-		identity, err := s.store.GetIdentityForUpdate(ctx, q, site.AccountID, customerID)
-		if err != nil {
-			return err
-		}
-		if identity.DisabledAt != nil {
-			return domain.ErrUnauthenticated
-		}
-		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(raw), purpose, s.now())
-		if err != nil {
-			return err
-		}
-		var payload customerChallengePayload
-		if err = json.Unmarshal(token.Payload, &payload); err != nil {
-			return err
-		}
-		return apply(q, *token, payload)
-	})
-}
-
-func (s *CustomerAuthService) sendCustomerChallenge(ctx context.Context, site domain.CustomerSite, identity domain.CustomerIdentity, purpose domain.CustomerChallengePurpose, email string, reportDelivery bool) error {
-	secret, err := s.newSecret()
-	if err != nil {
-		return err
-	}
-	payload, _ := json.Marshal(customerChallengePayload{Email: email})
-	ttl, path, event := s.cfg.RecoveryTTL, "/reset-password", domain.NotificationEventPasswordReset
-	subject, heading, label := "Restablecé tu contraseña", "Restablecé tu contraseña", "Elegir contraseña"
-	if purpose == "VERIFY_EMAIL" {
-		ttl, path, event = s.cfg.VerificationTTL, "/verify-email", domain.NotificationEventEmailVerification
-		subject, heading, label = "Confirmá tu email de recuperación", "Confirmá tu email de recuperación", "Confirmar email"
-	}
-	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		return s.credentials.CreateChallenge(ctx, q, domain.CustomerChallenge{ID: uuid.New(), AccountID: site.AccountID, CustomerID: &identity.ID, Purpose: purpose, TokenHash: hashToken(secret), Payload: payload, ExpiresAt: s.now().Add(ttl)})
-	})
-	if err != nil {
-		return err
-	}
-	// Anonymous recovery requests conceal delivery outcomes.
-	deliveryErr := s.mail.Send(ctx, OutboundMail{AccountID: site.AccountID, Event: event, To: email, Subject: subject, Heading: heading, ActionLabel: label, ActionURL: s.customerOrigin(site) + path + "?token=" + url.QueryEscape(secret)})
-	if reportDelivery {
-		return deliveryErr
-	}
-	return nil
 }
 
 func (s *CustomerAuthService) customerOrigin(site domain.CustomerSite) string {

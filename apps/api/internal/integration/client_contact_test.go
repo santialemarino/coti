@@ -70,12 +70,12 @@ func TestClientContacts_LocksAllowIndependentContacts(t *testing.T) {
 	}
 }
 
-func TestCustomerProfile_SavesOwnContactsAndKeepsRecoverySeparate(t *testing.T) {
+func TestCustomerProfile_SavesOwnContacts(t *testing.T) {
 	e := newEnv(t)
 	account, _ := e.seedAccount(t, "Customer contacts")
 	other, _ := e.seedAccount(t, "Other customer contacts")
-	host, token := e.registerCustomer(t, account, "20123456786", "recovery@example.test")
-	otherHost, otherToken := e.registerCustomer(t, other, "20123456786", "")
+	host, token := e.registerCustomer(t, account, "20123456786")
+	otherHost, otherToken := e.registerCustomer(t, other, "20123456786")
 	base := "/v1/customer/sites/" + host + "/profile"
 	input := map[string]any{"name": "Customer", "client_id": uuid.New(), "tax_id": "30712345671", "contacts": []map[string]any{
 		{"kind": "EMAIL", "value": " COMMERCIAL@EXAMPLE.TEST ", "primary": true},
@@ -89,18 +89,11 @@ func TestCustomerProfile_SavesOwnContactsAndKeepsRecoverySeparate(t *testing.T) 
 		}
 	}
 	var count int
-	var recovery string
 	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM client_contact WHERE account_id=$1`, account).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 3 {
 		t.Fatalf("retry contacts=%d", count)
-	}
-	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT recovery_email FROM customer_identity WHERE account_id=$1`, account).Scan(&recovery); err != nil {
-		t.Fatal(err)
-	}
-	if recovery != "recovery@example.test" {
-		t.Fatal("commercial update changed recovery")
 	}
 	response := e.do(t, request{method: http.MethodGet, path: base, token: token})
 	var result struct {
@@ -264,7 +257,7 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE rfq SET client_id=$2 WHERE account_id=$3 AND id=$1`, seed.draft.RFQ.ID, source, account); err != nil {
 		t.Fatal(err)
 	}
-	host, token := e.registerCustomer(t, account, "20123456786", "")
+	host, token := e.registerCustomer(t, account, "20123456786")
 	_ = host
 	p := domain.CustomerPrincipal{AccountID: account, TaxID: "20123456786"}
 	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, p.TaxID).Scan(&p.CustomerID); err != nil {

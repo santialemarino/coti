@@ -1631,8 +1631,6 @@ CREATE TABLE customer_identity (
   tax_id VARCHAR(11) NOT NULL CHECK (tax_id ~ '^[0-9]{11}$'),
   password_hash TEXT,
   google_subject VARCHAR(255),
-  recovery_email VARCHAR(255),
-  recovery_email_verified_at TIMESTAMPTZ,
   name VARCHAR(255),
   failed_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TIMESTAMPTZ,
@@ -1663,7 +1661,7 @@ ALTER TABLE customer_session ENABLE ROW LEVEL SECURITY;
 CREATE POLICY customer_session_account_isolation ON customer_session
   USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
 CREATE UNIQUE INDEX uq_customer_google_subject ON customer_identity(account_id,google_subject) WHERE disabled_at IS NULL AND google_subject IS NOT NULL;
-CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP','VERIFY_EMAIL','RESET_PASSWORD');
+CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP');
 CREATE TABLE customer_auth_challenge (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  account_id UUID NOT NULL REFERENCES account(id),
@@ -1691,6 +1689,8 @@ CREATE TABLE client_contact (
  kind channel_type NOT NULL CHECK (kind IN ('WHATSAPP','EMAIL')),
  value VARCHAR(255) NOT NULL,
  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+ -- The main contact the customer chose; without one it is the first WhatsApp proved, else the first contact.
+ is_main BOOLEAN NOT NULL DEFAULT FALSE,
  source client_contact_source NOT NULL,
  original_value VARCHAR(255),
  verified_at TIMESTAMPTZ DEFAULT now(),
@@ -1699,9 +1699,11 @@ CREATE TABLE client_contact (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  FOREIGN KEY (account_id,client_id) REFERENCES client(account_id,id) ON DELETE CASCADE,
  CONSTRAINT fk_client_contact_declared_by FOREIGN KEY (account_id,declared_by) REFERENCES customer_identity(account_id,id),
- UNIQUE(account_id,client_id,kind,value)
+ UNIQUE(account_id,client_id,kind,value),
+ CONSTRAINT ck_client_contact_main CHECK (NOT is_main OR (verified_at IS NOT NULL AND retired_at IS NULL))
 );
 CREATE UNIQUE INDEX uq_client_contact_primary ON client_contact(account_id,client_id,kind) WHERE is_primary;
+CREATE UNIQUE INDEX uq_client_contact_main ON client_contact(account_id,client_id) WHERE is_main;
 CREATE INDEX idx_client_contact_lookup ON client_contact(account_id,kind,value);
 
 
@@ -1749,11 +1751,14 @@ END;
 $$;
 CREATE TRIGGER seed_client_contacts AFTER INSERT ON client FOR EACH ROW EXECUTE FUNCTION seed_client_contacts();
 
+CREATE TYPE client_contact_challenge_purpose AS ENUM ('VERIFY','RECOVER');
+
 CREATE TABLE client_contact_challenge (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  account_id UUID NOT NULL REFERENCES account(id),
  customer_id UUID NOT NULL,
  client_id UUID NOT NULL,
+ purpose client_contact_challenge_purpose NOT NULL,
  kind channel_type NOT NULL CHECK(kind IN ('WHATSAPP','EMAIL')),
  value VARCHAR(255) NOT NULL,
  token_hash VARCHAR(64) NOT NULL,

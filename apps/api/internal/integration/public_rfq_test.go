@@ -46,7 +46,7 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
+	hostname, token := e.registerCustomer(t, accountID, "20123456786")
 	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/v1/customer/sites/"+hostname+"/rfq-channels/"+channelID.String()+"/requests", bytes.NewReader(body.Bytes()))
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -83,7 +83,7 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	if own.Code != http.StatusOK {
 		t.Fatalf("own request unavailable before proof: %d %s", own.Code, own.Body)
 	}
-	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671", "")
+	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671")
 	foreign := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: otherCustomer})
 	if foreign.Code != http.StatusNotFound {
 		t.Fatalf("another customer read own request: %d", foreign.Code)
@@ -121,7 +121,7 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 	if contextResponse.Code != http.StatusOK {
 		t.Fatalf("public destination: %d %s", contextResponse.Code, contextResponse.Body.String())
 	}
-	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
+	hostname, token := e.registerCustomer(t, accountID, "20123456786")
 	body := map[string]any{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public customer", "email": "customer@example.com", "text": "10 bolsas de cemento",
 		"account_id": otherAccountID, "branch_id": otherBranchID, "client_id": uuid.New(), "customer_id": uuid.New()}
 	for range 2 {
@@ -162,7 +162,7 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 	if own.Code != http.StatusOK {
 		t.Fatalf("own request unavailable before proof: %d %s", own.Code, own.Body)
 	}
-	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671", "")
+	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671")
 	foreign := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: otherCustomer})
 	if foreign.Code != http.StatusNotFound {
 		t.Fatalf("another customer read own request: %d", foreign.Code)

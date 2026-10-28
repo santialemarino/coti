@@ -21,7 +21,7 @@ func NewClientContactRepository() *ClientContactRepository { return &ClientConta
 // Unless all is set, it returns only the contacts this customer entered, ordered by value so neither
 // order nor flags tell which of them the profile already had.
 func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, all bool) ([]domain.ClientContact, error) {
-	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
+	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,c.id IS NOT DISTINCT FROM `+mainContact+`,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
  FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3)
  ORDER BY c.kind,($4 AND c.is_primary) DESC,CASE WHEN $4 THEN c.created_at END,c.value,c.id`, p.AccountID, clientID, p.CustomerID, all)
 	if err != nil {
@@ -31,7 +31,7 @@ func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier
 	contacts := []domain.ClientContact{}
 	for rows.Next() {
 		var c domain.ClientContact
-		if err := rows.Scan(&c.ID, &c.Kind, &c.Value, &c.Primary, &c.Verified); err != nil {
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Value, &c.Primary, &c.Main, &c.Verified); err != nil {
 			return nil, err
 		}
 		contacts = append(contacts, c)
@@ -237,6 +237,30 @@ func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant 
 	return err
 }
 
+// mainContact selects the profile's main contact among those customer $3 proved on profile $2 of
+// account $1: the one the customer chose, else the first WhatsApp, else the first contact.
+const mainContact = `(SELECT m.id FROM client_contact m JOIN customer_contact_ownership mo ON mo.account_id=m.account_id AND mo.customer_id=$3 AND mo.contact_id=m.id
+ WHERE m.account_id=$1 AND m.client_id=$2 AND m.verified_at IS NOT NULL AND m.retired_at IS NULL
+ ORDER BY m.is_main DESC,m.kind='WHATSAPP' DESC,m.created_at,m.id LIMIT 1)`
+
+// SetMain records the customer's choice of main contact, provided the customer proved it.
+func (r *ClientContactRepository) SetMain(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT c.id FROM client_contact c JOIN customer_contact_ownership o ON o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id
+ WHERE c.account_id=$1 AND c.client_id=$2 AND c.kind=$4 AND c.value=$5 AND c.verified_at IS NOT NULL AND c.retired_at IS NULL`, p.AccountID, clientID, p.CustomerID, kind, value).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND is_main AND id<>$3`, p.AccountID, clientID, id); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `UPDATE client_contact SET is_main=TRUE WHERE account_id=$1 AND id=$2`, p.AccountID, id)
+	return err
+}
+
 // Lock acquires account-scoped identity keys in a stable order within the caller's transaction.
 func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID uuid.UUID, keys ...string) error {
 	if len(keys) == 0 {
@@ -256,7 +280,7 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if !allowed {
 		return domain.ErrForbidden
 	}
-	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now() WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
 		return err
 	}
 	if _, err = q.Exec(ctx, `INSERT INTO client_tag(account_id,client_id,tag_id) SELECT account_id,$3,tag_id FROM client_tag WHERE account_id=$1 AND client_id=$2 ON CONFLICT(client_id,tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {

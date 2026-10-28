@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"errors"
-	"net/url"
 	"testing"
 	"time"
 
@@ -22,12 +21,6 @@ type customerCredentialsFake struct {
 
 func (f *customerCredentialsFake) GetIdentityByGoogleSubject(_ context.Context, _ repository.Querier, accountID uuid.UUID, subject string) (*domain.CustomerIdentity, error) {
 	if f.identity == nil || f.identity.AccountID != accountID || f.identity.GoogleSubject == nil || *f.identity.GoogleSubject != subject {
-		return nil, domain.ErrNotFound
-	}
-	return f.identity, nil
-}
-func (f *customerCredentialsFake) GetVerifiedRecoveryIdentity(_ context.Context, _ repository.Querier, accountID uuid.UUID, taxID, email string) (*domain.CustomerIdentity, error) {
-	if f.identity == nil || f.identity.AccountID != accountID || f.identity.TaxID != taxID || f.identity.RecoveryEmail == nil || *f.identity.RecoveryEmail != email || f.identity.RecoveryEmailVerifiedAt == nil {
 		return nil, domain.ErrNotFound
 	}
 	return f.identity, nil
@@ -54,13 +47,6 @@ func (f *customerCredentialsFake) LinkGoogle(_ context.Context, _ repository.Que
 	f.identity.GoogleSubject = &subject
 	return nil
 }
-func (f *customerCredentialsFake) VerifyRecoveryEmail(_ context.Context, _ repository.Querier, _, _ uuid.UUID, email string, now time.Time) error {
-	if f.identity.RecoveryEmail == nil || *f.identity.RecoveryEmail != email {
-		return domain.ErrUnauthenticated
-	}
-	f.identity.RecoveryEmailVerifiedAt = &now
-	return nil
-}
 func (f *customerCredentialsFake) ResetCustomerPassword(_ context.Context, _ repository.Querier, _, _ uuid.UUID, hash string, _ time.Time) error {
 	f.identity.PasswordHash = hash
 	f.reset = true
@@ -78,19 +64,16 @@ func (customerGoogleFake) Exchange(context.Context, string, string, string, stri
 	return &domain.CustomerGoogleIdentity{Subject: "stable-google-subject", Email: "customer@example.test", Name: "Customer"}, nil
 }
 
-func customerIdentityFixture() (*CustomerAuthService, *customerCredentialsFake, *fakeMail) {
+func customerIdentityFixture() (*CustomerAuthService, *customerCredentialsFake) {
 	svc, base, _ := customerAuthFixture()
 	store := &customerCredentialsFake{customerAuthFake: base, tokens: map[string]domain.CustomerChallenge{}, used: map[string]bool{}}
-	mail := &fakeMail{}
 	svc.cfg.SignupTTL = 10 * time.Minute
-	svc.cfg.RecoveryTTL = time.Hour
-	svc.cfg.VerificationTTL = 24 * time.Hour
-	svc.WithIdentityProviders(store, customerGoogleFake{}, mail)
-	return svc, store, mail
+	svc.WithIdentityProviders(store, customerGoogleFake{})
+	return svc, store
 }
 
 func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *testing.T) {
-	svc, store, _ := customerIdentityFixture()
+	svc, store := customerIdentityFixture()
 	ctx := context.Background()
 	secret, err := newTokenSecret()
 	if err != nil {
@@ -101,7 +84,7 @@ func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *te
 		t.Fatalf("first Google sign-in: %+v %v", result, err)
 	}
 	login, err := svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil)
-	if err != nil || login.Principal.TaxID != "20123456786" || store.identity.GoogleSubject == nil || store.identity.RecoveryEmail != nil {
+	if err != nil || login.Principal.TaxID != "20123456786" || store.identity.GoogleSubject == nil {
 		t.Fatalf("Google registration: %+v %v", login, err)
 	}
 	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil); !errors.Is(err, domain.ErrUnauthenticated) {
@@ -114,7 +97,7 @@ func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *te
 }
 
 func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testing.T) {
-	svc, store, _ := customerIdentityFixture()
+	svc, store := customerIdentityFixture()
 	ctx := context.Background()
 	registered := registerCustomer(t, svc)
 	secret, err := newTokenSecret()
@@ -142,66 +125,41 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 	}
 }
 
-func TestCustomerRecoveryRequiresStoredVerifiedEmailAndSingleUseMatchingPurpose(t *testing.T) {
-	svc, store, mail := customerIdentityFixture()
+// recoveryFake redeems one code for one customer and counts every attempt it was asked to judge.
+type recoveryFake struct {
+	customerID uuid.UUID
+	code       string
+	attempts   int
+}
+
+func (f *recoveryFake) ListRecoveryContacts(context.Context, repository.Querier, domain.CustomerPrincipal) ([]domain.RecoveryContact, error) {
+	return []domain.RecoveryContact{}, nil
+}
+func (f *recoveryFake) RequestRecovery(context.Context, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error) {
+	return &domain.ContactChallenge{ID: uuid.New()}, nil
+}
+func (f *recoveryFake) RedeemRecovery(_ context.Context, _ repository.Querier, _, _ uuid.UUID, code string) (uuid.UUID, bool, error) {
+	f.attempts++
+	if code != f.code {
+		return uuid.Nil, false, nil
+	}
+	return f.customerID, true, nil
+}
+
+func TestCustomerResetWithRecoveryCodeChecksThePolicyFirstAndSignsIn(t *testing.T) {
+	svc, store := customerIdentityFixture()
 	ctx := context.Background()
-	_, err := svc.Register(ctx, store.site.Hostname, domain.CustomerRegistration{Name: "Juan Perez", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: "customer@example.test", Primary: true}}, TaxID: "20123456786", Password: "Customer-pass123!", RecoveryEmail: "customer@example.test"})
-	if err != nil {
-		t.Fatal(err)
+	registered := registerCustomer(t, svc)
+	recovery := &recoveryFake{customerID: registered.Principal.CustomerID, code: "123456"}
+	svc.WithContactRecovery(recovery)
+	if _, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "123456", "short"); err == nil || recovery.attempts != 0 {
+		t.Fatalf("weak password spent an attempt: %v, attempts %d", err, recovery.attempts)
 	}
-	if len(mail.sent) != 1 {
-		t.Fatal("missing verification mail")
+	if _, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "654321", "Replacement-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) || store.reset {
+		t.Fatalf("wrong code reset the password: %v", err)
 	}
-	verificationURL, err := url.Parse(mail.sent[0].ActionURL)
-	if err != nil {
-		t.Fatal(err)
+	login, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "123456", "Replacement-pass123!")
+	if err != nil || login.Principal.CustomerID != registered.Principal.CustomerID || !store.reset || !store.revoked || bcrypt.CompareHashAndPassword([]byte(store.identity.PasswordHash), []byte("Replacement-pass123!")) != nil {
+		t.Fatalf("recovery did not replace the hash, revoke sessions and sign in: %+v %v", login, err)
 	}
-	verification := verificationURL.Query().Get("token")
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "customer@example.test"); err != nil || len(mail.sent) != 1 {
-		t.Fatal("unverified address used for recovery")
-	}
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, verification, "Replacement-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("verification capability reset password: %v", err)
-	}
-	if err = svc.VerifyCustomerEmail(ctx, store.site.Hostname, verification); err != nil {
-		t.Fatal(err)
-	}
-	if err = svc.VerifyCustomerEmail(ctx, store.site.Hostname, verification); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("verification link reused: %v", err)
-	}
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "attacker@example.test"); err != nil || len(mail.sent) != 1 {
-		t.Fatal("caller-selected recovery email received token")
-	}
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "customer@example.test"); err != nil || len(mail.sent) != 2 {
-		t.Fatalf("verified recovery: %v", err)
-	}
-	u, err := url.Parse(mail.sent[1].ActionURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reset := u.Query().Get("token")
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, reset, "Replacement-pass123!"); err != nil || !store.reset || !store.revoked || bcrypt.CompareHashAndPassword([]byte(store.identity.PasswordHash), []byte("Replacement-pass123!")) != nil {
-		t.Fatalf("reset did not replace hash and revoke sessions: %v", err)
-	}
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, reset, "Another-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("reset link reused: %v", err)
-	}
-}
-
-func (f *customerCredentialsFake) SetRecoveryEmail(_ context.Context, _ repository.Querier, accountID, customerID uuid.UUID, email *string) error {
-	if f.identity == nil || f.identity.AccountID != accountID || f.identity.ID != customerID {
-		return domain.ErrUnauthenticated
-	}
-	f.identity.RecoveryEmail = email
-	f.identity.RecoveryEmailVerifiedAt = nil
-	f.tokens = map[string]domain.CustomerChallenge{}
-	return nil
-}
-
-func (f *customerCredentialsFake) GetChallengeCustomer(_ context.Context, _ repository.Querier, accountID uuid.UUID, hash string, purpose domain.CustomerChallengePurpose, now time.Time) (uuid.UUID, error) {
-	token, ok := f.tokens[hash]
-	if !ok || token.AccountID != accountID || token.Purpose != purpose || !token.ExpiresAt.After(now) || f.used[hash] || token.CustomerID == nil {
-		return uuid.Nil, domain.ErrUnauthenticated
-	}
-	return *token.CustomerID, nil
 }
