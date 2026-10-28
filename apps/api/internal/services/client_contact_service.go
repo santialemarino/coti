@@ -151,9 +151,6 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 	if len(contacts) == 0 {
 		return domain.ErrInvalidInput
 	}
-	if err := s.checkContactLimit(contacts); err != nil {
-		return err
-	}
 	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
 		if err := s.lockContactValues(ctx, q, p.AccountID, contacts); err != nil {
 			return err
@@ -178,6 +175,13 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 		}
 		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
 		if err != nil {
+			return err
+		}
+		stored, err := s.contacts.ListForCustomer(ctx, q, p, client.ID, access.Proved)
+		if err != nil {
+			return err
+		}
+		if err := s.checkContactLimit(contacts, len(stored)); err != nil {
 			return err
 		}
 		if !access.Proved {
@@ -205,8 +209,10 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 	})
 }
 
-func (s *ClientContactService) checkContactLimit(contacts []domain.ClientContact) error {
-	if s.maxContacts > 0 && len(contacts) > s.maxContacts {
+// checkContactLimit refuses a save that grows the profile past the cap, so a profile a merge already
+// took past it can still be saved as it is.
+func (s *ClientContactService) checkContactLimit(contacts []domain.ClientContact, stored int) error {
+	if s.maxContacts > 0 && len(contacts) > max(stored, s.maxContacts) {
 		return domain.WithCode(domain.CodeContactLimit, domain.ErrInvalidInput)
 	}
 	return nil

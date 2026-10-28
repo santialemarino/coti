@@ -320,7 +320,7 @@
       "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo.",
       "verificationLocked": "Hubo demasiados intentos con este contacto. Esperá un rato y probá de nuevo.",
       "tooManyRequests": "Hiciste muchos cambios seguidos. Esperá un minuto y probá de nuevo.",
-      "contactLimit": "Llegaste al máximo de contactos. Quitá alguno para agregar otro."
+      "contactLimit": "Cargaste más contactos de los que admite la ficha. Quitá alguno y guardá de nuevo."
     },
     "reviewPending": "Recibimos datos de contacto nuevos con tu CUIT/CUIL. Revisá tus datos y agregalos si corresponden.",
     "ownershipUnproved": "Este CUIT/CUIL ya tenía una ficha en el corralón. Verificá un contacto que ya tenía la ficha para ver tus datos y pedidos anteriores.",

@@ -21,7 +21,7 @@ func (s *ClientContactService) RegisterProfile(ctx context.Context, q repository
 	if err != nil || len(contacts) == 0 {
 		return domain.ErrInvalidInput
 	}
-	if err := s.checkContactLimit(contacts); err != nil {
+	if err := s.checkContactLimit(contacts, 0); err != nil {
 		return err
 	}
 	if err := s.lockContactValues(ctx, q, p.AccountID, contacts); err != nil {
