@@ -21,6 +21,21 @@ type ContactChallenge struct {
 	ConsumedAt *time.Time
 }
 
+// DestinationWindows are the instants each destination cap counts from.
+type DestinationWindows struct {
+	Challenges   time.Time
+	Failures     time.Time
+	AllSuppliers time.Time
+}
+
+// DestinationActivity is what the destination caps decide on: one supplier's proofs and wrong proofs
+// for a destination, and every supplier's proofs for it.
+type DestinationActivity struct {
+	SupplierChallenges int
+	SupplierFailures   int
+	AllChallenges      int
+}
+
 // ContactPurpose names why a deterministic message goes to a contact; email subjects follow it.
 type ContactPurpose string
 

@@ -24,9 +24,19 @@ type CustomerAuthConfig struct {
 	ContactVerificationTTL      time.Duration
 	ContactVerificationCooldown time.Duration
 	ContactVerificationAttempts int
-	ContactPromptLease          time.Duration
-	ContactCodeTemplate         string
-	ContactCodeLanguage         string
+	// ContactDestinationMax bounds the proofs one supplier sends a destination per window.
+	ContactDestinationMax    int
+	ContactDestinationWindow time.Duration
+	// ContactFailureMax wrong proofs against a destination at one supplier lock it there for ContactLockout.
+	ContactFailureMax int
+	ContactLockout    time.Duration
+	// ContactSpamMax bounds the proofs a destination receives per window across every supplier.
+	ContactSpamMax      int
+	ContactSpamWindow   time.Duration
+	ProfileContactsMax  int
+	ContactPromptLease  time.Duration
+	ContactCodeTemplate string
+	ContactCodeLanguage string
 }
 
 func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
@@ -35,6 +45,13 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 		ContactVerificationTTL:      getDuration("CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES", 10*time.Minute, problems),
 		ContactVerificationCooldown: getDuration("CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS", time.Minute, problems),
 		ContactVerificationAttempts: getInt("CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS", 5, problems),
+		ContactDestinationMax:       getInt("CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX", 5, problems),
+		ContactDestinationWindow:    getDuration("CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS", 24*time.Hour, problems),
+		ContactFailureMax:           getInt("CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX", 10, problems),
+		ContactLockout:              getDuration("CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES", time.Hour, problems),
+		ContactSpamMax:              getInt("CUSTOMER_CONTACT_VERIFICATION_SPAM_MAX", 20, problems),
+		ContactSpamWindow:           getDuration("CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS", 24*time.Hour, problems),
+		ProfileContactsMax:          getInt("CUSTOMER_PROFILE_CONTACTS_MAX", 10, problems),
 		ContactPromptLease:          getDuration("CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES", 5*time.Minute, problems),
 		ContactCodeTemplate:         os.Getenv("WHATSAPP_CONTACT_CODE_TEMPLATE"),
 		ContactCodeLanguage:         getString("WHATSAPP_CONTACT_CODE_LANGUAGE", "es_AR"),
@@ -61,6 +78,12 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 	}
 	if cfg.ContactVerificationAttempts < 1 {
 		*problems = append(*problems, "CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS must be positive")
+	}
+	if cfg.ContactDestinationMax < 1 || cfg.ContactFailureMax < 1 || cfg.ContactSpamMax < 1 || cfg.ProfileContactsMax < 1 {
+		*problems = append(*problems, "CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX, CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX, CUSTOMER_CONTACT_VERIFICATION_SPAM_MAX and CUSTOMER_PROFILE_CONTACTS_MAX must be positive")
+	}
+	if cfg.ContactDestinationWindow <= 0 || cfg.ContactLockout <= 0 || cfg.ContactSpamWindow <= 0 {
+		*problems = append(*problems, "CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS, CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES and CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS must be positive")
 	}
 	if cfg.ContactPromptLease <= 0 {
 		*problems = append(*problems, "CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES must be positive")

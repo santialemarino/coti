@@ -21,10 +21,13 @@ type contactVerificationStore interface {
 	GetChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	LockChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error)
 	HasRecentChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string, time.Time) (bool, error)
+	GetDestinationActivity(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string, domain.DestinationWindows) (*domain.DestinationActivity, error)
 	CreateChallenge(context.Context, repository.Querier, domain.ContactChallenge) error
+	CreateFailure(context.Context, repository.Querier, domain.ContactChallenge) error
 	FinishChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) error
 	MarkVerified(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	GetContactHostname(context.Context, repository.Querier, uuid.UUID) (string, error)
+	LockDestination(context.Context, repository.Querier, domain.ChannelType, string) error
 }
 
 // ClientContactVerificationService proves contact control before granting access to its previous orders.
@@ -100,6 +103,12 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		if !found {
 			return domain.ErrNotFound
 		}
+		if err := s.store.LockDestination(ctx, q, kind, value); err != nil {
+			return err
+		}
+		if err := s.checkDestination(ctx, q, p.AccountID, kind, value, true); err != nil {
+			return err
+		}
 		hostname, err = s.store.GetContactHostname(ctx, q, p.AccountID)
 		if err != nil {
 			return err
@@ -141,6 +150,9 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if err := s.contacts.lockContactValues(ctx, q, p.AccountID, []domain.ClientContact{{Kind: c.Kind, Value: c.Value}}); err != nil {
 			return err
 		}
+		if err := s.store.LockDestination(ctx, q, c.Kind, c.Value); err != nil {
+			return err
+		}
 		c, err = s.store.LockChallenge(ctx, q, p, id)
 		if err != nil {
 			return err
@@ -164,8 +176,14 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 			return domain.ErrUnauthenticated
 		}
+		if err := s.checkDestination(ctx, q, p.AccountID, c.Kind, c.Value, false); err != nil {
+			return err
+		}
 		if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 {
 			denied = domain.ErrUnauthenticated
+			if err := s.store.CreateFailure(ctx, q, *c); err != nil {
+				return err
+			}
 			return s.store.FinishChallenge(ctx, q, p, id, false)
 		}
 		candidates, err := s.contacts.contacts.FindProfiles(ctx, q, p.AccountID, "", c.Kind, c.Value)
@@ -268,4 +286,27 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		return err
 	}
 	return denied
+}
+
+// checkDestination applies the destination caps; the caller holds its lock. The daily cap and the
+// failure lockout count within the supplier, since a code only works there, so one supplier's abuse
+// cannot lock the owner out of another. Only the anti-spam cap spans every supplier. A refusal reads
+// like the per-customer cooldown, so it says nothing about who else asked.
+func (s *ClientContactVerificationService) checkDestination(ctx context.Context, q repository.Querier, accountID uuid.UUID, kind domain.ChannelType, value string, sending bool) error {
+	now := s.now()
+	activity, err := s.store.GetDestinationActivity(ctx, q, accountID, kind, value, domain.DestinationWindows{
+		Challenges:   now.Add(-s.cfg.ContactDestinationWindow),
+		Failures:     now.Add(-s.cfg.ContactLockout),
+		AllSuppliers: now.Add(-s.cfg.ContactSpamWindow),
+	})
+	if err != nil {
+		return err
+	}
+	if activity.SupplierFailures >= s.cfg.ContactFailureMax {
+		return domain.ErrLocked
+	}
+	if sending && (activity.SupplierChallenges >= s.cfg.ContactDestinationMax || activity.AllChallenges >= s.cfg.ContactSpamMax) {
+		return domain.ErrLocked
+	}
+	return nil
 }

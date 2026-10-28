@@ -119,7 +119,7 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
-		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour},
+		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour, ProfileContactsMax: 10},
 		Catalog:      config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
@@ -198,7 +198,7 @@ func newEnvWithRFQProviders(
 	rfqRepo := repository.NewRFQRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientRepo := repository.NewClientRepository()
-	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
+	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuth.WithClientProfiles(contactService)
 	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
@@ -337,6 +337,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		for _, stmt := range []string{
 			`DELETE FROM customer_contact_history WHERE account_id=$1`,
 			`DELETE FROM customer_contact_ownership WHERE account_id=$1`,
+			`DELETE FROM client_contact_challenge_failure WHERE account_id=$1`,
 			`DELETE FROM client_contact_challenge WHERE account_id=$1`,
 			`DELETE FROM client_contact_outbox WHERE account_id=$1`,
 			`DELETE FROM client_contact_observation WHERE account_id=$1`,

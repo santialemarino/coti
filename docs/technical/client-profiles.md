@@ -63,8 +63,8 @@ is kept. No customer path (PUT, a portal request, a merge on proof) sets a prima
 writes `client.phone`/`client.email` before proof, since the seller quotes and routes through them.
 Fiscal data is refused with 403 `PROFILE_OWNERSHIP_UNPROVED`. A verification code goes only to a
 contact the customer declared, so the owner's phone or email cannot be probed by a code request
-alone. A customer can still declare the owner's value and request a code to it once per resend
-cooldown (60 s by default); the verification routes have no per-route rate limit yet. To prove ownership the customer
+alone. A customer can still declare the owner's value and request a code to it, within the limits
+under [Abuse limits](#abuse-limits). To prove ownership the customer
 declares a contact the profile already had and verifies it; from then on GET and PUT work on the
 whole profile, which keeps its earlier name until the customer changes it.
 
@@ -166,16 +166,66 @@ Phone-only signup is allowed but cannot recover a password until a recovery emai
 Recovery requires the CUIT and the matching verified email. Sellers have no recovery role. These flows
 send channel messages; they do not create browser/device push notifications.
 
+## Abuse limits
+
+Declaring a stranger's phone or email and requesting codes for it would make Coti a spam relay, and
+several accounts sharing one victim's destination could brute-force its 6-digit code. Four limits
+stop that:
+
+- **Route rate limits.** Requesting and confirming a proof (`RATE_LIMIT_CONTACT_VERIFICATION_MAX`)
+  and saving the profile (`RATE_LIMIT_PROFILE_MAX`) are each counted twice per window, once by
+  customer and once by client address, and answer 429 `RATE_LIMITED` past either.
+- **Codes per destination, per supplier.** At most `CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX`
+  proofs go from one supplier to one destination per
+  `CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS`.
+- **Failures per destination, per supplier.** `CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX` wrong proofs
+  against one destination at one supplier inside `CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES`,
+  across every challenge, lock it at that supplier: no new code is sent and even the right one is
+  refused until the failures age out. Each wrong proof is a `client_contact_challenge_failure` row.
+- **Codes per destination, across suppliers.** At most `CUSTOMER_CONTACT_VERIFICATION_SPAM_MAX` proofs
+  reach one destination per `CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS` from all suppliers
+  together. It is anti-spam only, so it sits well above the per-supplier cap.
+- **Contacts per profile.** PUT /profile and signup refuse a save that takes a profile past
+  `CUSTOMER_PROFILE_CONTACTS_MAX` contacts with 422 `CONTACT_LIMIT`. A profile a merge already took
+  past the cap can still be saved with the contacts it has.
+
+The daily cap and the lockout count per supplier because a code only works at the supplier that sent
+it: pooling them across suppliers would buy nothing against brute force and would let an attacker at
+one supplier lock the real owner out of every other. Within one supplier the attacker and the owner
+share the counters, so an attacker who declares the owner's destination there can still exhaust them
+for that supplier; that is the accepted trade-off.
+
+The caps are read in the database, so they hold across API instances. The counts come from
+`contact_destination_activity`, a `SECURITY DEFINER` function that sees every account's rows and
+returns only three numbers, under a transaction-scoped advisory lock on the destination so concurrent
+requests cannot both pass. A refused request or confirm answers 429 `ACCOUNT_LOCKED`, the same as the
+per-customer resend cooldown, so the caller cannot tell whether another supplier asked for the
+destination.
+
+The per-address rate limit only tells customers apart when the API trusts the webapp as a proxy
+(`RATE_LIMIT_TRUSTED_PROXY_HOPS` and `RATE_LIMIT_TRUSTED_PROXY_CIDRS`) and the webapp forwards the
+visitor's address (`WEB_TRUSTED_PROXY_HOPS`). Without them every customer shares the webapp server's
+bucket, as customer login already does.
+
 ## Configuration and migrations
 
-| Variable                                       | Default | Purpose                                         |
-| ---------------------------------------------- | ------- | ----------------------------------------------- |
-| CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES      | 10      | Contact proof lifetime                          |
-| CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS | 60      | Minimum interval between proofs                 |
-| CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS     | 5       | Failed-attempt limit                            |
-| CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES          | 5       | Age at which a stuck name prompt is reclaimed   |
-| WHATSAPP_CONTACT_CODE_TEMPLATE                 | empty   | Approved Meta authentication copy-code template |
-| WHATSAPP_CONTACT_CODE_LANGUAGE                 | es_AR   | Approved template language                      |
+| Variable                                               | Default | Purpose                                            |
+| ------------------------------------------------------ | ------- | -------------------------------------------------- |
+| CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES              | 10      | Contact proof lifetime                             |
+| CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS         | 60      | Minimum interval between proofs                    |
+| CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS             | 5       | Failed-attempt limit                               |
+| CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX          | 5       | Proofs one supplier sends a destination per window |
+| CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS | 24      | Window of the per-destination proof cap            |
+| CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX              | 10      | Wrong proofs that lock a destination at a supplier |
+| CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES          | 60      | Window the failures count over                     |
+| CUSTOMER_CONTACT_VERIFICATION_SPAM_MAX                 | 20      | Proofs one destination receives from all suppliers |
+| CUSTOMER_CONTACT_VERIFICATION_SPAM_WINDOW_HOURS        | 24      | Window of the cross-supplier cap                   |
+| CUSTOMER_PROFILE_CONTACTS_MAX                          | 10      | Contacts a customer can save on a profile          |
+| RATE_LIMIT_CONTACT_VERIFICATION_MAX                    | 5       | Proof requests or confirms per window              |
+| RATE_LIMIT_PROFILE_MAX                                 | 10      | Profile saves per window                           |
+| CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES                  | 5       | Age at which a stuck name prompt is reclaimed      |
+| WHATSAPP_CONTACT_CODE_TEMPLATE                         | empty   | Approved Meta authentication copy-code template    |
+| WHATSAPP_CONTACT_CODE_LANGUAGE                         | es_AR   | Approved template language                         |
 
 WhatsApp proof is unavailable until its supplier channel credentials and approved template are
 configured. Email uses the configured mail adapter. Local links use CUSTOMER_GOOGLE_LOCAL_ORIGIN

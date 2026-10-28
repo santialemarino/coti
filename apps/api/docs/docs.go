@@ -2396,6 +2396,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
                     }
                 }
             }
@@ -2466,10 +2472,10 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
-                    "423": {
-                        "description": "Locked",
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout",
                         "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
+                            "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     },
                     "503": {
@@ -2545,6 +2551,12 @@ const docTemplate = `{
                         "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
                         }
                     }
                 }

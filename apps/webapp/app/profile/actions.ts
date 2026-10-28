@@ -26,16 +26,23 @@ export async function saveCustomerProfile(
         contacts: parsed.data.contacts.filter((contact) => contact.value !== ''),
       }),
     });
-    if (!response.ok)
+    if (!response.ok) {
+      const code =
+        response.status === 422 ? ((await response.json()) as { code?: string }).code : undefined;
       return {
         error: t(
-          response.status === 409
-            ? 'conflict'
-            : response.status === 400 || response.status === 422
-              ? 'invalid'
-              : 'unavailable',
+          code === 'CONTACT_LIMIT'
+            ? 'contactLimit'
+            : response.status === 429
+              ? 'tooManyRequests'
+              : response.status === 409
+                ? 'conflict'
+                : response.status === 400 || response.status === 422
+                  ? 'invalid'
+                  : 'unavailable',
         ),
       };
+    }
     return {};
   } catch {
     return { error: t('unavailable') };
@@ -55,7 +62,7 @@ export async function requestContactVerification(
       body: JSON.stringify({ kind, value }),
     });
     if (!response.ok)
-      return { error: t(response.status === 423 ? 'verificationWait' : 'verificationUnavailable') };
+      return { error: t(response.status === 429 ? 'verificationWait' : 'verificationUnavailable') };
     const raw = (await response.json()) as { id: string };
     return { id: raw.id };
   } catch {
@@ -75,7 +82,8 @@ export async function confirmContactVerification(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, token }),
     });
-    return response.ok ? {} : { error: t('verificationInvalid') };
+    if (response.ok) return {};
+    return { error: t(response.status === 429 ? 'verificationLocked' : 'verificationInvalid') };
   } catch {
     return { error: t('verificationUnavailable') };
   }
