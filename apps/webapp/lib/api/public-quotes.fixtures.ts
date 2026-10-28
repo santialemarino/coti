@@ -141,7 +141,7 @@ export function makeSentPreviewSend(): PublicQuoteSend {
               code: 'ARE-GRU-01',
               name: 'Arena gruesa',
               unit: 'm3',
-              unitPrice: '31000.00',
+              unitPrice: '35000.00',
               recommendationType: 'PREMIUM',
               selectable: true,
             },
@@ -200,12 +200,12 @@ export function makeSentPreviewSelectionPreviews(
 
   return {
     [economySelection]: previewResponse(quote, '1018800.00', '22900.00', '995900.00'),
-    [premiumSelection]: previewResponse(quote, '1358800.00', '30500.00', '1328300.00'),
+    [premiumSelection]: previewResponse(quote, '1406800.00', '31600.00', '1375200.00'),
     [[economySelection, premiumSelection].sort().join('|')]: previewResponse(
       quote,
-      '1006800.00',
-      '22600.00',
-      '984200.00',
+      '1054800.00',
+      '23700.00',
+      '1031100.00',
     ),
   };
 }
@@ -219,7 +219,7 @@ function previewResponse(
   return {
     quote: {
       ...quote,
-      discounts: [{ description: 'BonificaciÃ³n por pronto pago', amount: discountAmount }],
+      discounts: [{ description: 'Bonificación por pronto pago', amount: discountAmount }],
       total,
     },
     subtotal,

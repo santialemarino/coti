@@ -16,7 +16,10 @@ vi.mock('@/app/quotes/_components/public-quote-view', () => ({
     selectionPreviews,
   }: {
     send: { status: string };
-    selectionPreviews?: Record<string, { quote: { total: string } }>;
+    selectionPreviews?: Record<
+      string,
+      { quote: { total: string; discounts: { description: string }[] } }
+    >;
   }) => {
     publicQuoteView({ send, selectionPreviews });
     return <p data-testid="public-quote-view">{send.status}</p>;
@@ -29,7 +32,10 @@ describe('QuotePreviewPage', () => {
 
     const { send, selectionPreviews } = vi.mocked(publicQuoteView).mock.calls[0]![0] as {
       send: PublicQuoteSend;
-      selectionPreviews: Record<string, { quote: { total: string } }>;
+      selectionPreviews: Record<
+        string,
+        { quote: { total: string; discounts: { description: string }[] } }
+      >;
     };
     expect(send.status).toBe('ACTIVE');
     expect(send.quote?.reference).toBe('COT-000008');
@@ -60,15 +66,22 @@ describe('QuotePreviewPage', () => {
       unitPrice: '9500.00',
       subtotal: '760000.00',
     });
+    expect(send.quote?.items[1]?.alternatives[0]?.unitPrice).toBe('35000.00');
     expect(send.quote?.discounts).toEqual([
       { description: 'Bonificación por pronto pago', amount: '30800.00' },
     ]);
     expect(send.quote?.total).toBe('1340000.00');
     expect(Object.values(selectionPreviews).map((preview) => preview.quote.total)).toEqual([
       '995900.00',
-      '1328300.00',
-      '984200.00',
+      '1375200.00',
+      '1031100.00',
     ]);
+    expect(
+      Object.values(selectionPreviews).every(
+        (preview) =>
+          preview.quote.discounts[0]?.description === 'Bonificaci\u00f3n por pronto pago',
+      ),
+    ).toBe(true);
     expect(send.pdfUrl).toBeTruthy();
     expect(Date.parse(send.quote?.approvedAt ?? '')).toBeLessThan(Date.now());
     expect(Date.parse(send.expiresAt)).toBeGreaterThan(Date.now());
