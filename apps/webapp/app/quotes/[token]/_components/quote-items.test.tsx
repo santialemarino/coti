@@ -79,6 +79,33 @@ describe('QuoteItems', () => {
     vi.unstubAllGlobals();
   });
 
+  it('uses a frozen preview response when the development quote has no delivery token', async () => {
+    const quote = makeQuotePayload();
+    const selection = quote.items[0]!.alternatives[0]!;
+    const preview = {
+      quote: {
+        ...quote,
+        discounts: [{ description: 'BonificaciÃ³n recalculada', amount: '10.00' }],
+        total: '260.00',
+      },
+      subtotal: '270.00',
+    };
+    const view = renderItems({
+      items: quote.items,
+      discounts: quote.discounts,
+      total: quote.total,
+      currency: quote.currency,
+      selectionPreviews: {
+        [`${quote.items[0]!.id}:${selection.id}`]: preview,
+      },
+    });
+
+    fireEvent.click(view.getAllByRole('button', { name: `Elegir ${selection.name}` })[0]!);
+
+    await waitFor(() => expect(view.getByText('BonificaciÃ³n recalculada')).toBeTruthy());
+    expect(view.getByText(/260/)).toBeTruthy();
+  });
+
   it('restores the original summary when the chosen inline option is clicked again', async () => {
     const quote = makeQuotePayload();
     const fetchMock = vi.fn().mockResolvedValue({

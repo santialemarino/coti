@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 
 import { PublicQuoteView } from '@/app/quotes/_components/public-quote-view';
-import { makeSentPreviewSend } from '@/lib/api/public-quotes.fixtures';
+import {
+  makeSentPreviewSelectionPreviews,
+  makeSentPreviewSend,
+} from '@/lib/api/public-quotes.fixtures';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('quote');
@@ -15,5 +18,6 @@ export async function generateMetadata(): Promise<Metadata> {
  * it writes nothing — the only way in is a developer typing the URL.
  */
 export default function QuotePreviewPage() {
-  return <PublicQuoteView send={makeSentPreviewSend()} />;
+  const send = makeSentPreviewSend();
+  return <PublicQuoteView send={send} selectionPreviews={makeSentPreviewSelectionPreviews(send)} />;
 }

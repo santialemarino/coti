@@ -1,4 +1,8 @@
-import type { PublicQuoteSend, QuotePayload } from '@/lib/api/public-quotes';
+import type {
+  PublicQuoteSelectionPreview,
+  PublicQuoteSend,
+  QuotePayload,
+} from '@/lib/api/public-quotes';
 
 export const EXPIRES_AT = '2026-09-22T12:00:00Z';
 export const PDF_URL = 'https://files.example.test/cot-42.pdf?sig=abc';
@@ -182,4 +186,42 @@ export function makeSentPreviewSend(): PublicQuoteSend {
       validityNote: 'Precios sujetos a disponibilidad.',
     }),
   });
+}
+
+/* Frozen deterministic-engine responses let the dev preview exercise every selection combination. */
+export function makeSentPreviewSelectionPreviews(
+  send: PublicQuoteSend,
+): Record<string, PublicQuoteSelectionPreview> {
+  const quote = send.quote!;
+  const economy = quote.items[0]!;
+  const premium = quote.items[1]!;
+  const economySelection = `${economy.id}:${economy.alternatives[0]!.id}`;
+  const premiumSelection = `${premium.id}:${premium.alternatives[0]!.id}`;
+
+  return {
+    [economySelection]: previewResponse(quote, '1018800.00', '22900.00', '995900.00'),
+    [premiumSelection]: previewResponse(quote, '1358800.00', '30500.00', '1328300.00'),
+    [[economySelection, premiumSelection].sort().join('|')]: previewResponse(
+      quote,
+      '1006800.00',
+      '22600.00',
+      '984200.00',
+    ),
+  };
+}
+
+function previewResponse(
+  quote: QuotePayload,
+  subtotal: string,
+  discountAmount: string,
+  total: string,
+): PublicQuoteSelectionPreview {
+  return {
+    quote: {
+      ...quote,
+      discounts: [{ description: 'BonificaciÃ³n por pronto pago', amount: discountAmount }],
+      total,
+    },
+    subtotal,
+  };
 }

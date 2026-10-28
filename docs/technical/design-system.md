@@ -133,6 +133,11 @@ the `-foreground` label and a full-strength `-base` dot. The label never uses `-
 style preference — several bases are light (`status-quoted-base` is `#FFCC00`), so a label painted
 with one sits on its own wash at roughly 1.6:1 and stops being a word.
 
+Quote alternatives use the same rule without borrowing the primary-action blue: an `ECONOMY`
+recommendation uses the `success` family, while `PREMIUM` uses the violet
+`recommendation-premium` family. Their rows return to the white card surface when selected; the chip,
+not the whole row, carries the recommendation colour. `EQUIVALENT` remains neutral.
+
 `followup` marks a quote that has gone quiet and needs a nudge from the seller. It has no `-base`,
 because it is a flag rather than a state with a dot: `-subtle` washes the row, `-hover` is that row
 under the pointer, `-border` and `-foreground` draw the marker. It is indigo (hue 265) so a flagged

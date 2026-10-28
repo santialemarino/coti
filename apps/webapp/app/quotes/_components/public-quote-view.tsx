@@ -8,13 +8,15 @@ import { QuoteInfo } from '@/app/quotes/[token]/_components/quote-info';
 import { QuoteItems } from '@/app/quotes/[token]/_components/quote-items';
 import { QuoteSelectionProvider } from '@/app/quotes/[token]/_components/quote-selection-context';
 import { Brand } from '@/components/brand';
-import type { PublicQuoteSend } from '@/lib/api/public-quotes';
+import type { PublicQuoteSelectionPreview, PublicQuoteSend } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
 interface PublicQuoteViewProps {
   send: PublicQuoteSend;
   /* The token the answer posts to; the dev-only preview route leaves it undefined. */
   token?: string;
+  /* Frozen preview responses let the dev route exercise the selection UI without a customer session. */
+  selectionPreviews?: Record<string, PublicQuoteSelectionPreview>;
 }
 
 /*
@@ -22,7 +24,7 @@ interface PublicQuoteViewProps {
  * it the live getPublicQuoteByToken result, the dev-only /quotes/preview route a frozen fixture.
  * Either way it renders the frozen representation the send published, never live commercial data.
  */
-export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
+export async function PublicQuoteView({ send, token, selectionPreviews }: PublicQuoteViewProps) {
   const fmt = await getFormatters();
   const t = await getTranslations('quote');
   const tCommon = await getTranslations('common');
@@ -80,6 +82,7 @@ export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
             currency={quote.currency}
             token={token}
             disabled={send.customerStatus !== undefined}
+            selectionPreviews={selectionPreviews}
           />
 
           <QuoteInfo

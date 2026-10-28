@@ -57,6 +57,12 @@
   --color-destructive-border: var(--danger-border);
   --color-destructive-foreground: var(--danger-foreground);
 
+  /* Quote recommendation. Economy reuses the positive success family. */
+  --color-recommendation-premium: var(--recommendation-premium-base);
+  --color-recommendation-premium-subtle: var(--recommendation-premium-subtle);
+  --color-recommendation-premium-border: var(--recommendation-premium-border);
+  --color-recommendation-premium-foreground: var(--recommendation-premium-foreground);
+
   /* RFQ status colours — reach for these instead of the generic success/warning/danger families. */
   --color-status-accepted: var(--status-accepted-base);
   --color-status-accepted-subtle: var(--status-accepted-subtle);

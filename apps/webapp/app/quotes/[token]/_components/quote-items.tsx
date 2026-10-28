@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import type {
   PublicQuoteAlternativeSelection,
   PublicQuoteSelectionPreview,
@@ -33,6 +34,7 @@ interface QuoteItemsProps {
   currency: string;
   token?: string;
   disabled?: boolean;
+  selectionPreviews?: Record<string, PublicQuoteSelectionPreview>;
 }
 
 interface QuotePricing {
@@ -50,6 +52,7 @@ export function QuoteItems({
   currency,
   token,
   disabled = false,
+  selectionPreviews,
 }: QuoteItemsProps) {
   const fmt = useFormatters();
   const t = useTranslations('quote');
@@ -65,7 +68,25 @@ export function QuoteItems({
 
   useEffect(() => {
     const currentRequest = ++requestID.current;
-    if (selections.length === 0 || !token || disabled) {
+    if (selections.length === 0 || disabled) {
+      setPricing(basePricing);
+      setIsCalculating(false);
+      setPreviewFailed(false);
+      return;
+    }
+    const fixturePreview = selectionPreviews?.[selectionKey(selections)];
+    if (fixturePreview) {
+      setPricing({
+        items: fixturePreview.quote.items,
+        discounts: fixturePreview.quote.discounts,
+        total: fixturePreview.quote.total,
+        subtotal: fixturePreview.subtotal,
+      });
+      setIsCalculating(false);
+      setPreviewFailed(false);
+      return;
+    }
+    if (!token) {
       setPricing(basePricing);
       setIsCalculating(false);
       setPreviewFailed(false);
@@ -91,7 +112,7 @@ export function QuoteItems({
       .finally(() => {
         if (currentRequest === requestID.current) setIsCalculating(false);
       });
-  }, [basePricing, disabled, selections, token]);
+  }, [basePricing, disabled, selections, selectionPreviews, token]);
 
   if (items.length === 0) {
     return <p className="text-paragraph text-foreground-muted">{t('empty')}</p>;
@@ -185,19 +206,20 @@ export function QuoteItems({
                           : undefined
                       }
                       data-state={selected ? 'selected' : undefined}
-                      className={
-                        selected
-                          ? 'border-primary bg-primary-subtle hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary'
-                          : selectable
-                            ? 'bg-muted/30 hover:bg-primary-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary'
-                            : 'bg-muted/30'
-                      }
+                      className={cn(
+                        'group/alternative bg-muted/30 data-[state=selected]:bg-background',
+                        selectable &&
+                          'hover:bg-background active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
+                      )}
                       onClick={() => chooseAlternative(item.id, alternative.id, selected)}
                       onKeyDown={(event) =>
                         onAlternativeKeyDown(event, item.id, alternative.id, selected)
                       }
                     >
-                      <TableCell kind="index" className="text-primary">
+                      <TableCell
+                        kind="index"
+                        className={alternativeIconClass(alternative.recommendationType, selected)}
+                      >
                         {alternative.selectable ? (
                           selected ? (
                             <CircleCheckIcon aria-hidden="true" className="size-4" />
@@ -208,7 +230,15 @@ export function QuoteItems({
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-x-2">
-                          <Badge tone={selected ? 'brand' : 'neutral'} size="sm">
+                          <Badge
+                            tone="neutral"
+                            size="sm"
+                            className={alternativeBadgeClass(
+                              alternative.recommendationType,
+                              selected,
+                              selectable,
+                            )}
+                          >
                             {alternativeLabel(t, alternative.recommendationType)}
                           </Badge>
                           <span className="text-paragraph-sm text-foreground-muted">
@@ -288,13 +318,13 @@ export function QuoteItems({
                       type="button"
                       disabled={!selectable}
                       aria-pressed={selected}
-                      className={
-                        selected
-                          ? 'flex w-full items-center justify-between gap-x-3 rounded-md border border-primary bg-primary-subtle px-3 py-2 text-left transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                          : selectable
-                            ? 'flex w-full items-center justify-between gap-x-3 rounded-md border border-transparent bg-muted/30 px-3 py-2 text-left transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft hover:bg-primary-subtle active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                            : 'flex w-full items-center justify-between gap-x-3 rounded-md border border-transparent bg-muted/30 px-3 py-2 text-left'
-                      }
+                      className={cn(
+                        'group/alternative flex w-full items-center justify-between px-3 py-2 gap-x-3 bg-muted/30 border border-border rounded-md transition-[color,background-color,border-color,box-shadow] duration-200 ease-out-soft text-left',
+                        selected && 'bg-background',
+                        selectable &&
+                          'hover:bg-background active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                        !selectable && 'disabled:pointer-events-none disabled:opacity-50',
+                      )}
                       onClick={() => chooseAlternative(item.id, alternative.id, selected)}
                     >
                       <span className="flex min-w-0 items-center gap-x-2">
@@ -302,7 +332,10 @@ export function QuoteItems({
                           selected ? (
                             <CircleCheckIcon
                               aria-hidden="true"
-                              className="size-4 shrink-0 text-primary"
+                              className={cn(
+                                'size-4 shrink-0',
+                                alternativeIconClass(alternative.recommendationType, true),
+                              )}
                             />
                           ) : (
                             <CircleIcon
@@ -312,7 +345,15 @@ export function QuoteItems({
                           )
                         ) : null}
                         <span className="flex min-w-0 items-center gap-x-2">
-                          <Badge tone={selected ? 'brand' : 'neutral'} size="sm">
+                          <Badge
+                            tone="neutral"
+                            size="sm"
+                            className={alternativeBadgeClass(
+                              alternative.recommendationType,
+                              selected,
+                              selectable,
+                            )}
+                          >
                             {alternativeLabel(t, alternative.recommendationType)}
                           </Badge>
                           <span className="truncate text-paragraph-sm text-foreground-muted">
@@ -371,6 +412,45 @@ async function requestSelectionPreview(
   });
   if (!response.ok) throw new Error(`selection preview failed with ${response.status}`);
   return (await response.json()) as PublicQuoteSelectionPreview;
+}
+
+function selectionKey(selections: PublicQuoteAlternativeSelection[]): string {
+  return selections
+    .map(({ itemId, alternativeId }) => `${itemId}:${alternativeId}`)
+    .sort()
+    .join('|');
+}
+
+function alternativeBadgeClass(
+  type: QuoteItem['alternatives'][number]['recommendationType'],
+  selected: boolean,
+  selectable: boolean,
+): string {
+  const base = 'bg-muted border border-border text-foreground-muted';
+  if (type === 'ECONOMY') {
+    const emphasis = 'bg-success-subtle border-success-border text-success-foreground';
+    const hover =
+      'group-hover/alternative:border-success-border group-hover/alternative:bg-success-subtle group-hover/alternative:text-success-foreground';
+    return cn(base, selected && emphasis, !selected && selectable && hover);
+  }
+  if (type === 'PREMIUM') {
+    const emphasis =
+      'bg-recommendation-premium-subtle border-recommendation-premium-border text-recommendation-premium-foreground';
+    const hover =
+      'group-hover/alternative:border-recommendation-premium-border group-hover/alternative:bg-recommendation-premium-subtle group-hover/alternative:text-recommendation-premium-foreground';
+    return cn(base, selected && emphasis, !selected && selectable && hover);
+  }
+  return base;
+}
+
+function alternativeIconClass(
+  type: QuoteItem['alternatives'][number]['recommendationType'],
+  selected: boolean,
+): string {
+  if (!selected) return 'text-foreground-subtle';
+  if (type === 'ECONOMY') return 'text-success-foreground';
+  if (type === 'PREMIUM') return 'text-recommendation-premium-foreground';
+  return 'text-accent-foreground';
 }
 
 function alternativeLabel(

@@ -11,8 +11,14 @@ const publicQuoteView = vi.hoisted(() => vi.fn());
  * this spec stubs it and asserts the fresh SENT snapshot the page feeds it.
  */
 vi.mock('@/app/quotes/_components/public-quote-view', () => ({
-  PublicQuoteView: ({ send }: { send: { status: string } }) => {
-    publicQuoteView(send);
+  PublicQuoteView: ({
+    send,
+    selectionPreviews,
+  }: {
+    send: { status: string };
+    selectionPreviews?: Record<string, { quote: { total: string } }>;
+  }) => {
+    publicQuoteView({ send, selectionPreviews });
     return <p data-testid="public-quote-view">{send.status}</p>;
   },
 }));
@@ -21,7 +27,10 @@ describe('QuotePreviewPage', () => {
   it('feeds the shared view a fresh, open SENT snapshot', async () => {
     const view = render(await QuotePreviewPage());
 
-    const send: PublicQuoteSend = vi.mocked(publicQuoteView).mock.calls[0]![0];
+    const { send, selectionPreviews } = vi.mocked(publicQuoteView).mock.calls[0]![0] as {
+      send: PublicQuoteSend;
+      selectionPreviews: Record<string, { quote: { total: string } }>;
+    };
     expect(send.status).toBe('ACTIVE');
     expect(send.quote?.reference).toBe('COT-000008');
     expect(send.quote?.versionNumber).toBe(1);
@@ -55,6 +64,11 @@ describe('QuotePreviewPage', () => {
       { description: 'Bonificación por pronto pago', amount: '30800.00' },
     ]);
     expect(send.quote?.total).toBe('1340000.00');
+    expect(Object.values(selectionPreviews).map((preview) => preview.quote.total)).toEqual([
+      '995900.00',
+      '1328300.00',
+      '984200.00',
+    ]);
     expect(send.pdfUrl).toBeTruthy();
     expect(Date.parse(send.quote?.approvedAt ?? '')).toBeLessThan(Date.now());
     expect(Date.parse(send.expiresAt)).toBeGreaterThan(Date.now());
