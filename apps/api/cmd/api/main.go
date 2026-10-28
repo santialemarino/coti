@@ -209,7 +209,7 @@ func run() error {
 		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
-	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
+	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuthService.WithClientProfiles(contactService)
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin)

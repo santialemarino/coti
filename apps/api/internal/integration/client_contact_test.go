@@ -278,7 +278,7 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 		t.Fatalf("history before verification=%d", response.Code)
 	}
 	messenger := &captureContactMessenger{}
-	verifier := services.NewClientContactVerificationService(service, store, messenger, config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 2})
+	verifier := services.NewClientContactVerificationService(service, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 2}))
 	proof, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email)
 	if err != nil {
 		t.Fatal(err)
@@ -362,7 +362,7 @@ func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string,
 		}
 	}
 	messenger := &captureContactMessenger{}
-	verifier := services.NewClientContactVerificationService(service, store, messenger, config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3})
+	verifier := services.NewClientContactVerificationService(service, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3}))
 	proof, err := verifier.Request(ctx, p, kind, value)
 	if err != nil {
 		t.Fatal(err)

@@ -50,11 +50,18 @@ type ClientContactService struct {
 	contacts    contactStore
 	messenger   domain.ContactMessenger
 	localOrigin string
+	maxContacts int
 }
 
 // NewClientContactService builds the commercial contact use cases.
 func NewClientContactService(db tenantTxRunner, profiles contactProfiles, contacts contactStore) *ClientContactService {
 	return &ClientContactService{db: db, profiles: profiles, contacts: contacts}
+}
+
+// WithContactLimit bounds how many contacts a customer can save on a profile.
+func (s *ClientContactService) WithContactLimit(max int) *ClientContactService {
+	s.maxContacts = max
+	return s
 }
 
 // ListSuggestions returns durable pending cases within the seller's branch reach.
@@ -144,6 +151,9 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 	if len(contacts) == 0 {
 		return domain.ErrInvalidInput
 	}
+	if err := s.checkContactLimit(contacts); err != nil {
+		return err
+	}
 	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
 		if err := s.lockContactValues(ctx, q, p.AccountID, contacts); err != nil {
 			return err
@@ -193,6 +203,13 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 		}
 		return s.contacts.Declare(ctx, q, p, client.ID, contacts)
 	})
+}
+
+func (s *ClientContactService) checkContactLimit(contacts []domain.ClientContact) error {
+	if s.maxContacts > 0 && len(contacts) > s.maxContacts {
+		return domain.WithCode(domain.CodeContactLimit, domain.ErrInvalidInput)
+	}
+	return nil
 }
 
 // markDisplayedPrimary shows the first contact of each kind as primary, so a declared value that

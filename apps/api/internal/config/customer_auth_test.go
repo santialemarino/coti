@@ -46,6 +46,11 @@ func TestLoadCustomerContactVerificationSettings(t *testing.T) {
 	vars["CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES"] = "13"
 	vars["CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS"] = "71"
 	vars["CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS"] = "7"
+	vars["CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX"] = "3"
+	vars["CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS"] = "12"
+	vars["CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX"] = "8"
+	vars["CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES"] = "45"
+	vars["CUSTOMER_PROFILE_CONTACTS_MAX"] = "6"
 	vars["WHATSAPP_CONTACT_CODE_TEMPLATE"] = "contact_code"
 	vars["WHATSAPP_CONTACT_CODE_LANGUAGE"] = "es_AR"
 	setEnv(t, vars)
@@ -54,14 +59,17 @@ func TestLoadCustomerContactVerificationSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := cfg.CustomerAuth
-	if c.ContactVerificationTTL != 13*time.Minute || c.ContactVerificationCooldown != 71*time.Second || c.ContactVerificationAttempts != 7 || c.ContactCodeTemplate != "contact_code" || c.ContactCodeLanguage != "es_AR" {
+	if c.ContactVerificationTTL != 13*time.Minute || c.ContactVerificationCooldown != 71*time.Second || c.ContactVerificationAttempts != 7 || c.ContactCodeTemplate != "contact_code" || c.ContactCodeLanguage != "es_AR" ||
+		c.ContactDestinationMax != 3 || c.ContactDestinationWindow != 12*time.Hour || c.ContactFailureMax != 8 || c.ContactLockout != 45*time.Minute || c.ProfileContactsMax != 6 {
 		t.Fatalf("verification configuration wiring: %+v", c)
 	}
 }
 
 func TestLoadCustomerContactVerificationDefaultsAndInvalidSettings(t *testing.T) {
 	vars := minimalEnv()
-	keys := []string{"CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES", "CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS", "CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS"}
+	keys := []string{"CUSTOMER_CONTACT_VERIFICATION_TTL_MINUTES", "CUSTOMER_CONTACT_VERIFICATION_COOLDOWN_SECONDS", "CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS",
+		"CUSTOMER_CONTACT_VERIFICATION_DESTINATION_MAX", "CUSTOMER_CONTACT_VERIFICATION_DESTINATION_WINDOW_HOURS", "CUSTOMER_CONTACT_VERIFICATION_FAILURE_MAX",
+		"CUSTOMER_CONTACT_VERIFICATION_LOCKOUT_MINUTES", "CUSTOMER_PROFILE_CONTACTS_MAX"}
 	for _, key := range keys {
 		vars[key] = ""
 	}
@@ -70,7 +78,9 @@ func TestLoadCustomerContactVerificationDefaultsAndInvalidSettings(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.CustomerAuth.ContactVerificationTTL != 10*time.Minute || cfg.CustomerAuth.ContactVerificationCooldown != time.Minute || cfg.CustomerAuth.ContactVerificationAttempts != 5 {
+	if cfg.CustomerAuth.ContactVerificationTTL != 10*time.Minute || cfg.CustomerAuth.ContactVerificationCooldown != time.Minute || cfg.CustomerAuth.ContactVerificationAttempts != 5 ||
+		cfg.CustomerAuth.ContactDestinationMax != 5 || cfg.CustomerAuth.ContactDestinationWindow != 24*time.Hour || cfg.CustomerAuth.ContactFailureMax != 10 ||
+		cfg.CustomerAuth.ContactLockout != time.Hour || cfg.CustomerAuth.ProfileContactsMax != 10 {
 		t.Fatalf("verification defaults: %+v", cfg.CustomerAuth)
 	}
 	for _, key := range keys {

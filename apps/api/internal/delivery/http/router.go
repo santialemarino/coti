@@ -98,6 +98,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	limit := func(scope string, max int) gin.HandlerFunc {
 		return middleware.RateLimit(rl.Limiter, rateLimitOptions(cfg, rl, scope, max))
 	}
+	// Counts each request twice, by customer and by address, so neither many accounts behind one
+	// address nor one account across many addresses gets past it.
+	customerLimit := func(scope string, max int) []gin.HandlerFunc {
+		perCustomer := rateLimitOptions(cfg, rl, scope, max)
+		perCustomer.PerCustomer = true
+		return []gin.HandlerFunc{limit(scope+"-ip", max), middleware.RateLimit(rl.Limiter, perCustomer)}
+	}
 
 	if h.CustomerAuth != nil && auth.Customer != nil {
 		customers := r.Group(apiPrefix+"/customer/sites/:hostname", limit("global", cfg.RateLimit.Global))
@@ -117,9 +124,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		customers.PUT("/auth/recovery-email", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.UpdateRecoveryEmail)
 		if h.ClientContacts != nil {
 			customers.GET("/profile", h.ClientContacts.GetProfile)
-			customers.PUT("/profile", h.ClientContacts.UpdateProfile)
-			customers.POST("/profile/contacts/verification", h.ClientContacts.RequestVerification)
-			customers.POST("/profile/contacts/verification/confirm", h.ClientContacts.ConfirmVerification)
+			customers.PUT("/profile", append(customerLimit("customer-profile", cfg.RateLimit.Profile), h.ClientContacts.UpdateProfile)...)
+			customers.POST("/profile/contacts/verification", append(customerLimit("contact-request", cfg.RateLimit.ContactVerification), h.ClientContacts.RequestVerification)...)
+			customers.POST("/profile/contacts/verification/confirm", append(customerLimit("contact-confirm", cfg.RateLimit.ContactVerification), h.ClientContacts.ConfirmVerification)...)
 		}
 		customers.POST("/auth/logout", h.CustomerAuth.Logout)
 		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)

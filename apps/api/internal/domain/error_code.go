@@ -105,6 +105,8 @@ const (
 	// An earlier profile with the customer's CUIT stays the seller's until the customer verifies a
 	// contact it already had.
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
+	// A customer profile holds a bounded number of contacts.
+	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

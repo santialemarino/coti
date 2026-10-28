@@ -37,12 +37,25 @@ func (r *ClientContactRepository) HasRecentChallenge(ctx context.Context, q Quer
 	return found, err
 }
 
+// GetDestinationActivity counts every supplier's proofs and failed guesses for one destination.
+func (r *ClientContactRepository) GetDestinationActivity(ctx context.Context, q Querier, kind domain.ChannelType, value string, challengesSince, failuresSince time.Time) (int, int, error) {
+	var challenges, failures int
+	err := q.QueryRow(ctx, `SELECT challenges,failures FROM contact_destination_activity($1,$2,$3,$4)`, kind, value, challengesSince, failuresSince).Scan(&challenges, &failures)
+	return challenges, failures, err
+}
+
 // CreateChallenge persists only a hash and invalidates earlier proofs for the same destination.
 func (r *ClientContactRepository) CreateChallenge(ctx context.Context, q Querier, c domain.ContactChallenge) error {
 	if _, err := q.Exec(ctx, `UPDATE client_contact_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND consumed_at IS NULL`, c.AccountID, c.CustomerID, c.Kind, c.Value); err != nil {
 		return err
 	}
 	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,kind,value,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Kind, c.Value, c.TokenHash, c.ExpiresAt)
+	return err
+}
+
+// CreateFailure records one wrong proof against the challenge's destination.
+func (r *ClientContactRepository) CreateFailure(ctx context.Context, q Querier, c domain.ContactChallenge) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge_failure(account_id,challenge_id,kind,value) VALUES($1,$2,$3,$4)`, c.AccountID, c.ID, c.Kind, c.Value)
 	return err
 }
 
@@ -100,5 +113,11 @@ func (r *ClientContactRepository) GrantProvisionalHistory(ctx context.Context, q
  SELECT r.account_id,$2,r.id,$4,$5 FROM rfq r LEFT JOIN quote qt ON qt.account_id=r.account_id AND qt.branch_id=r.branch_id AND qt.rfq_id=r.id
  WHERE r.account_id=$1 AND COALESCE(qt.client_id,r.client_id)=$3
  ON CONFLICT(account_id,customer_id,rfq_id,kind,value) DO NOTHING`, p.AccountID, p.CustomerID, sourceID, kind, value)
+	return err
+}
+
+// LockDestination serializes proofs for one destination across every supplier until the transaction ends.
+func (r *ClientContactRepository) LockDestination(ctx context.Context, q Querier, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('contact-destination:' || $1 || ':' || $2,0))`, string(kind), value)
 	return err
 }
