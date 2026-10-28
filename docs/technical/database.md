@@ -189,7 +189,7 @@ own account, so `branch_id` scoping stays in the application. RLS is the second 
 replacement for the `WHERE`: the explicit predicates still go in every query so the plan uses
 the indexes.
 
-Three known traps:
+Four known traps:
 
 - **Works in psql, empty in the app.** psql as owner bypasses RLS; the app does not. To
   reproduce what the app sees, connect as `coti_app` and set the GUC.
@@ -201,6 +201,12 @@ Three known traps:
 - **The GRANT, by contrast, is already covered:** `ALTER DEFAULT PRIVILEGES` reaches the
   tables the owner creates, and migrations run as that role. It is written explicitly anyway,
   so nothing depends on the migrating role always being the same.
+- **A data migration under row level security updates nothing and still succeeds.** The owner
+  bypasses RLS only on tables that do not `FORCE` it (`arca_setup`, `branch_arca_setup`,
+  `invoice` do), and a non-owner without `BYPASSRLS` never bypasses it. So a migration that
+  reads or rewrites rows starts with `SELECT assert_migration_sees_all_rows('<table>', …)`
+  naming every table it touches: it raises when the migrating role would see a filtered view,
+  instead of letting the statement match zero rows.
 
 ## Invariants in the database
 

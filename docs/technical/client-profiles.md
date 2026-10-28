@@ -120,11 +120,16 @@ when set; production uses the supplier's HTTPS hostname. Tests use fake mail/con
 Migration 00060 adds the supplier-scoped unique fiscal index. Migration 00061 creates contact
 collections and retained observations. Migration 00062 adds contact verification, a verified-live
 unique index, challenges, onboarding outbox, composite channel scope and immutable-CUIT protection.
-Existing contacts are treated as trusted for channel routing and merged sources are retired.
+Legacy phones written as an Argentine national number (area 11, 2xx or 3xx, optional trunk 0)
+are stored in the +549 form WhatsApp reports; a value the contact normalizer would reject stays
+unverified. Each other legacy value is trusted for channel routing with one owner per account:
+the profile with a CUIT, else the most recently created one. Every other copy stays unverified
+and raises a PENDING observation, with no source message, so a seller reviews the shared contact.
+Merged sources are retired.
 Migration 00063 stores customer-specific ownership and proof-gated provisional history with RLS
 and composite tenant foreign keys. Legacy commercial verification does not substitute for a
-customer proof; My data shows those contacts as pending until this account verifies them. Conflicting live contacts
-stop the migration without deleting or silently merging records. Migrations are executable; the
+customer proof; My data shows those contacts as pending until this account verifies them. No shared contact is deleted
+or silently merged. Migrations are executable; the
 consolidated database schema is a reference only.
 
 Integration tests cover proof-gated history movement, registered-name precedence, immutable data,
