@@ -207,6 +207,9 @@ Dockerfiles, so on App Platform it must be scoped **`RUN_AND_BUILD_TIME`**. Set 
 the deployed frontends call `http://localhost:8000` from the visitor's browser and there is no
 server-side error to find.
 
+`API_INTERNAL_URL` is runtime-only and used by the webapp server for its own API requests. In
+Docker Compose it is `http://api:8000`; on App Platform it is `${APP_URL}/api`.
+
 There is an ordering problem behind it: the frontends need the API's public URL at build time, and
 that URL does not exist until the app does. **`${APP_URL}` does not get you out of it** — under a
 Dockerfile build App Platform resolves bindable variables at runtime only, so a build-time

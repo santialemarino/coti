@@ -3,7 +3,8 @@ import 'server-only';
 import { cache } from 'react';
 import { cookies, headers } from 'next/headers';
 
-import { API_URL, PUBLIC_SITE_HOSTNAME } from '@/lib/config';
+import { PUBLIC_SITE_HOSTNAME } from '@/lib/config';
+import { API_INTERNAL_URL } from '@/lib/config/server';
 
 export const CUSTOMER_SESSION_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_customer' : 'coti_customer';
@@ -51,7 +52,7 @@ export async function getCustomerToken(): Promise<string | undefined> {
 }
 
 export async function customerApiPath(path: string): Promise<string> {
-  return `${API_URL}/v1/customer/sites/${encodeURIComponent(await getCustomerHostname())}${path}`;
+  return `${API_INTERNAL_URL}/v1/customer/sites/${encodeURIComponent(await getCustomerHostname())}${path}`;
 }
 
 export const getCustomerSession = cache(async (): Promise<CustomerSession | null> => {

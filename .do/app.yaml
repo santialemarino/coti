@@ -204,6 +204,11 @@ services:
       - key: NEXT_PUBLIC_API_URL
         scope: RUN_AND_BUILD_TIME
         value: http://localhost:8000
+      # The server-side customer routes use the API service, while the browser still needs the
+      # public build-time address above.
+      - key: API_INTERNAL_URL
+        scope: RUN_TIME
+        value: ${APP_URL}/api
 
 jobs:
   # Migrations run here rather than on API startup: startup migration races across instances, and a

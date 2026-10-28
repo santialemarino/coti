@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { customerApiPath, CustomerAuthError, getCustomerToken } from '@/lib/auth/customer-session';
-import { API_URL } from '@/lib/config';
+import { API_INTERNAL_URL } from '@/lib/config/server';
 
 interface CustomerOrderRaw {
   id: string;
@@ -63,7 +63,7 @@ export async function getCustomerOrderByToken(token: string): Promise<CustomerOr
 
 export async function getDeliveryHostname(token: string): Promise<string | null> {
   const response = await fetch(
-    API_URL + '/v1/public/quote-sends/' + encodeURIComponent(token) + '/site',
+    API_INTERNAL_URL + '/v1/public/quote-sends/' + encodeURIComponent(token) + '/site',
     { cache: 'no-store' },
   );
   if (response.status === 404) return null;
