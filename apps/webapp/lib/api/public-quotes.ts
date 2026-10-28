@@ -23,6 +23,11 @@ interface PublicQuoteActionResultRaw {
   total?: string;
 }
 
+interface PublicQuoteSelectionPreviewRaw {
+  quote: QuotePayloadRaw;
+  subtotal: string;
+}
+
 interface QuotePayloadRaw {
   reference: string;
   version_number: number;
@@ -114,6 +119,11 @@ export interface PublicQuoteActionResult {
   createdAt: string;
   quoteStatus?: string;
   total?: string;
+}
+
+export interface PublicQuoteSelectionPreview {
+  quote: QuotePayload;
+  subtotal: string; // backend-calculated NUMERIC(14,2) decimal string
 }
 
 export interface QuotePayload {
@@ -274,6 +284,40 @@ export class PublicQuoteActionError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+// PublicQuoteSelectionPreviewError retains the backend refusal for the same-origin proxy route.
+export class PublicQuoteSelectionPreviewError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`public quote selection preview failed with ${status}`);
+    this.status = status;
+  }
+}
+
+// Prices a tentative selection with the same frozen rules the final acceptance will use.
+export async function previewPublicQuoteSelection(
+  token: string,
+  selections: PublicQuoteAlternativeSelection[],
+): Promise<PublicQuoteSelectionPreview> {
+  const response = await customerFetch(
+    `${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/preview`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        selections: selections.map((selection) => ({
+          item_id: selection.itemId,
+          alternative_id: selection.alternativeId,
+        })),
+      }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) throw new PublicQuoteSelectionPreviewError(response.status);
+  const raw = (await response.json()) as PublicQuoteSelectionPreviewRaw;
+  return { quote: mapQuotePayload(raw.quote), subtotal: raw.subtotal };
 }
 
 /*

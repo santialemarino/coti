@@ -174,6 +174,17 @@ type PublicQuoteAlternativeSelectionRequest struct {
 	AlternativeID uuid.UUID `json:"alternative_id" binding:"required"`
 }
 
+// PublicQuoteSelectionPreviewRequest is the body for POST /v1/customer/quote-sends/{token}/preview.
+type PublicQuoteSelectionPreviewRequest struct {
+	Selections []PublicQuoteAlternativeSelectionRequest `json:"selections"`
+}
+
+// PublicQuoteSelectionPreviewResponse returns the deterministic price of a tentative selection.
+type PublicQuoteSelectionPreviewResponse struct {
+	Quote    QuoteRepresentationPayloadResponse `json:"quote"`
+	Subtotal string                             `json:"subtotal"`
+}
+
 // PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
 // the answer did not move the quote (version already superseded), quote_status stays unchanged.
 type PublicQuoteActionResponse struct {

@@ -122,6 +122,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 			customers.GET("/orders/:rfqId", h.CustomerOrders.Get)
 			customers.GET("/quote-sends/:token/order", h.CustomerOrders.GetByToken)
 			customers.GET("/quote-sends/:token", h.CustomerOrders.AuthorizeDelivery, h.Quote.ResolvePublic)
+			customers.POST("/quote-sends/:token/preview", limit("quote-preview", cfg.RateLimit.Global), h.CustomerOrders.AuthorizeDelivery, h.Quote.PreviewPublic)
 			customers.POST("/quote-sends/:token/action", limit("quote-action", cfg.RateLimit.Global), h.CustomerOrders.AuthorizeDelivery, h.Quote.RespondPublic)
 		}
 	}

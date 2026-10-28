@@ -1,54 +1,48 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { NextIntlClientProvider } from 'next-intl';
+import { describe, expect, it } from 'vitest';
 
 import { makeQuotePayload } from '@/lib/api/public-quotes.fixtures';
-import { getFormatters } from '@/lib/i18n/formatters-server';
+import messages from '@/translations/es.json';
 import { QuoteSummary } from './quote-summary';
 
-vi.mock('next-intl/server', async () => import('@/lib/i18n/server-intl.mock'));
+function renderSummary(props: React.ComponentProps<typeof QuoteSummary>) {
+  return render(
+    <NextIntlClientProvider
+      locale="es"
+      messages={messages}
+      timeZone="America/Argentina/Buenos_Aires"
+    >
+      <QuoteSummary {...props} />
+    </NextIntlClientProvider>,
+  );
+}
 
 describe('QuoteSummary', () => {
-  // Currency comes back with a no-break space that jsdom keeps where its text matcher collapses it.
-  function money(fmt: Awaited<ReturnType<typeof getFormatters>>, currency: string, amount: string) {
-    return fmt.currency(amount, currency).replace(/\u00a0/g, ' ');
-  }
+  it('uses the backend subtotal when a selected option was repriced', () => {
+    const quote = makeQuotePayload();
+    const view = renderSummary({
+      items: quote.items,
+      discounts: quote.discounts,
+      total: '260.00',
+      subtotal: '270.00',
+      currency: quote.currency,
+    });
 
-  it('derives the subtotal from the lines, stacks the discounts and states the frozen total', async () => {
-    const payload = makeQuotePayload();
-    const fmt = await getFormatters();
-
-    const view = render(
-      await QuoteSummary({
-        items: payload.items,
-        discounts: payload.discounts,
-        total: payload.total,
-        currency: payload.currency,
-      }),
-    );
-
-    // 220.00 + 150.00, the deterministic display sum of the frozen decimal strings.
-    expect(view.getByText(money(fmt, payload.currency, '370.00'))).toBeTruthy();
-    expect(view.getByText(payload.discounts[0]!.description)).toBeTruthy();
-    expect(
-      view.getByText(money(fmt, payload.currency, `-${payload.discounts[0]!.amount}`)),
-    ).toBeTruthy();
-    expect(view.getByText(money(fmt, payload.currency, payload.total))).toBeTruthy();
+    expect(view.getByText(/270/)).toBeTruthy();
+    expect(view.getByText(/260/)).toBeTruthy();
   });
 
-  it('renders no discount rows when there are none', async () => {
-    const payload = makeQuotePayload({ discounts: [] });
-    const fmt = await getFormatters();
+  it('announces that the authoritative total is being recalculated', () => {
+    const quote = makeQuotePayload();
+    const view = renderSummary({
+      items: quote.items,
+      discounts: quote.discounts,
+      total: quote.total,
+      currency: quote.currency,
+      isCalculating: true,
+    });
 
-    const view = render(
-      await QuoteSummary({
-        items: payload.items,
-        discounts: [],
-        total: payload.total,
-        currency: payload.currency,
-      }),
-    );
-
-    expect(view.queryByText('Bonificación')).toBeNull();
-    expect(view.getByText(money(fmt, payload.currency, payload.total))).toBeTruthy();
+    expect(view.getByText(messages.quote.recalculating)).toBeTruthy();
   });
 });

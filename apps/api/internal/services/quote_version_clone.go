@@ -128,22 +128,15 @@ func cloneQuoteVersionForClientSelection(
 	if err != nil {
 		return nil, err
 	}
-	cloned := make([]domain.NewQuoteItem, 0, len(items))
-	for _, item := range items {
-		copy := domain.NewQuoteItem{ID: uuid.New(), ProductID: item.ProductID,
+	selectedItems := withSelectedAlternatives(items, selected)
+	cloned := make([]domain.NewQuoteItem, 0, len(selectedItems))
+	for _, item := range selectedItems {
+		sourceItemID := item.ID
+		cloned = append(cloned, domain.NewQuoteItem{ID: uuid.New(), ProductID: item.ProductID,
 			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity, Unit: item.Unit,
 			UnitPriceSnapshot: item.UnitPriceSnapshot, MinPriceSnapshot: item.MinPriceSnapshot,
 			Subtotal: item.Subtotal, ConfidenceScore: item.ConfidenceScore, MatchStatus: item.MatchStatus,
-			QuantityRationale: item.QuantityRationale, SourceItemID: &item.ID}
-		if alternative, chosen := selected[item.ID]; chosen {
-			copy.ProductID = alternative.ProductID
-			copy.UnitPriceSnapshot = alternative.PriceSnapshot
-			copy.MinPriceSnapshot = alternative.MinPriceSnapshot
-			copy.Subtotal = decimal.NewNullDecimal(roundMoney(item.Quantity.Mul(alternative.PriceSnapshot.Decimal)))
-			copy.ConfidenceScore = decimal.NullDecimal{}
-			copy.MatchStatus = domain.ItemMatchStatusMatched
-		}
-		cloned = append(cloned, copy)
+			QuantityRationale: item.QuantityRationale, SourceItemID: &sourceItemID})
 	}
 	if _, err := quotes.CreateItems(ctx, q, accountID, draft.ID, cloned); err != nil {
 		return nil, err
@@ -160,6 +153,29 @@ func cloneQuoteVersionForClientSelection(
 		return nil, err
 	}
 	return frozen, nil
+}
+
+// withSelectedAlternatives applies approved customer choices without changing the sent item ids.
+func withSelectedAlternatives(
+	items []domain.QuoteItem, selected map[uuid.UUID]domain.QuoteItemAlternative,
+) []domain.QuoteItem {
+	result := make([]domain.QuoteItem, len(items))
+	copy(result, items)
+	for index := range result {
+		alternative, chosen := selected[result[index].ID]
+		if !chosen {
+			continue
+		}
+		result[index].ProductID = alternative.ProductID
+		result[index].UnitPriceSnapshot = alternative.PriceSnapshot
+		result[index].MinPriceSnapshot = alternative.MinPriceSnapshot
+		result[index].Subtotal = decimal.NewNullDecimal(
+			roundMoney(result[index].Quantity.Mul(alternative.PriceSnapshot.Decimal)),
+		)
+		result[index].ConfidenceScore = decimal.NullDecimal{}
+		result[index].MatchStatus = domain.ItemMatchStatusMatched
+	}
+	return result
 }
 
 func selectedAlternatives(

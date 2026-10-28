@@ -1887,6 +1887,20 @@ definitions:
     - alternative_id
     - item_id
     type: object
+  dto.PublicQuoteSelectionPreviewRequest:
+    properties:
+      selections:
+        items:
+          $ref: '#/definitions/dto.PublicQuoteAlternativeSelectionRequest'
+        type: array
+    type: object
+  dto.PublicQuoteSelectionPreviewResponse:
+    properties:
+      quote:
+        $ref: '#/definitions/dto.QuoteRepresentationPayloadResponse'
+      subtotal:
+        type: string
+    type: object
   dto.PublicQuoteSendResponse:
     properties:
       customer_status:
@@ -4082,6 +4096,44 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
+  /v1/customer/quote-sends/{token}/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public delivery token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Tentative selections
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PublicQuoteSelectionPreviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.PublicQuoteSelectionPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Preview public quote selections
+      tags:
+      - public quote sends
   /v1/customer/sites/{hostname}/auth/forgot-password:
     post:
       consumes:

@@ -1379,6 +1379,64 @@
                 }
             }
         },
+        "/v1/customer/quote-sends/{token}/preview": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public quote sends"
+                ],
+                "summary": "Preview public quote selections",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Public delivery token",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Tentative selections",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteSelectionPreviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublicQuoteSelectionPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/customer/sites/{hostname}/auth/forgot-password": {
             "post": {
                 "consumes": [
@@ -11118,6 +11176,28 @@
                     "type": "string"
                 },
                 "item_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.PublicQuoteSelectionPreviewRequest": {
+            "type": "object",
+            "properties": {
+                "selections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PublicQuoteAlternativeSelectionRequest"
+                    }
+                }
+            }
+        },
+        "dto.PublicQuoteSelectionPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "quote": {
+                    "$ref": "#/definitions/dto.QuoteRepresentationPayloadResponse"
+                },
+                "subtotal": {
                     "type": "string"
                 }
             }

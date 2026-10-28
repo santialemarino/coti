@@ -34,6 +34,8 @@ type QuoteService interface {
 type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
+	PreviewPublic(ctx context.Context, token string,
+		selections []domain.ClientAlternativeSelection) (*domain.PublicQuoteSelectionPreview, error)
 	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
 	RespondPublic(ctx context.Context, token string,
 		in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error)
@@ -245,6 +247,40 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// PreviewPublic calculates the frozen promotion and discount outcome of tentative selections.
+//
+//	@Summary	Preview public quote selections
+//	@Tags		public quote sends
+//	@Accept		json
+//	@Produce	json
+//	@Param		token		path	string								true	"Public delivery token"
+//	@Param		request		body	dto.PublicQuoteSelectionPreviewRequest	true	"Tentative selections"
+//	@Success	200			{object}	dto.PublicQuoteSelectionPreviewResponse
+//	@Failure	400,404,409	{object}	dto.ErrorResponse
+//	@Router		/v1/customer/quote-sends/{token}/preview [post]
+func (h *QuoteHandler) PreviewPublic(c *gin.Context) {
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	var request dto.PublicQuoteSelectionPreviewRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	result, err := h.delivery.PreviewPublic(c.Request.Context(), c.Param("token"),
+		toClientAlternativeSelections(request.Selections))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, dto.PublicQuoteSelectionPreviewResponse{
+		Quote:    toQuoteRepresentationPayloadResponse(result.Payload),
+		Subtotal: result.Subtotal,
+	})
+}
+
 // RespondPublic records the customer's answer to a frozen quote and moves the quote when the
 // answer addresses the version it still shows.
 //
@@ -270,14 +306,9 @@ func (h *QuoteHandler) RespondPublic(c *gin.Context) {
 		RespondBindError(c, err)
 		return
 	}
-	selections := make([]domain.ClientAlternativeSelection, 0, len(request.Selections))
-	for _, selection := range request.Selections {
-		selections = append(selections, domain.ClientAlternativeSelection{ItemID: selection.ItemID,
-			AlternativeID: selection.AlternativeID})
-	}
 	result, err := h.delivery.RespondPublic(c.Request.Context(), c.Param("token"),
 		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message,
-			Selections: selections})
+			Selections: toClientAlternativeSelections(request.Selections)})
 	if err != nil {
 		Respond(c, err)
 		return
@@ -288,6 +319,17 @@ func (h *QuoteHandler) RespondPublic(c *gin.Context) {
 	response.QuoteStatus = &status
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, response)
+}
+
+func toClientAlternativeSelections(
+	selections []dto.PublicQuoteAlternativeSelectionRequest,
+) []domain.ClientAlternativeSelection {
+	result := make([]domain.ClientAlternativeSelection, 0, len(selections))
+	for _, selection := range selections {
+		result = append(result, domain.ClientAlternativeSelection{ItemID: selection.ItemID,
+			AlternativeID: selection.AlternativeID})
+	}
+	return result
 }
 
 func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendResponse {

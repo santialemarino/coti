@@ -6,7 +6,6 @@ import { QuoteActions } from '@/app/quotes/[token]/_components/quote-actions';
 import { QuoteHeader } from '@/app/quotes/[token]/_components/quote-header';
 import { QuoteInfo } from '@/app/quotes/[token]/_components/quote-info';
 import { QuoteItems } from '@/app/quotes/[token]/_components/quote-items';
-import { QuoteOptionSelector } from '@/app/quotes/[token]/_components/quote-option-selector';
 import { QuoteSelectionProvider } from '@/app/quotes/[token]/_components/quote-selection-context';
 import { Brand } from '@/components/brand';
 import type { PublicQuoteSend } from '@/lib/api/public-quotes';
@@ -79,11 +78,7 @@ export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
             discounts={quote.discounts}
             total={quote.total}
             currency={quote.currency}
-          />
-
-          <QuoteOptionSelector
-            items={quote.items}
-            currency={quote.currency}
+            token={token}
             disabled={send.customerStatus !== undefined}
           />
 

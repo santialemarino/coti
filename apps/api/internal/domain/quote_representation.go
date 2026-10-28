@@ -198,3 +198,9 @@ type PublicQuoteRepresentation struct {
 	// has not responded through the token.
 	CustomerStatus *ClientActionType
 }
+
+// PublicQuoteSelectionPreview is the client-safe price result for a tentative alternative choice.
+type PublicQuoteSelectionPreview struct {
+	Payload  QuoteRepresentationPayload
+	Subtotal string
+}
