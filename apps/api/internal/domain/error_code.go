@@ -102,6 +102,9 @@ const (
 	CodeQuoteAlreadyPaid ErrorCode = "QUOTE_ALREADY_PAID"
 	// Closing a sale (paid, no invoice needed) applies only to an accepted quote.
 	CodeQuoteNotAccepted ErrorCode = "QUOTE_NOT_ACCEPTED"
+	// An earlier profile with the customer's CUIT stays the seller's until the customer verifies a
+	// contact it already had.
+	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

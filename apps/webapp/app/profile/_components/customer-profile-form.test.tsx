@@ -14,6 +14,7 @@ beforeEach(() => vi.clearAllMocks());
 
 function renderForm(
   contacts: { kind: 'EMAIL' | 'WHATSAPP'; value: string; primary: boolean }[] = [],
+  ownershipUnproved = false,
 ) {
   return render(
     <NextIntlClientProvider
@@ -27,6 +28,7 @@ function renderForm(
           taxId: '20123456786',
           name: 'Customer',
           reviewPending: false,
+          ownershipUnproved,
           contacts,
         }}
       />
@@ -45,6 +47,16 @@ it('adds fields one at a time and saves partial optional contact data', async ()
   expect(
     vi.mocked(saveCustomerProfile).mock.calls[0]?.[0].contacts.filter((contact) => contact.value),
   ).toEqual([{ kind: 'EMAIL', value: 'one@example.test', primary: true }]);
+});
+
+it('hides fiscal data and asks for a known contact while an earlier profile is unproved', async () => {
+  renderForm([{ kind: 'EMAIL', value: 'one@example.test', primary: true }], true);
+  expect(screen.getByText(messages.customerProfile.ownershipUnproved)).toBeDefined();
+  expect(screen.queryByText(messages.customerProfile.fiscalTitle)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: messages.customerProfile.save }));
+  await waitFor(() => expect(saveCustomerProfile).toHaveBeenCalledTimes(1));
+  const saved = vi.mocked(saveCustomerProfile).mock.calls[0]?.[0];
+  expect([saved?.legalName, saved?.address, saved?.ivaCondition]).toEqual(['', '', '']);
 });
 
 it('requires choosing a replacement after removing a primary contact', async () => {

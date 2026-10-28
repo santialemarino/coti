@@ -31,40 +31,25 @@ func (s *ClientContactService) RegisterProfile(ctx context.Context, q repository
 	if err != nil {
 		return err
 	}
-	var profile *domain.Client
-	if len(profiles) == 0 {
+	switch len(profiles) {
+	case 0:
 		origin := domain.ClientOriginWebApp
-		profile, err = s.profiles.Create(ctx, q, p.AccountID, domain.NewClient{Name: &in.Name, TaxID: &p.TaxID, OriginChannel: &origin})
+		profile, err := s.profiles.Create(ctx, q, p.AccountID, domain.NewClient{Name: &in.Name, TaxID: &p.TaxID, OriginChannel: &origin})
 		if err != nil {
 			return err
 		}
-	} else if len(profiles) == 1 {
-		profile = &profiles[0]
-		current, err := s.contacts.List(ctx, q, p.AccountID, []uuid.UUID{profile.ID})
-		if err != nil {
+		if err := s.contacts.Save(ctx, q, p.AccountID, profile.ID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
-		for _, existing := range current[profile.ID] {
-			found := false
-			for _, contact := range contacts {
-				if contact.Kind == existing.Kind && contact.Value == existing.Value {
-					found = true
-				}
-			}
-			if !found {
-				for _, contact := range contacts {
-					if contact.Kind == existing.Kind && contact.Primary {
-						existing.Primary = false
-					}
-				}
-				contacts = append(contacts, existing)
-			}
+		if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, profile.ID); err != nil {
+			return err
 		}
-	} else {
+		return s.contacts.Declare(ctx, q, p, profile.ID, contacts)
+	case 1:
+		// An earlier profile with this CUIT keeps its name, fiscal data and contacts until the customer
+		// verifies one of the contacts it already had.
+		return s.contacts.SaveDeclared(ctx, q, p, profiles[0].ID, contacts)
+	default:
 		return domain.ErrConflict
 	}
-	if err := s.contacts.UpdateName(ctx, q, p.AccountID, profile.ID, in.Name); err != nil {
-		return err
-	}
-	return s.contacts.Save(ctx, q, p.AccountID, profile.ID, contacts, "CUSTOMER")
 }

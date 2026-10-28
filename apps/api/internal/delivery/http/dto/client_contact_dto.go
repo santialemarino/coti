@@ -46,14 +46,17 @@ type ClientContactResponse struct {
 
 // CustomerProfileResponse is returned by GET /v1/customer/sites/{hostname}/profile.
 type CustomerProfileResponse struct {
-	ReviewPending bool                    `json:"review_pending"`
-	ClientID      *uuid.UUID              `json:"client_id"`
-	TaxID         string                  `json:"tax_id"`
-	Name          string                  `json:"name"`
-	Contacts      []ClientContactResponse `json:"contacts"`
-	LegalName     *string                 `json:"legal_name"`
-	IVACondition  *string                 `json:"iva_condition"`
-	Address       *string                 `json:"fiscal_address"`
+	ReviewPending bool `json:"review_pending"`
+	// OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer
+	// verifies a contact it already had; only what the customer entered is returned.
+	OwnershipUnproved bool                    `json:"ownership_unproved"`
+	ClientID          *uuid.UUID              `json:"client_id"`
+	TaxID             string                  `json:"tax_id"`
+	Name              string                  `json:"name"`
+	Contacts          []ClientContactResponse `json:"contacts"`
+	LegalName         *string                 `json:"legal_name"`
+	IVACondition      *string                 `json:"iva_condition"`
+	Address           *string                 `json:"fiscal_address"`
 }
 
 // UpdateCustomerProfileRequest replaces the authenticated customer's commercial data.
