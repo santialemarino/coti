@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,9 +18,10 @@ type ClientContactRepository struct{}
 func NewClientContactRepository() *ClientContactRepository { return &ClientContactRepository{} }
 
 // ListForCustomer projects verification performed by this credential rather than legacy contact trust.
-func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID) ([]domain.ClientContact, error) {
+// Unless all is set, it returns only the contacts this customer entered.
+func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, all bool) ([]domain.ClientContact, error) {
 	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
- FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL ORDER BY c.kind,c.is_primary DESC,c.created_at,c.id`, p.AccountID, clientID, p.CustomerID)
+ FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3) ORDER BY c.kind,c.is_primary DESC,c.created_at,c.id`, p.AccountID, clientID, p.CustomerID, all)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +54,24 @@ func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID
 		result[id] = append(result[id], c)
 	}
 	return result, rows.Err()
+}
+
+// GetProfileAccess reports whether a customer proved the profile and the name it entered.
+func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID) (*domain.CustomerProfileAccess, error) {
+	var access domain.CustomerProfileAccess
+	err := q.QueryRow(ctx, `SELECT profile.created_at>=i.created_at OR EXISTS(
+   SELECT 1 FROM customer_contact_ownership o JOIN client_contact c ON c.account_id=o.account_id AND c.id=o.contact_id
+   WHERE o.account_id=$1 AND o.customer_id=$3 AND o.includes_profile_history AND c.client_id=profile.id AND c.verified_at IS NOT NULL AND c.retired_at IS NULL),
+ i.name
+ FROM client profile JOIN customer_identity i ON i.account_id=profile.account_id AND i.id=$3
+ WHERE profile.account_id=$1 AND profile.id=$2`, p.AccountID, clientID, p.CustomerID).Scan(&access.Proved, &access.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &access, nil
 }
 
 // ListObservations reads pending suggestions within the staff caller's branch reach.
@@ -136,16 +156,7 @@ func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Queri
 
 // Save replaces a contact collection and synchronizes legacy primary projections atomically.
 func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID, clientID uuid.UUID, contacts []domain.ClientContact, source string) error {
-	type wire struct {
-		Kind    domain.ChannelType `json:"kind"`
-		Value   string             `json:"value"`
-		Primary bool               `json:"primary"`
-	}
-	data := make([]wire, 0, len(contacts))
-	for _, c := range contacts {
-		data = append(data, wire{c.Kind, c.Value, c.Primary})
-	}
-	payload, err := json.Marshal(data)
+	payload, err := contactPayload(contacts)
 	if err != nil {
 		return err
 	}
@@ -158,13 +169,62 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source); err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
+	return projectPrimaryContacts(ctx, q, accountID, clientID)
+}
+
+// SaveDeclared replaces only the contacts this customer added to a profile it has not proved. The
+// profile's earlier contacts are never removed, and a customer contact becomes primary only for a
+// kind the profile had no other contact of.
+func (r *ClientContactRepository) SaveDeclared(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, contacts []domain.ClientContact) error {
+	payload, err := contactPayload(contacts)
+	if err != nil {
+		return err
+	}
+	var since time.Time
+	if err = q.QueryRow(ctx, `SELECT created_at FROM customer_identity WHERE account_id=$1 AND id=$2`, p.AccountID, p.CustomerID).Scan(&since); err != nil {
+		return err
+	}
+	const own = `declared_by=$3 AND source='CUSTOMER' AND created_at>=$4`
+	const typed = `EXISTS(SELECT 1 FROM jsonb_to_recordset($5::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`
+	args := []any{p.AccountID, clientID, p.CustomerID, since, payload}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET declared_by=NULL WHERE account_id=$1 AND client_id=$2 AND declared_by=$3 AND NOT (`+own+`) AND NOT `+typed, args...); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_primary=FALSE WHERE account_id=$1 AND client_id=$2 AND `+own, args[:4]...); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND `+own+` AND NOT `+typed, args...); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at,declared_by) SELECT $1,$2,x.kind::channel_type,x.value,FALSE,'CUSTOMER',NULL,$3 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET declared_by=excluded.declared_by`, p.AccountID, clientID, p.CustomerID, payload); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_primary=TRUE WHERE account_id=$1 AND client_id=$2 AND `+own+` AND EXISTS(SELECT 1 FROM jsonb_to_recordset($5::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x."primary" AND x.kind=client_contact.kind::text AND x.value=client_contact.value)
+ AND NOT EXISTS(SELECT 1 FROM client_contact other WHERE other.account_id=$1 AND other.client_id=$2 AND other.kind=client_contact.kind AND NOT (other.declared_by IS NOT DISTINCT FROM $3 AND other.source='CUSTOMER' AND other.created_at>=$4))`, args...); err != nil {
+		return err
+	}
+	return projectPrimaryContacts(ctx, q, p.AccountID, clientID)
+}
+
+// Declare marks the given contacts of a profile as entered by this customer.
+func (r *ClientContactRepository) Declare(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, contacts []domain.ClientContact) error {
+	payload, err := contactPayload(contacts)
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `UPDATE client_contact SET declared_by=$3 WHERE account_id=$1 AND client_id=$2 AND EXISTS(SELECT 1 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`, p.AccountID, clientID, p.CustomerID, payload)
 	return err
 }
 
 // UpdateName changes only the commercial name of an account-owned profile.
 func (r *ClientContactRepository) UpdateName(ctx context.Context, q Querier, accountID, clientID uuid.UUID, name string) error {
 	_, err := q.Exec(ctx, `UPDATE client SET name=NULLIF($3,'') WHERE account_id=$1 AND id=$2`, accountID, clientID, name)
+	return err
+}
+
+// UpdateCustomerName keeps the name a customer entered on its own identity, leaving the profile's.
+func (r *ClientContactRepository) UpdateCustomerName(ctx context.Context, q Querier, p domain.CustomerPrincipal, name string) error {
+	_, err := q.Exec(ctx, `UPDATE customer_identity SET name=NULLIF($3,'') WHERE account_id=$1 AND id=$2`, p.AccountID, p.CustomerID, name)
 	return err
 }
 
@@ -215,5 +275,23 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 		return err
 	}
 	_, err = q.Exec(ctx, `UPDATE client SET merged_into=$3 WHERE account_id=$1 AND id=$2`, tenant.AccountID, source, target)
+	return err
+}
+
+func contactPayload(contacts []domain.ClientContact) ([]byte, error) {
+	type wire struct {
+		Kind    domain.ChannelType `json:"kind"`
+		Value   string             `json:"value"`
+		Primary bool               `json:"primary"`
+	}
+	data := make([]wire, 0, len(contacts))
+	for _, c := range contacts {
+		data = append(data, wire{c.Kind, c.Value, c.Primary})
+	}
+	return json.Marshal(data)
+}
+
+func projectPrimaryContacts(ctx context.Context, q Querier, accountID, clientID uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
 	return err
 }

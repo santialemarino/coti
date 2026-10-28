@@ -36,13 +36,24 @@ type ClientContact struct {
 // ClientContactProfile is the authenticated customer's unique fiscal profile.
 type ClientContactProfile struct {
 	ReviewPending bool
-	ClientID      *uuid.UUID
-	TaxID         string
-	Name          string
-	Contacts      []ClientContact
-	LegalName     *string
-	IVACondition  *IVACondition
-	Address       *string
+	// OwnershipUnproved hides an earlier profile's data until a contact it already had is verified.
+	OwnershipUnproved bool
+	ClientID          *uuid.UUID
+	TaxID             string
+	Name              string
+	Contacts          []ClientContact
+	LegalName         *string
+	IVACondition      *IVACondition
+	Address           *string
+}
+
+// CustomerProfileAccess is what a customer identity may see of the profile carrying its CUIT.
+type CustomerProfileAccess struct {
+	// Proved is true for a profile born with the identity, or once it verified a contact the profile
+	// already had: the same proof that opens the profile's earlier orders.
+	Proved bool
+	// Name is the name the customer entered, shown in place of an unproved profile's own.
+	Name *string
 }
 
 // ClientContactUpdate replaces the customer's commercial contact collection.

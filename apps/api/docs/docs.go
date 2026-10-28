@@ -2379,6 +2379,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {
@@ -10649,6 +10655,10 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "ownership_unproved": {
+                    "description": "OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer\nverifies a contact it already had; only what the customer entered is returned.",
+                    "type": "boolean"
                 },
                 "review_pending": {
                     "type": "boolean"

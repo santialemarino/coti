@@ -18,7 +18,11 @@ type contactProfiles interface {
 }
 
 type contactStore interface {
-	ListForCustomer(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) ([]domain.ClientContact, error)
+	ListForCustomer(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) ([]domain.ClientContact, error)
+	GetProfileAccess(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerProfileAccess, error)
+	SaveDeclared(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
+	Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
+	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
 	AttachSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
 	PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error)
 	HasAssociations(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
@@ -86,21 +90,33 @@ func (s *ClientContactService) GetProfile(ctx context.Context, p domain.Customer
 			return domain.ErrConflict
 		}
 		c := profiles[0]
-		fiscal, err := s.contacts.GetFiscal(ctx, q, p.AccountID, c.ID)
+		result.ClientID = &c.ID
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, c.ID)
 		if err != nil {
 			return err
 		}
-		result.LegalName, result.IVACondition, result.Address = fiscal.LegalName, fiscal.IVACondition, fiscal.Address
-		result.ClientID = &c.ID
-		if c.Name != nil {
-			result.Name = *c.Name
-		}
-		contacts, err := s.contacts.ListForCustomer(ctx, q, p, c.ID)
+		contacts, err := s.contacts.ListForCustomer(ctx, q, p, c.ID, access.Proved)
 		if err != nil {
 			return err
 		}
 		if contacts != nil {
 			result.Contacts = contacts
+		}
+		if !access.Proved {
+			result.OwnershipUnproved = true
+			if access.Name != nil {
+				result.Name = *access.Name
+			}
+			markDisplayedPrimary(result.Contacts)
+			return nil
+		}
+		fiscal, err := s.contacts.GetFiscal(ctx, q, p.AccountID, c.ID)
+		if err != nil {
+			return err
+		}
+		result.LegalName, result.IVACondition, result.Address = fiscal.LegalName, fiscal.IVACondition, fiscal.Address
+		if c.Name != nil {
+			result.Name = *c.Name
 		}
 		return nil
 	})
@@ -149,14 +165,44 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 		} else {
 			return domain.ErrConflict
 		}
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
+		if err != nil {
+			return err
+		}
+		if !access.Proved {
+			if in.LegalName != nil || in.IVACondition != nil || in.Address != nil {
+				return domain.WithCode(domain.CodeProfileOwnershipUnproved, domain.ErrForbidden)
+			}
+			if err := s.contacts.UpdateCustomerName(ctx, q, p, in.Name); err != nil {
+				return err
+			}
+			return s.contacts.SaveDeclared(ctx, q, p, client.ID, contacts)
+		}
 		if err := s.contacts.UpdateName(ctx, q, p.AccountID, client.ID, in.Name); err != nil {
 			return err
 		}
 		if err := s.contacts.SaveFiscal(ctx, q, p.AccountID, client.ID, in); err != nil {
 			return err
 		}
-		return s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER")
+		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
+			return err
+		}
+		return s.contacts.Declare(ctx, q, p, client.ID, contacts)
 	})
+}
+
+// markDisplayedPrimary shows one primary per kind when the profile's own primary stays hidden.
+func markDisplayedPrimary(contacts []domain.ClientContact) {
+	shown := make(map[domain.ChannelType]bool)
+	for _, c := range contacts {
+		shown[c.Kind] = shown[c.Kind] || c.Primary
+	}
+	for i := range contacts {
+		if !shown[contacts[i].Kind] {
+			contacts[i].Primary = true
+			shown[contacts[i].Kind] = true
+		}
+	}
 }
 
 // ResolveSuggestion refuses staff association decisions that would bypass customer contact proofs.

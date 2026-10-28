@@ -101,6 +101,7 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 			return err
 		}
 		contacts := current[client.ID]
+		declared := make([]domain.ClientContact, 0, len(incoming))
 		for _, contact := range incoming {
 			if contact.Value == "" {
 				continue
@@ -110,6 +111,7 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 				continue
 			}
 			contact.Value = value
+			declared = append(declared, contact)
 			found, hasKind := false, false
 			for _, c := range contacts {
 				if c.Kind == contact.Kind {
@@ -126,6 +128,9 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 			}
 		}
 		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
+			return err
+		}
+		if err := s.contacts.Declare(ctx, q, p, client.ID, declared); err != nil {
 			return err
 		}
 		original, err := json.Marshal(in)

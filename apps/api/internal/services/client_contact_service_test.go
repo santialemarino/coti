@@ -169,6 +169,14 @@ func TestDeclaredClientData_RejectsAmbiguousAndInferredData(t *testing.T) {
 	}
 }
 
-func (f *fakeContactStore) ListForCustomer(_ context.Context, _ repository.Querier, _ domain.CustomerPrincipal, id uuid.UUID) ([]domain.ClientContact, error) {
+func (f *fakeContactStore) ListForCustomer(_ context.Context, _ repository.Querier, _ domain.CustomerPrincipal, id uuid.UUID, _ bool) ([]domain.ClientContact, error) {
 	return f.contacts[id], nil
+}
+
+func (f *fakeContactStore) GetProfileAccess(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerProfileAccess, error) {
+	return &domain.CustomerProfileAccess{Proved: true}, nil
+}
+
+func (f *fakeContactStore) Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error {
+	return nil
 }

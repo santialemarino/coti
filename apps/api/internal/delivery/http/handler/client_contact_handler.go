@@ -170,7 +170,7 @@ func (h *ClientContactHandler) GetProfile(c *gin.Context) {
 		value := string(*profile.IVACondition)
 		condition = &value
 	}
-	c.JSON(http.StatusOK, dto.CustomerProfileResponse{ClientID: profile.ClientID, TaxID: profile.TaxID, Name: profile.Name, Contacts: contacts, ReviewPending: profile.ReviewPending, LegalName: profile.LegalName, Address: profile.Address, IVACondition: condition})
+	c.JSON(http.StatusOK, dto.CustomerProfileResponse{ClientID: profile.ClientID, TaxID: profile.TaxID, Name: profile.Name, Contacts: contacts, ReviewPending: profile.ReviewPending, OwnershipUnproved: profile.OwnershipUnproved, LegalName: profile.LegalName, Address: profile.Address, IVACondition: condition})
 }
 
 // UpdateProfile saves only the authenticated customer's commercial data.
@@ -181,7 +181,7 @@ func (h *ClientContactHandler) GetProfile(c *gin.Context) {
 // @Param hostname path string true "Registered supplier hostname"
 // @Param body body dto.UpdateCustomerProfileRequest true "Commercial profile"
 // @Success 204
-// @Failure 400,401,409,422 {object} dto.ErrorResponse
+// @Failure 400,401,403,409,422 {object} dto.ErrorResponse
 // @Router /v1/customer/sites/{hostname}/profile [put]
 func (h *ClientContactHandler) UpdateProfile(c *gin.Context) {
 	p, ok := middleware.CustomerFrom(c)
