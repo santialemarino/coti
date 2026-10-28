@@ -275,6 +275,7 @@
     "backToLogin": "Volver al ingreso",
     "errors": {
       "invalid": "Revisá los datos ingresados.",
+      "wait": "Esperá un poco antes de pedir otro código.",
       "locked": "Hubo demasiados intentos. Esperá un rato y probá de nuevo.",
       "code": "El código no es válido, venció o ya se usó. Pedí uno nuevo.",
       "unavailable": "No pudimos completar la operación. Intentá de nuevo."

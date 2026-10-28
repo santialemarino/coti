@@ -25,10 +25,10 @@ export interface RecoveryContact {
   preselected: boolean;
 }
 
-export type RecoveryError = 'invalid' | 'locked' | 'code' | 'unavailable';
+export type RecoveryError = 'invalid' | 'wait' | 'locked' | 'code' | 'unavailable';
 
 function errorForStatus(status: number): RecoveryError {
-  // A cooldown, a destination cap or lockout and the rate limit all answer 429.
+  // A cooldown, a destination cap or lockout and the rate limit all answer 429; sending a code says wait.
   if (status === 429) return 'locked';
   if (status === 401) return 'code';
   if (status === 400 || status === 422) return 'invalid';
@@ -68,7 +68,8 @@ export async function sendRecoveryCode(
       tax_id: taxId,
       contact_id: contactId,
     });
-    if (!response.ok) return { error: errorForStatus(response.status) };
+    if (!response.ok)
+      return { error: response.status === 429 ? 'wait' : errorForStatus(response.status) };
     return { id: ((await response.json()) as { id: string }).id };
   } catch {
     return { error: 'unavailable' };

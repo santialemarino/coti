@@ -13,9 +13,10 @@ The customer portal includes authenticated request history and commercial profil
 requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
 without CUIT. History requires the authenticated portal author or customer-specific contact proof;
 CUIT matching alone grants no access. Unknown channel senders get a provisional profile immediately.
-Customers verify new contacts before claiming their earlier requests and manage a
-separate optional recovery email from **My data**. See [Client profiles](docs/technical/client-profiles.md)
-for identity rules, migrations, contact delivery configuration and recovery separation.
+Customers verify new contacts before claiming their earlier requests, choose a main contact in
+**My data**, and recover their account with a one-use code sent to a verified contact. See
+[Client profiles](docs/technical/client-profiles.md) for identity rules, migrations, contact delivery
+configuration and account recovery.
 
 ## Stack
 
