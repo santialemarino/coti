@@ -56,11 +56,15 @@ with or after the identity is proved from the start.
 Until then the profile keeps its name, fiscal data, contacts and primaries, and the seller sees it
 unchanged. `client_contact.declared_by` records which identity entered each contact. GET /profile
 returns `ownership_unproved: true`, the name the customer entered (held on `customer_identity.name`)
-and only the contacts it declared, with no fiscal data. PUT /profile writes the name to the identity
-and replaces only the customer's own contacts: an earlier contact it omits is kept, and one of its
-contacts becomes primary only for a kind the profile had no other contact of. Fiscal data is refused
-with 403 `PROFILE_OWNERSHIP_UNPROVED`. A verification code goes only to a contact the customer
-declared, so the owner's phone or email cannot be probed or spammed. To prove ownership the customer
+and only the contacts it declared, ordered by value with the first of each kind shown as primary, so
+neither tells which of them the profile already had. No fiscal data is returned. PUT /profile writes
+the name to the identity and replaces only the customer's own contacts: an earlier contact it omits
+is kept. No customer path (PUT, a portal request, a merge on proof) sets a primary on the profile or
+writes `client.phone`/`client.email` before proof, since the seller quotes and routes through them.
+Fiscal data is refused with 403 `PROFILE_OWNERSHIP_UNPROVED`. A verification code goes only to a
+contact the customer declared, so the owner's phone or email cannot be probed by a code request
+alone. A customer can still declare the owner's value and request a code to it once per resend
+cooldown (60 s by default); the verification routes have no per-route rate limit yet. To prove ownership the customer
 declares a contact the profile already had and verifies it; from then on GET and PUT work on the
 whole profile, which keeps its earlier name until the customer changes it.
 

@@ -153,6 +153,71 @@ func TestCustomerProfile_AdoptedLegacyProfileStaysHiddenUntilOwnershipProof(t *t
 	}
 }
 
+func TestCustomerProfile_OwnContactProofNeverMovesEarlierPrimaries(t *testing.T) {
+	e := newEnv(t)
+	account, branch := e.seedAccount(t, "Email-only adoption")
+	ctx := context.Background()
+	const tax = "20123456786"
+	legacy := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,tax_id,email) VALUES($1,$2,'Dueño SA',$3,'solo@example.test')`, legacy, account, tax); err != nil {
+		t.Fatal(err)
+	}
+	flags := func() string {
+		t.Helper()
+		var phone, email, primaries string
+		if err := e.db.CrossAccount().QueryRow(ctx, `SELECT COALESCE(c.phone,''),COALESCE(c.email,''),
+ (SELECT string_agg(value||':'||is_primary::text,',' ORDER BY value) FROM client_contact WHERE account_id=c.account_id AND client_id=c.id AND is_primary)
+ FROM client c WHERE c.account_id=$1 AND c.id=$2`, account, legacy).Scan(&phone, &email, &primaries); err != nil {
+			t.Fatal(err)
+		}
+		return phone + "|" + email + "|" + primaries
+	}
+	const want = "|solo@example.test|solo@example.test:true"
+	host, token := e.registerCustomer(t, account, tax, "")
+	base := "/v1/customer/sites/" + host + "/profile"
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, "customer"+tax+"@example.test", true)
+	if response := e.do(t, request{method: http.MethodGet, path: base, token: token}); !strings.Contains(response.Body.String(), `"ownership_unproved":true`) || strings.Contains(response.Body.String(), "solo@example.test") {
+		t.Fatalf("verifying the own sign-up contact opened the earlier profile: %s", response.Body)
+	}
+	p := domain.CustomerPrincipal{AccountID: account, TaxID: tax}
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, tax).Scan(&p.CustomerID); err != nil {
+		t.Fatal(err)
+	}
+	service := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
+	route := domain.InboundChannelRoute{AccountID: account, BranchID: branch}
+	if err := service.RecordCustomer(ctx, p, route, uuid.New(), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "customer" + tax + "@example.test", Phone: "+5491166660001"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := flags(); got != want {
+		t.Fatalf("portal request moved the earlier profile's primaries: %s", got)
+	}
+	body := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{
+		{"kind": "EMAIL", "value": "solo@example.test", "primary": true},
+		{"kind": "EMAIL", "value": "customer" + tax + "@example.test", "primary": false},
+		{"kind": "WHATSAPP", "value": "+5491166660000", "primary": true},
+	}}
+	if response := e.do(t, request{method: http.MethodPut, path: base, token: token, body: body}); response.Code != http.StatusNoContent {
+		t.Fatalf("save: %d %s", response.Code, response.Body)
+	}
+	if got := flags(); got != want {
+		t.Fatalf("unproved customer moved the earlier profile's primaries: %s", got)
+	}
+
+	response := e.do(t, request{method: http.MethodGet, path: base, token: token})
+	var profile adoptedProfile
+	if err := json.Unmarshal(response.Body.Bytes(), &profile); err != nil {
+		t.Fatal(err)
+	}
+	if !profile.OwnershipUnproved || profile.Name != "Juan Perez" || strings.Contains(response.Body.String(), "Dueño") {
+		t.Fatalf("own sign-up proof opened the earlier profile: %s", response.Body)
+	}
+	for _, c := range profile.Contacts {
+		if c.Value == "solo@example.test" && c.Primary {
+			t.Fatalf("declared value revealed the earlier primary: %s", response.Body)
+		}
+	}
+}
+
 func TestCustomerProfile_NewCUITOwnsItsProfileFromRegistration(t *testing.T) {
 	e := newEnv(t)
 	account, _ := e.seedAccount(t, "Fresh registration")

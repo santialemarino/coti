@@ -96,6 +96,10 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 		} else {
 			return domain.ErrConflict
 		}
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
+		if err != nil {
+			return err
+		}
 		current, err := s.contacts.List(ctx, q, p.AccountID, []uuid.UUID{client.ID})
 		if err != nil {
 			return err
@@ -123,7 +127,8 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 				}
 			}
 			if !found {
-				contact.Primary = !hasKind
+				// An unproved customer never sets the earlier profile's primary, which feeds client.phone/email.
+				contact.Primary = !hasKind && access.Proved
 				contacts = append(contacts, contact)
 			}
 		}

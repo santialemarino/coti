@@ -191,17 +191,13 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 	})
 }
 
-// markDisplayedPrimary shows one primary per kind when the profile's own primary stays hidden.
+// markDisplayedPrimary shows the first contact of each kind as primary, so a declared value that
+// matches the profile's real primary does not reveal it.
 func markDisplayedPrimary(contacts []domain.ClientContact) {
 	shown := make(map[domain.ChannelType]bool)
-	for _, c := range contacts {
-		shown[c.Kind] = shown[c.Kind] || c.Primary
-	}
 	for i := range contacts {
-		if !shown[contacts[i].Kind] {
-			contacts[i].Primary = true
-			shown[contacts[i].Kind] = true
-		}
+		contacts[i].Primary = !shown[contacts[i].Kind]
+		shown[contacts[i].Kind] = true
 	}
 }
 

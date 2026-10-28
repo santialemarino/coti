@@ -18,10 +18,12 @@ type ClientContactRepository struct{}
 func NewClientContactRepository() *ClientContactRepository { return &ClientContactRepository{} }
 
 // ListForCustomer projects verification performed by this credential rather than legacy contact trust.
-// Unless all is set, it returns only the contacts this customer entered.
+// Unless all is set, it returns only the contacts this customer entered, ordered by value so neither
+// order nor flags tell which of them the profile already had.
 func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, all bool) ([]domain.ClientContact, error) {
 	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
- FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3) ORDER BY c.kind,c.is_primary DESC,c.created_at,c.id`, p.AccountID, clientID, p.CustomerID, all)
+ FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3)
+ ORDER BY c.kind,($4 AND c.is_primary) DESC,CASE WHEN $4 THEN c.created_at END,c.value,c.id`, p.AccountID, clientID, p.CustomerID, all)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +175,7 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 }
 
 // SaveDeclared replaces only the contacts this customer added to a profile it has not proved. The
-// profile's earlier contacts are never removed, and a customer contact becomes primary only for a
-// kind the profile had no other contact of.
+// profile's earlier contacts are never removed, and its primaries and projected phone/email never move.
 func (r *ClientContactRepository) SaveDeclared(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, contacts []domain.ClientContact) error {
 	payload, err := contactPayload(contacts)
 	if err != nil {
@@ -190,20 +191,11 @@ func (r *ClientContactRepository) SaveDeclared(ctx context.Context, q Querier, p
 	if _, err = q.Exec(ctx, `UPDATE client_contact SET declared_by=NULL WHERE account_id=$1 AND client_id=$2 AND declared_by=$3 AND NOT (`+own+`) AND NOT `+typed, args...); err != nil {
 		return err
 	}
-	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_primary=FALSE WHERE account_id=$1 AND client_id=$2 AND `+own, args[:4]...); err != nil {
-		return err
-	}
 	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND `+own+` AND NOT `+typed, args...); err != nil {
 		return err
 	}
-	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at,declared_by) SELECT $1,$2,x.kind::channel_type,x.value,FALSE,'CUSTOMER',NULL,$3 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET declared_by=excluded.declared_by`, p.AccountID, clientID, p.CustomerID, payload); err != nil {
-		return err
-	}
-	if _, err = q.Exec(ctx, `UPDATE client_contact SET is_primary=TRUE WHERE account_id=$1 AND client_id=$2 AND `+own+` AND EXISTS(SELECT 1 FROM jsonb_to_recordset($5::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x."primary" AND x.kind=client_contact.kind::text AND x.value=client_contact.value)
- AND NOT EXISTS(SELECT 1 FROM client_contact other WHERE other.account_id=$1 AND other.client_id=$2 AND other.kind=client_contact.kind AND NOT (other.declared_by IS NOT DISTINCT FROM $3 AND other.source='CUSTOMER' AND other.created_at>=$4))`, args...); err != nil {
-		return err
-	}
-	return projectPrimaryContacts(ctx, q, p.AccountID, clientID)
+	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at,declared_by) SELECT $1,$2,x.kind::channel_type,x.value,FALSE,'CUSTOMER',NULL,$3 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET declared_by=excluded.declared_by`, p.AccountID, clientID, p.CustomerID, payload)
+	return err
 }
 
 // Declare marks the given contacts of a profile as entered by this customer.

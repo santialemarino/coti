@@ -207,6 +207,10 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if !present {
 			return domain.ErrNotFound
 		}
+		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
+		if err != nil {
+			return err
+		}
 		var sourceID *uuid.UUID
 		var merged []domain.ClientContact
 		for i := range candidates {
@@ -235,7 +239,7 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 					}
 				}
 				if !found {
-					incoming.Primary = !hasKind
+					incoming.Primary = !hasKind && access.Proved
 					contacts = append(contacts, incoming)
 					merged = append(merged, incoming)
 				}
