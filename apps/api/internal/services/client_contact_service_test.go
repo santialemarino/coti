@@ -180,3 +180,7 @@ func (f *fakeContactStore) GetProfileAccess(context.Context, repository.Querier,
 func (f *fakeContactStore) Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error {
 	return nil
 }
+
+func (f *fakeContactStore) ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error {
+	return nil
+}

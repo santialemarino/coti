@@ -41,6 +41,9 @@ func (s *ClientContactService) RegisterProfile(ctx context.Context, q repository
 		if err := s.contacts.Save(ctx, q, p.AccountID, profile.ID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
+		if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, profile.ID); err != nil {
+			return err
+		}
 		return s.contacts.Declare(ctx, q, p, profile.ID, contacts)
 	case 1:
 		// An earlier profile with this CUIT keeps its name, fiscal data and contacts until the customer

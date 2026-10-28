@@ -207,10 +207,6 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if !present {
 			return domain.ErrNotFound
 		}
-		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
-		if err != nil {
-			return err
-		}
 		var sourceID *uuid.UUID
 		var merged []domain.ClientContact
 		for i := range candidates {
@@ -228,6 +224,16 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, c.ClientID); err != nil {
 				return err
 			}
+		}
+		// Verifying first lets the proof this confirm establishes decide the merged primaries.
+		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
+			return err
+		}
+		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
+		if err != nil {
+			return err
+		}
+		if sourceID != nil {
 			for _, incoming := range collections[*sourceID] {
 				found, hasKind := false, false
 				for _, existing := range contacts {
@@ -251,8 +257,10 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if err := s.contacts.contacts.Declare(ctx, q, p, c.ClientID, merged); err != nil {
 			return err
 		}
-		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
-			return err
+		if access.Proved {
+			if err := s.contacts.contacts.ProjectPrimaries(ctx, q, p.AccountID, c.ClientID); err != nil {
+				return err
+			}
 		}
 		return s.store.FinishChallenge(ctx, q, p, id, true)
 	})

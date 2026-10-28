@@ -218,6 +218,80 @@ func TestCustomerProfile_OwnContactProofNeverMovesEarlierPrimaries(t *testing.T)
 	}
 }
 
+// seedMergeProfiles makes an earlier CUIT profile whose email is unverified and a provisional profile
+// whose verified email and WhatsApp a confirmation will merge into it.
+func (e *env) seedMergeProfiles(t *testing.T, account uuid.UUID, tax, legacyEmail, dumbEmail, dumbPhone string) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	legacy := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,tax_id,email) VALUES($1,$2,'Dueño SA',$3,$4)`, legacy, account, tax, legacyEmail); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact SET verified_at=NULL WHERE account_id=$1 AND client_id=$2`, account, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(account_id,name,email,phone) VALUES($1,'Provisorio',$2,$3)`, account, dumbEmail, dumbPhone); err != nil {
+		t.Fatal(err)
+	}
+	return legacy
+}
+
+func (e *env) profileProjection(t *testing.T, account, clientID uuid.UUID) string {
+	t.Helper()
+	var phone, email, primaries string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT COALESCE(c.phone,''),COALESCE(c.email,''),
+ COALESCE((SELECT string_agg(value,',' ORDER BY value) FROM client_contact WHERE account_id=c.account_id AND client_id=c.id AND is_primary AND retired_at IS NULL),'')
+ FROM client c WHERE c.account_id=$1 AND c.id=$2`, account, clientID).Scan(&phone, &email, &primaries); err != nil {
+		t.Fatal(err)
+	}
+	return phone + "|" + email + "|" + primaries
+}
+
+func TestCustomerProfile_ProvingMergeGivesTheProfileTheMergedPrimary(t *testing.T) {
+	e := newEnv(t)
+	account, _ := e.seedAccount(t, "Proving merge")
+	const tax = "20123456786"
+	legacy := e.seedMergeProfiles(t, account, tax, "solo@example.test", "solo@example.test", "+5491177770000")
+	host, token := e.registerCustomer(t, account, tax, "")
+	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{
+		{"kind": "EMAIL", "value": "solo@example.test", "primary": true},
+		{"kind": "EMAIL", "value": "customer" + tax + "@example.test", "primary": false},
+	}}
+	if response := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + host + "/profile", token: token, body: declare}); response.Code != http.StatusNoContent {
+		t.Fatalf("declare: %d %s", response.Code, response.Body)
+	}
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, "solo@example.test", true)
+	if got, want := e.profileProjection(t, account, legacy), "+5491177770000|solo@example.test|+5491177770000,solo@example.test"; got != want {
+		t.Fatalf("proving merge: got %s, want %s", got, want)
+	}
+}
+
+func TestCustomerProfile_NonProvingMergeMovesNoEarlierPrimary(t *testing.T) {
+	e := newEnv(t)
+	account, branch := e.seedAccount(t, "Non-proving merge")
+	ctx := context.Background()
+	const tax = "20123456786"
+	legacy := e.seedMergeProfiles(t, account, tax, " SOLO@Example.test ", "otro@example.test", "+5491188880000")
+	want := e.profileProjection(t, account, legacy)
+	host, token := e.registerCustomer(t, account, tax, "")
+	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{{"kind": "EMAIL", "value": "otro@example.test", "primary": true}}}
+	if response := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + host + "/profile", token: token, body: declare}); response.Code != http.StatusNoContent {
+		t.Fatalf("declare: %d %s", response.Code, response.Body)
+	}
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, "otro@example.test", true)
+	p := domain.CustomerPrincipal{AccountID: account, TaxID: tax}
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, tax).Scan(&p.CustomerID); err != nil {
+		t.Fatal(err)
+	}
+	service := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
+	if err := service.RecordCustomer(ctx, p, domain.InboundChannelRoute{AccountID: account, BranchID: branch}, uuid.New(), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "otro@example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.profileProjection(t, account, legacy); got != want {
+		t.Fatalf("non-proving merge moved the earlier profile: got %s, want %s", got, want)
+	}
+}
+
 func TestCustomerProfile_NewCUITOwnsItsProfileFromRegistration(t *testing.T) {
 	e := newEnv(t)
 	account, _ := e.seedAccount(t, "Fresh registration")

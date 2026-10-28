@@ -156,7 +156,7 @@ func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Queri
 	return err
 }
 
-// Save replaces a contact collection and synchronizes legacy primary projections atomically.
+// Save replaces a contact collection; ProjectPrimaries then copies its primaries to client.phone/email.
 func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID, clientID uuid.UUID, contacts []domain.ClientContact, source string) error {
 	payload, err := contactPayload(contacts)
 	if err != nil {
@@ -168,10 +168,15 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`, accountID, clientID, payload); err != nil {
 		return err
 	}
-	if _, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source); err != nil {
-		return err
-	}
-	return projectPrimaryContacts(ctx, q, accountID, clientID)
+	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source)
+	return err
+}
+
+// ProjectPrimaries copies a profile's primary contacts to client.phone/email, which sellers quote and
+// route through. It is never called for a profile its customer has not proved.
+func (r *ClientContactRepository) ProjectPrimaries(ctx context.Context, q Querier, accountID, clientID uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
+	return err
 }
 
 // SaveDeclared replaces only the contacts this customer added to a profile it has not proved. The
@@ -281,9 +286,4 @@ func contactPayload(contacts []domain.ClientContact) ([]byte, error) {
 		data = append(data, wire{c.Kind, c.Value, c.Primary})
 	}
 	return json.Marshal(data)
-}
-
-func projectPrimaryContacts(ctx context.Context, q Querier, accountID, clientID uuid.UUID) error {
-	_, err := q.Exec(ctx, `UPDATE client SET phone=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='WHATSAPP' AND is_primary),email=(SELECT value FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind='EMAIL' AND is_primary) WHERE account_id=$1 AND id=$2`, accountID, clientID)
-	return err
 }

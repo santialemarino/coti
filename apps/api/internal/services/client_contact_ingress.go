@@ -135,6 +135,11 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
+		if access.Proved {
+			if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, client.ID); err != nil {
+				return err
+			}
+		}
 		if err := s.contacts.Declare(ctx, q, p, client.ID, declared); err != nil {
 			return err
 		}

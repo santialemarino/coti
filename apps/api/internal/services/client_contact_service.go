@@ -22,6 +22,7 @@ type contactStore interface {
 	GetProfileAccess(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerProfileAccess, error)
 	SaveDeclared(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
 	Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
+	ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
 	AttachSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
 	PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error)
@@ -187,6 +188,9 @@ func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.Custo
 		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
 			return err
 		}
+		if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, client.ID); err != nil {
+			return err
+		}
 		return s.contacts.Declare(ctx, q, p, client.ID, contacts)
 	})
 }
@@ -259,6 +263,9 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 			return err
 		}
 		if err := s.contacts.Save(ctx, q, route.AccountID, profile.ID, []domain.ClientContact{{Kind: kind, Value: value, Primary: true}}, "CHANNEL"); err != nil {
+			return err
+		}
+		if err := s.contacts.ProjectPrimaries(ctx, q, route.AccountID, profile.ID); err != nil {
 			return err
 		}
 		observation.SourceClientID = &profile.ID
