@@ -1478,6 +1478,18 @@
           "PREMIUM": "Alternativa premium",
           "EQUIVALENT": "Alternativa equivalente"
         },
+        "alternatives": {
+          "title": "Alternativas para el cliente",
+          "description": "Elegí cuáles opciones aprobadas se envían junto con la cotización.",
+          "forItem": "Alternativa para {name}",
+          "include": "Incluir en la cotización",
+          "remove": "No incluir",
+          "pending": "Guardando…",
+          "toast": {
+            "included": "La alternativa «{name}» se va a enviar al cliente.",
+            "removed": "La alternativa «{name}» no se va a enviar al cliente."
+          }
+        },
         "searchProduct": "Buscar producto",
         "searchProductPlaceholder": "Código o nombre del producto…",
         "noResults": "No encontramos productos con esa búsqueda.",

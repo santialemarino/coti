@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqItemsTable } from '@/app/(protected)/rfqs/[id]/_components/rfq-items-table';
 import { ApiError } from '@/lib/api/errors';
-import type { QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
+import type {
+  QuoteDiscountResponse,
+  QuoteItemAlternativeResponse,
+  QuoteItemResponse,
+} from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -18,11 +22,13 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
   updateDiscount: vi.fn(),
+  updateQuoteAlternativeApproval: vi.fn(),
   updateQuoteItem: vi.fn(),
 }));
 
 const { toast } = await import('sonner');
-const { deleteQuoteItem, updateDiscount, updateQuoteItem } = await import('@/lib/api/rfqs-client');
+const { deleteQuoteItem, updateDiscount, updateQuoteAlternativeApproval, updateQuoteItem } =
+  await import('@/lib/api/rfqs-client');
 
 const copy = messages.rfqs;
 
@@ -50,6 +56,23 @@ const PRICED_ITEM: QuoteItemResponse = {
   pricing_unavailable: false,
   quantity_rationale: null,
   created_at: '2026-09-07T20:45:00.000Z',
+};
+
+const ECONOMY_ALTERNATIVE: QuoteItemAlternativeResponse = {
+  id: 'a0000000-0000-4000-8000-000000000001',
+  product_id: 'p0000000-0000-4000-8000-000000000002',
+  combo_id: null,
+  type: 'PRODUCT',
+  recommendation_type: 'ECONOMY',
+  origin: 'CATALOG',
+  rank: 1,
+  confidence_score: null,
+  price_snapshot: '650.00',
+  approved_by_seller: false,
+  chosen_by_client: false,
+  code: 'LAD-HUE-08',
+  canonical_name: 'Ladrillo hueco 8x18x33',
+  unit: 'unidad',
 };
 
 function renderItems(
@@ -121,6 +144,47 @@ describe('RfqItemsTable action errors', () => {
         unit_price_snapshot: '900',
       }),
     );
+  });
+});
+
+describe('RfqItemsTable customer alternatives', () => {
+  it('lets the seller include an economical alternative in the customer quote', async () => {
+    const onItemsChange = vi.fn();
+    vi.mocked(updateQuoteAlternativeApproval).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      approved_by_seller: true,
+    });
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+
+    expect(view.getByText(copy.detail.items.alternatives.title)).toBeTruthy();
+    expect(view.getByText(copy.detail.items.recommendationType.ECONOMY)).toBeTruthy();
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.include }));
+
+    await vi.waitFor(() =>
+      expect(updateQuoteAlternativeApproval).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        ECONOMY_ALTERNATIVE.id,
+        BRANCH_ID,
+        true,
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives[0]?.approved_by_seller).toBe(true);
+  });
+
+  it('hides customer alternatives once the quote has been sent', () => {
+    const view = renderItems(BRANCH_ID, 'SENT', [
+      { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
+    ]);
+
+    expect(view.queryByText(copy.detail.items.alternatives.title)).toBeNull();
   });
 });
 

@@ -3,6 +3,7 @@ import type {
   CreateDiscountBody,
   FileRfqDraftResponse,
   QuoteDiscountResponse,
+  QuoteItemAlternativeResponse,
   QuoteItemResponse,
   QuoteReactivationMode,
   QuoteResponse,
@@ -310,6 +311,33 @@ export async function addQuoteItem(
     await throwApiError(response);
   }
   return response.json() as Promise<QuoteItemResponse>;
+}
+
+/*
+ * Controls which price-qualified product alternatives are carried into the customer's frozen
+ * offer. The API owns the immutable-version guard and validates the alternative's catalog identity.
+ */
+export async function updateQuoteAlternativeApproval(
+  quoteId: string,
+  itemId: string,
+  alternativeId: string,
+  branchId: string,
+  approvedBySeller: boolean,
+): Promise<QuoteItemAlternativeResponse> {
+  const response = await fetch(
+    `/api/quotes/${quoteId}/items/${itemId}/alternatives/${alternativeId}`,
+    {
+      method: 'PATCH',
+      headers: branchHeaders(branchId, true),
+      body: JSON.stringify({ approved_by_seller: approvedBySeller }),
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteItemAlternativeResponse>;
 }
 
 /*

@@ -23,6 +23,7 @@ import {
   ClampedText,
   ConfirmDialog,
   EmptyState,
+  PendingButton,
   RowActionButton,
   Table,
   TABLE_COLUMNS,
@@ -49,6 +50,7 @@ import {
   deleteDiscount,
   deleteQuoteItem,
   updateDiscount,
+  updateQuoteAlternativeApproval,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -190,12 +192,14 @@ export function RfqItemsTable({
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
   const [editingDiscount, setEditingDiscount] = useState<QuoteDiscountResponse | null>(null);
   const [editingProductItemId, setEditingProductItemId] = useState<string | null>(null);
+  const [updatingAlternativeId, setUpdatingAlternativeId] = useState<string | null>(null);
 
   const hasQuote = !!quoteId;
   const showPricing = hasQuote && PRICED_STATUSES.has(quoteStatus ?? '');
   const canEditProducts = hasQuote && !readOnly && PRODUCT_EDIT_STATUSES.has(quoteStatus ?? '');
   const canEditPrices = hasQuote && !readOnly && PRICE_EDIT_STATUSES.has(quoteStatus ?? '');
   const canEditDiscounts = canEditPrices;
+  const canPublishAlternatives = canEditPrices;
   // Confidence belongs to the pre-quote review: visible before pricing is set, hidden once a
   // quote exists and the seller reasons about products and money.
   const showConfidence = !showPricing;
@@ -385,6 +389,48 @@ export function RfqItemsTable({
       delete next[itemId];
       return next;
     });
+  }
+
+  async function handleAlternativeApproval(
+    item: QuoteItemResponse,
+    alternativeId: string,
+    approved: boolean,
+  ) {
+    if (!quoteId || updatingAlternativeId) return;
+    setUpdatingAlternativeId(alternativeId);
+    try {
+      const updated = await updateQuoteAlternativeApproval(
+        quoteId,
+        item.id,
+        alternativeId,
+        branchId,
+        approved,
+      );
+      onItemsChange(
+        items.map((line) =>
+          line.id === item.id
+            ? {
+                ...line,
+                alternatives: line.alternatives.map((alternative) =>
+                  alternative.id === updated.id ? updated : alternative,
+                ),
+              }
+            : line,
+        ),
+      );
+      toast.success(
+        t(
+          approved
+            ? 'detail.items.alternatives.toast.included'
+            : 'detail.items.alternatives.toast.removed',
+          { name: updated.canonical_name ?? item.requested_description },
+        ),
+      );
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setUpdatingAlternativeId(null);
+    }
   }
 
   /*
@@ -708,6 +754,79 @@ export function RfqItemsTable({
             })}
           </TableBody>
         </Table>
+
+        {canPublishAlternatives &&
+          items.some((item) =>
+            item.alternatives.some((alternative) => alternative.recommendation_type !== null),
+          ) && (
+            <div className="flex flex-col px-4 py-4 gap-y-3 border-t border-border">
+              <div className="flex flex-col gap-y-1">
+                <h3 className="text-heading-6 text-foreground">
+                  {t('detail.items.alternatives.title')}
+                </h3>
+                <p className="text-paragraph-sm text-foreground-muted">
+                  {t('detail.items.alternatives.description')}
+                </p>
+              </div>
+              <div className="flex flex-col gap-y-2">
+                {items.flatMap((item) =>
+                  item.alternatives
+                    .filter((alternative) => alternative.recommendation_type !== null)
+                    .map((alternative) => {
+                      const approved = alternative.approved_by_seller;
+                      const pending = updatingAlternativeId === alternative.id;
+                      return (
+                        <div
+                          key={alternative.id}
+                          className="flex flex-col p-3 gap-y-3 border border-border rounded-md sm:flex-row sm:items-center sm:justify-between sm:gap-x-4"
+                        >
+                          <div className="flex min-w-0 flex-col gap-y-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <Badge tone={approved ? 'success' : 'neutral'} size="sm">
+                                {t(
+                                  `detail.items.recommendationType.${alternative.recommendation_type}`,
+                                )}
+                              </Badge>
+                              <span className="text-paragraph-sm-medium text-foreground">
+                                {alternative.canonical_name}
+                              </span>
+                              {alternative.code ? (
+                                <span className="text-paragraph-xs text-foreground-muted">
+                                  {alternative.code}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-paragraph-xs text-foreground-muted">
+                              {t('detail.items.alternatives.forItem', {
+                                name: item.product_name ?? item.requested_description,
+                              })}
+                              {alternative.price_snapshot
+                                ? ` · ${fmt.currency(alternative.price_snapshot)}`
+                                : ''}
+                            </p>
+                          </div>
+                          <PendingButton
+                            type="button"
+                            variant={approved ? 'outline' : 'default'}
+                            size="sm"
+                            disabled={updatingAlternativeId !== null}
+                            pending={pending}
+                            pendingLabel={t('detail.items.alternatives.pending')}
+                            onClick={() =>
+                              void handleAlternativeApproval(item, alternative.id, !approved)
+                            }
+                          >
+                            {approved
+                              ? t('detail.items.alternatives.remove')
+                              : t('detail.items.alternatives.include')}
+                          </PendingButton>
+                        </div>
+                      );
+                    }),
+                )}
+              </div>
+            </div>
+          )}
 
         {showPricing && (
           /* A stronger rule than the row hairlines, so the summary reads as apart from the lines. */
