@@ -14,6 +14,11 @@ import {
   Spinner,
 } from '@repo/ui/components';
 import { searchCatalog, type CatalogProduct } from '@/lib/api/catalog';
+import type { RecommendationType } from '@/lib/api/rfqs';
+
+export type ProductSuggestion = CatalogProduct & {
+  recommendationType?: RecommendationType | null;
+};
 
 interface ProductSearchDialogProps {
   open: boolean;
@@ -21,7 +26,7 @@ interface ProductSearchDialogProps {
   onSelect: (product: CatalogProduct) => void;
   title?: string;
   /* The candidates matching already weighed for the line, listed first while they fit the query. */
-  suggestions?: CatalogProduct[];
+  suggestions?: ProductSuggestion[];
 }
 
 function folded(text: string): string {
@@ -40,7 +45,7 @@ export function ProductSearchDialog({
 }: ProductSearchDialogProps) {
   const t = useTranslations('rfqs.detail.items');
   const [query, setQuery] = useState('');
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [catalog, setCatalog] = useState<ProductSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
 
@@ -79,6 +84,19 @@ export function ProductSearchDialog({
     ...suggested,
     ...(loading ? [] : catalog.filter((product) => !suggestedIds.has(product.id))),
   ];
+
+  function suggestedLabel(product: ProductSuggestion): string {
+    switch (product.recommendationType) {
+      case 'ECONOMY':
+        return t('recommendationType.ECONOMY');
+      case 'PREMIUM':
+        return t('recommendationType.PREMIUM');
+      case 'EQUIVALENT':
+        return t('recommendationType.EQUIVALENT');
+      default:
+        return t('suggested');
+    }
+  }
 
   function handleSelect(product: CatalogProduct) {
     onSelect(product);
@@ -132,7 +150,7 @@ export function ProductSearchDialog({
                     <span className="flex shrink-0 items-center gap-x-2 text-paragraph-xs text-foreground-muted">
                       {suggestedIds.has(product.id) && (
                         <Badge tone="brand" size="sm">
-                          {t('suggested')}
+                          {suggestedLabel(product)}
                         </Badge>
                       )}
                       {t('select')}

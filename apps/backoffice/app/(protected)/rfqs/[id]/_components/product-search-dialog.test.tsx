@@ -2,33 +2,40 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ProductSearchDialog } from '@/app/(protected)/rfqs/[id]/_components/product-search-dialog';
-import type { CatalogProduct } from '@/lib/api/catalog';
+import {
+  ProductSearchDialog,
+  type ProductSuggestion,
+} from '@/app/(protected)/rfqs/[id]/_components/product-search-dialog';
 import messages from '@/translations/es.json';
 
 vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn() }));
 
 const { searchCatalog } = await import('@/lib/api/catalog');
 
-const CEMENTO_50: CatalogProduct = {
+const CEMENTO_50: ProductSuggestion = {
   id: 'p1',
   code: 'CEM-50',
   name: 'Cemento Loma Negra 50kg',
   unit: 'bolsa',
 };
-const CEMENTO_25: CatalogProduct = {
+const CEMENTO_25: ProductSuggestion = {
   id: 'p2',
   code: 'CEM-25',
   name: 'Cemento Loma Negra 25kg',
   unit: 'bolsa',
 };
-const CAL: CatalogProduct = { id: 'p3', code: 'CAL-25', name: 'Cal hidratada 25kg', unit: 'bolsa' };
+const CAL: ProductSuggestion = {
+  id: 'p3',
+  code: 'CAL-25',
+  name: 'Cal hidratada 25kg',
+  unit: 'bolsa',
+};
 
-function renderDialog(suggestions: CatalogProduct[]) {
+function renderDialog(suggestions: ProductSuggestion[]) {
   return render(dialogTree(suggestions, true));
 }
 
-function dialogTree(suggestions: CatalogProduct[], open: boolean) {
+function dialogTree(suggestions: ProductSuggestion[], open: boolean) {
   return (
     <NextIntlClientProvider
       locale="es"
@@ -69,6 +76,17 @@ describe('ProductSearchDialog', () => {
 
     expect(listedNames()).toEqual([CEMENTO_50.name, CEMENTO_25.name, CAL.name]);
     expect(screen.getAllByText(messages.rfqs.detail.items.suggested)).toHaveLength(2);
+  });
+
+  it('identifies economy and premium suggestions by their configured recommendation type', async () => {
+    renderDialog([
+      { ...CEMENTO_50, recommendationType: 'ECONOMY' },
+      { ...CEMENTO_25, recommendationType: 'PREMIUM' },
+    ]);
+    await settle();
+
+    expect(screen.getByText(messages.rfqs.detail.items.recommendationType.ECONOMY)).toBeTruthy();
+    expect(screen.getByText(messages.rfqs.detail.items.recommendationType.PREMIUM)).toBeTruthy();
   });
 
   it('keeps only the suggestions the search still fits, accents aside', async () => {

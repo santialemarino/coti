@@ -54,7 +54,7 @@ import {
 import { useFormatters } from '@/lib/i18n/formatters';
 import { shortUnit } from '@/lib/utils/units';
 import { DiscountDialog } from './discount-dialog';
-import { ProductSearchDialog } from './product-search-dialog';
+import { ProductSearchDialog, type ProductSuggestion } from './product-search-dialog';
 
 /*
  * Capability matrix keyed on the raw quote.current_status. GENERATED reads as DRAFT here (the
@@ -127,9 +127,9 @@ function confidenceBadge(item: QuoteItemResponse): {
 
 // The products matching offered for the line, best first. A flagged line leads with the product it
 // already carries, so confirming it is one click rather than a search for what is on screen.
-function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
+function suggestionsFor(item: QuoteItemResponse | undefined): ProductSuggestion[] {
   if (!item) return [];
-  const current: CatalogProduct[] =
+  const current: ProductSuggestion[] =
     item.product_id && item.match_status !== 'MATCHED'
       ? [
           {
@@ -137,6 +137,7 @@ function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
             code: item.product_code ?? '',
             name: item.product_name ?? '',
             unit: item.product_unit ?? '',
+            recommendationType: null,
           },
         ]
       : [];
@@ -148,6 +149,7 @@ function suggestionsFor(item: QuoteItemResponse | undefined): CatalogProduct[] {
       code: alternative.code ?? '',
       name: alternative.canonical_name ?? '',
       unit: alternative.unit ?? '',
+      recommendationType: alternative.recommendation_type,
     }));
   return [...current, ...offered];
 }
