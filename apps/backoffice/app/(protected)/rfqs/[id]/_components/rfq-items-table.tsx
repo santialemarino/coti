@@ -782,7 +782,21 @@ export function RfqItemsTable({
                         >
                           <div className="flex min-w-0 flex-col gap-y-1">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <Badge tone={approved ? 'success' : 'neutral'} size="sm">
+                              <Badge
+                                tone={
+                                  alternative.recommendation_type === 'PREMIUM'
+                                    ? 'neutral'
+                                    : approved
+                                      ? 'success'
+                                      : 'neutral'
+                                }
+                                size="sm"
+                                className={
+                                  alternative.recommendation_type === 'PREMIUM'
+                                    ? 'border-recommendation-premium-border bg-recommendation-premium-subtle text-recommendation-premium-foreground'
+                                    : undefined
+                                }
+                              >
                                 {t(
                                   `detail.items.recommendationType.${alternative.recommendation_type}`,
                                 )}
