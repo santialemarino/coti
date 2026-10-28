@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,22 +76,42 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 }
 
 type inboundNameReplyResolver interface {
-	PendingNameRFQ(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string) (*uuid.UUID, error)
+	NameReply(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, string) (*uuid.UUID, string, error)
 }
 
 type pendingNameStore interface {
-	PendingNameRFQ(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, time.Duration) (*uuid.UUID, error)
+	MentionsCatalog(context.Context, repository.Querier, uuid.UUID, string) (bool, error)
+	PendingNameRFQ(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, []string, time.Duration) (*uuid.UUID, error)
 }
 
-// PendingNameRFQ identifies the request a name reply completes while its prompt is still answerable.
-func (s *ClientContactService) PendingNameRFQ(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw string) (*uuid.UUID, error) {
+// NameReply returns the request a message answers with the sender's name, and that name, or nil when
+// the message is not a name reply: no prompt is answerable, the text fails the reply rule, or it
+// names something in the supplier's catalog.
+func (s *ClientContactService) NameReply(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw, text string) (*uuid.UUID, string, error) {
 	store, ok := s.contacts.(pendingNameStore)
 	if !ok {
-		return nil, nil
+		return nil, "", nil
+	}
+	name, ok := contactNameReply(text)
+	if !ok {
+		return nil, "", nil
 	}
 	value, err := domain.NormalizeClientContact(kind, raw)
 	if err != nil {
-		return nil, err
+		return nil, "", nil
 	}
-	return store.PendingNameRFQ(ctx, q, route, kind, value, nameReplyWindow)
+	destinations := []string{strings.ToLower(value)}
+	if kind == domain.ChannelTypeWhatsApp {
+		if destinations, err = domain.InboundSenderDestinations(kind, value); err != nil {
+			return nil, "", nil
+		}
+	}
+	pending, err := store.PendingNameRFQ(ctx, q, route, kind, value, destinations, nameReplyWindow)
+	if err != nil || pending == nil {
+		return nil, "", err
+	}
+	if catalog, err := store.MentionsCatalog(ctx, q, route.AccountID, name); err != nil || catalog {
+		return nil, "", err
+	}
+	return pending, name, nil
 }

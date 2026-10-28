@@ -15,7 +15,10 @@ const (
 	nameReplyWindow = 24 * time.Hour
 	// maxNameReplyLength bounds a recognized reply in characters, after greetings are removed.
 	maxNameReplyLength = 60
+	// minNameReplyWords asks for first and last name, which is what the prompt requests.
+	minNameReplyWords = 2
 	// maxNameReplyWords bounds a recognized reply in words; Argentine full names rarely pass four.
+	// Particles such as «de la» do not count toward either bound.
 	maxNameReplyWords = 5
 )
 
@@ -29,6 +32,8 @@ var (
 	emailQuoteStart      = regexp.MustCompile(`(?s)(?:\bEl\s.{1,300}?escribi[oó]:|\bOn\s.{1,300}?wrote:|-{2,}\s*(?:Mensaje original|Original Message|Forwarded message|Mensaje reenviado)\s*-{2,}|\b(?:De|From):\s[^\n]{1,300}\n\s*(?:Enviado|Fecha|Sent|Date):)`)
 	emailMobileSignature = regexp.MustCompile(`(?i)^(?:enviado desde mi|sent from my|obtener outlook para|get outlook for|descarg[aá] outlook para)\b`)
 	automatedLocalParts  = map[string]bool{"noreply": true, "donotreply": true, "mailerdaemon": true, "postmaster": true}
+	// nameReplyAddress catches a link or an address, which only letters and periods would let through.
+	nameReplyAddress = regexp.MustCompile(`(?i)@|://|\bwww\.|\.[a-z]{2,}\b`)
 )
 
 // Words that make a reply an order rather than a name. A miss only means the reply is processed as
@@ -40,7 +45,18 @@ var nameReplyOrderWords = wordSet(`necesito necesitaria necesitamos quiero queri
 	tubos ceramica ceramicos porcelanato pegamento yeso placa placas durlock malla mallas alambre clavo clavos tornillo
 	tornillos pintura membrana hormigon revoque mezcla plasticor kilo kilos kg metro metros m2 m3 unidad unidades docena
 	pallet rollo rollos balde baldes litro litros perfil perfiles aislante teja tejas block bloque bloques urgente hoy
-	manana`)
+	manana hidrofugo
+	confirmo confirmado confirmamos confirmar confirma acepto aceptamos rechazo paso pasa busco buscar buscarlo mando
+	manda factura facturar facturas envio envia direccion foto fotos listo ya
+	el lo le te me se mi tu su al con para por en una ahora siempre esta estoy eso esto aca alla aqui
+	klaukol sika sikaflex weber plavicon isopor telgopor holcim minetti acindar rotoplas tersuave sinteplast loma
+	ceresita iggam tacuru`)
+
+// nameReplyOrderPrefixes catch the conjugations and clitic forms of order verbs («cancelalo»).
+var nameReplyOrderPrefixes = []string{"cancel", "confirm"}
+
+// Particles join the parts of a surname («de la Torre») and do not count as name words.
+var nameReplyParticles = wordSet(`de del la las los y da di van von d`)
 
 // Words that carry no name: a line made only of them is a greeting, an acknowledgement or a closing.
 var nameReplyCourtesyWords = wordSet(`hola buenas buen buenos dia dias tardes noches que tal como va ok okey dale si no listo
@@ -57,8 +73,9 @@ func wordSet(words string) map[string]bool {
 	return set
 }
 
-// contactNameReply recognizes a reply to the name prompt: one short line of letters with no digits
-// and no order vocabulary, after greetings, «soy» and closings are removed.
+// contactNameReply recognizes a reply to the name prompt: one short line of two to five name words,
+// letters only, with no digits, link, order or confirmation vocabulary, after greetings, «soy» and
+// closings are removed. The account's own catalog is checked separately by the caller.
 func contactNameReply(text string) (string, bool) {
 	var content []string
 	for _, line := range strings.Split(text, "\n") {
@@ -75,7 +92,7 @@ func contactNameReply(text string) (string, bool) {
 		}
 		content = append(content, line)
 	}
-	if len(content) != 1 || strings.ContainsFunc(content[0], unicode.IsDigit) {
+	if len(content) != 1 || strings.ContainsFunc(content[0], unicode.IsDigit) || nameReplyAddress.MatchString(content[0]) {
 		return "", false
 	}
 	name := nameReplyGreeting.ReplaceAllString(content[0], "")
@@ -96,7 +113,21 @@ func contactNameReply(text string) (string, bool) {
 		}
 	}
 	words := foldedWords(name)
-	if letters < 2 || len(words) > maxNameReplyWords || anyIn(words, nameReplyOrderWords) || allIn(words, nameReplyCourtesyWords) {
+	if letters < 2 || anyIn(words, nameReplyOrderWords) || allIn(words, nameReplyCourtesyWords) {
+		return "", false
+	}
+	nameWords := 0
+	for _, word := range words {
+		for _, prefix := range nameReplyOrderPrefixes {
+			if strings.HasPrefix(word, prefix) {
+				return "", false
+			}
+		}
+		if !nameReplyParticles[word] {
+			nameWords++
+		}
+	}
+	if nameWords < minNameReplyWords || nameWords > maxNameReplyWords {
 		return "", false
 	}
 	return name, true
@@ -114,7 +145,8 @@ func emailReplyText(body string) string {
 		if strings.TrimRight(line, " \t") == "--" || emailMobileSignature.MatchString(trimmed) {
 			break
 		}
-		if strings.HasPrefix(trimmed, ">") {
+		// Outlook draws a rule of underscores above the quoted headers.
+		if strings.HasPrefix(trimmed, ">") || (trimmed != "" && strings.Trim(trimmed, "_-=") == "") {
 			continue
 		}
 		kept = append(kept, line)

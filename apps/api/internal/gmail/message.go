@@ -78,8 +78,7 @@ func ParseMessage(raw []byte, maxPartBytes int64, maxParts int) (ParsedMessage, 
 	if id, idErr := reader.Header.MessageID(); idErr == nil && validMessageID(id) {
 		result.MessageID = "<" + id + ">"
 	}
-	result.Automated = automatedMail(reader.Header.Get("Auto-Submitted"), reader.Header.Get("Precedence"),
-		reader.Header.Get("List-Id") != "" || reader.Header.Get("List-Unsubscribe") != "")
+	result.Automated = automatedMail(reader.Header)
 	var plain, rich []string
 	for count := 0; ; count++ {
 		part, nextErr := reader.NextPart()
@@ -150,13 +149,27 @@ func validMessageID(id string) bool {
 	})
 }
 
-func automatedMail(autoSubmitted, precedence string, list bool) bool {
-	autoSubmitted = strings.ToLower(strings.TrimSpace(autoSubmitted))
-	switch strings.ToLower(strings.TrimSpace(precedence)) {
+// automatedMail reads RFC 3834 auto-submission, bulk and list headers, a null Return-Path and a
+// delivery report, the marks of mail no person wrote.
+func automatedMail(header mimemail.Header) bool {
+	switch strings.ToLower(strings.TrimSpace(header.Get("Precedence"))) {
 	case "bulk", "list", "junk":
 		return true
 	}
-	return list || (autoSubmitted != "" && autoSubmitted != "no")
+	autoSubmitted := strings.ToLower(strings.TrimSpace(header.Get("Auto-Submitted")))
+	if autoSubmitted != "" && autoSubmitted != "no" {
+		return true
+	}
+	for _, key := range []string{"List-Id", "List-Unsubscribe", "X-Autoreply", "X-Autorespond"} {
+		if header.Get(key) != "" {
+			return true
+		}
+	}
+	if strings.TrimSpace(header.Get("Return-Path")) == "<>" {
+		return true
+	}
+	mediaType, _, err := header.ContentType()
+	return err == nil && strings.EqualFold(mediaType, "multipart/report")
 }
 
 func htmlText(data []byte) string {

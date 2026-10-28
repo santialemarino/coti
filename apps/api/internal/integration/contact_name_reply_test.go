@@ -60,80 +60,146 @@ func (e *env) profileName(t *testing.T, account uuid.UUID) string {
 	return name
 }
 
+func (e *env) contactName(t *testing.T, account uuid.UUID, value string) string {
+	t.Helper()
+	var name string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT c.name FROM client c JOIN client_contact cc ON cc.account_id=c.account_id AND cc.client_id=c.id WHERE c.account_id=$1 AND cc.value=$2`, account, value).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+// nameReplyInbox is a WhatsApp intake with live quote conversations, contact onboarding and RFQ rows.
+type nameReplyInbox struct {
+	e         *env
+	account   uuid.UUID
+	branch    uuid.UUID
+	channel   inboundChannel
+	rfqs      *rowInboundRFQs
+	messenger *captureContactMessenger
+	service   *services.WhatsAppInboundService
+}
+
+func (e *env) nameReplyInbox(t *testing.T, name string, messaging bool) *nameReplyInbox {
+	t.Helper()
+	account, branch := e.seedAccount(t, name)
+	box := &nameReplyInbox{e: e, account: account, branch: branch, channel: e.seedWhatsAppInbox(t, account, branch), rfqs: &rowInboundRFQs{e: e}, messenger: &captureContactMessenger{}}
+	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
+	if messaging {
+		contacts.WithMessaging(box.messenger)
+	}
+	conversations := services.NewConversationService(repository.NewQuoteRepository(), repository.NewQuoteSendRepository(), repository.NewQuoteMessageRepository(),
+		repository.NewMessageBatchRepository(), config.ConversationConfig{WindowReset: 2 * time.Minute, WindowMax: 10 * time.Minute, ContextMessages: 10})
+	box.service = services.NewWhatsAppInboundService(e.db, services.NewInboundRoutingService(e.db, repository.NewChannelRepository()),
+		repository.NewInboundChannelMessageRepository(), nil, box.rfqs, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).WithConversations(conversations).WithContacts(contacts)
+	return box
+}
+
+func (b *nameReplyInbox) send(t *testing.T, sender, body string) {
+	t.Helper()
+	label := "Perfil de WhatsApp"
+	message := whatsAppReply(b.channel, uuid.NewString(), sender, body)
+	message.SenderLabel = &label
+	if err := b.service.Ingest(context.Background(), []domain.InboundTextMessage{message}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestContactNameReply_WhatsAppNameCompletesTheProfileAndOrdersStayOrders(t *testing.T) {
 	e := newEnv(t)
-	account, branch := e.seedAccount(t, "Name reply WhatsApp")
-	channel := e.seedWhatsAppInbox(t, account, branch)
-	rfqs := &rowInboundRFQs{e: e}
-	messenger := &captureContactMessenger{}
-	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()).WithMessaging(messenger)
-	inbound := services.NewWhatsAppInboundService(e.db, services.NewInboundRoutingService(e.db, repository.NewChannelRepository()),
-		repository.NewInboundChannelMessageRepository(), nil, rfqs, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).WithContacts(contacts)
-	ctx := context.Background()
-	sender := "+5491155550101"
-	label := "Perfil de WhatsApp"
-	send := func(body string) {
-		t.Helper()
-		message := whatsAppReply(channel, uuid.NewString(), sender, body)
-		message.SenderLabel = &label
-		if err := inbound.Ingest(ctx, []domain.InboundTextMessage{message}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	box := e.nameReplyInbox(t, "Name reply WhatsApp", true)
+	ordering, naming := "+5491155550101", "+5491155550103"
 
-	send("2 bolsas de cemento")
-	if rfqs.created() != 1 || len(messenger.messages) != 1 || e.profileName(t, account) != label {
-		t.Fatalf("first order: rfqs=%d prompts=%d name=%q", rfqs.created(), len(messenger.messages), e.profileName(t, account))
+	box.send(t, ordering, "2 bolsas de cemento")
+	if box.rfqs.created() != 1 || len(box.messenger.messages) != 1 || e.contactName(t, box.account, ordering) != "Perfil de WhatsApp" {
+		t.Fatalf("first order: rfqs=%d prompts=%d", box.rfqs.created(), len(box.messenger.messages))
 	}
-	prompt := messenger.messages[0]
-	if prompt.Purpose != domain.ContactPurposeNameRequest || prompt.Kind != domain.ChannelTypeWhatsApp || strings.Contains(prompt.Body, label) {
+	prompt := box.messenger.messages[0]
+	if prompt.Purpose != domain.ContactPurposeNameRequest || prompt.Kind != domain.ChannelTypeWhatsApp || strings.Contains(prompt.Body, "Perfil") {
 		t.Fatalf("prompt = %+v", prompt)
 	}
-
-	send("2 bolsas de cemento")
-	send("necesito arena")
-	if rfqs.created() != 3 || e.promptStatus(t, account, sender) != "SENT" {
-		t.Fatalf("short orders were swallowed: rfqs=%d status=%s", rfqs.created(), e.promptStatus(t, account, sender))
+	box.send(t, ordering, "2 bolsas de cemento")
+	if box.rfqs.created() != 2 || e.promptStatus(t, box.account, ordering) != "SENT" {
+		t.Fatalf("a short order was swallowed: rfqs=%d status=%s", box.rfqs.created(), e.promptStatus(t, box.account, ordering))
+	}
+	// The order sent after the prompt moved the exchange on, so a name now is an ordinary message.
+	box.send(t, ordering, "Juan Pérez")
+	if box.rfqs.created() != 3 || e.contactName(t, box.account, ordering) == "Juan Pérez" {
+		t.Fatal("a name after other activity was taken as the reply")
 	}
 
-	send("Soy Juan Pérez")
-	if rfqs.created() != 3 || e.profileName(t, account) != "Juan Pérez" || e.promptStatus(t, account, sender) != "COMPLETED" {
-		t.Fatalf("name reply: rfqs=%d name=%q status=%s", rfqs.created(), e.profileName(t, account), e.promptStatus(t, account, sender))
+	box.send(t, naming, "necesito arena")
+	box.send(t, naming, "Soy Ana María de la Torre")
+	if box.rfqs.created() != 4 || e.contactName(t, box.account, naming) != "Ana María de la Torre" || e.promptStatus(t, box.account, naming) != "COMPLETED" {
+		t.Fatalf("name reply: rfqs=%d name=%q status=%s", box.rfqs.created(), e.contactName(t, box.account, naming), e.promptStatus(t, box.account, naming))
 	}
 	var replyRFQ, firstRFQ uuid.UUID
-	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT (SELECT rfq_id FROM inbound_channel_message WHERE account_id=$1 AND body='Soy Juan Pérez'),(SELECT rfq_id FROM inbound_channel_message WHERE account_id=$1 ORDER BY created_at,id LIMIT 1)`, account).Scan(&replyRFQ, &firstRFQ); err != nil {
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT (SELECT rfq_id FROM inbound_channel_message WHERE account_id=$1 AND body='Soy Ana María de la Torre'),(SELECT rfq_id FROM inbound_channel_message WHERE account_id=$1 AND body='necesito arena')`, box.account).Scan(&replyRFQ, &firstRFQ); err != nil {
 		t.Fatal(err)
 	}
 	if replyRFQ != firstRFQ {
 		t.Fatal("the name reply was not retained on the request it answers")
 	}
-	send("Pedro Gómez")
-	if rfqs.created() != 4 || e.profileName(t, account) != "Juan Pérez" {
+	box.send(t, naming, "Pedro Gómez")
+	if box.rfqs.created() != 5 || e.contactName(t, box.account, naming) != "Ana María de la Torre" {
 		t.Fatal("a name after the prompt was answered must be an ordinary message")
 	}
 }
 
-func TestContactNameReply_WhatsAppReplyAfterTheWindowIsAnOrder(t *testing.T) {
+func TestContactNameReply_WhatsAppQuoteReplyStaysInTheConversation(t *testing.T) {
 	e := newEnv(t)
-	account, branch := e.seedAccount(t, "Name reply window")
-	channel := e.seedWhatsAppInbox(t, account, branch)
-	rfqs := &rowInboundRFQs{e: e}
-	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()).WithMessaging(&captureContactMessenger{})
-	inbound := services.NewWhatsAppInboundService(e.db, services.NewInboundRoutingService(e.db, repository.NewChannelRepository()),
-		repository.NewInboundChannelMessageRepository(), nil, rfqs, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).WithContacts(contacts)
+	box := e.nameReplyInbox(t, "Name reply conversation", true)
+	sender := "+5491155550104"
+	box.send(t, sender, "10 ladrillos")
+	// Sent before the prompt, so only the conversation, not the activity check, keeps the name out.
+	quoteID := e.seedSentQuote(t, sentQuote{accountID: box.account, branchID: box.branch, channel: box.channel,
+		destination: sender, status: domain.QuoteStatusSent, sentAgo: time.Hour, expiresIn: 24 * time.Hour})
+	box.send(t, sender, "Juan Pérez")
+	box.send(t, sender, "Confirmo")
+	messages, _ := e.conversationOf(t, quoteID)
+	if messages != 2 || box.rfqs.created() != 1 || e.promptStatus(t, box.account, sender) != "SENT" || e.contactName(t, box.account, sender) == "Confirmo" {
+		t.Fatalf("quote reply: conversation=%d rfqs=%d status=%s name=%q", messages, box.rfqs.created(), e.promptStatus(t, box.account, sender), e.contactName(t, box.account, sender))
+	}
+}
+
+func TestContactNameReply_WhatsAppNameIsRefusedAfterAQuoteOrForACatalogWord(t *testing.T) {
+	e := newEnv(t)
+	box := e.nameReplyInbox(t, "Name reply refusals", true)
 	ctx := context.Background()
-	sender := "+5491155550102"
-	if err := inbound.Ingest(ctx, []domain.InboundTextMessage{whatsAppReply(channel, uuid.NewString(), sender, "10 ladrillos")}); err != nil {
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO product(account_id,canonical_name) VALUES($1,'Adhesivo Kerakoll Flex')`, box.account); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact_outbox SET status_changed_at=now()-interval '25 hours' WHERE account_id=$1`, account); err != nil {
+	quoted, catalog := "+5491155550105", "+5491155550106"
+	box.send(t, quoted, "10 ladrillos")
+	// An archived quote no longer takes the conversation, but sending it was still activity.
+	e.seedSentQuote(t, sentQuote{accountID: box.account, branchID: box.branch, channel: box.channel,
+		destination: quoted, status: domain.QuoteStatusSent, expiresIn: 24 * time.Hour, archived: true})
+	box.send(t, quoted, "Juan Pérez")
+	box.send(t, catalog, "10 ladrillos")
+	box.send(t, catalog, "Kerakoll Gris")
+	if box.rfqs.created() != 4 || e.promptStatus(t, box.account, quoted) != "SENT" || e.promptStatus(t, box.account, catalog) != "SENT" {
+		t.Fatalf("refused replies: rfqs=%d", box.rfqs.created())
+	}
+}
+
+func TestContactNameReply_WhatsAppReplyNeedsADeliveredPromptInsideTheWindow(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	unsent := e.nameReplyInbox(t, "Name reply unsent", false)
+	unsent.send(t, "+5491155550107", "10 ladrillos")
+	unsent.send(t, "+5491155550107", "Juan Pérez")
+	if unsent.rfqs.created() != 2 || e.promptStatus(t, unsent.account, "+5491155550107") != "PENDING" {
+		t.Fatalf("a reply to a prompt never delivered was taken as the name: rfqs=%d", unsent.rfqs.created())
+	}
+
+	late := e.nameReplyInbox(t, "Name reply window", true)
+	late.send(t, "+5491155550102", "10 ladrillos")
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact_outbox SET status_changed_at=now()-interval '25 hours' WHERE account_id=$1`, late.account); err != nil {
 		t.Fatal(err)
 	}
-	if err := inbound.Ingest(ctx, []domain.InboundTextMessage{whatsAppReply(channel, uuid.NewString(), sender, "Juan Pérez")}); err != nil {
-		t.Fatal(err)
-	}
-	if rfqs.created() != 2 || e.profileName(t, account) == "Juan Pérez" {
-		t.Fatalf("a reply outside the 24 h window was taken as the name: rfqs=%d", rfqs.created())
+	late.send(t, "+5491155550102", "Juan Pérez")
+	if late.rfqs.created() != 2 || e.contactName(t, late.account, "+5491155550102") == "Juan Pérez" {
+		t.Fatalf("a reply outside the 24 h window was taken as the name: rfqs=%d", late.rfqs.created())
 	}
 }
 
@@ -206,6 +272,27 @@ func TestContactNameReply_AutomatedMailNeverGetsTheQuestion(t *testing.T) {
 	}
 	if len(messenger.messages) != 0 {
 		t.Fatalf("automated mail got %d name prompts", len(messenger.messages))
+	}
+}
+
+func TestContactNameReply_AnAutoReplyIsNeverTheName(t *testing.T) {
+	e := newEnv(t)
+	account, branch := e.seedAccount(t, "Name reply auto-reply")
+	messenger := &captureContactMessenger{}
+	service, route, address := e.emailIntake(t, account, branch, messenger)
+	ctx := context.Background()
+	order := domain.InboundEmailMessage{ExternalMessageID: uuid.NewString(), DestinationIdentifier: address, SenderID: "compras@constructora.test", Body: "20 bolsas de cemento", Original: []byte("Order")}
+	id, err := service.Ingest(ctx, route, order)
+	if err != nil || len(messenger.messages) != 1 {
+		t.Fatalf("order: %v, prompts=%d", err, len(messenger.messages))
+	}
+	away := order
+	away.ExternalMessageID = uuid.NewString()
+	away.Body = "Fuera de la oficina"
+	away.Automated = true
+	actual, err := service.Ingest(ctx, route, away)
+	if err != nil || actual == id || e.promptStatus(t, account, "compras@constructora.test") != "SENT" || e.profileName(t, account) == "Fuera de la oficina" {
+		t.Fatalf("auto-reply was taken as the name: %v %v", actual == id, err)
 	}
 }
 

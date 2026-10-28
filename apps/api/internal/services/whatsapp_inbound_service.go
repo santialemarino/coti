@@ -187,16 +187,23 @@ func (s *WhatsAppInboundService) ingestOne(
 				ProviderReceivedAt: message.ProviderReceivedAt,
 			}
 			hints := channelClientData(message.Body, message.SenderLabel)
+			// A live quote conversation claims the message first: «Confirmo» answers the quote.
+			joined, err := s.joinConversation(ctx, q, route, message)
+			if err != nil {
+				return err
+			}
 			var pending *uuid.UUID
-			name, isName := contactNameReply(message.Body)
-			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && isName {
-				var err error
-				pending, err = resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"))
+			var name string
+			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && joined == nil {
+				pending, name, err = resolver.NameReply(ctx, q, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body)
 				if err != nil {
 					return err
 				}
 			}
-			if pending != nil {
+			switch {
+			case joined != nil:
+				in.QuoteMessageID = &joined.ID
+			case pending != nil:
 				hints.Name = &name
 				in.RFQID = pending
 				var payload map[string]any
@@ -205,19 +212,10 @@ func (s *WhatsAppInboundService) ingestOne(
 				}
 				payload["contact_name_reply"] = true
 				in.Payload, _ = json.Marshal(payload)
-			} else {
-				joined, err := s.joinConversation(ctx, q, route, message)
-				if err != nil {
-					return err
-				}
-				if joined != nil {
-					in.QuoteMessageID = &joined.ID
-				} else {
-					rfqID := uuid.New()
-					in.RFQID = &rfqID
-				}
+			default:
+				rfqID := uuid.New()
+				in.RFQID = &rfqID
 			}
-			var err error
 			reserved, err = s.messages.Reserve(ctx, q, route.AccountID, route.BranchID,
 				route.ChannelID, in)
 			if err != nil {

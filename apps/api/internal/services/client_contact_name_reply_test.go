@@ -19,6 +19,9 @@ func TestContactNameReply_AcceptsNamesInTheFormsCustomersWrite(t *testing.T) {
 		{"Ana María de la Fuente", "Ana María de la Fuente"},
 		{"Pedro Gómez-Ibáñez", "Pedro Gómez-Ibáñez"},
 		{"Ñato Muñoz", "Ñato Muñoz"},
+		{"Juan Carlos de la Torre Peña", "Juan Carlos de la Torre Peña"},
+		{"María de los Ángeles Van der Berg", "María de los Ángeles Van der Berg"},
+		{"J. Pérez", "J. Pérez"},
 	} {
 		name, ok := contactNameReply(tc.text)
 		if !ok || name != tc.name {
@@ -54,6 +57,27 @@ func TestContactNameReply_LeavesOrdersAndSmallTalkToTheNormalFlow(t *testing.T) 
 		"Me pasás el precio",
 		"Para mañana",
 		"Juan Carlos Pedro Luis Alberto Gómez",
+		"Juan",
+		"Confirmo",
+		"Cancelalo",
+		"Lo de siempre",
+		"Paso a buscarlo",
+		"Factura A",
+		"Ya está",
+		"Te paso la direccion",
+		"Ahora te mando la foto",
+		"Klaukol",
+		"Sika",
+		"Weber",
+		"Loma Negra",
+		"Plavicon",
+		"Isopor",
+		"Telgopor",
+		"Hidrófugo",
+		"Confirmamos el pedido",
+		"Cancelen todo",
+		"www.constructorajp.com",
+		"juan perez.com.ar",
 		"Abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz abcdefghijklmn",
 		"",
 	} {
@@ -75,6 +99,8 @@ func TestEmailReplyText_DropsQuotedMessageAndSignature(t *testing.T) {
 		{"Juan Pérez\n\n-----Mensaje original-----\nDe: Corralón\nRespondé", "Juan Pérez"},
 		{"Juan Pérez\n\nDe: Corralón Norte <ventas@norte.test>\nEnviado: lunes\nAsunto: Tu pedido", "Juan Pérez"},
 		{"Juan Pérez El lun, 27 oct 2026, Corralón <v@n.test> escribió: Gracias por escribirnos", "Juan Pérez"},
+		{"Juan Pérez\n\n________________________________\nDe: Corralón Norte <ventas@norte.test>\nEnviado: lunes, 27 de octubre de 2026 10:00\nPara: juan@example.test\nAsunto: Tu pedido a Corralón Norte", "Juan Pérez"},
+		{"Juan Pérez\n==========\n", "Juan Pérez"},
 	} {
 		got := emailReplyText(tc.body)
 		if got != tc.want {

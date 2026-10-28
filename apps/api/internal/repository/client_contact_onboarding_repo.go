@@ -64,10 +64,24 @@ func (r *ClientContactRepository) FinishNameRequest(ctx context.Context, q Queri
 	return err
 }
 
-// PendingNameRFQ locates a retained request whose sender was asked for a name within window.
-func (r *ClientContactRepository) PendingNameRFQ(ctx context.Context, q Querier, route domain.InboundChannelRoute, kind domain.ChannelType, value string, window time.Duration) (*uuid.UUID, error) {
+// MentionsCatalog reports whether any word of text names an active product or synonym of the account.
+func (r *ClientContactRepository) MentionsCatalog(ctx context.Context, q Querier, accountID uuid.UUID, text string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `WITH ask AS (SELECT to_tsquery('spanish_unaccent'::regconfig, (SELECT string_agg(quote_literal(l),' | ') FROM unnest(tsvector_to_array(to_tsvector('spanish_unaccent'::regconfig,$2))) l)) AS query)
+ SELECT EXISTS(SELECT 1 FROM product p, ask WHERE p.account_id=$1 AND p.is_active AND to_tsvector('spanish_unaccent'::regconfig,p.canonical_name) @@ ask.query)
+ OR EXISTS(SELECT 1 FROM product_synonym s, ask WHERE s.account_id=$1 AND s.search_document @@ ask.query)`, accountID, text).Scan(&found)
+	return found, err
+}
+
+// PendingNameRFQ locates a retained request whose sender was asked for a name within window and has
+// had no exchange since: no later message of theirs and no quote sent to any of destinations.
+func (r *ClientContactRepository) PendingNameRFQ(ctx context.Context, q Querier, route domain.InboundChannelRoute, kind domain.ChannelType, value string, destinations []string, window time.Duration) (*uuid.UUID, error) {
 	var id uuid.UUID
-	err := q.QueryRow(ctx, `SELECT r.id FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id JOIN rfq r ON r.account_id=m.account_id AND r.branch_id=m.branch_id AND r.id=m.rfq_id WHERE o.account_id=$1 AND m.account_id=$1 AND r.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND o.kind=$4 AND o.value=$5 AND EXISTS(SELECT 1 FROM client_contact_outbox pending WHERE pending.account_id=o.account_id AND pending.kind=o.kind AND pending.value=o.value AND pending.status='SENT' AND pending.status_changed_at>now()-make_interval(secs=>$6::double precision)) ORDER BY m.created_at,m.id LIMIT 1`, route.AccountID, route.BranchID, route.ChannelID, kind, value, window.Seconds()).Scan(&id)
+	err := q.QueryRow(ctx, `SELECT r.id FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id JOIN rfq r ON r.account_id=m.account_id AND r.branch_id=m.branch_id AND r.id=m.rfq_id WHERE o.account_id=$1 AND m.account_id=$1 AND r.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND o.kind=$4 AND o.value=$5
+ AND EXISTS(SELECT 1 FROM client_contact_outbox pending WHERE pending.account_id=o.account_id AND pending.kind=o.kind AND pending.value=o.value AND pending.status='SENT' AND pending.status_changed_at>now()-make_interval(secs=>$6::double precision)
+  AND NOT EXISTS(SELECT 1 FROM client_contact_observation later JOIN inbound_channel_message lm ON lm.account_id=later.account_id AND lm.id=later.message_id WHERE later.account_id=$1 AND lm.account_id=$1 AND later.kind=$4 AND later.value=$5 AND lm.created_at>pending.status_changed_at)
+  AND NOT EXISTS(SELECT 1 FROM quote_send s WHERE s.account_id=$1 AND lower(s.destination)=ANY($7) AND s.sent_at>pending.status_changed_at))
+ ORDER BY m.created_at,m.id LIMIT 1`, route.AccountID, route.BranchID, route.ChannelID, kind, value, window.Seconds(), destinations).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

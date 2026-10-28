@@ -125,12 +125,11 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 			return nil
 		}
 		var nameReply *string
-		name, isName := contactNameReply(emailReplyText(message.Body))
 		// An out-of-office answer to the prompt is short too; automated mail never counts as the reply.
 		human := !message.Automated && !automatedEmailSender(message.SenderID)
-		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && human && isName {
+		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && human {
 			if err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
-				pending, err := resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeEmail, message.SenderID)
+				pending, name, err := resolver.NameReply(ctx, q, route, domain.ChannelTypeEmail, message.SenderID, emailReplyText(message.Body))
 				if err == nil && pending != nil {
 					rfqID = *pending
 					nameReply = &name
