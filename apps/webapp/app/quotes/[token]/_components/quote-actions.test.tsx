@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import messages from '@/translations/es.json';
 import { QuoteActions } from './quote-actions';
+import { QuoteSelectionProvider, useQuoteSelections } from './quote-selection-context';
 
 const copy = messages.quote.actions;
 
@@ -24,6 +25,16 @@ function fetchResolving(body: unknown) {
     ok: true,
     json: async () => body,
   });
+}
+
+function SelectAlternative() {
+  const { select } = useQuoteSelections();
+
+  return (
+    <button type="button" onClick={() => select('item-1', 'alternative-1')}>
+      Select alternative
+    </button>
+  );
 }
 
 /*
@@ -91,6 +102,39 @@ describe('QuoteActions', () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       token: 'tok-abc',
       type: 'ACCEPT',
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('serializes accepted alternatives with the app route contract', async () => {
+    const fetchMock = fetchResolving({
+      customerStatus: 'ACCEPT',
+      createdAt: '2026-09-16T12:00:00Z',
+      quoteStatus: 'ACCEPTED',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const view = render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <QuoteSelectionProvider>
+          <SelectAlternative />
+          <QuoteActions token="tok-abc" />
+        </QuoteSelectionProvider>
+      </NextIntlClientProvider>,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: 'Select alternative' }));
+    fireEvent.click(view.getByRole('button', { name: copy.acceptLabel }));
+    fireEvent.click(view.getByRole('button', { name: copy.confirm }));
+
+    await waitFor(() => expect(view.getByText(copy.resultAccept)).toBeTruthy());
+    expect(JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)).toEqual({
+      token: 'tok-abc',
+      type: 'ACCEPT',
+      selections: [{ item_id: 'item-1', alternative_id: 'alternative-1' }],
     });
     vi.unstubAllGlobals();
   });

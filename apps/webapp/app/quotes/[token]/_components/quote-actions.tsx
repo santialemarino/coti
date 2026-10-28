@@ -255,7 +255,12 @@ async function submitAction(
       type: action.type,
       message: action.message,
       selections:
-        action.type === 'ACCEPT' && action.selections.length > 0 ? action.selections : undefined,
+        action.type === 'ACCEPT' && action.selections.length > 0
+          ? action.selections.map((selection) => ({
+              item_id: selection.itemId,
+              alternative_id: selection.alternativeId,
+            }))
+          : undefined,
     }),
   });
   if (!response.ok) {
