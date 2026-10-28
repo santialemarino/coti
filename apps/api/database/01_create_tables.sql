@@ -1780,6 +1780,7 @@ CREATE TABLE client_contact_outbox (
  status client_contact_outbox_status NOT NULL DEFAULT 'PENDING',
  provider_reference TEXT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ status_changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  FOREIGN KEY(account_id,branch_id) REFERENCES branch(account_id,id),
  FOREIGN KEY(account_id,branch_id,channel_id) REFERENCES channel(account_id,branch_id,id),
  UNIQUE(account_id,kind,value,purpose)

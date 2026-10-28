@@ -162,7 +162,7 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			return err
 		}
 		if completer, ok := s.contacts.(inboundContactCompleter); ok {
-			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+")); err != nil {
+			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), domain.ContactReplyContext{}); err != nil {
 				return err
 			}
 		}
@@ -186,8 +186,10 @@ func (s *WhatsAppInboundService) ingestOne(
 				Payload:            message.Payload,
 				ProviderReceivedAt: message.ProviderReceivedAt,
 			}
+			hints := channelClientData(message.Body, message.SenderLabel)
 			var pending *uuid.UUID
-			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && declaredNamePattern.MatchString(strings.TrimSpace(message.Body)) {
+			name, isName := contactNameReply(message.Body)
+			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && isName {
 				var err error
 				pending, err = resolver.PendingNameRFQ(ctx, q, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"))
 				if err != nil {
@@ -195,6 +197,7 @@ func (s *WhatsAppInboundService) ingestOne(
 				}
 			}
 			if pending != nil {
+				hints.Name = &name
 				in.RFQID = pending
 				var payload map[string]any
 				if err := json.Unmarshal(in.Payload, &payload); err != nil {
@@ -225,7 +228,7 @@ func (s *WhatsAppInboundService) ingestOne(
 				return errInboundAlreadyReserved
 			}
 			if s.contacts != nil {
-				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, channelClientData(message.Body, message.SenderLabel))
+				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, hints)
 			}
 			return nil
 		})

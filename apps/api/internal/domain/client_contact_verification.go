@@ -21,15 +21,42 @@ type ContactChallenge struct {
 	ConsumedAt *time.Time
 }
 
+// ContactPurpose names why a deterministic message goes to a contact; email subjects follow it.
+type ContactPurpose string
+
+// Contact message purposes.
+const (
+	ContactPurposeNameRequest      ContactPurpose = "NAME_REQUEST"
+	ContactPurposeVerification     ContactPurpose = "VERIFICATION"
+	ContactPurposeRegistrationLink ContactPurpose = "REGISTRATION_LINK"
+)
+
 // ContactMessage is a deterministic onboarding or verification message.
 type ContactMessage struct {
 	AccountID uuid.UUID
 	BranchID  uuid.UUID
 	ChannelID uuid.UUID
+	Purpose   ContactPurpose
 	Kind      ChannelType
 	To        string
 	Body      string
 	Code      string
+	// InReplyTo is the RFC 5322 Message-ID an email reply threads under, blank otherwise.
+	InReplyTo string
+}
+
+// ContactReplyContext describes the inbound message an automatic name prompt would answer.
+type ContactReplyContext struct {
+	// Automated marks bulk, list, auto-submitted or no-reply mail, which never gets a prompt.
+	Automated bool
+	MessageID string
+}
+
+// ContactMailbox is the supplier identity a branch mailbox answers a contact with.
+type ContactMailbox struct {
+	Address      string
+	SupplierName string
+	BranchName   string
 }
 
 // ContactMessenger delivers deterministic contact messages through configured channels.

@@ -212,7 +212,7 @@ func run() error {
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository())
 	customerAuthService.WithClientProfiles(contactService)
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
-	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin)
+	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,

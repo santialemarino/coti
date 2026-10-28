@@ -179,7 +179,7 @@ func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *t
 	record(message, domain.ClientContactHints{TaxID: &taxID, DisplayName: &displayName})
 	record(message, domain.ClientContactHints{TaxID: &taxID})
 	for range 2 {
-		if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value); err != nil {
+		if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value, domain.ContactReplyContext{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -202,7 +202,7 @@ func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *t
 	}
 	name := "Juan Perez"
 	record(uuid.New(), domain.ClientContactHints{Name: &name, TaxID: &taxID})
-	if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value); err != nil {
+	if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value, domain.ContactReplyContext{}); err != nil {
 		t.Fatal(err)
 	}
 	var storedName string
