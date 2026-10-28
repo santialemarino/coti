@@ -4,6 +4,8 @@ export interface CustomerContact {
   value: string;
   primary: boolean;
   verified?: boolean;
+  // The contact account recovery preselects; always a verified one.
+  main?: boolean;
 }
 export interface CustomerProfileRaw {
   client_id: string | null;

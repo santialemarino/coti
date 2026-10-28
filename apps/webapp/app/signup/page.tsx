@@ -8,7 +8,7 @@ import { getCustomerSession } from '@/lib/auth/customer-session';
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; method?: string; error?: string; token?: string }>;
+  searchParams: Promise<{ next?: string; method?: string; error?: string }>;
 }) {
   const query = await searchParams;
   const next = safeCustomerDestination(query.next, ROUTES.newRequest);
@@ -17,7 +17,6 @@ export default async function Page({
     <CustomerAuthPage
       mode={'signup'}
       next={next}
-      token={query.token}
       initialError={
         ['googleFailed', 'googleUnavailable', 'unavailable'].includes(query.error || '')
           ? query.error

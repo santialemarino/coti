@@ -72,7 +72,6 @@ export async function startCustomerSession(
   taxId: string,
   password: string,
   callerAddress?: string,
-  recoveryEmail?: string,
   profile?: { name: string; phone: string; email: string },
 ): Promise<CustomerSession> {
   const response = await fetch(await customerApiPath(`/auth/${mode}`), {
@@ -85,7 +84,6 @@ export async function startCustomerSession(
     body: JSON.stringify({
       tax_id: taxId,
       password,
-      ...(recoveryEmail ? { recovery_email: recoveryEmail } : {}),
       ...(profile
         ? {
             name: profile.name,

@@ -198,9 +198,7 @@
       "welcome": "Ingresá a tu cuenta",
       "login": "Ingresar con CUIT/CUIL",
       "signup": "Crear cuenta",
-      "forgot": "Recuperar contraseña",
-      "reset": "Elegí tu contraseña",
-      "verify": "Verificá tu email",
+      "forgot": "Recuperar tu cuenta",
       "google": "Completá tu CUIT/CUIL",
       "linkGoogle": "Vincular Google"
     },
@@ -209,16 +207,13 @@
       "phone": "WhatsApp (opcional si cargás un email)",
       "taxId": "CUIT/CUIL",
       "email": "Email",
-      "emailOptional": "Email de recuperación (opcional)",
+      "emailOptional": "Email (opcional si cargás un WhatsApp)",
       "password": "Contraseña",
       "confirmation": "Repetí la contraseña"
     },
     "submit": {
       "login": "Ingresar",
       "signup": "Crear cuenta",
-      "forgot": "Enviar enlace",
-      "reset": "Guardar contraseña",
-      "verify": "Confirmar email",
       "google": "Continuar",
       "linkGoogle": "Vincular Google"
     },
@@ -229,12 +224,6 @@
     "existingAccount": "Ya tengo una cuenta: ingresar y vincular Google",
     "forgot": "Olvidé mi contraseña",
     "pending": "Procesando…",
-    "recoverySent": "Si el CUIT/CUIL y el email coinciden con una cuenta con email verificado, vas a recibir un enlace para restablecer la contraseña.",
-    "success": {
-      "forgot": "Revisá tu email",
-      "reset": "Contraseña actualizada",
-      "verify": "Email verificado"
-    },
     "validation": {
       "nameRequired": "Ingresá tu nombre y apellido.",
       "contactRequired": "Ingresá al menos un teléfono o un email.",
@@ -256,6 +245,40 @@
       "expired": "El enlace venció o ya fue utilizado.",
       "googleUnavailable": "El ingreso con Google todavía no está configurado.",
       "googleFailed": "No pudimos completar el ingreso con Google. Intentá de nuevo."
+    }
+  },
+  "customerRecovery": {
+    "title": "Recuperar tu cuenta",
+    "identify": "Ingresá el CUIT/CUIL de tu cuenta. Te enviamos un código a uno de tus contactos verificados.",
+    "continue": "Continuar",
+    "searching": "Buscando…",
+    "choose": "Elegí dónde querés recibir el código.",
+    "whatsapp": "WhatsApp {contact}",
+    "email": "Email {contact}",
+    "main": "Principal",
+    "whatsappSoon": "Por ahora no podemos enviar códigos por WhatsApp.",
+    "whatsappOnly": "Tu único contacto verificado es un WhatsApp, y la recuperación por WhatsApp todavía no está disponible.",
+    "noContacts": "No hay contactos verificados para recuperar una cuenta con ese CUIT/CUIL.",
+    "noAccount": "¿Todavía no tenés cuenta?",
+    "createAccount": "Creá tu cuenta",
+    "otherTaxId": "Usar otro CUIT/CUIL",
+    "send": "Enviar código",
+    "sending": "Enviando…",
+    "codeSent": "Te enviamos un código de 6 dígitos a {contact}. Ingresalo y elegí una contraseña nueva.",
+    "code": "Código",
+    "codeInvalid": "Ingresá el código de 6 dígitos.",
+    "password": "Contraseña nueva",
+    "confirmation": "Repetí la contraseña",
+    "save": "Guardar e ingresar",
+    "saving": "Guardando…",
+    "resend": "Pedir otro código",
+    "backToLogin": "Volver al ingreso",
+    "errors": {
+      "invalid": "Revisá los datos ingresados.",
+      "wait": "Esperá un minuto antes de pedir otro código.",
+      "locked": "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
+      "code": "El código no es válido, venció o ya se usó. Pedí uno nuevo.",
+      "unavailable": "No pudimos completar la operación. Intentá de nuevo."
     }
   },
   "customerOrders": {
@@ -317,7 +340,8 @@
       "unavailable": "No pudimos guardar tus datos. Intentá de nuevo.",
       "verificationWait": "Esperá un minuto antes de pedir otro código o enlace.",
       "verificationUnavailable": "No pudimos enviar la verificación. Intentá más tarde.",
-      "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo."
+      "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo.",
+      "mainUnverified": "Solo podés elegir un contacto verificado."
     },
     "reviewPending": "Recibimos datos de contacto nuevos con tu CUIT/CUIL. Revisá tus datos y agregalos si corresponden.",
     "ownershipUnproved": "Este CUIT/CUIL ya tenía una ficha en el corralón. Verificá un contacto que ya tenía la ficha para ver tus datos y pedidos anteriores.",
@@ -343,20 +367,13 @@
     "verifying": "Verificando…",
     "confirmContact": "Confirmar contacto",
     "verificationEmailSent": "Te enviamos un enlace para confirmar el email.",
-    "recovery": {
-      "title": "Email de recuperación",
-      "description": "Este correo se usa para recuperar tu cuenta. Se guarda por separado de los emails comerciales.",
-      "email": "Email de recuperación (opcional)",
-      "missing": "Sin un email de recuperación confirmado, no vas a poder recuperar tu contraseña.",
-      "verified": "Confirmado",
-      "pending": "Pendiente de confirmación",
-      "invalid": "Ingresá un email válido.",
-      "save": "Guardar",
-      "resend": "Reenviar enlace de confirmación",
-      "saving": "Guardando…",
-      "sent": "Te enviamos un enlace para confirmar tu email de recuperación.",
-      "removed": "Quitaste el email de recuperación.",
-      "unavailable": "No pudimos guardar el email. Intentá de nuevo."
+    "main": {
+      "title": "Contacto principal",
+      "description": "Es el contacto que te proponemos para recuperar tu cuenta. Podés elegir cualquiera de tus contactos verificados.",
+      "empty": "Verificá un contacto para poder recuperar tu cuenta si olvidás la contraseña.",
+      "whatsapp": "WhatsApp {contact}",
+      "email": "Email {contact}",
+      "saved": "Ahora {contact} es tu contacto principal."
     }
   }
 }
