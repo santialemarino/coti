@@ -128,6 +128,24 @@ CREATE OR REPLACE FUNCTION app_current_account_id() RETURNS UUID
   LANGUAGE sql STABLE
   AS $$ SELECT NULLIF(current_setting('app.current_account_id', true), '')::uuid $$;
 
+-- Called by every data migration: under forced RLS, or as a non-owner, its statements would match
+-- zero rows.
+CREATE FUNCTION assert_migration_sees_all_rows(VARIADIC tables regclass[]) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+ target regclass;
+BEGIN
+ IF (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) THEN
+  RETURN;
+ END IF;
+ FOREACH target IN ARRAY tables LOOP
+  IF EXISTS(SELECT 1 FROM pg_class WHERE oid=target AND relrowsecurity AND (relforcerowsecurity OR NOT pg_has_role(current_user,relowner,'USAGE'))) THEN
+   RAISE EXCEPTION 'Row level security filters % for role %; a data migration on it would silently touch zero rows', target, current_user
+    USING HINT='Run the migration as a superuser or a BYPASSRLS role.';
+  END IF;
+ END LOOP;
+END;
+$$;
+
 -- =============================================================================
 -- IDENTITY / TENANT
 -- =============================================================================
@@ -1693,7 +1711,8 @@ CREATE TABLE client_contact_observation (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  account_id UUID NOT NULL REFERENCES account(id),
  branch_id UUID NOT NULL,
- message_id UUID NOT NULL,
+ -- NULL when a migration, not an inbound message, raised the observation.
+ message_id UUID,
  source_client_id UUID,
  candidate_client_id UUID,
  tax_id VARCHAR(11),
