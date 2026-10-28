@@ -99,8 +99,9 @@ then remain, of at most 60 characters, with two to five name words (particles su
 first word must be a known given name: the rule is anchored on an allow-list, `given_names.txt`
 (common Spanish and Argentine given names, lowercase and unaccented, embedded in the binary). It must
 contain no digit, link or address, no order or confirmation word (quantities, units, «necesito»,
-«precio», «confirmo», «cancel…», «paso», «factura», «foto», «ya», common materials and brands such as
-«cemento» or «Klaukol»), and no word of the supplier's own catalog (product names and synonyms). A
+«precio», «confirmo», «cancel…», «paso», «factura», «foto», «ya», number words and edit verbs such as
+«dos», «más», «agregá» or «sumale», common materials and brands such as «cemento» or «Klaukol»), and
+no word of the supplier's own catalog (product names and synonyms). A
 match joins the request the prompt answered, updates the provisional name and creates no RFQ.
 Anything else follows the normal flow and the prompt stays pending.
 
@@ -108,7 +109,8 @@ The rule is anchored rather than exhaustive because its two errors do not cost t
 order change as a name loses it, while missing a name only leaves one extra RFQ draft the seller can
 discard. So a reply that does not start with a known given name, such as «Agregá dos», «Todo bien»,
 a nickname or an initial, is an ordinary message: it follows the normal flow and the question stays
-pending. A name missing from the list is added to the file. In email, the quoted message
+pending. Given names that are also everyday words (days, months, «Franco», «Ángel», «Victoria»,
+«Vale») are left out of the list on purpose. A name missing from the list is added to the file. In email, the quoted message
 (`>` lines, «El … escribió:», «On … wrote:», forwarded/original-message markers, Outlook headers and
 the rule of `_`, `-` or `=` above them), the `-- ` signature and common mobile signatures are removed
 before the rule runs, and automated mail is never a reply. The thresholds are constants, not

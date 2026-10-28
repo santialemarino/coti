@@ -51,7 +51,10 @@ var nameReplyOrderWords = wordSet(`necesito necesitaria necesitamos quiero queri
 	manda factura facturar facturas envio envia direccion foto fotos listo ya
 	el lo le te me se mi tu su al con para por en una ahora siempre esta estoy eso esto aca alla aqui
 	klaukol sika sikaflex weber plavicon isopor telgopor holcim minetti acindar rotoplas tersuave sinteplast loma
-	ceresita iggam tacuru`)
+	ceresita iggam tacuru
+	uno una dos tres cuatro cinco seis siete ocho nueve diez once doce veinte media medio doble mitad mas menos otro
+	otra agrega agregale agregame suma sumale sumame saca sacale sacame quita quitale cambia cambiale cambiame pone
+	ponele mejor`)
 
 // nameReplyOrderPrefixes catch the conjugations and clitic forms of order verbs («cancelalo»).
 var nameReplyOrderPrefixes = []string{"cancel", "confirm"}

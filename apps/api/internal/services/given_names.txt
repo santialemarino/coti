@@ -3,7 +3,6 @@ abel
 abelardo
 abigail
 abraham
-abril
 ada
 adalberto
 adan
@@ -73,9 +72,7 @@ anastasia
 ander
 andrea
 andres
-angel
 angela
-angeles
 angelica
 angelina
 angelo
@@ -107,11 +104,9 @@ augusto
 aurelia
 aureliano
 aurelio
-aurora
 axel
 ayelen
 ayrton
-azucena
 baldomero
 baltasar
 barbara
@@ -137,7 +132,6 @@ betiana
 betina
 bettina
 bianca
-bienvenido
 blas
 bonifacio
 brandon
@@ -159,7 +153,6 @@ carlos
 carmela
 carmelo
 carmen
-caro
 carola
 carolina
 casandra
@@ -188,7 +181,6 @@ ciro
 claudia
 claudina
 claudio
-clemente
 clementina
 cleto
 clotilde
@@ -210,7 +202,6 @@ cynthia
 dafne
 dahiana
 daiana
-dalia
 dalma
 damaris
 damian
@@ -222,7 +213,6 @@ dante
 dario
 david
 debora
-delfin
 delfina
 delia
 demian
@@ -235,7 +225,6 @@ dina
 dionisio
 dolly
 dominga
-domingo
 dominique
 donato
 dora
@@ -286,7 +275,6 @@ enzo
 epifanio
 ernestina
 ernesto
-esmeralda
 esteban
 estefania
 estela
@@ -342,7 +330,6 @@ fran
 francesca
 francisca
 francisco
-franco
 fredy
 froilan
 fulgencio
@@ -489,7 +476,6 @@ julia
 julian
 juliana
 julieta
-julio
 justin
 justina
 karen
@@ -507,7 +493,6 @@ lazaro
 leandro
 leila
 leocadia
-leon
 leonardo
 leoncio
 leonel
@@ -533,7 +518,6 @@ lourdes
 luca
 lucas
 lucca
-lucho
 lucia
 luciana
 luciano
@@ -567,9 +551,7 @@ marcelo
 marcial
 marciano
 marcio
-marco
 marcos
-margarita
 margot
 maria
 mariana
@@ -609,11 +591,9 @@ micaela
 miguel
 mikel
 milena
-milo
 miriam
 mirko
 mirta
-modesto
 moises
 monica
 morena
@@ -669,11 +649,8 @@ osvaldo
 otilia
 otto
 pablo
-pacifico
 paco
-paloma
 pamela
-pancho
 paola
 pascual
 patricia
@@ -688,7 +665,6 @@ petrona
 pia
 piero
 pili
-placido
 plinio
 policarpo
 porfirio
@@ -767,7 +743,6 @@ sergio
 servando
 severino
 silvana
-silvestre
 silvia
 silvina
 simon
@@ -775,7 +750,6 @@ sixto
 sofi
 sofia
 solange
-soledad
 sonia
 sotero
 stefania
@@ -802,7 +776,6 @@ tobias
 tomas
 tomasa
 toribio
-toto
 trinidad
 tristan
 ubaldo
@@ -810,7 +783,6 @@ ulises
 unai
 uriel
 ursula
-vale
 valentin
 valentina
 valentino
@@ -826,7 +798,6 @@ veronica
 vicente
 vicky
 victor
-victoria
 vilma
 virgilio
 virginia
