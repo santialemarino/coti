@@ -210,7 +210,7 @@ func readyInputs() invoiceInputs {
 		pointOfSale: &pos,
 		credential: &domain.ARCACredentialStatus{CUIT: "30712345671",
 			ExpiresAt: now.AddDate(1, 0, 0)},
-		receiver:        domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"},
+		receiver:        domain.InvoiceReceiver{DocType: domain.ReceiverDocNone},
 		amounts:         domain.InvoiceAmounts{Total: dec("1000.00")},
 		invoiceType:     domain.InvoiceTypeB,
 		unidentifiedMax: dec("10000000"),
@@ -245,18 +245,40 @@ func TestInvoiceIssues_ReportsEveryGapAtOnce(t *testing.T) {
 
 func TestInvoiceIssues_ReceiverRules(t *testing.T) {
 	t.Parallel()
-	aWithoutCUIT := readyInputs()
-	aWithoutCUIT.invoiceType = domain.InvoiceTypeA
-	aWithoutCUIT.receiver = domain.InvoiceReceiver{DocType: domain.ReceiverDocDNI, DocNumber: "28123456"}
-	if got := invoiceIssues(aWithoutCUIT); !slices.Contains(got, invoiceIssueReceiverCUIT) {
-		t.Errorf("A to a DNI: issues = %v, want %s", got, invoiceIssueReceiverCUIT)
+	none := domain.InvoiceReceiver{DocType: domain.ReceiverDocNone}
+	dni := domain.InvoiceReceiver{DocType: domain.ReceiverDocDNI, DocNumber: "28123456"}
+	cuit := domain.InvoiceReceiver{DocType: domain.ReceiverDocCUIT, DocNumber: "20123456786"}
+	cases := []struct {
+		name        string
+		invoiceType domain.InvoiceType
+		receiver    domain.InvoiceReceiver
+		total       string
+		want        string // the one receiver issue expected; empty for none.
+	}{
+		{"B below the threshold, no document", domain.InvoiceTypeB, none, "9999999.99", ""},
+		{"B at the threshold, no document", domain.InvoiceTypeB, none, "10000000.00", invoiceIssueReceiverID},
+		{"B at the threshold with a DNI", domain.InvoiceTypeB, dni, "10000000.00", ""},
+		{"B at the threshold with a CUIT", domain.InvoiceTypeB, cuit, "10000000.00", ""},
+		{"A without a document", domain.InvoiceTypeA, none, "1000.00", invoiceIssueReceiverCUIT},
+		{"A to a DNI", domain.InvoiceTypeA, dni, "1000.00", invoiceIssueReceiverCUIT},
+		{"A to a CUIT", domain.InvoiceTypeA, cuit, "1000.00", ""},
 	}
-
-	large := readyInputs()
-	large.receiver = domain.InvoiceReceiver{DocType: domain.ReceiverDocNone}
-	large.amounts.Total = dec("10000000.00")
-	if got := invoiceIssues(large); !slices.Contains(got, invoiceIssueReceiverID) {
-		t.Errorf("unidentified at the threshold: issues = %v, want %s", got, invoiceIssueReceiverID)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			in := readyInputs()
+			in.invoiceType, in.receiver = tc.invoiceType, tc.receiver
+			in.amounts.Total = dec(tc.total)
+			var got []string
+			for _, issue := range invoiceIssues(in) {
+				if issue == invoiceIssueReceiverCUIT || issue == invoiceIssueReceiverID {
+					got = append(got, issue)
+				}
+			}
+			if (tc.want == "" && len(got) != 0) || (tc.want != "" && !slices.Equal(got, []string{tc.want})) {
+				t.Fatalf("receiver issues = %v, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

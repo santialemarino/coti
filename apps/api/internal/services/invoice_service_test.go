@@ -670,38 +670,36 @@ func TestInvoiceService_UpdateClientFiscalTakesOnlyADNI(t *testing.T) {
 	}
 }
 
-func TestInvoiceService_PreviewRequiresRegisteredCUITForEveryInvoice(t *testing.T) {
+// An invoice B needs no CUIT: below the identification threshold no document at all, at or above it
+// a DNI is enough, so none of these waits on the buyer or offers a sign-up link.
+func TestInvoiceService_PreviewInvoicesAConsumerBWithoutACUIT(t *testing.T) {
 	t.Parallel()
 	final := domain.IVAConditionFinalConsumer
-	dni, cuit := "28123456", "20123456786"
+	dni := "28123456"
 	cases := []struct {
-		name    string
-		client  domain.ClientFiscal
-		blocked bool
+		name   string
+		client domain.ClientFiscal
+		total  string
 	}{
-		{"unidentified consumer", domain.ClientFiscal{IVACondition: &final}, true},
-		{"consumer with DNI", domain.ClientFiscal{IVACondition: &final, DNI: &dni}, true},
-		{"registered consumer", domain.ClientFiscal{IVACondition: &final, TaxID: &cuit, DNI: &dni}, false},
+		{"unidentified below the threshold", domain.ClientFiscal{IVACondition: &final}, "1000.00"},
+		{"DNI below the threshold", domain.ClientFiscal{IVACondition: &final, DNI: &dni}, "1000.00"},
+		{"DNI at the threshold", domain.ClientFiscal{IVACondition: &final, DNI: &dni}, "10000000.00"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f := newInvoiceFixture(t)
 			f.store.client = &tc.client
+			product := uuid.New()
+			f.store.rates = map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne}
+			f.quotes.items = []domain.QuoteItem{invoiceLine(&product, tc.total)}
+			f.quotes.version.Total = dec(tc.total)
 			f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "")
+
 			preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
-			if err != nil || preview.Type != domain.InvoiceTypeB {
-				t.Fatalf("preview = %+v, err = %v, want invoice B", preview, err)
-			}
-			if containsString(preview.Issues, invoiceIssueReceiverCUIT) != tc.blocked {
-				t.Fatalf("issues = %v, want CUIT restriction = %v", preview.Issues, tc.blocked)
-			}
-			wantURL := ""
-			if tc.blocked {
-				wantURL = "https://corralon.example.com/signup"
-			}
-			if preview.CustomerSignupURL != wantURL || (!tc.blocked && len(preview.Issues) != 0) {
-				t.Fatalf("preview = %+v, want signup URL %q", preview, wantURL)
+
+			if err != nil || preview.Type != domain.InvoiceTypeB || len(preview.Issues) != 0 || preview.CustomerSignupURL != "" {
+				t.Fatalf("preview = %+v, err = %v, want an issuable B with no sign-up link", preview, err)
 			}
 		})
 	}
