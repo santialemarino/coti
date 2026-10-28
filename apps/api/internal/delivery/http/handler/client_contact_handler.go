@@ -16,6 +16,7 @@ import (
 type ClientContactService interface {
 	GetProfile(context.Context, domain.CustomerPrincipal) (*domain.ClientContactProfile, error)
 	UpdateProfile(context.Context, domain.CustomerPrincipal, domain.ClientContactUpdate) error
+	SetMainContact(context.Context, domain.CustomerPrincipal, domain.ChannelType, string) error
 	ListSuggestions(context.Context, domain.Tenant) ([]domain.ContactObservation, error)
 	ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, string) error
 	SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error
@@ -165,7 +166,7 @@ func (h *ClientContactHandler) GetProfile(c *gin.Context) {
 	}
 	contacts := make([]dto.ClientContactResponse, 0, len(profile.Contacts))
 	for _, contact := range profile.Contacts {
-		contacts = append(contacts, dto.ClientContactResponse{Kind: string(contact.Kind), Value: contact.Value, Primary: contact.Primary, Verified: contact.Verified})
+		contacts = append(contacts, dto.ClientContactResponse{Kind: string(contact.Kind), Value: contact.Value, Primary: contact.Primary, Verified: contact.Verified, Main: contact.Main})
 	}
 	var condition *string
 	if profile.IVACondition != nil {
@@ -206,6 +207,34 @@ func (h *ClientContactHandler) UpdateProfile(c *gin.Context) {
 		in.Contacts = append(in.Contacts, domain.ClientContact{Kind: domain.ChannelType(contact.Kind), Value: contact.Value, Primary: contact.Primary})
 	}
 	if err := h.contacts.UpdateProfile(c.Request.Context(), p, in); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// SetMainContact makes one of the customer's verified contacts the one account recovery preselects.
+// @Summary Choose the customer's main contact
+// @Tags customer-profile
+// @Accept json
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
+// @Param body body dto.CustomerMainContactRequest true "A verified contact of the profile"
+// @Success 204
+// @Failure 401,404,422 {object} dto.ErrorResponse
+// @Router /v1/customer/sites/{hostname}/profile/main-contact [put]
+func (h *ClientContactHandler) SetMainContact(c *gin.Context) {
+	p, ok := middleware.CustomerFrom(c)
+	if !ok {
+		Respond(c, domain.ErrUnauthenticated)
+		return
+	}
+	var in dto.CustomerMainContactRequest
+	if err := c.ShouldBindJSON(&in); err != nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+	if err := h.contacts.SetMainContact(c.Request.Context(), p, domain.ChannelType(in.Kind), in.Value); err != nil {
 		Respond(c, err)
 		return
 	}

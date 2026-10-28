@@ -230,6 +230,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
 | `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
 | `uq_promotion_condition_item_target`     | one condition row per promotion and target         |
+| `uq_client_contact_main`                 | one chosen main contact per client profile         |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:

@@ -22,10 +22,10 @@ Only invoicing requires registration and the necessary fiscal details. The selle
 that lets the customer register or access an existing account and complete My data. Email-only
 quotation delivery remains available.
 
-Customers may save a separate optional recovery email and confirm it through a link. Commercial
-email changes do not change this address. Without a verified recovery email, a phone-only account
-cannot recover its password. Sellers do not recover customer accounts. Customer messages arrive
-through contact channels, without device or browser push notifications.
+Each account has a main contact, chosen in **My data** among the verified ones; without a choice it
+is the first verified WhatsApp, else the first contact. A forgotten password is recovered with a
+one-use code sent to a verified contact. Sellers do not recover customer accounts. Customer messages
+arrive through contact channels, without device or browser push notifications.
 
 Profiles and tags belong to the supplier. Accepted-sale history retains its branch and seller
 visibility rules. Quotation publication associates the request and quote before acceptance;

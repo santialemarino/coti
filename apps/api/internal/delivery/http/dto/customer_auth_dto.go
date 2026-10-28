@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // CustomerRegistrationRequest requires a fiscal identity, full name and commercial contact.
 type CustomerRegistrationRequest struct {
@@ -16,9 +20,8 @@ type CustomerDeliverySiteResponse struct {
 
 // CustomerCredentialsRequest carries customer credentials within a supplier hostname.
 type CustomerCredentialsRequest struct {
-	RecoveryEmail string `json:"recovery_email" binding:"omitempty,email,max=255"`
-	TaxID         string `json:"tax_id" binding:"required,max=20"`
-	Password      string `json:"password" binding:"required,max=72"`
+	TaxID    string `json:"tax_id" binding:"required,max=20"`
+	Password string `json:"password" binding:"required,max=72"`
 }
 
 // CustomerSessionResponse returns an opaque session only to the trusted webapp server.
@@ -64,30 +67,42 @@ type CustomerGoogleCompleteRequest struct {
 	TaxID string `json:"tax_id" binding:"required,max=20"`
 }
 
-// CustomerRecoveryRequest names both the account and its previously verified recovery address.
-type CustomerRecoveryRequest struct {
+// CustomerRecoveryOptionsRequest is the body for POST /v1/customer/sites/{hostname}/auth/recovery/options.
+type CustomerRecoveryOptionsRequest struct {
 	TaxID string `json:"tax_id" binding:"required,max=20"`
-	Email string `json:"email" binding:"required,email,max=255"`
 }
 
-// CustomerTokenRequest redeems a single-use email verification capability.
-type CustomerTokenRequest struct {
-	Token string `json:"token" binding:"required,len=43"`
+// CustomerRecoveryContactResponse is one verified contact a recovery code can be sent to, masked.
+type CustomerRecoveryContactResponse struct {
+	ID     uuid.UUID `json:"id"`
+	Kind   string    `json:"kind"`
+	Masked string    `json:"masked"`
+	Main   bool      `json:"main"`
+	// Available is false while no code can reach the contact's channel.
+	Available   bool `json:"available"`
+	Preselected bool `json:"preselected"`
 }
 
-// CustomerPasswordResetRequest replaces a password using a single-use recovery capability.
-type CustomerPasswordResetRequest struct {
-	Token    string `json:"token" binding:"required,len=43"`
-	Password string `json:"password" binding:"required,max=72"`
+// CustomerRecoveryOptionsResponse lists the masked contacts; it is empty for an unknown CUIT/CUIL.
+type CustomerRecoveryOptionsResponse struct {
+	Contacts []CustomerRecoveryContactResponse `json:"contacts"`
 }
 
-// CustomerRecoveryEmailResponse separates credential recovery from commercial contacts.
-type CustomerRecoveryEmailResponse struct {
-	Email    *string `json:"email"`
-	Verified bool    `json:"verified"`
+// CustomerRecoveryCodeRequest is the body for POST /v1/customer/sites/{hostname}/auth/recovery/code.
+type CustomerRecoveryCodeRequest struct {
+	TaxID     string    `json:"tax_id" binding:"required,max=20"`
+	ContactID uuid.UUID `json:"contact_id" binding:"required"`
 }
 
-// CustomerRecoveryEmailRequest updates or clears the optional recovery destination.
-type CustomerRecoveryEmailRequest struct {
-	Email string `json:"email" binding:"omitempty,email,max=255"`
+// CustomerRecoveryCodeResponse names the code that was sent, without the code.
+type CustomerRecoveryCodeResponse struct {
+	ID        uuid.UUID `json:"id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// CustomerRecoveryResetRequest is the body for POST /v1/customer/sites/{hostname}/auth/recovery/reset.
+type CustomerRecoveryResetRequest struct {
+	ID       uuid.UUID `json:"id" binding:"required"`
+	Code     string    `json:"code" binding:"required,max=16"`
+	Password string    `json:"password" binding:"required,max=72"`
 }

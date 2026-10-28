@@ -31,6 +31,8 @@ type ClientContact struct {
 	Value    string
 	Primary  bool
 	Verified bool
+	// Main marks the profile's one contact account recovery preselects.
+	Main bool
 }
 
 // ClientContactProfile is the authenticated customer's unique fiscal profile.

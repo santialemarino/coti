@@ -60,7 +60,7 @@ func TestCustomerProfile_AdoptedLegacyProfileStaysHiddenUntilOwnershipProof(t *t
 		t.Fatal(err)
 	}
 	before := e.legacyProfileState(t, account, legacy)
-	host, token := e.registerCustomer(t, account, tax, "")
+	host, token := e.registerCustomer(t, account, tax)
 	base := "/v1/customer/sites/" + host + "/profile"
 	if after := e.legacyProfileState(t, account, legacy); after != before {
 		t.Fatalf("registration changed the earlier profile: %+v -> %+v", before, after)
@@ -173,7 +173,7 @@ func TestCustomerProfile_OwnContactProofNeverMovesEarlierPrimaries(t *testing.T)
 		return phone + "|" + email + "|" + primaries
 	}
 	const want = "|solo@example.test|solo@example.test:true"
-	host, token := e.registerCustomer(t, account, tax, "")
+	host, token := e.registerCustomer(t, account, tax)
 	base := "/v1/customer/sites/" + host + "/profile"
 	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, "customer"+tax+"@example.test", true)
 	if response := e.do(t, request{method: http.MethodGet, path: base, token: token}); !strings.Contains(response.Body.String(), `"ownership_unproved":true`) || strings.Contains(response.Body.String(), "solo@example.test") {
@@ -252,7 +252,7 @@ func TestCustomerProfile_ProvingMergeGivesTheProfileTheMergedPrimary(t *testing.
 	account, _ := e.seedAccount(t, "Proving merge")
 	const tax = "20123456786"
 	legacy := e.seedMergeProfiles(t, account, tax, "solo@example.test", "solo@example.test", "+5491177770000")
-	host, token := e.registerCustomer(t, account, tax, "")
+	host, token := e.registerCustomer(t, account, tax)
 	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{
 		{"kind": "EMAIL", "value": "solo@example.test", "primary": true},
 		{"kind": "EMAIL", "value": "customer" + tax + "@example.test", "primary": false},
@@ -273,7 +273,7 @@ func TestCustomerProfile_NonProvingMergeMovesNoEarlierPrimary(t *testing.T) {
 	const tax = "20123456786"
 	legacy := e.seedMergeProfiles(t, account, tax, " SOLO@Example.test ", "otro@example.test", "+5491188880000")
 	want := e.profileProjection(t, account, legacy)
-	host, token := e.registerCustomer(t, account, tax, "")
+	host, token := e.registerCustomer(t, account, tax)
 	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{{"kind": "EMAIL", "value": "otro@example.test", "primary": true}}}
 	if response := e.do(t, request{method: http.MethodPut, path: "/v1/customer/sites/" + host + "/profile", token: token, body: declare}); response.Code != http.StatusNoContent {
 		t.Fatalf("declare: %d %s", response.Code, response.Body)
@@ -295,7 +295,7 @@ func TestCustomerProfile_NonProvingMergeMovesNoEarlierPrimary(t *testing.T) {
 func TestCustomerProfile_NewCUITOwnsItsProfileFromRegistration(t *testing.T) {
 	e := newEnv(t)
 	account, _ := e.seedAccount(t, "Fresh registration")
-	host, token := e.registerCustomer(t, account, "30712345671", "")
+	host, token := e.registerCustomer(t, account, "30712345671")
 	base := "/v1/customer/sites/" + host + "/profile"
 	body := map[string]any{"name": "Obra Nueva", "legal_name": "Obra Nueva SRL", "iva_condition": "REGISTERED", "contacts": []map[string]any{{"kind": "EMAIL", "value": "obra@example.test", "primary": true}}}
 	if response := e.do(t, request{method: http.MethodPut, path: base, token: token, body: body}); response.Code != http.StatusNoContent {

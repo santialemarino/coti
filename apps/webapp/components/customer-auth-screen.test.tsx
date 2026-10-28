@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
 
-import { recoverCustomerPassword, signUpCustomer } from '@/app/login/actions';
+import { signUpCustomer } from '@/app/login/actions';
 import type { CustomerAuthMode } from '@/components/customer-auth-schema';
 import { CustomerAuthScreen } from '@/components/customer-auth-screen';
 import messages from '@/translations/es.json';
@@ -11,9 +11,6 @@ vi.mock('@/app/login/actions', () => ({
   signInCustomer: vi.fn(),
   signUpCustomer: vi.fn(),
   completeCustomerGoogle: vi.fn(),
-  recoverCustomerPassword: vi.fn(),
-  resetCustomerPassword: vi.fn(),
-  verifyCustomerEmail: vi.fn(),
 }));
 
 function screen(mode: CustomerAuthMode) {
@@ -45,7 +42,7 @@ it('offers Google first with explicit local login and registration alternatives'
   expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
 });
 
-it('creates password credentials without requiring a recovery email', async () => {
+it('creates password credentials with a single commercial contact', async () => {
   vi.mocked(signUpCustomer).mockResolvedValue({ error: 'unavailable' });
   const view = screen('signup');
   fireEvent.change(view.getByLabelText('Nombre y apellido', { exact: false }), {
@@ -65,24 +62,6 @@ it('creates password credentials without requiring a recovery email', async () =
       expect.objectContaining({ taxId: '20123456786', email: '', password: 'Customer-pass123!' }),
     ),
   );
-});
-
-it('asks for both CUIT/CUIL and email when requesting password recovery', async () => {
-  vi.mocked(recoverCustomerPassword).mockResolvedValue({ received: true });
-  const view = screen('forgot');
-  fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
-    target: { value: '20123456786' },
-  });
-  fireEvent.change(view.getByLabelText('Email', { exact: false }), {
-    target: { value: 'recovery@example.test' },
-  });
-  fireEvent.click(view.getByRole('button', { name: 'Enviar enlace' }));
-  await waitFor(() =>
-    expect(recoverCustomerPassword).toHaveBeenCalledWith(
-      expect.objectContaining({ taxId: '20123456786', email: 'recovery@example.test' }),
-    ),
-  );
-  expect(await view.findByText('Revisá tu email')).toBeTruthy();
 });
 
 it('asks only for CUIT/CUIL after Google has authenticated the user', () => {

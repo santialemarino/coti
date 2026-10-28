@@ -443,6 +443,10 @@ definitions:
         - WHATSAPP
         - EMAIL
         type: string
+      main:
+        description: Main marks the contact account recovery preselects; it is always
+          a verified one.
+        type: boolean
       primary:
         type: boolean
       value:
@@ -1064,9 +1068,6 @@ definitions:
       password:
         maxLength: 72
         type: string
-      recovery_email:
-        maxLength: 255
-        type: string
       tax_id:
         maxLength: 20
         type: string
@@ -1140,6 +1141,20 @@ definitions:
       tax_id:
         type: string
     type: object
+  dto.CustomerMainContactRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
   dto.CustomerOrderResponse:
     properties:
       branch_name:
@@ -1154,17 +1169,6 @@ definitions:
         type: string
       status:
         type: string
-    type: object
-  dto.CustomerPasswordResetRequest:
-    properties:
-      password:
-        maxLength: 72
-        type: string
-      token:
-        type: string
-    required:
-    - password
-    - token
     type: object
   dto.CustomerProfileResponse:
     properties:
@@ -1192,30 +1196,69 @@ definitions:
       tax_id:
         type: string
     type: object
-  dto.CustomerRecoveryEmailRequest:
+  dto.CustomerRecoveryCodeRequest:
     properties:
-      email:
-        maxLength: 255
-        type: string
-    type: object
-  dto.CustomerRecoveryEmailResponse:
-    properties:
-      email:
-        type: string
-      verified:
-        type: boolean
-    type: object
-  dto.CustomerRecoveryRequest:
-    properties:
-      email:
-        maxLength: 255
+      contact_id:
         type: string
       tax_id:
         maxLength: 20
         type: string
     required:
-    - email
+    - contact_id
     - tax_id
+    type: object
+  dto.CustomerRecoveryCodeResponse:
+    properties:
+      expires_at:
+        type: string
+      id:
+        type: string
+    type: object
+  dto.CustomerRecoveryContactResponse:
+    properties:
+      available:
+        description: Available is false while no code can reach the contact's channel.
+        type: boolean
+      id:
+        type: string
+      kind:
+        type: string
+      main:
+        type: boolean
+      masked:
+        type: string
+      preselected:
+        type: boolean
+    type: object
+  dto.CustomerRecoveryOptionsRequest:
+    properties:
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - tax_id
+    type: object
+  dto.CustomerRecoveryOptionsResponse:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.CustomerRecoveryContactResponse'
+        type: array
+    type: object
+  dto.CustomerRecoveryResetRequest:
+    properties:
+      code:
+        maxLength: 16
+        type: string
+      id:
+        type: string
+      password:
+        maxLength: 72
+        type: string
+    required:
+    - code
+    - id
+    - password
     type: object
   dto.CustomerRegistrationRequest:
     properties:
@@ -1229,9 +1272,6 @@ definitions:
         type: string
       password:
         maxLength: 72
-        type: string
-      recovery_email:
-        maxLength: 255
         type: string
       tax_id:
         maxLength: 20
@@ -1248,13 +1288,6 @@ definitions:
         $ref: '#/definitions/dto.CustomerIdentityResponse'
       session_token:
         type: string
-    type: object
-  dto.CustomerTokenRequest:
-    properties:
-      token:
-        type: string
-    required:
-    - token
     type: object
   dto.DiffDiscountResponse:
     properties:
@@ -4380,28 +4413,6 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
-  /v1/customer/sites/{hostname}/auth/forgot-password:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: CUIT/CUIL and recovery email
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerRecoveryRequest'
-      responses:
-        "204":
-          description: Recovery request received
-      summary: Request customer password recovery
-      tags:
-      - customer-auth
   /v1/customer/sites/{hostname}/auth/google/complete:
     post:
       consumes:
@@ -4596,31 +4607,8 @@ paths:
       summary: Log out as a customer
       tags:
       - customer-auth
-  /v1/customer/sites/{hostname}/auth/recovery-email:
-    get:
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.CustomerRecoveryEmailResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get customer recovery email
-      tags:
-      - customer-auth
-    put:
+  /v1/customer/sites/{hostname}/auth/recovery/code:
+    post:
       consumes:
       - application/json
       parameters:
@@ -4629,15 +4617,108 @@ paths:
         name: hostname
         required: true
         type: string
-      - description: Optional recovery email
+      - description: CUIT/CUIL and the chosen contact
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/dto.CustomerRecoveryEmailRequest'
+          $ref: '#/definitions/dto.CustomerRecoveryCodeRequest'
+      produces:
+      - application/json
       responses:
-        "204":
-          description: Recovery email saved
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerRecoveryCodeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a cooldown, destination cap or lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Send an account recovery code
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery/options:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL of the account
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryOptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerRecoveryOptionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      summary: List account recovery contacts
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery/reset:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Code and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryResetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
         "400":
           description: Bad Request
           schema:
@@ -4646,13 +4727,16 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-        "429":
-          description: Too Many Requests
+        "422":
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Update customer recovery email
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a destination lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      summary: Reset a customer password with a recovery code
       tags:
       - customer-auth
   /v1/customer/sites/{hostname}/auth/register:
@@ -4695,50 +4779,6 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       summary: Register a customer
-      tags:
-      - customer-auth
-  /v1/customer/sites/{hostname}/auth/reset-password:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: Recovery token and new password
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerPasswordResetRequest'
-      responses:
-        "204":
-          description: Password reset
-      summary: Reset a customer password
-      tags:
-      - customer-auth
-  /v1/customer/sites/{hostname}/auth/verify-email:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: Verification token
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerTokenRequest'
-      responses:
-        "204":
-          description: Email verified
-      summary: Verify a customer recovery email
       tags:
       - customer-auth
   /v1/customer/sites/{hostname}/me:
@@ -5003,6 +5043,42 @@ paths:
       security:
       - BearerAuth: []
       summary: Confirm customer contact verification
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/main-contact:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: A verified contact of the profile
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerMainContactRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Choose the customer's main contact
       tags:
       - customer-profile
   /v1/customer/sites/{hostname}/quote-sends/{token}:

@@ -21,7 +21,6 @@ import {
 
 export interface CustomerAuthResult {
   error?: string;
-  received?: boolean;
 }
 
 function errorForStatus(status: number): string {
@@ -70,7 +69,6 @@ export async function signUpCustomer(values: {
       values.taxId,
       values.password,
       forwardedClientAddress(await headers()),
-      values.email,
       { name: values.name, phone: values.phone, email: values.email },
     );
   } catch (error) {
@@ -102,46 +100,6 @@ export async function completeCustomerGoogle(values: {
     return { error: 'unavailable' };
   }
   redirect(safeCustomerDestination(values.next, ROUTES.newRequest));
-}
-
-export async function recoverCustomerPassword(values: {
-  taxId: string;
-  email: string;
-}): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/forgot-password', {
-      tax_id: values.taxId,
-      email: values.email,
-    });
-    return response.ok ? { received: true } : { error: errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
-}
-
-export async function resetCustomerPassword(values: {
-  token: string;
-  password: string;
-}): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/reset-password', values);
-    return response.ok
-      ? { received: true }
-      : { error: response.status === 401 ? 'expired' : errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
-}
-
-export async function verifyCustomerEmail(token: string): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/verify-email', { token });
-    return response.ok
-      ? { received: true }
-      : { error: response.status === 401 ? 'expired' : errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
 }
 
 export async function signOutCustomer(): Promise<void> {

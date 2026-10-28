@@ -80,6 +80,8 @@ func (s *ClientContactDeliveryService) sendEmail(ctx context.Context, message do
 	switch message.Purpose {
 	case domain.ContactPurposeVerification:
 		email.Subject = contactVerificationSubject
+	case domain.ContactPurposeRecovery:
+		email.Subject = contactRecoverySubject
 	case domain.ContactPurposeRegistrationLink:
 		email.Subject = contactRegistrationLinkSubject
 	case domain.ContactPurposeNameRequest:

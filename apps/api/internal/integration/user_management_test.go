@@ -46,6 +46,8 @@ type env struct {
 	db     *repository.DB
 	tokens *services.TokenService
 	mail   *captureMailer
+	// contacts holds the recovery and verification codes the API sent to customer contacts.
+	contacts *captureContactMessenger
 }
 
 type rfqTestProviders struct {
@@ -119,8 +121,9 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
-		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour, ProfileContactsMax: 10},
-		Catalog:      config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: 15 * time.Minute, ContactVerificationTTL: 10 * time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3, ProfileContactsMax: 10,
+			ContactDestinationMax: 1000, ContactDestinationWindow: time.Hour, ContactFailureMax: 1000, ContactLockout: time.Hour, ContactSpamMax: 1000, ContactSpamWindow: time.Hour},
+		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 			InlinePipelineTimeout: 25 * time.Second,
@@ -170,7 +173,7 @@ func newEnvWithRFQProviders(
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil, mailService)
+	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil)
 	authTokenRepo := repository.NewAuthTokenRepository()
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
@@ -200,6 +203,9 @@ func newEnvWithRFQProviders(
 	clientRepo := repository.NewClientRepository()
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuth.WithClientProfiles(contactService)
+	contactMessenger := &captureContactMessenger{}
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
+	customerAuth.WithContactRecovery(contactVerification)
 	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {
@@ -266,7 +272,7 @@ func newEnvWithRFQProviders(
 			Health:         handler.NewHealthHandler(db),
 			Auth:           handler.NewAuthHandler(authService),
 			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuth),
-			ClientContacts: handler.NewClientContactHandler(contactService),
+			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
 			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
@@ -299,7 +305,7 @@ func newEnvWithRFQProviders(
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuth},
 		rateLimit)
 
-	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
+	return &env{router: router, db: db, tokens: tokenService, mail: mailer, contacts: contactMessenger}
 }
 
 // mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A

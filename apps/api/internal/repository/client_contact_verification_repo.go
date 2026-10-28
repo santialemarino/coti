@@ -22,12 +22,53 @@ func (r *ClientContactRepository) LockChallenge(ctx context.Context, q Querier, 
 
 func (r *ClientContactRepository) getChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, suffix string) (*domain.ContactChallenge, error) {
 	c := &domain.ContactChallenge{}
-	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt)
+	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY'`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
-	c.AccountID, c.CustomerID = p.AccountID, p.CustomerID
+	c.AccountID, c.CustomerID, c.Purpose = p.AccountID, p.CustomerID, domain.ContactChallengeVerify
 	return c, err
+}
+
+// GetRecoveryChallenge reads one account recovery code, whichever customer it was sent for.
+func (r *ClientContactRepository) GetRecoveryChallenge(ctx context.Context, q Querier, accountID, id uuid.UUID) (*domain.ContactChallenge, error) {
+	return r.getRecoveryChallenge(ctx, q, accountID, id, "")
+}
+
+// LockRecoveryChallenge locks a recovery code after the destination advisory lock has been acquired.
+func (r *ClientContactRepository) LockRecoveryChallenge(ctx context.Context, q Querier, accountID, id uuid.UUID) (*domain.ContactChallenge, error) {
+	return r.getRecoveryChallenge(ctx, q, accountID, id, " FOR UPDATE")
+}
+
+func (r *ClientContactRepository) getRecoveryChallenge(ctx context.Context, q Querier, accountID, id uuid.UUID, suffix string) (*domain.ContactChallenge, error) {
+	c := &domain.ContactChallenge{AccountID: accountID, Purpose: domain.ContactChallengeRecover}
+	err := q.QueryRow(ctx, `SELECT id,customer_id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at FROM client_contact_challenge WHERE account_id=$1 AND id=$2 AND purpose='RECOVER'`+suffix, accountID, id).Scan(&c.ID, &c.CustomerID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return c, err
+}
+
+// ListRecoveryContacts returns the live contacts the customer proved on its profile, the main one first.
+func (r *ClientContactRepository) ListRecoveryContacts(ctx context.Context, q Querier, accountID, clientID, customerID uuid.UUID) ([]domain.ClientContact, error) {
+	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.id IS NOT DISTINCT FROM `+mainContact+` FROM client_contact c
+ JOIN customer_contact_ownership o ON o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id
+ WHERE c.account_id=$1 AND c.client_id=$2 AND c.verified_at IS NOT NULL AND c.retired_at IS NULL
+ ORDER BY c.is_main DESC,c.kind='WHATSAPP' DESC,c.created_at,c.id`, accountID, clientID, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	contacts := []domain.ClientContact{}
+	for rows.Next() {
+		var c domain.ClientContact
+		if err := rows.Scan(&c.ID, &c.Kind, &c.Value, &c.Main); err != nil {
+			return nil, err
+		}
+		c.Verified = true
+		contacts = append(contacts, c)
+	}
+	return contacts, rows.Err()
 }
 
 // HasRecentChallenge limits repeat delivery to the same customer and destination.
@@ -45,12 +86,12 @@ func (r *ClientContactRepository) GetDestinationActivity(ctx context.Context, q 
 	return a, err
 }
 
-// CreateChallenge persists only a hash and invalidates earlier proofs for the same destination.
+// CreateChallenge persists only a hash and invalidates earlier proofs of the same purpose for the destination.
 func (r *ClientContactRepository) CreateChallenge(ctx context.Context, q Querier, c domain.ContactChallenge) error {
-	if _, err := q.Exec(ctx, `UPDATE client_contact_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND consumed_at IS NULL`, c.AccountID, c.CustomerID, c.Kind, c.Value); err != nil {
+	if _, err := q.Exec(ctx, `UPDATE client_contact_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND purpose=$5 AND consumed_at IS NULL`, c.AccountID, c.CustomerID, c.Kind, c.Value, c.Purpose); err != nil {
 		return err
 	}
-	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,kind,value,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Kind, c.Value, c.TokenHash, c.ExpiresAt)
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,purpose,kind,value,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Purpose, c.Kind, c.Value, c.TokenHash, c.ExpiresAt)
 	return err
 }
 

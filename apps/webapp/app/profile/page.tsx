@@ -3,17 +3,15 @@ import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
 import { CustomerProfileForm } from '@/app/profile/_components/customer-profile-form';
-import { RecoveryEmailForm } from '@/app/profile/_components/recovery-email-form';
+import { MainContactCard } from '@/app/profile/_components/main-contact-card';
 import { ROUTES } from '@/config/routes';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
-import { getCustomerRecoveryEmail } from '@/lib/api/customer-recovery-email';
 import { requireCustomer } from '@/lib/auth/customer-flow';
 
 export default async function CustomerProfilePage() {
   await requireCustomer(ROUTES.profile);
-  const [profile, recovery, t] = await Promise.all([
+  const [profile, t] = await Promise.all([
     getCustomerProfile(),
-    getCustomerRecoveryEmail(),
     getTranslations('customerProfile'),
   ]);
   return (
@@ -26,7 +24,14 @@ export default async function CustomerProfilePage() {
           </Button>
         </header>
         <CustomerProfileForm profile={profile} />
-        <RecoveryEmailForm recovery={recovery} />
+        {/* Remounts when a verification or a save changes what the card starts from. */}
+        <MainContactCard
+          key={profile.contacts
+            .filter((contact) => contact.verified)
+            .map((contact) => `${contact.kind}:${contact.value}:${contact.main}`)
+            .join('|')}
+          contacts={profile.contacts}
+        />
       </div>
     </main>
   );

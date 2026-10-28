@@ -37,7 +37,7 @@ type CustomerAuthService struct {
 	credentials customerCredentialStore
 	profiles    customerProfileRegistrar
 	google      domain.CustomerGoogleProvider
-	mail        mailSender
+	recovery    customerContactRecovery
 	cfg         config.CustomerAuthConfig
 	now         func() time.Time
 	newSecret   func() (string, error)
@@ -86,10 +86,6 @@ func (s *CustomerAuthService) Register(ctx context.Context, hostname string, in 
 		return nil, domain.ErrInvalidInput
 	}
 	in.TaxID = domain.NormalizeTaxID(in.TaxID)
-	in.RecoveryEmail = domain.NormalizeEmail(in.RecoveryEmail)
-	if in.RecoveryEmail != "" && !validCustomerEmail(in.RecoveryEmail) {
-		return nil, domain.ErrInvalidInput
-	}
 	if !domain.ValidCUIT(in.TaxID) {
 		return nil, domain.ErrInvalidInput
 	}
@@ -109,12 +105,8 @@ func (s *CustomerAuthService) Register(ctx context.Context, hostname string, in 
 		return nil, err
 	}
 	var login *domain.CustomerLogin
-	var recovery *string
-	if in.RecoveryEmail != "" {
-		recovery = &in.RecoveryEmail
-	}
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		identity, err := s.store.CreateIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: in.TaxID, Name: &in.Name, PasswordHash: hash, RecoveryEmail: recovery})
+		identity, err := s.store.CreateIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: in.TaxID, Name: &in.Name, PasswordHash: hash})
 		if err != nil {
 			return err
 		}
@@ -124,9 +116,6 @@ func (s *CustomerAuthService) Register(ctx context.Context, hostname string, in 
 		login, err = s.createSession(ctx, q, *identity, secret)
 		return err
 	})
-	if err == nil && recovery != nil && s.credentials != nil && s.mail != nil {
-		_ = s.sendCustomerChallenge(ctx, *site, domain.CustomerIdentity{ID: login.Principal.CustomerID, AccountID: site.AccountID}, "VERIFY_EMAIL", *recovery, false)
-	}
 	return login, err
 }
 

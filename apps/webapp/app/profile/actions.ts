@@ -89,25 +89,22 @@ export async function confirmContactVerification(
   }
 }
 
-export async function saveRecoveryEmail(email: string): Promise<{ error?: string }> {
+export async function chooseMainContact(
+  kind: 'EMAIL' | 'WHATSAPP',
+  value: string,
+): Promise<{ error?: string }> {
   await requireCustomer(ROUTES.profile);
   const t = await getTranslations('customerProfile.errors');
   try {
-    const response = await customerFetch('/auth/recovery-email', {
+    const response = await customerFetch('/profile/main-contact', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ kind, value }),
     });
     return response.ok
       ? {}
-      : {
-          error: t(
-            response.status === 400 || response.status === 422
-              ? 'invalid'
-              : 'verificationUnavailable',
-          ),
-        };
+      : { error: t(response.status === 404 ? 'mainUnverified' : 'unavailable') };
   } catch {
-    return { error: t('verificationUnavailable') };
+    return { error: t('unavailable') };
   }
 }

@@ -41,6 +41,9 @@ func (acceptingContacts) GetProfile(context.Context, domain.CustomerPrincipal) (
 func (acceptingContacts) UpdateProfile(context.Context, domain.CustomerPrincipal, domain.ClientContactUpdate) error {
 	return nil
 }
+func (acceptingContacts) SetMainContact(context.Context, domain.CustomerPrincipal, domain.ChannelType, string) error {
+	return nil
+}
 func (acceptingContacts) ListSuggestions(context.Context, domain.Tenant) ([]domain.ContactObservation, error) {
 	return nil, nil
 }

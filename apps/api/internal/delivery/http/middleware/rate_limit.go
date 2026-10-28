@@ -74,22 +74,25 @@ func NewAllowance(limiter Limiter, opts RateLimitOptions) Allowance {
 		if allowed {
 			return true
 		}
-
-		retryAfter := int(math.Ceil(retryIn.Seconds()))
-		if retryAfter < 1 {
-			retryAfter = 1
-		}
-		c.Header("Retry-After", strconv.Itoa(retryAfter))
-		// Which limit was reached is deliberately absent: it would tell a caller probing the
-		// API how its buckets are laid out.
-		_ = c.Error(domain.ErrRateLimited)
-		c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
-			Error:             "too many requests",
-			Code:              string(domain.CodeRateLimited),
-			RetryAfterSeconds: retryAfter,
-		})
+		refuseRateLimited(c, retryIn)
 		return false
 	}
+}
+
+func refuseRateLimited(c *gin.Context, retryIn time.Duration) {
+	retryAfter := int(math.Ceil(retryIn.Seconds()))
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	c.Header("Retry-After", strconv.Itoa(retryAfter))
+	// Which limit was reached is deliberately absent: it would tell a caller probing the
+	// API how its buckets are laid out.
+	_ = c.Error(domain.ErrRateLimited)
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
+		Error:             "too many requests",
+		Code:              string(domain.CodeRateLimited),
+		RetryAfterSeconds: retryAfter,
+	})
 }
 
 func callerKey(c *gin.Context, opts RateLimitOptions) string {

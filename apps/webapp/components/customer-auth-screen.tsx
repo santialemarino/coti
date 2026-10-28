@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Building2Icon, CheckIcon, MailIcon } from 'lucide-react';
+import { Building2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
@@ -25,17 +24,10 @@ import {
   Input,
   PendingButton,
   PhoneInput,
-  StatusScreen,
   TaxIdInput,
 } from '@repo/ui/components';
-import {
-  completeCustomerGoogle,
-  recoverCustomerPassword,
-  resetCustomerPassword,
-  signInCustomer,
-  signUpCustomer,
-  verifyCustomerEmail,
-} from '@/app/login/actions';
+import { AccountRecovery } from '@/app/forgot-password/_components/account-recovery';
+import { completeCustomerGoogle, signInCustomer, signUpCustomer } from '@/app/login/actions';
 import { customerAuthSchema, type CustomerAuthMode } from '@/components/customer-auth-schema';
 import { ROUTES } from '@/config/routes';
 import { FORM_VALIDATION } from '@/lib/forms/options';
@@ -47,7 +39,6 @@ interface CustomerAuthScreenProps {
   logoUrl?: string;
   next: string;
   minimum: number;
-  token?: string;
   taxId?: string;
   initialError?: string;
   googleEnabled: boolean;
@@ -59,7 +50,6 @@ export function CustomerAuthScreen({
   logoUrl,
   next,
   minimum,
-  token = '',
   taxId = '',
   initialError,
   googleEnabled,
@@ -68,7 +58,6 @@ export function CustomerAuthScreen({
   const common = useTranslations('common');
   const phoneLabels = useTranslations('rfq.fields.phone');
   const formatters = useFormatters();
-  const [received, setReceived] = useState(false);
   const form = useForm({
     ...FORM_VALIDATION,
     resolver: zodResolver(
@@ -78,11 +67,10 @@ export function CustomerAuthScreen({
   });
   const fields: ('name' | 'taxId' | 'email' | 'phone' | 'password' | 'confirmation')[] = [];
   if (mode === 'signup' || mode === 'google') fields.push('name');
-  if (['login', 'signup', 'forgot', 'google', 'linkGoogle'].includes(mode)) fields.push('taxId');
-  if (['signup', 'forgot'].includes(mode)) fields.push('email');
-  if (mode === 'signup') fields.push('phone');
-  if (['login', 'signup', 'reset'].includes(mode)) fields.push('password');
-  if (['signup', 'reset'].includes(mode)) fields.push('confirmation');
+  if (['login', 'signup', 'google', 'linkGoogle'].includes(mode)) fields.push('taxId');
+  if (mode === 'signup') fields.push('email', 'phone');
+  if (['login', 'signup'].includes(mode)) fields.push('password');
+  if (mode === 'signup') fields.push('confirmation');
   const loginUrl = `${ROUTES.login}?method=password&next=${encodeURIComponent(next)}`;
   const signupUrl = `${ROUTES.signup}?next=${encodeURIComponent(next)}`;
 
@@ -111,20 +99,13 @@ export function CustomerAuthScreen({
               phone: values.phone || '',
               next,
             })
-          : mode === 'forgot'
-            ? await recoverCustomerPassword(values)
-            : mode === 'reset'
-              ? await resetCustomerPassword({ token, password: values.password })
-              : mode === 'verify'
-                ? await verifyCustomerEmail(token)
-                : await completeCustomerGoogle({
-                    taxId: values.taxId,
-                    name: values.name,
-                    next,
-                    link: mode === 'linkGoogle',
-                  });
+          : await completeCustomerGoogle({
+              taxId: values.taxId,
+              name: values.name,
+              next,
+              link: mode === 'linkGoogle',
+            });
     if (result.error) form.setError('root', { message: t(`errors.${result.error}`) });
-    if (result.received) setReceived(true);
   }
 
   return (
@@ -147,17 +128,8 @@ export function CustomerAuthScreen({
           )}
           <p className="break-words text-heading-5">{supplierName}</p>
         </header>
-        {received ? (
-          <StatusScreen
-            icon={mode === 'forgot' ? MailIcon : CheckIcon}
-            tone="success"
-            title={t(`success.${mode}`)}
-            description={mode === 'forgot' ? t('recoverySent') : undefined}
-          >
-            <Button asChild>
-              <Link href={ROUTES.login}>{t('backToLogin')}</Link>
-            </Button>
-          </StatusScreen>
+        {mode === 'forgot' ? (
+          <AccountRecovery minimum={minimum} next={next} />
         ) : (
           <Card>
             <CardHeader className="text-center">

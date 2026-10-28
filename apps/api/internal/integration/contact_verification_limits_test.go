@@ -56,7 +56,7 @@ func (e *env) customersSharingDestination(t *testing.T, n int, cfg config.Custom
 	for i := range n {
 		account, _ := e.seedAccount(t, fmt.Sprintf("Shared destination %d", i))
 		const tax = "20123456786"
-		e.registerCustomer(t, account, tax, "")
+		e.registerCustomer(t, account, tax)
 		p := domain.CustomerPrincipal{AccountID: account, TaxID: tax}
 		if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, tax).Scan(&p.CustomerID); err != nil {
 			t.Fatal(err)
@@ -224,7 +224,7 @@ func TestClientContacts_ProfileContactCapIsEnforced(t *testing.T) {
 	ctx := context.Background()
 	account, _ := e.seedAccount(t, "Contact cap")
 	const tax = "20123456786"
-	host, token := e.registerCustomer(t, account, tax, "")
+	host, token := e.registerCustomer(t, account, tax)
 	base := "/v1/customer/sites/" + host
 	contacts := func(n int) []map[string]any {
 		list := make([]map[string]any, 0, n)

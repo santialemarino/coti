@@ -112,65 +112,81 @@ func (h *CustomerAuthHandler) CompleteGoogle(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.CustomerSessionResponse{SessionToken: login.SessionToken, Customer: toCustomerIdentityResponse(login.Principal)})
 }
 
-// Forgot sends a recovery link only when the CUIT/CUIL and verified email match.
-// @Summary Request customer password recovery
+// RecoveryOptions lists the masked verified contacts a recovery code can go to.
+// @Summary List account recovery contacts
 // @Tags customer-auth
 // @Accept json
+// @Produce json
 // @Param hostname path string true "Registered supplier hostname"
-// @Param body body dto.CustomerRecoveryRequest true "CUIT/CUIL and recovery email"
-// @Success 204 "Recovery request received"
-// @Router /v1/customer/sites/{hostname}/auth/forgot-password [post]
-func (h *CustomerAuthHandler) Forgot(c *gin.Context) {
-	var in dto.CustomerRecoveryRequest
+// @Param body body dto.CustomerRecoveryOptionsRequest true "CUIT/CUIL of the account"
+// @Success 200 {object} dto.CustomerRecoveryOptionsResponse
+// @Failure 400,404,422 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "Rate limit spent; retry_after_seconds says when"
+// @Router /v1/customer/sites/{hostname}/auth/recovery/options [post]
+func (h *CustomerAuthHandler) RecoveryOptions(c *gin.Context) {
+	var in dto.CustomerRecoveryOptionsRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		RespondBindError(c, err)
 		return
 	}
-	if err := h.auth.ForgotCustomerPassword(c.Request.Context(), c.Param("hostname"), in.TaxID, in.Email); err != nil {
+	contacts, err := h.auth.RecoveryOptions(c.Request.Context(), c.Param("hostname"), in.TaxID)
+	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	response := dto.CustomerRecoveryOptionsResponse{Contacts: make([]dto.CustomerRecoveryContactResponse, 0, len(contacts))}
+	for _, contact := range contacts {
+		response.Contacts = append(response.Contacts, dto.CustomerRecoveryContactResponse{ID: contact.ID, Kind: string(contact.Kind), Masked: contact.Masked, Main: contact.Main, Available: contact.Available, Preselected: contact.Preselected})
+	}
+	c.JSON(http.StatusOK, response)
 }
 
-// VerifyEmail confirms an optional recovery address using its one-use capability.
-// @Summary Verify a customer recovery email
+// RecoveryCode sends a one-use recovery code to one verified contact of the account.
+// @Summary Send an account recovery code
 // @Tags customer-auth
 // @Accept json
+// @Produce json
 // @Param hostname path string true "Registered supplier hostname"
-// @Param body body dto.CustomerTokenRequest true "Verification token"
-// @Success 204 "Email verified"
-// @Router /v1/customer/sites/{hostname}/auth/verify-email [post]
-func (h *CustomerAuthHandler) VerifyEmail(c *gin.Context) {
-	var in dto.CustomerTokenRequest
+// @Param body body dto.CustomerRecoveryCodeRequest true "CUIT/CUIL and the chosen contact"
+// @Success 201 {object} dto.CustomerRecoveryCodeResponse
+// @Failure 400,404,422,503 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout"
+// @Router /v1/customer/sites/{hostname}/auth/recovery/code [post]
+func (h *CustomerAuthHandler) RecoveryCode(c *gin.Context) {
+	var in dto.CustomerRecoveryCodeRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		RespondBindError(c, err)
 		return
 	}
-	if err := h.auth.VerifyCustomerEmail(c.Request.Context(), c.Param("hostname"), in.Token); err != nil {
+	challenge, err := h.auth.RequestRecoveryCode(c.Request.Context(), c.Param("hostname"), in.TaxID, in.ContactID)
+	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusCreated, dto.CustomerRecoveryCodeResponse{ID: challenge.ID, ExpiresAt: challenge.ExpiresAt})
 }
 
-// Reset replaces a recovered customer's password and revokes previous sessions.
-// @Summary Reset a customer password
+// RecoveryReset redeems a recovery code, sets a new password and signs the customer in.
+// @Summary Reset a customer password with a recovery code
 // @Tags customer-auth
 // @Accept json
+// @Produce json
 // @Param hostname path string true "Registered supplier hostname"
-// @Param body body dto.CustomerPasswordResetRequest true "Recovery token and new password"
-// @Success 204 "Password reset"
-// @Router /v1/customer/sites/{hostname}/auth/reset-password [post]
-func (h *CustomerAuthHandler) Reset(c *gin.Context) {
-	var in dto.CustomerPasswordResetRequest
+// @Param body body dto.CustomerRecoveryResetRequest true "Code and new password"
+// @Success 201 {object} dto.CustomerSessionResponse
+// @Failure 400,401,422 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout"
+// @Router /v1/customer/sites/{hostname}/auth/recovery/reset [post]
+func (h *CustomerAuthHandler) RecoveryReset(c *gin.Context) {
+	var in dto.CustomerRecoveryResetRequest
 	if err := c.ShouldBindJSON(&in); err != nil {
 		RespondBindError(c, err)
 		return
 	}
-	if err := h.auth.ResetCustomerPassword(c.Request.Context(), c.Param("hostname"), in.Token, in.Password); err != nil {
+	login, err := h.auth.ResetWithRecoveryCode(c.Request.Context(), c.Param("hostname"), in.ID, in.Code, in.Password)
+	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusCreated, dto.CustomerSessionResponse{SessionToken: login.SessionToken, Customer: toCustomerIdentityResponse(login.Principal)})
 }

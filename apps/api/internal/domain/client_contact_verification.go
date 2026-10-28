@@ -7,12 +7,22 @@ import (
 	"github.com/google/uuid"
 )
 
-// ContactChallenge binds a one-use contact proof to the authenticated customer and supplier.
+// ContactChallengePurpose says what redeeming a contact proof does.
+type ContactChallengePurpose string
+
+// Contact proof purposes: verifying a contact, or recovering the account through one already verified.
+const (
+	ContactChallengeVerify  ContactChallengePurpose = "VERIFY"
+	ContactChallengeRecover ContactChallengePurpose = "RECOVER"
+)
+
+// ContactChallenge binds a one-use contact proof to a customer and supplier.
 type ContactChallenge struct {
 	ID         uuid.UUID
 	AccountID  uuid.UUID
 	CustomerID uuid.UUID
 	ClientID   uuid.UUID
+	Purpose    ContactChallengePurpose
 	Kind       ChannelType
 	Value      string
 	TokenHash  string
@@ -44,6 +54,7 @@ const (
 	ContactPurposeNameRequest      ContactPurpose = "NAME_REQUEST"
 	ContactPurposeVerification     ContactPurpose = "VERIFICATION"
 	ContactPurposeRegistrationLink ContactPurpose = "REGISTRATION_LINK"
+	ContactPurposeRecovery         ContactPurpose = "RECOVERY"
 )
 
 // ContactMessage is a deterministic onboarding or verification message.

@@ -37,6 +37,7 @@ const (
 	contactNamePrompt = "Gracias por escribirnos. Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
 
 	contactVerificationSubject     = "Confirmá tu contacto"
+	contactRecoverySubject         = "Tu código para recuperar la cuenta"
 	contactRegistrationLinkSubject = "Completá tus datos de facturación"
 )
 
@@ -54,6 +55,12 @@ func contactVerificationLink(link string) string {
 // contactVerificationCode carries the one-use code that proves a phone.
 func contactVerificationCode(code string) string {
 	return "Tu código para confirmar el teléfono en Coti es: " + code
+}
+
+// contactRecoveryCode carries the one-use code that recovers an account; it says what to do if the
+// customer did not ask, since nobody else is told.
+func contactRecoveryCode(code string) string {
+	return "Tu código para recuperar tu cuenta es " + code + ". Si no lo pediste, ignorá este mensaje: nadie puede entrar sin el código."
 }
 
 // contactRegistrationLink sends a customer to the account where billing data is completed.

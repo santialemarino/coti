@@ -3,15 +3,24 @@ import { z } from 'zod';
 
 import { isValidCuit } from '@repo/ui/lib';
 
-export type CustomerAuthMode =
-  | 'welcome'
-  | 'login'
-  | 'signup'
-  | 'forgot'
-  | 'reset'
-  | 'verify'
-  | 'google'
-  | 'linkGoogle';
+export type CustomerAuthMode = 'welcome' | 'login' | 'signup' | 'forgot' | 'google' | 'linkGoogle';
+
+/* The catalog key of what a chosen password lacks, or null; the API enforces the same policy. */
+export function passwordIssue(
+  password: string,
+  minimum: number,
+): { key: string; params?: Record<string, number> } | null {
+  if ([...password].length < minimum) return { key: 'passwordLength', params: { min: minimum } };
+  if (new TextEncoder().encode(password).length > 72) return { key: 'passwordMaximum' };
+  if (
+    !/\p{Lu}/u.test(password) ||
+    !/\p{Ll}/u.test(password) ||
+    !/\p{Nd}/u.test(password) ||
+    !/[^\p{L}\p{Nd}]/u.test(password)
+  )
+    return { key: 'passwordPolicy' };
+  return null;
+}
 
 export function customerAuthSchema(
   mode: CustomerAuthMode,
@@ -36,28 +45,20 @@ export function customerAuthSchema(
       if (mode === 'signup' && values.phone && !isValidPhoneNumber(values.phone))
         add('phone', 'phoneInvalid');
       if (
-        ['login', 'signup', 'forgot', 'google', 'linkGoogle'].includes(mode) &&
+        ['login', 'signup', 'google', 'linkGoogle'].includes(mode) &&
         (!isValidCuit(values.taxId) || values.taxId === '00000000000')
       )
         add('taxId', 'taxInvalid');
-      if (['login', 'signup', 'reset'].includes(mode) && !values.password)
+      if (['login', 'signup'].includes(mode) && !values.password)
         add('password', 'passwordRequired');
-      if (['signup', 'reset'].includes(mode) && values.password) {
-        if ([...values.password].length < minimum)
-          add('password', 'passwordLength', { min: minimum });
-        else if (new TextEncoder().encode(values.password).length > 72)
-          add('password', 'passwordMaximum');
-        else if (
-          !/\p{Lu}/u.test(values.password) ||
-          !/\p{Ll}/u.test(values.password) ||
-          !/\p{Nd}/u.test(values.password) ||
-          !/[^\p{L}\p{Nd}]/u.test(values.password)
-        )
-          add('password', 'passwordPolicy');
+      if (mode === 'signup' && values.password) {
+        const issue = passwordIssue(values.password, minimum);
+        if (issue) add('password', issue.key, issue.params);
         if (values.confirmation !== values.password) add('confirmation', 'passwordMismatch');
       }
       if (
-        (mode === 'forgot' || (mode === 'signup' && values.email.trim() !== '')) &&
+        mode === 'signup' &&
+        values.email.trim() !== '' &&
         !z.email().max(255).safeParse(values.email.trim()).success
       )
         add('email', 'emailInvalid');

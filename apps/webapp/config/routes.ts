@@ -4,8 +4,6 @@ export const ROUTES = {
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',
-  resetPassword: '/reset-password',
-  verifyEmail: '/verify-email',
   googleComplete: '/google-complete',
   googleStart: '/api/customer/google/start',
   orders: '/orders',

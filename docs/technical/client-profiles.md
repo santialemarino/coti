@@ -153,18 +153,44 @@ The link opens login with a destination of /profile, where the customer can regi
 existing account and complete data. It carries no credentials or claimed CUIT. Customers with an
 existing CUIT add and verify the provisional contact from their existing account.
 
-## Recovery email
+## Main contact
 
-GET and PUT /v1/customer/sites/{hostname}/auth/recovery-email expose only the authenticated customer's
-optional credential recovery email and verified state. It is stored separately from commercial emails.
-Saving a new address sends a one-use /verify-email link; clearing it disables email recovery. Changing
-or removing the address invalidates outstanding verification and password reset capabilities. Saving
-the same verified address preserves its verification. Saving the same pending address resends proof,
-subject to the customer mail rate limit. Commercial contact proof never changes credential recovery.
+Each registered profile has one main contact, the one account recovery preselects. It is always a
+live contact the profile's customer verified. The customer's explicit choice is stored as
+`client_contact.is_main` (a partial unique index allows one per profile, and a check refuses it on an
+unverified or retired row); without a choice, the main contact is the first WhatsApp the customer
+verified, else the first contact, so a WhatsApp verified later becomes the default without a write.
+PUT /v1/customer/sites/{hostname}/profile/main-contact accepts only a contact the customer verified
+(404 otherwise); GET /profile marks it `main`. Removing it from the profile falls back to the default.
 
-Phone-only signup is allowed but cannot recover a password until a recovery email is confirmed.
-Recovery requires the CUIT and the matching verified email. Sellers have no recovery role. These flows
-send channel messages; they do not create browser/device push notifications.
+## Account recovery
+
+Recovery sends a one-use code to a verified contact; there is no separate recovery address. The
+three public routes under /v1/customer/sites/{hostname}/auth/recovery are:
+
+- `POST /options` with the CUIT/CUIL returns the customer's verified contacts, masked
+  (`+54 9 ••• ••••-0101`, `j•••@gmail.com`), the main one first. `available` is false for a channel
+  no code can reach, and `preselected` marks the first available one.
+- `POST /code` with the CUIT/CUIL and a listed contact sends a six-digit code, stored hashed in
+  `client_contact_challenge` with purpose `RECOVER` and bound to the supplier, the customer and the
+  destination. It expires after `CUSTOMER_RECOVERY_TTL_MINUTES` and counts toward the same
+  cooldown, per-supplier destination cap and cross-supplier spam cap as a verification proof.
+- `POST /reset` with the code and a new password checks the password policy first, redeems the
+  code (constant-time compare, `CUSTOMER_CONTACT_VERIFICATION_MAX_ATTEMPTS` tries, single use, and
+  the contact must still be verified), replaces the password, revokes every session and the other
+  outstanding codes, and returns a new session. A wrong code is a destination failure, so it counts
+  toward the per-supplier lockout. A Google-only account gains a password this way.
+
+The CUIT/CUIL only selects the account: nothing is granted without the code, and sellers have no
+role in it. **An unknown or disabled CUIT/CUIL answers exactly like an account with no verified
+contact: an empty list.** A cap or lockout refusal is the same 429 `ACCOUNT_LOCKED` a verification
+proof gets. What the list reveals is only what a masked list inherently does, that an
+account with at least one verified contact exists. Each route is limited per caller address and per
+CUIT/CUIL named (the reset per code), on the route limiter.
+
+A WhatsApp code outside the 24-hour window needs Meta's authentication template, so while
+`WHATSAPP_CONTACT_CODE_TEMPLATE` is empty WhatsApp contacts are listed but not available; the rule
+lives in one function (`codeDeliverable`) and switches on with the template.
 
 ## Abuse limits
 
@@ -224,6 +250,7 @@ bucket, as customer login already does.
 | RATE_LIMIT_CONTACT_VERIFICATION_MAX                    | 5       | Proof requests or confirms per window              |
 | RATE_LIMIT_PROFILE_MAX                                 | 10      | Profile saves per window                           |
 | CUSTOMER_CONTACT_PROMPT_LEASE_MINUTES                  | 5       | Age at which a stuck name prompt is reclaimed      |
+| CUSTOMER_RECOVERY_TTL_MINUTES                          | 15      | Account recovery code lifetime                     |
 | WHATSAPP_CONTACT_CODE_TEMPLATE                         | empty   | Approved Meta authentication copy-code template    |
 | WHATSAPP_CONTACT_CODE_LANGUAGE                         | es_AR   | Approved template language                         |
 
@@ -247,12 +274,14 @@ customer proof; My data shows those contacts as pending until this account verif
 or silently merged. Migration 00064 adds `client_contact.declared_by` and attributes existing
 customer-entered contacts to the identity that entered them. Migration 00065 adds the outbox's
 `status_changed_at`, backfilled from `created_at`, which bounds both the reply window and the
-delivery lease. Migrations are executable; the
+delivery lease. Migration 00067 drops the separate recovery email and its link challenges, adds the
+challenge purpose and the main-contact flag. Migrations are executable; the
 consolidated database schema is a reference only.
 
 Integration tests cover proof-gated history movement, registered-name precedence, earlier-profile
 adoption hidden until proof, immutable data,
-recovery separation, retained name replies, supplier isolation, RLS and independent-contact locks.
+account recovery by contact (masking, attempts, single use, WhatsApp availability, supplier
+isolation, the main-contact choice), retained name replies, supplier isolation, RLS and independent-contact locks.
 They also cover free-form WhatsApp and quoted email name replies, short orders that stay orders, a
 quote reply that stays in its conversation, refusals after a quote or for a catalog word, the
 delivered-prompt and 24-hour conditions, auto-replies and automated senders, the supplier-named

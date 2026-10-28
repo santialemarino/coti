@@ -56,57 +56,19 @@ http://localhost:3001. It controls the callback and outgoing portal links and is
 production. WEB_GOOGLE_FLOW_TTL_SECONDS bounds the browser flow cookie. API provider, signup,
 recovery and verification timeouts are listed in apps/api/.env.example.
 
-## Optional recovery email
+## Account recovery
 
-Password registration can save an unverified recovery email and send a one-use verification link.
-Verification enables recovery without gating portal access. Forgot password requires both CUIT/CUIL
-and the matching stored verified address. It never sends a recovery link to a caller-selected new
-address. Its response is identical for matching, unknown and unverified addresses.
+A forgotten password is recovered with a one-use code sent to one of the account's verified
+contacts; there is no separate recovery address. Resetting the password revokes existing sessions in
+the same transaction. Google-only customers can keep using their linked Google identity, or gain a
+password the same way. See [Client profiles](client-profiles.md#account-recovery).
 
-VERIFY_EMAIL and RESET_PASSWORD capabilities have independent purposes and configurable expiration,
-are stored hashed, and are consumed atomically. Resetting a password revokes existing sessions and
-outstanding reset links in the same transaction. Link GETs do not consume capabilities. Google-only
-customers can continue using their previously linked Google identity.
-
-## History authorization and immutable quotations
-
-History authorizes the authenticated customer identity within the supplier. New portal requests
-retain the backend-authenticated customer ID in their immutable inbound envelope; CUIT declarations
-never grant access. Those own requests remain available before contact verification.
-
-Previous channel or counter requests require a contact proof performed by that customer. Migration
-00063 records successful ownership separately from commercial contact trust. A contact already
-present on a legacy profile before registration can unlock that profile's earlier orders. A newly
-added contact on an adopted legacy profile unlocks only its proved channel/provisional history.
-A profile without previous contacts exposes no old history through CUIT matching. Historical portal
-envelopes without a recorded author require contact proof too; registration cannot reconstruct their
-author from the declared CUIT. Failed, superseded or cancelled challenges grant no access.
-
-GET /orders provides bounded pages; GET /orders/{rfqId} and legacy delivery-token resolution enforce
-the same ownership predicate. Draft contents and AI results are not returned. Until a quotation has
-been sent, the projection reports RECEIVED.
-Sent versions remain available while the seller edits another version internally.
-
-Every seller send confirms the client profile and creates a WEBAPP publication alongside the
-selected WhatsApp and/or email deliveries. At least one external delivery destination is required. Publication commits
-with delivery outcomes and the backend-controlled SENT transition; no browser push or notification
-subscription flow is included. An external provider failure does not withdraw a web publication.
-Publications do not duplicate seller messages in the conversation.
-
-Legacy /quotes/{token} links first discover only public supplier routing through
-GET /v1/public/quote-sends/{token}/site. A different hostname redirects to the registered supplier.
-After login, the API checks authorization before resolving the immutable delivery. Both legacy
-links and history open /orders/{rfqId}; the original delivery reference is retained in the URL so
-an old link keeps its original expiration and version. The old unauthenticated quote read and
-action endpoints return 401. A token alone no longer authorizes private content or actions.
-
-Customer responses are shared across deliveries of the same frozen version, so a response from
 WhatsApp and a visit from history show the same decision. Existing expiry, archive checks,
 idempotency, quote locking and deterministic state transitions remain enforced.
 
 The authenticated `/profile` page manages optional commercial contact collections through
-`GET`/`PUT /v1/customer/sites/{hostname}/profile`. It never modifies recovery email verification,
-passwords or Google links. See [Client profiles](client-profiles.md) for intake provenance,
+`GET`/`PUT /v1/customer/sites/{hostname}/profile` and the main contact through
+`PUT /v1/customer/sites/{hostname}/profile/main-contact`. It never modifies passwords or Google links. See [Client profiles](client-profiles.md) for intake provenance,
 uniqueness, primary-contact compatibility and proof-gated history transfers.
 
 ## Request intake
