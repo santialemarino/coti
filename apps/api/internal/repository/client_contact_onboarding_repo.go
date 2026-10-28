@@ -67,7 +67,8 @@ func (r *ClientContactRepository) FinishNameRequest(ctx context.Context, q Queri
 // MentionsCatalog reports whether any word of text names an active product or synonym of the account.
 func (r *ClientContactRepository) MentionsCatalog(ctx context.Context, q Querier, accountID uuid.UUID, text string) (bool, error) {
 	var found bool
-	err := q.QueryRow(ctx, `WITH ask AS (SELECT to_tsquery('spanish_unaccent'::regconfig, (SELECT string_agg(quote_literal(l),' | ') FROM unnest(tsvector_to_array(to_tsvector('spanish_unaccent'::regconfig,$2))) l)) AS query)
+	// The lexemes are already stemmed, so they are cast rather than passed through to_tsquery again.
+	err := q.QueryRow(ctx, `WITH ask AS (SELECT (SELECT string_agg(quote_literal(l),' | ') FROM unnest(tsvector_to_array(to_tsvector('spanish_unaccent'::regconfig,$2))) l)::tsquery AS query)
  SELECT EXISTS(SELECT 1 FROM product p, ask WHERE p.account_id=$1 AND p.is_active AND to_tsvector('spanish_unaccent'::regconfig,p.canonical_name) @@ ask.query)
  OR EXISTS(SELECT 1 FROM product_synonym s, ask WHERE s.account_id=$1 AND s.search_document @@ ask.query)`, accountID, text).Scan(&found)
 	return found, err
