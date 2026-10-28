@@ -120,11 +120,12 @@ when set; production uses the supplier's HTTPS hostname. Tests use fake mail/con
 Migration 00060 adds the supplier-scoped unique fiscal index. Migration 00061 creates contact
 collections and retained observations. Migration 00062 adds contact verification, a verified-live
 unique index, challenges, onboarding outbox, composite channel scope and immutable-CUIT protection.
-Legacy phones written as an Argentine national number (area 11, 2xx or 3xx, optional trunk 0)
-are stored in the +549 form WhatsApp reports; a value the contact normalizer would reject stays
-unverified. Each other legacy value is trusted for channel routing with one owner per account:
+Legacy Argentine phones (area 11, 2xx or 3xx, written nationally or after 54) are stored in the
++549 form WhatsApp reports; a value the contact normalizer would reject stays unverified, and so
+does a malformed email. Each other legacy value is trusted for channel routing with one owner per account:
 the profile with a CUIT, else the most recently created one. Every other copy stays unverified
-and raises a PENDING observation, with no source message, so a seller reviews the shared contact.
+and raises a PENDING observation, with no source message or CUIT, so a seller reviews the shared
+contact.
 Merged sources are retired.
 Migration 00063 stores customer-specific ownership and proof-gated provisional history with RLS
 and composite tenant foreign keys. Legacy commercial verification does not substitute for a

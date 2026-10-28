@@ -42,16 +42,15 @@ $$;
 -- +goose StatementEnd
 
 SELECT assert_migration_sees_all_rows('client');
--- A national Argentine number (area 11, 2xx or 3xx, optional trunk 0) takes the +549 form WhatsApp
--- reports; anything else keeps its digits and 00062 leaves it unverified.
+-- An Argentine number (area 11, 2xx or 3xx), national or after 54, takes the +549 form WhatsApp
+-- reports; anything else keeps its digits, and 00062 leaves it unverified unless it is E.164.
 INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,original_value)
  SELECT account_id,id,'WHATSAPP',CASE
+   WHEN national ~ '^(549|54|0)?(11[0-9]{8}|[23][0-9]{9})$' THEN '+549'||regexp_replace(national,'^(549|54|0)','')
    WHEN digits ~ '^\+' THEN digits
-   WHEN digits ~ '^00' THEN '+'||substr(digits,3)
-   WHEN digits ~ '^54[0-9]{10,11}$' THEN '+'||digits
-   WHEN digits ~ '^0?(11[0-9]{8}|[23][0-9]{9})$' THEN '+549'||regexp_replace(digits,'^0','')
    ELSE digits END,TRUE,'LEGACY',phone
- FROM (SELECT account_id,id,phone,regexp_replace(phone,'[^0-9+]','','g') AS digits FROM client WHERE phone IS NOT NULL AND btrim(phone)<>'') legacy;
+ FROM (SELECT account_id,id,phone,digits,regexp_replace(digits,'^(\+|00)54','54') AS national
+  FROM (SELECT account_id,id,phone,regexp_replace(phone,'[^0-9+]','','g') AS digits FROM client WHERE phone IS NOT NULL AND btrim(phone)<>'') stripped) legacy;
 INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,original_value)
  SELECT account_id,id,'EMAIL',lower(btrim(email)),TRUE,'LEGACY',email FROM client WHERE email IS NOT NULL AND btrim(email)<>'';
 
@@ -104,7 +103,7 @@ DROP TRIGGER seed_client_contacts ON client;
 DROP FUNCTION seed_client_contacts();
 DROP TABLE client_contact_observation;
 DROP TABLE client_contact;
-DROP FUNCTION assert_migration_sees_all_rows(regclass[]);
+DROP FUNCTION IF EXISTS assert_migration_sees_all_rows(regclass[]);
 DROP TYPE client_contact_review_status;
 DROP TYPE client_contact_source;
 ALTER TABLE client DROP CONSTRAINT ck_client_merge;

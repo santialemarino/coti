@@ -202,8 +202,8 @@ Four known traps:
   tables the owner creates, and migrations run as that role. It is written explicitly anyway,
   so nothing depends on the migrating role always being the same.
 - **A data migration under row level security updates nothing and still succeeds.** The owner
-  bypasses RLS only on tables that do not `FORCE` it (`arca_setup`, `branch_arca_setup`,
-  `invoice` do), and a non-owner without `BYPASSRLS` never bypasses it. So a migration that
+  bypasses RLS only on tables that do not `FORCE` it (`arca_setup` and `invoice`
+  do), and a non-owner without `BYPASSRLS` never bypasses it. So a migration that
   reads or rewrites rows starts with `SELECT assert_migration_sees_all_rows('<table>', …)`
   naming every table it touches: it raises when the migrating role would see a filtered view,
   instead of letting the statement match zero rows.

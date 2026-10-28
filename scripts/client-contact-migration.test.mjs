@@ -21,7 +21,7 @@ test(
     let client;
     try {
       await admin.query(`CREATE DATABASE ${name}`);
-      const migrate = (target) =>
+      const goose = (command, target) =>
         spawnSync(
           'go',
           [
@@ -31,18 +31,24 @@ test(
             'migrations',
             'postgres',
             url.toString(),
-            'up-to',
+            command,
             String(target),
           ],
           { cwd: API_DIR, encoding: 'utf8' },
         );
+      const migrate = (target) => goose('up-to', target);
       const stderr = (result) => result.stderr?.replaceAll(url.toString(), '[database]');
       let result = migrate(59);
       assert.equal(result.status, 0, stderr(result));
       client = new pg.Client({ connectionString: url.toString() });
       await client.connect();
       const account = randomUUID(),
+        otherAccount = randomUUID(),
         branch = randomUUID(),
+        requestBranch = randomUUID(),
+        otherOwner = randomUUID(),
+        nationalAfterCode = randomUUID(),
+        foreignPrefix = randomUUID(),
         first = randomUUID(),
         duplicate = randomUUID(),
         phoneOwner = randomUUID(),
@@ -56,16 +62,20 @@ test(
         account,
         'Contact migration fixture',
       ]);
-      await client.query("INSERT INTO branch(id,account_id,name) VALUES($1,$2,'Central')", [
-        branch,
-        account,
+      await client.query('INSERT INTO account(id,name) VALUES($1,$2)', [
+        otherAccount,
+        'Other supplier',
       ]);
+      await client.query(
+        "INSERT INTO branch(id,account_id,name,created_at) VALUES($1,$2,'Central','2026-01-01'),($3,$2,'Norte','2026-01-02'),(gen_random_uuid(),$4,'Otra','2026-01-01')",
+        [branch, account, requestBranch, otherAccount],
+      );
       const insertClient = (id, created, fields) =>
         client.query(
           'INSERT INTO client(id,account_id,created_at,name,tax_id,phone,email) VALUES($1,$2,$3,$4,$5,$6,$7)',
           [
             id,
-            account,
+            fields.account ?? account,
             created,
             fields.name ?? null,
             fields.taxId ?? null,
@@ -97,6 +107,32 @@ test(
         phone: '549 221 555 0303',
       });
       await insertClient(unparseable, '2026-01-06', { phone: '15 5555 0404' });
+      await insertClient(nationalAfterCode, '2026-01-07', { phone: '54 11 5555-0606' });
+      await insertClient(foreignPrefix, '2026-01-08', { phone: '0011 5555 0505' });
+      const malformedEmails = [
+        'trailing@example.com.',
+        'x\u0001y@example.com',
+        'a..b@example.com',
+        '<angle@example.com>',
+        'semi@example.com;',
+        'mailto:a@example.com',
+      ];
+      const malformed = malformedEmails.map(() => randomUUID());
+      for (const [index, email] of malformedEmails.entries()) {
+        await insertClient(malformed[index], '2026-01-09', { email });
+      }
+      // Another supplier's profile with the same phone is independent: no ranking crosses accounts.
+      await insertClient(otherOwner, '2026-03-01', { account: otherAccount, phone: '1155550101' });
+      // The shared copy's review lands in the branch that served the profile, not the oldest one.
+      const channel = randomUUID();
+      await client.query(
+        "INSERT INTO channel(id,account_id,branch_id,type,identifier) VALUES($1,$2,$3,'EMAIL','norte@example.test')",
+        [channel, account, requestBranch],
+      );
+      await client.query(
+        'INSERT INTO rfq(account_id,branch_id,channel_id,client_id) VALUES($1,$2,$3,$4)',
+        [account, requestBranch, channel, phoneCopy],
+      );
 
       result = migrate(60);
       assert.notEqual(result.status, 0, 'Duplicate profiles must stop migration');
@@ -106,7 +142,7 @@ test(
             account,
           ])
         ).rows[0].count,
-        9,
+        17,
       );
       await client.query('DELETE FROM client WHERE id=$1', [duplicate]);
       result = migrate(63);
@@ -168,17 +204,34 @@ test(
         value: '1555550404',
         verified: false,
       });
-
-      const observations = await client.query(
-        'SELECT branch_id,message_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status FROM client_contact_observation WHERE account_id=$1 ORDER BY kind::text,value,tax_id NULLS FIRST',
-        [account],
+      assert.deepEqual(verification(nationalAfterCode, 'WHATSAPP'), {
+        value: '+5491155550606',
+        verified: true,
+      });
+      assert.deepEqual(verification(foreignPrefix, 'WHATSAPP'), {
+        value: '001155550505',
+        verified: false,
+      });
+      for (const id of malformed) assert.equal(contact(id, 'EMAIL').verified, false);
+      const other = await client.query(
+        "SELECT c.value,c.verified_at IS NOT NULL AS verified,(SELECT count(*)::int FROM client_contact_observation o WHERE o.account_id=$1) AS observations FROM client_contact c WHERE c.client_id=$2 AND c.kind='WHATSAPP'",
+        [otherAccount, otherOwner],
       );
-      const review = (source, candidate, taxId, kind, value, declaredName, original) => ({
-        branch_id: branch,
+      assert.deepEqual(other.rows, [{ value: '+5491155550101', verified: true, observations: 0 }]);
+
+      const observationQuery = () =>
+        client.query(
+          'SELECT branch_id,message_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status FROM client_contact_observation WHERE account_id=$1 ORDER BY kind::text,value',
+          [account],
+        );
+      const observations = await observationQuery();
+      // tax_id stays empty so the losing CUIT profile's customer is not told a review is pending.
+      const review = (source, candidate, reviewBranch, kind, value, declaredName, original) => ({
+        branch_id: reviewBranch,
         message_id: null,
         source_client_id: source,
         candidate_client_id: candidate,
-        tax_id: taxId,
+        tax_id: null,
         kind,
         value,
         declared_name: declaredName,
@@ -189,23 +242,37 @@ test(
         review(
           emailOlder,
           emailNewer,
-          null,
+          branch,
           'EMAIL',
           'shared@example.test',
           null,
           'shared@example.test',
         ),
-        review(phoneCopy, phoneOwner, null, 'WHATSAPP', '+5491155550202', 'Walk-in', '1155550202'),
+        review(
+          phoneCopy,
+          phoneOwner,
+          requestBranch,
+          'WHATSAPP',
+          '+5491155550202',
+          'Walk-in',
+          '1155550202',
+        ),
         review(
           fiscalOlder,
           fiscalNewer,
-          '30222222220',
+          branch,
           'WHATSAPP',
           '+5492215550303',
           null,
           '0221 555-0303',
         ),
       ]);
+
+      result = goose('down-to', 61);
+      assert.equal(result.status, 0, stderr(result));
+      result = migrate(63);
+      assert.equal(result.status, 0, stderr(result));
+      assert.deepEqual((await observationQuery()).rows, observations.rows);
 
       const legacy = await client.query('SELECT phone,email FROM client WHERE id=$1', [first]);
       assert.deepEqual(legacy.rows[0], {

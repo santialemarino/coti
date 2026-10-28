@@ -11,13 +11,13 @@ WITH valid AS (
  SELECT c.id,c.account_id,c.client_id,c.kind,c.value,c.original_value,c.created_at,c.retired_at,cl.tax_id,cl.name,
   row_number() OVER owners AS owner_rank,first_value(c.client_id) OVER owners AS owner_id
  FROM client_contact c JOIN client cl ON cl.account_id=c.account_id AND cl.id=c.client_id
- WHERE CASE c.kind WHEN 'WHATSAPP' THEN c.value ~ '^\+[1-9][0-9]{6,14}$' ELSE c.value ~ '^[^[:space:]@]+@[^[:space:]@]+$' END
+ WHERE CASE c.kind WHEN 'WHATSAPP' THEN c.value ~ '^\+[1-9][0-9]{6,14}$' ELSE c.value ~ '^[a-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' AND c.value !~ '[[:cntrl:]]' END
  WINDOW owners AS (PARTITION BY c.account_id,c.kind,c.value,c.retired_at IS NULL ORDER BY cl.tax_id IS NOT NULL DESC,cl.created_at DESC,cl.id DESC)
 ), verified AS (
  UPDATE client_contact c SET verified_at=v.created_at FROM valid v WHERE c.id=v.id AND (v.owner_rank=1 OR v.retired_at IS NOT NULL)
 )
-INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status)
-SELECT account_id,branch_id,client_id,owner_id,tax_id,kind,value,name,original_text,'PENDING' FROM (
+INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,declared_name,original_text,status)
+SELECT account_id,branch_id,client_id,owner_id,kind,value,name,original_text,'PENDING' FROM (
  SELECT v.*,COALESCE(v.original_value,v.value) AS original_text,COALESCE(
   (SELECT branch_id FROM rfq WHERE account_id=v.account_id AND client_id=v.client_id ORDER BY created_at DESC,id DESC LIMIT 1),
   (SELECT branch_id FROM quote WHERE account_id=v.account_id AND client_id=v.client_id ORDER BY created_at DESC,id DESC LIMIT 1),
@@ -86,5 +86,6 @@ DROP TYPE client_contact_outbox_status;
 DROP TYPE client_contact_outbox_purpose;
 ALTER TABLE channel DROP CONSTRAINT uq_channel_account_branch;
 DROP TABLE client_contact_challenge;
+DELETE FROM client_contact_observation WHERE message_id IS NULL;
 ALTER TABLE client_contact DROP COLUMN verified_at;
 ALTER TABLE client_contact DROP COLUMN retired_at;
