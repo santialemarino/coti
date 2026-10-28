@@ -77,7 +77,14 @@ func (s *ClientContactVerificationService) RequestRecovery(ctx context.Context, 
 		if recent {
 			return domain.ErrLocked
 		}
-		// TODO(#205): apply the per-supplier destination cap and the cross-supplier spam cap here.
+		// Recovery codes count toward the same destination caps as verification codes, and are refused
+		// the same way, so a refusal does not tell recovery from another supplier's proofs.
+		if err := s.store.LockDestination(ctx, q, c.Kind, c.Value); err != nil {
+			return err
+		}
+		if err := s.checkDestination(ctx, q, p.AccountID, c.Kind, c.Value, true); err != nil {
+			return err
+		}
 		return s.store.CreateChallenge(ctx, q, *c)
 	})
 	if err != nil {
@@ -94,19 +101,30 @@ func (s *ClientContactVerificationService) RequestRecovery(ctx context.Context, 
 // RedeemRecovery consumes a recovery code inside the caller's transaction and returns the customer it
 // recovers. A wrong code spends an attempt and returns false; the caller commits so the attempt counts.
 func (s *ClientContactVerificationService) RedeemRecovery(ctx context.Context, q repository.Querier, accountID, challengeID uuid.UUID, code string) (uuid.UUID, bool, error) {
-	c, err := s.store.LockRecoveryChallenge(ctx, q, accountID, challengeID)
+	c, err := s.store.GetRecoveryChallenge(ctx, q, accountID, challengeID)
 	if errors.Is(err, domain.ErrNotFound) {
 		return uuid.Nil, false, domain.ErrUnauthenticated
 	}
 	if err != nil {
 		return uuid.Nil, false, err
 	}
+	if err := s.store.LockDestination(ctx, q, c.Kind, c.Value); err != nil {
+		return uuid.Nil, false, err
+	}
+	if c, err = s.store.LockRecoveryChallenge(ctx, q, accountID, challengeID); err != nil {
+		return uuid.Nil, false, err
+	}
 	if c.ConsumedAt != nil || !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 		return uuid.Nil, false, domain.ErrUnauthenticated
 	}
+	if err := s.checkDestination(ctx, q, accountID, c.Kind, c.Value, false); err != nil {
+		return uuid.Nil, false, err
+	}
 	p := domain.CustomerPrincipal{AccountID: accountID, CustomerID: c.CustomerID}
 	if subtle.ConstantTimeCompare([]byte(hashToken(c.ID.String()+":"+code)), []byte(c.TokenHash)) != 1 {
-		// TODO(#205): record the wrong code against the destination so its lockout counts it.
+		if err := s.store.CreateFailure(ctx, q, *c); err != nil {
+			return uuid.Nil, false, err
+		}
 		return uuid.Nil, false, s.store.FinishChallenge(ctx, q, p, c.ID, false)
 	}
 	// A contact removed or handed over since the code was sent recovers nothing.

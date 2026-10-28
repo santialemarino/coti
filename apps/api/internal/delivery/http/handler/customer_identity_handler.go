@@ -149,8 +149,8 @@ func (h *CustomerAuthHandler) RecoveryOptions(c *gin.Context) {
 // @Param hostname path string true "Registered supplier hostname"
 // @Param body body dto.CustomerRecoveryCodeRequest true "CUIT/CUIL and the chosen contact"
 // @Success 201 {object} dto.CustomerRecoveryCodeResponse
-// @Failure 400,404,422,423,503 {object} dto.ErrorResponse
-// @Failure 429 {object} dto.RateLimitResponse "Rate limit spent; retry_after_seconds says when"
+// @Failure 400,404,422,503 {object} dto.ErrorResponse
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout"
 // @Router /v1/customer/sites/{hostname}/auth/recovery/code [post]
 func (h *CustomerAuthHandler) RecoveryCode(c *gin.Context) {
 	var in dto.CustomerRecoveryCodeRequest
@@ -175,7 +175,7 @@ func (h *CustomerAuthHandler) RecoveryCode(c *gin.Context) {
 // @Param body body dto.CustomerRecoveryResetRequest true "Code and new password"
 // @Success 201 {object} dto.CustomerSessionResponse
 // @Failure 400,401,422 {object} dto.ErrorResponse
-// @Failure 429 {object} dto.RateLimitResponse "Rate limit spent; retry_after_seconds says when"
+// @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout"
 // @Router /v1/customer/sites/{hostname}/auth/recovery/reset [post]
 func (h *CustomerAuthHandler) RecoveryReset(c *gin.Context) {
 	var in dto.CustomerRecoveryResetRequest
