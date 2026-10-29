@@ -189,99 +189,8 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			}
 			return s.store.FinishChallenge(ctx, q, p, id, false)
 		}
-		candidates, err := s.contacts.contacts.FindProfiles(ctx, q, p.AccountID, "", c.Kind, c.Value)
-		if err != nil {
+		if err := s.applyProof(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
 			return err
-		}
-		if err := s.contacts.lockContactProfiles(ctx, q, p.AccountID, p.TaxID, candidates); err != nil {
-			return err
-		}
-		profile, err := s.contacts.profiles.GetByID(ctx, q, p.AccountID, c.ClientID)
-		if err != nil {
-			return err
-		}
-		if profile.TaxID == nil || *profile.TaxID != p.TaxID {
-			return domain.ErrForbidden
-		}
-		for _, candidate := range candidates {
-			if candidate.ID != c.ClientID && candidate.TaxID != nil {
-				return domain.ErrConflict
-			}
-		}
-		ids := []uuid.UUID{c.ClientID}
-		for _, candidate := range candidates {
-			if candidate.ID != c.ClientID {
-				ids = append(ids, candidate.ID)
-			}
-		}
-		collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, ids)
-		if err != nil {
-			return err
-		}
-		contacts := collections[c.ClientID]
-		present := false
-		for _, contact := range contacts {
-			if contact.Kind == c.Kind && contact.Value == c.Value {
-				present = true
-			}
-		}
-		if !present {
-			return domain.ErrNotFound
-		}
-		var sourceID *uuid.UUID
-		var merged []domain.ClientContact
-		for i := range candidates {
-			if candidates[i].ID != c.ClientID {
-				if sourceID != nil {
-					return domain.ErrConflict
-				}
-				sourceID = &candidates[i].ID
-			}
-		}
-		if sourceID != nil {
-			if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, c.Kind, c.Value); err != nil {
-				return err
-			}
-			if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, c.ClientID); err != nil {
-				return err
-			}
-		}
-		// Verifying first lets the proof this confirm establishes decide the merged primaries.
-		if err := s.store.MarkVerified(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
-			return err
-		}
-		access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, c.ClientID)
-		if err != nil {
-			return err
-		}
-		if sourceID != nil {
-			for _, incoming := range collections[*sourceID] {
-				found, hasKind := false, false
-				for _, existing := range contacts {
-					if existing.Kind == incoming.Kind {
-						hasKind = true
-						if existing.Value == incoming.Value {
-							found = true
-						}
-					}
-				}
-				if !found {
-					incoming.Primary = !hasKind && access.Proved
-					contacts = append(contacts, incoming)
-					merged = append(merged, incoming)
-				}
-			}
-		}
-		if err := s.contacts.contacts.Save(ctx, q, p.AccountID, c.ClientID, contacts, "CUSTOMER"); err != nil {
-			return err
-		}
-		if err := s.contacts.contacts.Declare(ctx, q, p, c.ClientID, merged); err != nil {
-			return err
-		}
-		if access.Proved {
-			if err := s.contacts.contacts.ProjectPrimaries(ctx, q, p.AccountID, c.ClientID); err != nil {
-				return err
-			}
 		}
 		return s.store.FinishChallenge(ctx, q, p, id, true)
 	})
@@ -289,6 +198,122 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		return err
 	}
 	return denied
+}
+
+// ProveRegisteredContact verifies a contact whose control was proved outside a code, such as an
+// address Google verified, through the same merge and ownership rules as a confirmed code.
+func (s *ClientContactVerificationService) ProveRegisteredContact(ctx context.Context, q repository.Querier, p domain.CustomerPrincipal, kind domain.ChannelType, value string) error {
+	if err := s.store.LockDestination(ctx, q, kind, value); err != nil {
+		return err
+	}
+	profiles, err := s.contacts.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
+	if err != nil {
+		return err
+	}
+	if len(profiles) != 1 {
+		return domain.ErrNotFound
+	}
+	return s.applyProof(ctx, q, p, profiles[0].ID, kind, value)
+}
+
+// applyProof verifies a proved contact on the customer's profile, merging the dumb profile that
+// already holds it verified, inside the caller's transaction.
+func (s *ClientContactVerificationService) applyProof(ctx context.Context, q repository.Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	candidates, err := s.contacts.contacts.FindProfiles(ctx, q, p.AccountID, "", kind, value)
+	if err != nil {
+		return err
+	}
+	if err := s.contacts.lockContactProfiles(ctx, q, p.AccountID, p.TaxID, candidates); err != nil {
+		return err
+	}
+	profile, err := s.contacts.profiles.GetByID(ctx, q, p.AccountID, clientID)
+	if err != nil {
+		return err
+	}
+	if profile.TaxID == nil || *profile.TaxID != p.TaxID {
+		return domain.ErrForbidden
+	}
+	for _, candidate := range candidates {
+		if candidate.ID != clientID && candidate.TaxID != nil {
+			return domain.ErrConflict
+		}
+	}
+	ids := []uuid.UUID{clientID}
+	for _, candidate := range candidates {
+		if candidate.ID != clientID {
+			ids = append(ids, candidate.ID)
+		}
+	}
+	collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, ids)
+	if err != nil {
+		return err
+	}
+	contacts := collections[clientID]
+	present := false
+	for _, contact := range contacts {
+		if contact.Kind == kind && contact.Value == value {
+			present = true
+		}
+	}
+	if !present {
+		return domain.ErrNotFound
+	}
+	var sourceID *uuid.UUID
+	var merged []domain.ClientContact
+	for i := range candidates {
+		if candidates[i].ID != clientID {
+			if sourceID != nil {
+				return domain.ErrConflict
+			}
+			sourceID = &candidates[i].ID
+		}
+	}
+	if sourceID != nil {
+		if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, kind, value); err != nil {
+			return err
+		}
+		if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, clientID); err != nil {
+			return err
+		}
+	}
+	// Verifying first lets the proof this confirm establishes decide the merged primaries.
+	if err := s.store.MarkVerified(ctx, q, p, clientID, kind, value); err != nil {
+		return err
+	}
+	access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, clientID)
+	if err != nil {
+		return err
+	}
+	if sourceID != nil {
+		for _, incoming := range collections[*sourceID] {
+			found, hasKind := false, false
+			for _, existing := range contacts {
+				if existing.Kind == incoming.Kind {
+					hasKind = true
+					if existing.Value == incoming.Value {
+						found = true
+					}
+				}
+			}
+			if !found {
+				incoming.Primary = !hasKind && access.Proved
+				contacts = append(contacts, incoming)
+				merged = append(merged, incoming)
+			}
+		}
+	}
+	if err := s.contacts.contacts.Save(ctx, q, p.AccountID, clientID, contacts, "CUSTOMER"); err != nil {
+		return err
+	}
+	if err := s.contacts.contacts.Declare(ctx, q, p, clientID, merged); err != nil {
+		return err
+	}
+	if access.Proved {
+		if err := s.contacts.contacts.ProjectPrimaries(ctx, q, p.AccountID, clientID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // checkDestination applies the destination caps; the caller holds its lock. The daily cap and the

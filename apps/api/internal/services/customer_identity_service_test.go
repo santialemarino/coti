@@ -54,14 +54,14 @@ func (f *customerCredentialsFake) ResetCustomerPassword(_ context.Context, _ rep
 	return nil
 }
 
-type customerGoogleFake struct{}
+type customerGoogleFake struct{ unverified bool }
 
 func (f *customerCredentialsFake) GetHostnameByDeliveryTokenCrossAccount(context.Context, repository.Querier, string) (string, error) {
 	return "", domain.ErrNotFound
 }
 
-func (customerGoogleFake) Exchange(context.Context, string, string, string, string) (*domain.CustomerGoogleIdentity, error) {
-	return &domain.CustomerGoogleIdentity{Subject: "stable-google-subject", Email: "customer@example.test", Name: "Customer"}, nil
+func (f customerGoogleFake) Exchange(context.Context, string, string, string, string) (*domain.CustomerGoogleIdentity, error) {
+	return &domain.CustomerGoogleIdentity{Subject: "stable-google-subject", Email: "customer@example.test", Name: "Customer", EmailVerified: !f.unverified}, nil
 }
 
 func customerIdentityFixture() (*CustomerAuthService, *customerCredentialsFake) {
@@ -83,11 +83,12 @@ func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *te
 	if err != nil || result.Login != nil || result.SignupToken == "" || store.identity != nil {
 		t.Fatalf("first Google sign-in: %+v %v", result, err)
 	}
-	login, err := svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil)
+	whatsapp := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: "+5491155550101", Primary: true}}
+	login, err := svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", Contacts: whatsapp}, nil)
 	if err != nil || login.Principal.TaxID != "20123456786" || store.identity.GoogleSubject == nil {
 		t.Fatalf("Google registration: %+v %v", login, err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil); !errors.Is(err, domain.ErrUnauthenticated) {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", Contacts: whatsapp}, nil); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("Google signup capability reused: %v", err)
 	}
 	known, err := svc.GoogleExchange(ctx, store.site.Hostname, "next-code", secret, secret)
@@ -108,7 +109,8 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, nil); !errors.Is(err, domain.ErrConflict) || store.identity.GoogleSubject != nil {
+	whatsapp := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: "+5491155550101", Primary: true}}
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID, Contacts: whatsapp}, nil); !errors.Is(err, domain.ErrConflict) || store.identity.GoogleSubject != nil {
 		t.Fatalf("unverified CUIT claimed existing credentials: %v", err)
 	}
 	result, err = svc.GoogleExchange(ctx, store.site.Hostname, "another-code", secret, secret)
@@ -117,11 +119,37 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 	}
 	wrong := registered.Principal
 	wrong.AccountID = uuid.New()
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, &wrong); !errors.Is(err, domain.ErrForbidden) {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID}, &wrong); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("cross-account Google link: %v", err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, &registered.Principal); err != nil || store.identity.GoogleSubject == nil {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID}, &registered.Principal); err != nil || store.identity.GoogleSubject == nil {
 		t.Fatalf("authenticated Google link: %v", err)
+	}
+}
+
+func TestCustomerGoogleRegistrationNeedsAContactAndOffersOnlyAVerifiedEmail(t *testing.T) {
+	ctx := context.Background()
+	secret, err := newTokenSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, store := customerIdentityFixture()
+	result, err := svc.GoogleExchange(ctx, store.site.Hostname, "code", secret, secret)
+	if err != nil || result.SignupEmail != "customer@example.test" {
+		t.Fatalf("verified Google address not offered: %+v %v", result, err)
+	}
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786"}, nil); !errors.Is(err, domain.ErrInvalidInput) || store.identity != nil {
+		t.Fatalf("registration without any contact: %v", err)
+	}
+
+	svc, store = customerIdentityFixture()
+	svc.WithIdentityProviders(store, customerGoogleFake{unverified: true})
+	result, err = svc.GoogleExchange(ctx, store.site.Hostname, "code", secret, secret)
+	if err != nil || result.SignupEmail != "" {
+		t.Fatalf("unverified Google address offered: %+v %v", result, err)
+	}
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", UseGoogleEmail: true}, nil); !errors.Is(err, domain.ErrInvalidInput) || store.identity != nil {
+		t.Fatalf("unverified Google address accepted as a contact: %v", err)
 	}
 }
 

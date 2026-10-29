@@ -19,7 +19,7 @@ type CustomerAuthService interface {
 	Logout(context.Context, domain.CustomerPrincipal) error
 	GoogleOptions(context.Context, string) (*domain.CustomerAuthOptions, error)
 	GoogleExchange(context.Context, string, string, string, string) (*domain.CustomerGoogleResult, error)
-	CompleteGoogle(context.Context, string, string, string, *domain.CustomerPrincipal, ...string) (*domain.CustomerLogin, error)
+	CompleteGoogle(context.Context, string, domain.CustomerGoogleCompletion, *domain.CustomerPrincipal) (*domain.CustomerLogin, error)
 	RecoveryOptions(context.Context, string, string) ([]domain.RecoveryContact, error)
 	RequestRecoveryCode(context.Context, string, string, uuid.UUID) (*domain.ContactChallenge, error)
 	ResetWithRecoveryCode(context.Context, string, uuid.UUID, string, string) (*domain.CustomerLogin, error)

@@ -58,13 +58,18 @@ type CustomerGoogleExchangeRequest struct {
 type CustomerGoogleExchangeResponse struct {
 	Session     *CustomerSessionResponse `json:"session,omitempty"`
 	SignupToken string                   `json:"signup_token,omitempty"`
+	// SignupEmail is the Google address the customer may choose as a contact, sent only when Google verified it.
+	SignupEmail string `json:"signup_email,omitempty"`
 }
 
-// CustomerGoogleCompleteRequest supplies CUIT/CUIL after a verified Google exchange.
+// CustomerGoogleCompleteRequest supplies CUIT/CUIL and the contacts after a verified Google exchange.
 type CustomerGoogleCompleteRequest struct {
-	Name  string `json:"name" binding:"max=255"`
-	Token string `json:"token" binding:"required,len=43"`
-	TaxID string `json:"tax_id" binding:"required,max=20"`
+	Name     string               `json:"name" binding:"max=255"`
+	Token    string               `json:"token" binding:"required,len=43"`
+	TaxID    string               `json:"tax_id" binding:"required,max=20"`
+	Contacts []ClientContactInput `json:"contacts" binding:"omitempty,dive"`
+	// UseGoogleEmail adds the Google address as a verified contact; a new registration needs it or a contact.
+	UseGoogleEmail bool `json:"use_google_email"`
 }
 
 // CustomerRecoveryOptionsRequest is the body for POST /v1/customer/sites/{hostname}/auth/recovery/options.
