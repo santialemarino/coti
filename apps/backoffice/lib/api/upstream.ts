@@ -65,6 +65,8 @@ export async function forwardToApi(
       },
     });
   }
+  // A body on a 204 makes the Response constructor throw, which would turn a success into a 500.
+  if (upstream.status === 204) return new NextResponse(null, { status: 204 });
   const text = await upstream.text();
   return new NextResponse(text, {
     status: upstream.status,
