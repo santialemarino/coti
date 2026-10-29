@@ -1158,6 +1158,7 @@ ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_ac
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_quote_message FOREIGN KEY (account_id, quote_message_id) REFERENCES quote_message(account_id, id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT uq_inbound_channel_message_account UNIQUE (account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
@@ -1730,6 +1731,7 @@ CREATE TABLE client_contact_observation (
  FOREIGN KEY (account_id,source_client_id) REFERENCES client(account_id,id),
  FOREIGN KEY (account_id,candidate_client_id) REFERENCES client(account_id,id),
  FOREIGN KEY (account_id,decided_by) REFERENCES app_user(account_id,id),
+ CONSTRAINT fk_client_contact_observation_message FOREIGN KEY (account_id,message_id) REFERENCES inbound_channel_message(account_id,id),
  UNIQUE(account_id,message_id,kind,value)
 );
 CREATE INDEX idx_contact_observation_pending ON client_contact_observation(account_id,branch_id,created_at) WHERE status='PENDING';
@@ -1787,13 +1789,20 @@ CREATE INDEX idx_contact_challenge_failure_destination ON client_contact_challen
 ALTER TABLE client_contact_challenge_failure ENABLE ROW LEVEL SECURITY;
 CREATE POLICY contact_challenge_failure_account_isolation ON client_contact_challenge_failure USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
 
--- Runs as the table owner so the anti-spam cap sees every supplier's proofs; returns only counts.
+-- Runs as the table owner so the anti-spam cap sees every supplier's proofs; returns only counts, and
+-- only for the caller's own account.
 CREATE FUNCTION contact_destination_activity(p_account_id UUID, p_kind channel_type, p_value TEXT, p_challenges_since TIMESTAMPTZ, p_failures_since TIMESTAMPTZ, p_all_since TIMESTAMPTZ)
  RETURNS TABLE(supplier_challenges INTEGER, supplier_failures INTEGER, all_challenges INTEGER)
- LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
- SELECT (SELECT count(*)::int FROM client_contact_challenge WHERE account_id=p_account_id AND kind=p_kind AND value=p_value AND created_at>p_challenges_since),
-        (SELECT count(*)::int FROM client_contact_challenge_failure WHERE account_id=p_account_id AND kind=p_kind AND value=p_value AND created_at>p_failures_since),
-        (SELECT count(*)::int FROM client_contact_challenge WHERE kind=p_kind AND value=p_value AND created_at>p_all_since)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+ IF p_account_id IS DISTINCT FROM app_current_account_id() THEN
+  RAISE EXCEPTION 'Destination activity is readable only for the current account' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT
+  (SELECT count(*)::int FROM client_contact_challenge c WHERE c.account_id=p_account_id AND c.kind=p_kind AND c.value=p_value AND c.created_at>p_challenges_since),
+  (SELECT count(*)::int FROM client_contact_challenge_failure f WHERE f.account_id=p_account_id AND f.kind=p_kind AND f.value=p_value AND f.created_at>p_failures_since),
+  (SELECT count(*)::int FROM client_contact_challenge c WHERE c.kind=p_kind AND c.value=p_value AND c.created_at>p_all_since);
+END;
 $$;
 REVOKE ALL ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) TO coti_app;
@@ -1831,6 +1840,19 @@ END;
 $$;
 
 CREATE TRIGGER protect_client_tax_id BEFORE UPDATE OF tax_id ON client FOR EACH ROW EXECUTE FUNCTION protect_client_tax_id();
+
+-- A registered profile is its customer's; only the schema owner, which runs migrations and teardown,
+-- may delete one.
+CREATE FUNCTION protect_registered_client() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF OLD.tax_id IS NOT NULL AND NOT pg_has_role(current_user,(SELECT relowner FROM pg_class WHERE oid=TG_RELID),'USAGE') THEN
+  RAISE EXCEPTION 'A client with a CUIT cannot be deleted' USING ERRCODE='23514';
+ END IF;
+ RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER protect_registered_client BEFORE DELETE ON client FOR EACH ROW EXECUTE FUNCTION protect_registered_client();
 
 CREATE TABLE customer_contact_ownership (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
