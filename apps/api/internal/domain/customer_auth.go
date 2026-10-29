@@ -75,6 +75,8 @@ type CustomerGoogleIdentity struct {
 	Subject string
 	Email   string
 	Name    string
+	// EmailVerified carries Google's email_verified claim; only a verified address may become a contact.
+	EmailVerified bool
 }
 
 // CustomerGoogleProvider exchanges a single-use authorization code and verifies its ID token.
@@ -97,6 +99,18 @@ type CustomerChallenge struct {
 type CustomerGoogleResult struct {
 	Login       *CustomerLogin
 	SignupToken string
+	// SignupEmail is the Google address the customer may choose as a contact; empty when Google did not verify it.
+	SignupEmail string
+}
+
+// CustomerGoogleCompletion is a first Google registration: its own contacts, and the Google address
+// only when the customer chose it.
+type CustomerGoogleCompletion struct {
+	Token          string
+	TaxID          string
+	Name           string
+	Contacts       []ClientContact
+	UseGoogleEmail bool
 }
 
 // CustomerAuthOptions is the public supplier identity and customer credential configuration.

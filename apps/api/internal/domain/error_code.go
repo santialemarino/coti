@@ -113,6 +113,8 @@ const (
 	CodeClientMerged ErrorCode = "CLIENT_MERGED"
 	// A seller merges only profiles whose orders all sit in their own branches.
 	CodeClientOutOfReach ErrorCode = "CLIENT_OUT_OF_REACH"
+	// The Google address a customer chose is already verified on another CUIT/CUIL's profile.
+	CodeContactInUse ErrorCode = "CONTACT_IN_USE"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

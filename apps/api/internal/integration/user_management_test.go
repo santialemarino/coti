@@ -53,6 +53,7 @@ type env struct {
 type rfqTestProviders struct {
 	extractor domain.RFQExtractor
 	embedder  domain.Embedder
+	google    domain.CustomerGoogleProvider
 }
 
 // captureMailer stands in for the transport so a test can read the link that was mailed.
@@ -173,7 +174,7 @@ func newEnvWithRFQProviders(
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil)
+	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), providers.google)
 	authTokenRepo := repository.NewAuthTokenRepository()
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
@@ -205,7 +206,7 @@ func newEnvWithRFQProviders(
 	customerAuth.WithClientProfiles(contactService)
 	contactMessenger := &captureContactMessenger{}
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
-	customerAuth.WithContactRecovery(contactVerification)
+	customerAuth.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
 	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {

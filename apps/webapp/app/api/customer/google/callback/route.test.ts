@@ -5,6 +5,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { cookieJar } from '@repo/vitest-config/cookies';
 import { GET } from '@/app/api/customer/google/callback/route';
 import {
+  GOOGLE_EMAIL_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   GOOGLE_STATE_COOKIE,
   postCustomerAuth,
@@ -72,9 +73,27 @@ it('keeps a first-time Google identity in a short-lived HttpOnly cookie until CU
     'p'.repeat(43),
     expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
   );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    '',
+    expect.objectContaining({ expires: new Date(0), path: '/' }),
+  );
   expect(acceptCustomerSession).not.toHaveBeenCalled();
   await GET(callback());
   expect(postCustomerAuth).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the Google-verified address to offer it as an optional contact', async () => {
+  const jar = flow();
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ signup_token: 'p'.repeat(43), signup_email: 'juan@gmail.com' })),
+  );
+  await GET(callback());
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    'juan@gmail.com',
+    expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+  );
 });
 
 it('starts a known account session and refuses an external post-login destination', async () => {

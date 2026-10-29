@@ -77,7 +77,7 @@ func (h *CustomerAuthHandler) GoogleExchange(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	response := dto.CustomerGoogleExchangeResponse{SignupToken: result.SignupToken}
+	response := dto.CustomerGoogleExchangeResponse{SignupToken: result.SignupToken, SignupEmail: result.SignupEmail}
 	if result.Login != nil {
 		response.Session = &dto.CustomerSessionResponse{SessionToken: result.Login.SessionToken, Customer: toCustomerIdentityResponse(result.Login.Principal)}
 	}
@@ -90,7 +90,7 @@ func (h *CustomerAuthHandler) GoogleExchange(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param hostname path string true "Registered supplier hostname"
-// @Param body body dto.CustomerGoogleCompleteRequest true "Verified Google signup token and CUIT/CUIL"
+// @Param body body dto.CustomerGoogleCompleteRequest true "Verified Google signup token, CUIT/CUIL and contacts"
 // @Success 201 {object} dto.CustomerSessionResponse
 // @Failure 400,401,409 {object} dto.ErrorResponse
 // @Router /v1/customer/sites/{hostname}/auth/google/complete [post]
@@ -104,7 +104,11 @@ func (h *CustomerAuthHandler) CompleteGoogle(c *gin.Context) {
 	if p, ok := middleware.CustomerFrom(c); ok {
 		principal = &p
 	}
-	login, err := h.auth.CompleteGoogle(c.Request.Context(), c.Param("hostname"), in.Token, in.TaxID, principal, in.Name)
+	contacts := make([]domain.ClientContact, 0, len(in.Contacts))
+	for _, contact := range in.Contacts {
+		contacts = append(contacts, domain.ClientContact{Kind: domain.ChannelType(contact.Kind), Value: contact.Value, Primary: contact.Primary})
+	}
+	login, err := h.auth.CompleteGoogle(c.Request.Context(), c.Param("hostname"), domain.CustomerGoogleCompletion{Token: in.Token, TaxID: in.TaxID, Name: in.Name, Contacts: contacts, UseGoogleEmail: in.UseGoogleEmail}, principal)
 	if err != nil {
 		Respond(c, err)
 		return

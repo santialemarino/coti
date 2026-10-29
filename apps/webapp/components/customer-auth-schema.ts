@@ -35,6 +35,7 @@ export function customerAuthSchema(
       email: z.string(),
       name: z.string().optional(),
       phone: z.string().optional(),
+      useGoogleEmail: z.boolean().optional(),
     })
     .superRefine((values, ctx) => {
       const add = (path: keyof typeof values, key: string, params?: Record<string, number>) =>
@@ -42,7 +43,14 @@ export function customerAuthSchema(
       if (['signup', 'google'].includes(mode) && !values.name?.trim()) add('name', 'nameRequired');
       if (mode === 'signup' && !values.email.trim() && !values.phone?.trim())
         add('email', 'contactRequired');
-      if (mode === 'signup' && values.phone && !isValidPhoneNumber(values.phone))
+      if (
+        mode === 'google' &&
+        !values.useGoogleEmail &&
+        !values.email.trim() &&
+        !values.phone?.trim()
+      )
+        add('email', 'contactRequiredGoogle');
+      if (['signup', 'google'].includes(mode) && values.phone && !isValidPhoneNumber(values.phone))
         add('phone', 'phoneInvalid');
       if (
         ['login', 'signup', 'google', 'linkGoogle'].includes(mode) &&
@@ -57,7 +65,7 @@ export function customerAuthSchema(
         if (values.confirmation !== values.password) add('confirmation', 'passwordMismatch');
       }
       if (
-        mode === 'signup' &&
+        ['signup', 'google'].includes(mode) &&
         values.email.trim() !== '' &&
         !z.email().max(255).safeParse(values.email.trim()).success
       )
