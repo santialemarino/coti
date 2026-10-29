@@ -51,7 +51,11 @@ func (f *fakeContactStore) LockMergeProfiles(_ context.Context, _ repository.Que
 	}
 	return result, nil
 }
-func (f *fakeContactStore) CopyContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error {
+func (f *fakeContactStore) MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	f.writes++
+	return nil
+}
+func (f *fakeContactStore) CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error {
 	f.writes++
 	return nil
 }

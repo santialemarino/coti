@@ -14,6 +14,7 @@ import (
 type contactProfiles interface {
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
 	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.Client, error)
+	GetSurvivor(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.NewClient) (*domain.Client, error)
 }
 
@@ -38,7 +39,8 @@ type contactStore interface {
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
 	ListMergeCandidates(context.Context, repository.Querier, domain.Tenant, uuid.UUID) ([]domain.Client, error)
 	LockMergeProfiles(context.Context, repository.Querier, domain.Tenant, []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error)
-	CopyContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
+	MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
+	CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	Lock(context.Context, repository.Querier, uuid.UUID, ...string) error
 	GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error)
 	SaveFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ClientContactUpdate) error

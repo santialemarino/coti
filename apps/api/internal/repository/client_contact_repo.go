@@ -280,6 +280,9 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if !allowed {
 		return domain.ErrForbidden
 	}
+	if err = r.CompleteNameRequests(ctx, q, tenant.AccountID, source); err != nil {
+		return err
+	}
 	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
 		return err
 	}

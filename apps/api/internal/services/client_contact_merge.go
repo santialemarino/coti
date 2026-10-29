@@ -51,6 +51,9 @@ func (s *ClientContactService) RenameClient(ctx context.Context, tenant domain.T
 		if err := s.contacts.UpdateName(ctx, q, tenant.AccountID, clientID, name); err != nil {
 			return err
 		}
+		if err := s.contacts.CompleteNameRequests(ctx, q, tenant.AccountID, clientID); err != nil {
+			return err
+		}
 		client, err = s.profiles.GetByID(ctx, q, tenant.AccountID, clientID)
 		return err
 	})
@@ -89,8 +92,17 @@ func (s *ClientContactService) ResolveSuggestion(ctx context.Context, tenant dom
 			} else if keep != nil && *keep != target {
 				return domain.ErrInvalidInput
 			}
-			if err := s.mergeProvisional(ctx, q, tenant, source, target); err != nil {
+			// Either side may have been merged since the case was raised; it is settled on survivors.
+			if source, err = s.profiles.GetSurvivor(ctx, q, tenant.AccountID, source); err != nil {
 				return err
+			}
+			if target, err = s.profiles.GetSurvivor(ctx, q, tenant.AccountID, target); err != nil {
+				return err
+			}
+			if source != target {
+				if err := s.mergeProvisional(ctx, q, tenant, source, target); err != nil {
+					return err
+				}
 			}
 		}
 		return s.contacts.Decide(ctx, q, tenant, id, string(action))
@@ -123,7 +135,7 @@ func (s *ClientContactService) mergeProvisional(ctx context.Context, q repositor
 			return domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
 		}
 	}
-	if err := s.contacts.CopyContacts(ctx, q, tenant.AccountID, source, target); err != nil {
+	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, source, target); err != nil {
 		return err
 	}
 	if err := s.contacts.Merge(ctx, q, tenant, source, target); err != nil {

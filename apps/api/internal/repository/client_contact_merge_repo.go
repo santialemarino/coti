@@ -52,13 +52,27 @@ func (r *ClientContactRepository) LockMergeProfiles(ctx context.Context, q Queri
 	return result, rows.Err()
 }
 
-// CopyContacts gives the target an unverified copy of each live source contact it lacks, primary only
-// where the target has none of that kind. The retired verified original keeps routing to the target.
-func (r *ClientContactRepository) CopyContacts(ctx context.Context, q Querier, accountID, source, target uuid.UUID) error {
+// MoveContacts retires the source's live contacts and gives the target a copy of each, primary only
+// where the target has none of that kind. A copy keeps its channel verification: between two
+// provisional profiles it still means the contact reached the supplier, and retiring the original
+// first frees the one live verified row per contact.
+func (r *ClientContactRepository) MoveContacts(ctx context.Context, q Querier, accountID, source, target uuid.UUID) error {
+	if _, err := q.Exec(ctx, `UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND retired_at IS NULL`, accountID, source); err != nil {
+		return err
+	}
 	_, err := q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,original_value,verified_at)
- SELECT s.account_id,$3,s.kind,s.value,s.is_primary AND NOT EXISTS(SELECT 1 FROM client_contact t WHERE t.account_id=$1 AND t.client_id=$3 AND t.kind=s.kind AND t.is_primary),s.source,s.original_value,NULL
- FROM client_contact s WHERE s.account_id=$1 AND s.client_id=$2 AND s.retired_at IS NULL
- ON CONFLICT(account_id,client_id,kind,value) DO NOTHING`, accountID, source, target)
+ SELECT s.account_id,$3,s.kind,s.value,s.is_primary AND NOT EXISTS(SELECT 1 FROM client_contact t WHERE t.account_id=$1 AND t.client_id=$3 AND t.kind=s.kind AND t.is_primary),s.source,s.original_value,s.verified_at
+ FROM client_contact s WHERE s.account_id=$1 AND s.client_id=$2 AND s.retired_at=now()
+ ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET verified_at=COALESCE(client_contact.verified_at,excluded.verified_at)`, accountID, source, target)
+	return err
+}
+
+// CompleteNameRequests settles every open name question sent to one of the profile's contacts, so a
+// late reply cannot rename a profile whose name was already decided.
+func (r *ClientContactRepository) CompleteNameRequests(ctx context.Context, q Querier, accountID, clientID uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_outbox o SET status='COMPLETED',status_changed_at=now()
+ WHERE o.account_id=$1 AND o.purpose='REQUEST_NAME' AND o.status<>'COMPLETED'
+   AND EXISTS(SELECT 1 FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.kind=o.kind AND c.value=o.value)`, accountID, clientID)
 	return err
 }
 
