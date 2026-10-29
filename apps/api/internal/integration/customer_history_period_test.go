@@ -21,7 +21,7 @@ func TestCustomerHistory_RecycledContactOpensOnlyOrdersSinceItsProof(t *testing.
 	phone := "+5491155550142"
 	whatsapp := e.historyChannel(t, account, branch, "WHATSAPP")
 
-	host, tokenA := e.registerCustomer(t, account, "20123456786", "")
+	host, tokenA := e.registerCustomer(t, account, "20123456786")
 	e.verifyCustomerContact(t, account, "20123456786", domain.ChannelTypeWhatsApp, phone)
 	provedByA := e.contactOwnershipTime(t, account, "20123456786", phone)
 	earlier := e.observedOrder(t, account, branch, whatsapp, phone, provedByA, nil)
@@ -33,7 +33,7 @@ func TestCustomerHistory_RecycledContactOpensOnlyOrdersSinceItsProof(t *testing.
 		t.Fatalf("remove contact: %d %s", rec.Code, rec.Body)
 	}
 
-	_, tokenB := e.registerCustomer(t, account, "30712345671", "")
+	_, tokenB := e.registerCustomer(t, account, "30712345671")
 	var customerB uuid.UUID
 	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id='30712345671'`, account).Scan(&customerB); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestCustomerHistory_MergedProfileKeepsItsEarlierOrders(t *testing.T) {
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND id=$2`, account, order, source); err != nil {
 		t.Fatal(err)
 	}
-	host, token := e.registerCustomer(t, account, "20123456786", "")
+	host, token := e.registerCustomer(t, account, "20123456786")
 	e.verifyCustomerContact(t, account, "20123456786", domain.ChannelTypeEmail, email)
 	if !e.customerOrderIDs(t, host, token)[order] {
 		t.Fatal("a merged profile's earlier order left the history")
@@ -96,7 +96,7 @@ func TestCustomerHistory_LegacyProofOpensTheProfilePast(t *testing.T) {
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND id=$2`, account, order, profile); err != nil {
 		t.Fatal(err)
 	}
-	host, token := e.registerCustomer(t, account, "20123456786", "")
+	host, token := e.registerCustomer(t, account, "20123456786")
 	declare := map[string]any{"name": "Juan Perez", "contacts": []map[string]any{
 		{"kind": "EMAIL", "value": "customer20123456786@example.test", "primary": true},
 		{"kind": "EMAIL", "value": legacy, "primary": false},
