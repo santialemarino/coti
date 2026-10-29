@@ -72,18 +72,19 @@ func TestClientContacts_RegistrationLinkRefusesWithoutPortalOrWindow(t *testing.
 	}
 
 	channel := e.seedWhatsAppInbox(t, account, branch)
-	wrote := func(ago time.Duration) {
+	writeOn := func(branch, channel uuid.UUID, ago time.Duration) {
 		t.Helper()
 		var rfq uuid.UUID
 		at := time.Now().Add(-ago)
-		if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO rfq(account_id,branch_id,channel_id,raw_text,received_at) VALUES($1,$2,$3,'Pedido',$4) RETURNING id`, account, branch, channel.id, at).Scan(&rfq); err != nil {
+		if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO rfq(account_id,branch_id,channel_id,raw_text,received_at) VALUES($1,$2,$3,'Pedido',$4) RETURNING id`, account, branch, channel, at).Scan(&rfq); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO inbound_channel_message(account_id,branch_id,channel_id,rfq_id,external_message_id,sender_id,body,payload,provider_received_at) VALUES($1,$2,$3,$4,$5,$6,'Pedido','{}',$7)`,
-			account, branch, channel.id, rfq, uuid.NewString(), digits, at); err != nil {
+			account, branch, channel, rfq, uuid.NewString(), digits, at); err != nil {
 			t.Fatal(err)
 		}
 	}
+	wrote := func(ago time.Duration) { t.Helper(); writeOn(branch, channel.id, ago) }
 	closed := func(when string) {
 		t.Helper()
 		err := service.SendRegistrationLink(ctx, tenant, clientID, domain.ChannelTypeWhatsApp)
@@ -94,6 +95,12 @@ func TestClientContacts_RegistrationLinkRefusesWithoutPortalOrWindow(t *testing.
 	closed("never wrote")
 	wrote(25 * time.Hour)
 	closed("wrote 25 hours ago")
+	// The window belongs to the branch's own WhatsApp number: a recent message elsewhere opens nothing.
+	other := e.seedBranch(t, account, "Registration link window Sur")
+	writeOn(other, e.seedWhatsAppInbox(t, account, other).id, time.Hour)
+	closed("wrote an hour ago to another branch's WhatsApp")
+	writeOn(branch, e.historyChannel(t, account, branch, "EMAIL"), time.Hour)
+	closed("wrote an hour ago through the branch's email")
 	if len(messenger.messages) != 0 {
 		t.Fatalf("a refused link reached the provider: %+v", messenger.messages)
 	}
