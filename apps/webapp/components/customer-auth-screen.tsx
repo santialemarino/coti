@@ -1,5 +1,6 @@
 'use client';
 
+import { Fragment } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -13,6 +14,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Checkbox,
   Form,
   FormControl,
   FormField,
@@ -40,6 +42,7 @@ interface CustomerAuthScreenProps {
   next: string;
   minimum: number;
   taxId?: string;
+  googleEmail?: string;
   initialError?: string;
   googleEnabled: boolean;
 }
@@ -51,6 +54,7 @@ export function CustomerAuthScreen({
   next,
   minimum,
   taxId = '',
+  googleEmail,
   initialError,
   googleEnabled,
 }: CustomerAuthScreenProps) {
@@ -63,12 +67,20 @@ export function CustomerAuthScreen({
     resolver: zodResolver(
       customerAuthSchema(mode, (key, values) => t(`validation.${key}`, values), minimum),
     ),
-    defaultValues: { taxId, password: '', confirmation: '', email: '', name: '', phone: '' },
+    defaultValues: {
+      taxId,
+      password: '',
+      confirmation: '',
+      email: '',
+      name: '',
+      phone: '',
+      useGoogleEmail: false,
+    },
   });
   const fields: ('name' | 'taxId' | 'email' | 'phone' | 'password' | 'confirmation')[] = [];
   if (mode === 'signup' || mode === 'google') fields.push('name');
   if (['login', 'signup', 'google', 'linkGoogle'].includes(mode)) fields.push('taxId');
-  if (mode === 'signup') fields.push('email', 'phone');
+  if (mode === 'signup' || mode === 'google') fields.push('email', 'phone');
   if (['login', 'signup'].includes(mode)) fields.push('password');
   if (mode === 'signup') fields.push('confirmation');
   const loginUrl = `${ROUTES.login}?method=password&next=${encodeURIComponent(next)}`;
@@ -88,6 +100,7 @@ export function CustomerAuthScreen({
     email: string;
     name?: string;
     phone?: string;
+    useGoogleEmail?: boolean;
   }) {
     const result =
       mode === 'login'
@@ -104,6 +117,13 @@ export function CustomerAuthScreen({
               name: values.name,
               next,
               link: mode === 'linkGoogle',
+              ...(mode === 'google'
+                ? {
+                    email: values.email.trim(),
+                    phone: values.phone || '',
+                    useGoogleEmail: Boolean(googleEmail && values.useGoogleEmail),
+                  }
+                : {}),
             });
     if (result.error) form.setError('root', { message: t(`errors.${result.error}`) });
   }
@@ -183,67 +203,108 @@ export function CustomerAuthScreen({
                       className="flex flex-col gap-y-5"
                     >
                       {fields.map((name) => (
-                        <FormField
-                          key={name}
-                          control={form.control}
-                          name={name}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel
-                                required={!(['email', 'phone'].includes(name) && mode === 'signup')}
-                              >
-                                {t(
-                                  `fields.${name}${name === 'email' && mode === 'signup' ? 'Optional' : ''}`,
-                                )}
-                              </FormLabel>
-                              <FormControl>
-                                {name === 'phone' ? (
-                                  <PhoneInput
-                                    {...field}
-                                    value={field.value || ''}
-                                    formatters={formatters}
-                                    countryLabel={phoneLabels('country')}
-                                    countrySearchPlaceholder={phoneLabels('search')}
-                                    countryEmptyLabel={phoneLabels('empty')}
-                                    landlineNotice={{
-                                      message: phoneLabels('landline'),
-                                      action: (number) => phoneLabels('mobile', { number }),
-                                    }}
-                                  />
-                                ) : name === 'name' ? (
-                                  <Input
-                                    {...field}
-                                    value={field.value || ''}
-                                    autoComplete="name"
-                                    maxLength={255}
-                                  />
-                                ) : name === 'taxId' ? (
-                                  <TaxIdInput
-                                    kind="cuit"
-                                    {...field}
-                                    readOnly={mode === 'linkGoogle'}
-                                    autoComplete="username"
-                                  />
-                                ) : (
-                                  <Input
-                                    {...field}
-                                    type={name === 'email' ? 'email' : 'password'}
-                                    maxLength={name === 'email' ? 255 : 72}
-                                    autoComplete={
-                                      name === 'email'
-                                        ? 'email'
-                                        : mode === 'login'
-                                          ? 'current-password'
-                                          : 'new-password'
-                                    }
-                                    passwordToggleLabel={common('form.togglePassword')}
-                                  />
-                                )}
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                        <Fragment key={name}>
+                          {mode === 'google' && name === 'email' ? (
+                            <div className="flex flex-col gap-y-3">
+                              <p className="text-paragraph-sm text-foreground-muted">
+                                {t('googleContactHint')}
+                              </p>
+                              {googleEmail ? (
+                                <FormField
+                                  control={form.control}
+                                  name="useGoogleEmail"
+                                  render={({ field }) => (
+                                    <FormItem className="flex-row items-start gap-x-2">
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={Boolean(field.value)}
+                                          onCheckedChange={(checked) => {
+                                            field.onChange(checked === true);
+                                            if (form.formState.isSubmitted)
+                                              void form.trigger('email');
+                                          }}
+                                          className="mt-0.5"
+                                        />
+                                      </FormControl>
+                                      <FormLabel className="cursor-pointer break-all text-paragraph-sm">
+                                        {t('useGoogleEmail', { email: googleEmail })}
+                                      </FormLabel>
+                                    </FormItem>
+                                  )}
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <FormField
+                            control={form.control}
+                            name={name}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel
+                                  required={
+                                    !(
+                                      ['email', 'phone'].includes(name) &&
+                                      ['signup', 'google'].includes(mode)
+                                    )
+                                  }
+                                >
+                                  {t(
+                                    mode === 'google' && name === 'email'
+                                      ? 'fields.emailOther'
+                                      : mode === 'google' && name === 'phone'
+                                        ? 'fields.phoneOptional'
+                                        : `fields.${name}${name === 'email' && mode === 'signup' ? 'Optional' : ''}`,
+                                  )}
+                                </FormLabel>
+                                <FormControl>
+                                  {name === 'phone' ? (
+                                    <PhoneInput
+                                      {...field}
+                                      value={field.value || ''}
+                                      formatters={formatters}
+                                      countryLabel={phoneLabels('country')}
+                                      countrySearchPlaceholder={phoneLabels('search')}
+                                      countryEmptyLabel={phoneLabels('empty')}
+                                      landlineNotice={{
+                                        message: phoneLabels('landline'),
+                                        action: (number) => phoneLabels('mobile', { number }),
+                                      }}
+                                    />
+                                  ) : name === 'name' ? (
+                                    <Input
+                                      {...field}
+                                      value={field.value || ''}
+                                      autoComplete="name"
+                                      maxLength={255}
+                                    />
+                                  ) : name === 'taxId' ? (
+                                    <TaxIdInput
+                                      kind="cuit"
+                                      {...field}
+                                      readOnly={mode === 'linkGoogle'}
+                                      autoComplete="username"
+                                    />
+                                  ) : (
+                                    <Input
+                                      {...field}
+                                      type={name === 'email' ? 'email' : 'password'}
+                                      maxLength={name === 'email' ? 255 : 72}
+                                      autoComplete={
+                                        name === 'email'
+                                          ? 'email'
+                                          : mode === 'login'
+                                            ? 'current-password'
+                                            : 'new-password'
+                                      }
+                                      passwordToggleLabel={common('form.togglePassword')}
+                                    />
+                                  )}
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </Fragment>
                       ))}
                       <FormRootMessage />
                       <PendingButton

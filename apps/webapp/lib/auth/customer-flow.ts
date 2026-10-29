@@ -11,12 +11,19 @@ export const GOOGLE_STATE_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_google_state' : 'coti_google_state';
 export const GOOGLE_SIGNUP_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_google_signup' : 'coti_google_signup';
+export const GOOGLE_EMAIL_COOKIE =
+  process.env.NODE_ENV === 'production' ? '__Host-coti_google_email' : 'coti_google_email';
 export const CUSTOMER_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax',
   path: '/',
 } as const;
+
+/* An expired Secure set: a bare delete carries no Secure flag, so a browser drops it for a __Host- cookie. */
+export function clearCustomerCookie(jar: Awaited<ReturnType<typeof cookies>>, name: string) {
+  jar.set(name, '', { ...CUSTOMER_COOKIE_OPTIONS, expires: new Date(0) });
+}
 
 export function safeCustomerDestination(value: unknown, fallback: string = ROUTES.orders): string {
   if (
@@ -61,4 +68,9 @@ export async function postCustomerAuth(path: string, body: unknown, authenticate
 
 export async function pendingGoogleSignup(): Promise<string | undefined> {
   return (await cookies()).get(GOOGLE_SIGNUP_COOKIE)?.value;
+}
+
+/* The address Google verified, offered as an optional contact; display only, the API keeps its own. */
+export async function pendingGoogleEmail(): Promise<string | undefined> {
+  return (await cookies()).get(GOOGLE_EMAIL_COOKIE)?.value || undefined;
 }
