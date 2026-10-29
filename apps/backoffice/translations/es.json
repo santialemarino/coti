@@ -410,7 +410,7 @@
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
     "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
     "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
-    "WHATSAPP_WINDOW_CLOSED": "No te escribió por WhatsApp en 24 h. Copiá el link desde «Enviar link de registro» en su pedido.",
+    "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
     "CLIENT_REGISTERED": "Esta ficha tiene CUIT: sus datos los administra el cliente desde su cuenta.",
     "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
     "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."

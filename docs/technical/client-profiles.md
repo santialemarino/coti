@@ -450,8 +450,8 @@ the invoice card offers a copy dialog so the seller can send it through their ow
 client detail also offers an explicit registration-link send through a configured contact channel.
 WhatsApp takes free text only within 24 hours of the customer's last message, so that send goes by
 WhatsApp only while the customer wrote to one of the branch's WhatsApp channels in the last 24 hours;
-otherwise it is refused with 422 `WHATSAPP_WINDOW_CLOSED` and the seller copies the link from the
-order's dialog instead. An account with no `public_hostname` has no portal to link to, and the send,
+otherwise it is refused with 422 `WHATSAPP_WINDOW_CLOSED`, and the seller sends it by email when the
+client has one or waits for the customer to write. An account with no `public_hostname` has no portal to link to, and the send,
 like a customer's verification request, answers 503 `PORTAL_NOT_CONFIGURED`.
 
 Quotation publication cannot assign a CUIT; it creates provisional profiles or selects existing ones.
