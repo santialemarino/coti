@@ -159,7 +159,7 @@ func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *t
 	route := domain.InboundChannelRoute{AccountID: account, BranchID: branch, ChannelID: channel, ChannelType: domain.ChannelTypeEmail}
 	value := "unknown@example.test"
 	taxID := "20123456786"
-	message := uuid.New()
+	message := e.storedMessage(t, account, branch)
 	record := func(id uuid.UUID, hints domain.ClientContactHints) {
 		t.Helper()
 		if err := e.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
@@ -194,7 +194,7 @@ func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *t
 		t.Fatalf("provisional name=%q", initialName)
 	}
 	name := "Juan Perez"
-	record(uuid.New(), domain.ClientContactHints{Name: &name, TaxID: &taxID})
+	record(e.storedMessage(t, account, branch), domain.ClientContactHints{Name: &name, TaxID: &taxID})
 	if err := service.CompleteInbound(ctx, route, domain.ChannelTypeEmail, value, domain.ContactReplyContext{}); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestClientContacts_UnknownSendersStartWithDisplayNameAndNeverClaimCUIT(t *t
 		t.Fatal("onboarding did not retain a name-only provisional identity")
 	}
 	changed := "Unrequested Rename"
-	record(uuid.New(), domain.ClientContactHints{Name: &changed})
+	record(e.storedMessage(t, account, branch), domain.ClientContactHints{Name: &changed})
 	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT name FROM client WHERE account_id=$1`, account).Scan(&storedName); err != nil {
 		t.Fatal(err)
 	}

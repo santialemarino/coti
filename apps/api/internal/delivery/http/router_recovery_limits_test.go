@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,15 +77,44 @@ func TestRecoveryRoutesShareOneBucketAcrossKeyCaseAndValueSpelling(t *testing.T)
 	}
 }
 
+// countingRecovery counts the recovery steps that reached the service.
+type countingRecovery struct {
+	acceptingRecovery
+	calls *atomic.Int32
+}
+
+func (r countingRecovery) RecoveryOptions(ctx context.Context, host, taxID string) ([]domain.RecoveryContact, error) {
+	r.calls.Add(1)
+	return r.acceptingRecovery.RecoveryOptions(ctx, host, taxID)
+}
+func (r countingRecovery) RequestRecoveryCode(ctx context.Context, host, taxID string, contact uuid.UUID) (*domain.ContactChallenge, error) {
+	r.calls.Add(1)
+	return r.acceptingRecovery.RequestRecoveryCode(ctx, host, taxID, contact)
+}
+func (r countingRecovery) ResetWithRecoveryCode(ctx context.Context, host string, id uuid.UUID, code, password string) (*domain.CustomerLogin, error) {
+	r.calls.Add(1)
+	return r.acceptingRecovery.ResetWithRecoveryCode(ctx, host, id, code, password)
+}
+
+// The limiter refuses a body whose key it cannot read with its own envelope, before the handler.
+// The options and code bodies are ones the handler would accept; a reset body the handler would
+// accept always names an id, so there the envelope and the untouched service are the proof.
 func TestRecoveryRoutesRefuseABodyWithoutAReadableKey(t *testing.T) {
 	t.Parallel()
 	for path, body := range map[string]string{
-		"/auth/recovery/options": `{"cuit":"20123456786"}`,
+		"/auth/recovery/options": `{"tax_id":"not a cuit"}`,
 		"/auth/recovery/code":    `{"tax_id":"not a cuit","contact_id":"` + uuid.NewString() + `"}`,
 		"/auth/recovery/reset":   `{"code":"123456","password":"x"}`,
 	} {
-		if response := callContactRoute(recoveryLimitRouter(), http.MethodPost, path, body, "", "10.0.2.1:1111"); response.Code != http.StatusBadRequest {
-			t.Fatalf("%s with %s = %d, want 400", path, body, response.Code)
+		calls := &atomic.Int32{}
+		cfg := &config.Config{RateLimit: config.RateLimitConfig{Enabled: true, Window: time.Minute, Global: 100,
+			Credentials: recoveryRouteLimit, Mail: recoveryRouteLimit}}
+		router := NewRouter(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Handlers{CustomerAuth: handler.NewCustomerAuthHandler(countingRecovery{calls: calls})},
+			Auth{Customer: tokenCustomers{}}, RateLimit{Limiter: ratelimit.NewMemory(nil)})
+		response := callContactRoute(router, http.MethodPost, path, body, "", "10.0.2.1:1111")
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"`+string(domain.CodeInvalidInput)+`"`) || calls.Load() != 0 {
+			t.Fatalf("%s with %s = %d %s, service calls %d; want the limiter's 400 %s and no call", path, body, response.Code, response.Body, calls.Load(), domain.CodeInvalidInput)
 		}
 	}
 }

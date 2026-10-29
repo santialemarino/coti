@@ -18,8 +18,13 @@ $$;
 REVOKE ALL ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) TO coti_app;
 
--- An observation whose message is gone, or belongs to another account, keeps the review but not the link.
+-- A portal request's observation stored the request id, which is its message's external id: it is
+-- pointed at that message. One whose message is gone, or another account's, keeps the review but not
+-- the link.
 SELECT assert_migration_sees_all_rows('client_contact_observation','inbound_channel_message');
+UPDATE client_contact_observation o SET message_id=m.id FROM inbound_channel_message m
+ WHERE o.message_id IS NOT NULL AND m.account_id=o.account_id AND m.branch_id=o.branch_id AND m.external_message_id=o.message_id::text
+   AND NOT EXISTS(SELECT 1 FROM inbound_channel_message x WHERE x.account_id=o.account_id AND x.id=o.message_id);
 UPDATE client_contact_observation o SET message_id=NULL
  WHERE o.message_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inbound_channel_message m WHERE m.account_id=o.account_id AND m.id=o.message_id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT uq_inbound_channel_message_account UNIQUE(account_id,id);

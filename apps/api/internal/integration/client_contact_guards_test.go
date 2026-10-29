@@ -19,6 +19,28 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
 
+// storedMessage seeds one received request and the inbound message carrying it, for an observation to
+// point at.
+func (e *env) storedMessage(t *testing.T, account, branch uuid.UUID) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var channel, rfq, id uuid.UUID
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel(account_id,branch_id,type) VALUES($1,$2,'WEBAPP') ON CONFLICT DO NOTHING`, account, branch); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM channel WHERE account_id=$1 AND branch_id=$2 AND type='WEBAPP' AND identifier IS NULL`, account, branch).Scan(&channel); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO rfq(account_id,branch_id,channel_id,raw_text) VALUES($1,$2,$3,'Pedido') RETURNING id`, account, branch, channel).Scan(&rfq); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO inbound_channel_message(account_id,branch_id,channel_id,rfq_id,external_message_id,sender_id,body,payload,provider_received_at) VALUES($1,$2,$3,$4,$5,'sender','Pedido','{}',now()) RETURNING id`,
+		account, branch, channel, rfq, uuid.NewString()).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 // A registration link needs the supplier's portal hostname, and by WhatsApp it needs the customer to
 // have written to the branch within the last 24 hours; each refusal carries its own code.
 func TestClientContacts_RegistrationLinkRefusesWithoutPortalOrWindow(t *testing.T) {
@@ -85,21 +107,29 @@ func TestClientContacts_RegistrationLinkRefusesWithoutPortalOrWindow(t *testing.
 }
 
 // An observation's message belongs to its own account: a message of another account, or none at
-// all, is refused, and 00069 unlinks the observations that already pointed nowhere.
+// all, is refused. 00069 points a portal request's observation, which held the request id, at its
+// message, and unlinks the observations that still point nowhere.
 func TestClientContacts_ObservationMessageBelongsToItsAccount(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	account, branch := e.seedAccount(t, "Observation message")
 	other, otherBranch := e.seedAccount(t, "Observation foreign message")
 	channel := e.seedWhatsAppInbox(t, other, otherBranch)
-	var rfq, foreign uuid.UUID
-	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO rfq(account_id,branch_id,channel_id,raw_text) VALUES($1,$2,$3,'Pedido') RETURNING id`, other, otherBranch, channel.id).Scan(&rfq); err != nil {
-		t.Fatal(err)
+	message := func(account, branch, channel uuid.UUID, external string) uuid.UUID {
+		t.Helper()
+		var rfq, id uuid.UUID
+		if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO rfq(account_id,branch_id,channel_id,raw_text) VALUES($1,$2,$3,'Pedido') RETURNING id`, account, branch, channel).Scan(&rfq); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO inbound_channel_message(account_id,branch_id,channel_id,rfq_id,external_message_id,sender_id,body,payload,provider_received_at) VALUES($1,$2,$3,$4,$5,'5491100000000','Pedido','{}',now()) RETURNING id`,
+			account, branch, channel, rfq, external).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
 	}
-	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO inbound_channel_message(account_id,branch_id,channel_id,rfq_id,external_message_id,sender_id,body,payload,provider_received_at) VALUES($1,$2,$3,$4,$5,'5491100000000','Pedido','{}',now()) RETURNING id`,
-		other, otherBranch, channel.id, rfq, uuid.NewString()).Scan(&foreign); err != nil {
-		t.Fatal(err)
-	}
+	foreign := message(other, otherBranch, channel.id, uuid.NewString())
+	request := uuid.New()
+	portal := message(account, branch, e.historyChannel(t, account, branch, "EMAIL"), request.String())
 	insert := `INSERT INTO client_contact_observation(account_id,branch_id,message_id,kind,value,original_text,status) VALUES($1,$2,$3,'WHATSAPP','+5491100000000','Pedido','RECORDED')`
 	for name, message := range map[string]uuid.UUID{"another account's message": foreign, "a missing message": uuid.New()} {
 		if _, err := e.db.CrossAccount().Exec(ctx, insert, account, branch, message); err == nil {
@@ -124,8 +154,11 @@ func TestClientContacts_ObservationMessageBelongsToItsAccount(t *testing.T) {
 	if _, err := tx.Exec(ctx, markers.Replace(down)); err != nil {
 		t.Fatalf("migrate down: %v", err)
 	}
-	var orphan, kept uuid.UUID
+	var orphan, kept, requested uuid.UUID
 	if err := tx.QueryRow(ctx, insert+` RETURNING id`, account, branch, foreign).Scan(&orphan); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, insert+` RETURNING id`, account, branch, request).Scan(&requested); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.QueryRow(ctx, insert+` RETURNING id`, other, otherBranch, foreign).Scan(&kept); err != nil {
@@ -134,11 +167,12 @@ func TestClientContacts_ObservationMessageBelongsToItsAccount(t *testing.T) {
 	if _, err := tx.Exec(ctx, markers.Replace(up)); err != nil {
 		t.Fatalf("migrate up over an orphan: %v", err)
 	}
-	var orphanMessage, keptMessage *uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT (SELECT message_id FROM client_contact_observation WHERE id=$1),(SELECT message_id FROM client_contact_observation WHERE id=$2)`, orphan, kept).Scan(&orphanMessage, &keptMessage); err != nil {
+	var orphanMessage, keptMessage, requestedMessage *uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT (SELECT message_id FROM client_contact_observation WHERE id=$1),(SELECT message_id FROM client_contact_observation WHERE id=$2),(SELECT message_id FROM client_contact_observation WHERE id=$3)`,
+		orphan, kept, requested).Scan(&orphanMessage, &keptMessage, &requestedMessage); err != nil {
 		t.Fatal(err)
 	}
-	if orphanMessage != nil || keptMessage == nil || *keptMessage != foreign {
-		t.Fatalf("after 00069: orphan message = %v, kept message = %v, want nil and %s", orphanMessage, keptMessage, foreign)
+	if orphanMessage != nil || keptMessage == nil || *keptMessage != foreign || requestedMessage == nil || *requestedMessage != portal {
+		t.Fatalf("after 00069: orphan %v, kept %v, portal request %v; want nil, %s and %s", orphanMessage, keptMessage, requestedMessage, foreign, portal)
 	}
 }
