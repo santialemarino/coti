@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { useForm, type FieldErrors, type Resolver } from 'react-hook-form';
 
 import {
+  AnimatedHeight,
   Button,
   Form,
   FormRootMessage,
@@ -14,7 +15,6 @@ import {
   PendingButton,
   Stepper,
 } from '@repo/ui/components';
-import { AnimatedHeight } from '@/app/(auth)/_components/animated-height';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { AccountStep } from '@/app/(auth)/signup/_components/account-step';
 import { AdminStep } from '@/app/(auth)/signup/_components/admin-step';

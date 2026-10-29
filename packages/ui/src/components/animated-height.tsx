@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useAnimate, useReducedMotion, type AnimationPlaybackControls } from 'motion/react';
 
-import { EASE, MOTION } from '@repo/ui/lib';
+import { EASE, MOTION } from '../lib/motion';
 
-interface AnimatedHeightProps {
+export interface AnimatedHeightProps {
   /* Changing this is what arms the box, and the only thing that does. */
   trigger: string;
   children: React.ReactNode;
@@ -13,8 +13,8 @@ interface AnimatedHeightProps {
 
 /*
  * Grows and shrinks into the size its content just became, instead of snapping to it in a single
- * frame. The auth card is vertically centred, so a height that changes abruptly moves the card's top
- * edge with it and the whole screen appears to jump.
+ * frame. A vertically centred card moves its top edge with an abrupt height change, and the whole
+ * screen appears to jump.
  *
  * The height is measured and animated directly rather than with motion's `layout`, which
  * scale-corrects its children and would squash a form's inputs mid-flight. It is animated
