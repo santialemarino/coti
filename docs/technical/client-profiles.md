@@ -63,6 +63,15 @@ pending. Successful proof also records customer-specific contact ownership and s
 to the source orders before the merge. Delivery destinations already recorded on sends remain immutable. Staff cannot bypass
 proof using the retired contact suggestion mutation endpoint, which returns 403.
 
+The source's other contacts keep routing. An inbound message from one of them attaches to the fiscal
+profile, with no new provisional profile and no name question. The marker is the source's retired,
+verified contact row together with `merged_into`; no column records it. Routing gives no ownership:
+the contact stays pending on the fiscal profile, has no `customer_contact_ownership` row, and its
+new orders reach the customer only through the profile's own history. Routing yields to a live
+verified contact: once anyone in the supplier proves that destination, messages go to the profile
+that proved it. Routing stops when the customer removes the pending copy from their profile. When
+several merges retired the same destination, the latest one routes.
+
 ## Adopting an earlier profile
 
 A CUIT is public, so registering one that an earlier seller-entered profile already carries links
