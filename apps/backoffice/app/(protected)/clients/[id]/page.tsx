@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { MailIcon, PhoneIcon, UserRoundIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -22,6 +22,8 @@ import {
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ClientFiscalForm } from '@/app/(protected)/clients/[id]/_components/client-fiscal-form';
+import { ClientMergeDialog } from '@/app/(protected)/clients/[id]/_components/client-merge-dialog';
+import { ClientNameEditor } from '@/app/(protected)/clients/[id]/_components/client-name-editor';
 import { ClientRegistrationLink } from '@/app/(protected)/clients/[id]/_components/client-registration-link';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
@@ -65,13 +67,21 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
     [profile, availableTags, fiscal] = await Promise.all([
       getClient(id),
       getClientTags(),
-      account.invoicingEnabled ? getClientFiscal(id) : null,
+      // A merged profile's id answers with its survivor, whose fiscal data is read after the redirect.
+      account.invoicingEnabled
+        ? getClientFiscal(id).catch((error: unknown) => {
+            if (errorCodeOf(error) === 'NOT_FOUND') return null;
+            throw error;
+          })
+        : null,
     ]);
   } catch (error) {
     if (error instanceof ApiError && errorCodeOf(error) === 'NOT_FOUND') notFound();
     throw error;
   }
+  if (profile.client.id !== id) redirect(ROUTES.clientDetail(profile.client.id));
   const name = clientDisplayName(profile.client, t('unnamed'));
+  const registered = Boolean(profile.client.taxId);
 
   return (
     <PageShell>
@@ -91,11 +101,15 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             <CardTitle>{t('profile.contactTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-y-4">
-            <ClientRegistrationLink
-              clientId={id}
-              phone={profile.client.phone}
-              email={profile.client.email}
-            />
+            <ClientNameEditor clientId={id} name={profile.client.name} registered={registered} />
+            <div className="flex flex-wrap gap-2">
+              <ClientRegistrationLink
+                clientId={id}
+                phone={profile.client.phone}
+                email={profile.client.email}
+              />
+              {registered ? null : <ClientMergeDialog clientId={id} name={name} />}
+            </div>
             <div className="flex items-start gap-x-3">
               <PhoneIcon aria-hidden="true" className="mt-0.5 size-4 text-foreground-subtle" />
               <div className="flex flex-col gap-y-0.5">

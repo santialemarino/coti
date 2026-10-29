@@ -6,18 +6,8 @@ import { usePathname } from 'next/navigation';
 import { UsersIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import {
-  Button,
-  Card,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  EmptyState,
-  InlineLink,
-  MetaList,
-  Skeleton,
-} from '@repo/ui/components';
+import { Button, Card, EmptyState, MetaList, Skeleton } from '@repo/ui/components';
+import { ClientContactSuggestionDialog } from '@/app/(protected)/clients/_components/client-contact-suggestion-dialog';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ROUTES } from '@/config/routes';
 import {
@@ -123,7 +113,10 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
                 <h2 className="text-paragraph-sm-medium">
                   {item.candidateName ?? item.declaredName ?? t('unknown')}
                 </h2>
-                <MetaList items={[item.taxId, item.value]} className="wrap-anywhere" />
+                <MetaList
+                  items={[item.sourceName, item.taxId, item.value]}
+                  className="wrap-anywhere"
+                />
               </div>
               <Button
                 variant="outline"
@@ -137,45 +130,15 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
           ))
         )}
       </div>
-      <Dialog
-        open={selected !== null}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null);
+      <ClientContactSuggestionDialog
+        suggestion={selected}
+        branchId={activeBranchId}
+        onClose={() => setSelected(null)}
+        onResolved={() => {
+          setSelected(null);
+          window.dispatchEvent(new Event('client-contact-suggestions-changed'));
         }}
-      >
-        <DialogContent aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{t('reviewTitle')}</DialogTitle>
-          </DialogHeader>
-          {selected ? (
-            <div className="flex flex-col gap-y-4">
-              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-paragraph-sm">
-                <dt>{t('taxId')}</dt>
-                <dd>{selected.taxId ?? t('absent')}</dd>
-                <dt>{t('incoming')}</dt>
-                <dd className="wrap-anywhere">{selected.value}</dd>
-                <dt>{t('candidate')}</dt>
-                <dd>
-                  {selected.candidateClientId ? (
-                    <InlineLink asChild>
-                      <Link href={ROUTES.clientDetail(selected.candidateClientId)}>
-                        {selected.candidateName ?? selected.taxId}
-                      </Link>
-                    </InlineLink>
-                  ) : (
-                    t('absent')
-                  )}
-                </dd>
-              </dl>
-              <h3 className="text-paragraph-sm-medium">{t('original')}</h3>
-              <pre className="max-h-52 whitespace-pre-wrap wrap-anywhere scroll-area text-paragraph-sm">
-                {selected.originalText}
-              </pre>
-              <p className="text-paragraph-sm text-foreground-muted">{t('verificationRequired')}</p>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      />
     </>
   );
 }

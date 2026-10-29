@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROUTES } from '@/config/routes';
 import type { ClientSale } from '@/lib/api/client-profiles';
+import { ApiError } from '@/lib/api/errors';
 import messages from '@/translations/es.json';
 
 vi.mock('next-intl/server', () => ({
@@ -30,6 +31,23 @@ vi.mock('@/app/(protected)/clients/[id]/_components/client-tag-editor', () => ({
 }));
 vi.mock('@/app/(protected)/clients/[id]/_components/client-fiscal-form', () => ({
   ClientFiscalForm: () => <div data-testid="fiscal-form" />,
+}));
+vi.mock('@/app/(protected)/clients/[id]/_components/client-name-editor', () => ({
+  ClientNameEditor: ({ registered }: { registered: boolean }) => (
+    <div data-testid="name-editor" data-registered={String(registered)} />
+  ),
+}));
+vi.mock('@/app/(protected)/clients/[id]/_components/client-merge-dialog', () => ({
+  ClientMergeDialog: () => <div data-testid="merge-dialog" />,
+}));
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  notFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
+  }),
+  redirect: vi.fn((path: string) => {
+    throw new Error(`NEXT_REDIRECT ${path}`);
+  }),
 }));
 
 const { getAccount } = await import('@/lib/api/account');
@@ -138,5 +156,44 @@ describe('ClientProfilePage accepted sales', () => {
 
     expect(view.queryByRole('columnheader', { name: profile.table.invoice })).toBeNull();
     expect(view.queryByText(profile.invoiceStatuses.PENDING)).toBeNull();
+  });
+});
+
+describe('ClientProfilePage seller actions', () => {
+  beforeEach(() => {
+    vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled: true } as never);
+  });
+
+  it('offers rename and merge on a profile without a CUIT', async () => {
+    const view = await renderPage();
+
+    expect(view.getByTestId('name-editor').dataset.registered).toBe('false');
+    expect(view.getByTestId('merge-dialog')).toBeTruthy();
+  });
+
+  // A registered profile's name and identity are its customer's.
+  it('offers neither on a registered profile', async () => {
+    vi.mocked(getClient).mockResolvedValue({
+      client: { id: 'c1', name: 'Obra Norte', phone: null, email: null, taxId: '20123456786' },
+      tags: [],
+      sales: [],
+    } as never);
+
+    const view = await renderPage();
+
+    expect(view.getByTestId('name-editor').dataset.registered).toBe('true');
+    expect(view.queryByTestId('merge-dialog')).toBeNull();
+  });
+
+  // An old link to a merged profile lands on the profile it was merged into.
+  it('redirects a merged profile to its survivor', async () => {
+    vi.mocked(getClient).mockResolvedValue({
+      client: { id: 'survivor', name: 'Obra Norte', phone: null, email: null },
+      tags: [],
+      sales: [],
+    } as never);
+    vi.mocked(getClientFiscal).mockRejectedValue(new ApiError('NOT_FOUND', 404));
+
+    await expect(renderPage()).rejects.toThrow(`NEXT_REDIRECT ${ROUTES.clientDetail('survivor')}`);
   });
 });
