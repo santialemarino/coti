@@ -33,6 +33,7 @@ type contactStore interface {
 	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error)
 	HasObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
 	FindProfiles(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) ([]domain.Client, error)
+	FindMergedRoute(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string) ([]domain.Client, error)
 	ListObservations(context.Context, repository.Querier, domain.Tenant) ([]domain.ContactObservation, error)
 	GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error)
 	CreateObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ContactObservation) error
@@ -269,14 +270,14 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 	if err != nil || seen {
 		return err
 	}
-	profiles, err := s.contacts.FindProfiles(ctx, q, route.AccountID, "", kind, value)
+	profiles, err := s.findSender(ctx, q, route.AccountID, kind, value)
 	if err != nil {
 		return err
 	}
 	if err := s.lockContactProfiles(ctx, q, route.AccountID, "", profiles); err != nil {
 		return err
 	}
-	profiles, err = s.contacts.FindProfiles(ctx, q, route.AccountID, "", kind, value)
+	profiles, err = s.findSender(ctx, q, route.AccountID, kind, value)
 	if err != nil {
 		return err
 	}
@@ -333,4 +334,14 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 		return store.AttachContactObservations(ctx, q, route.AccountID, *observation.SourceClientID, kind, value)
 	}
 	return nil
+}
+
+// findSender identifies a sender by its live verified contact, else by the merge that retired it.
+// A merge route never outranks a verified contact, so proving the contact elsewhere takes it over.
+func (s *ClientContactService) findSender(ctx context.Context, q repository.Querier, accountID uuid.UUID, kind domain.ChannelType, value string) ([]domain.Client, error) {
+	profiles, err := s.contacts.FindProfiles(ctx, q, accountID, "", kind, value)
+	if err != nil || len(profiles) > 0 {
+		return profiles, err
+	}
+	return s.contacts.FindMergedRoute(ctx, q, accountID, kind, value)
 }

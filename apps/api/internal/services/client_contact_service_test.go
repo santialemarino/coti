@@ -51,6 +51,9 @@ func (f *fakeContactStore) PriorSeparation(context.Context, repository.Querier, 
 func (f *fakeContactStore) FindProfiles(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) ([]domain.Client, error) {
 	return f.profiles, nil
 }
+func (f *fakeContactStore) FindMergedRoute(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string) ([]domain.Client, error) {
+	return nil, nil
+}
 func (f *fakeContactStore) List(_ context.Context, _ repository.Querier, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error) {
 	result := make(map[uuid.UUID][]domain.ClientContact)
 	for _, id := range ids {

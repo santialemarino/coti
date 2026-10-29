@@ -122,6 +122,29 @@ func (r *ClientContactRepository) FindProfiles(ctx context.Context, q Querier, a
 	return result, rows.Err()
 }
 
+// FindMergedRoute returns the profile a merged provisional profile's verified contact still routes to,
+// while that profile keeps the unverified copy the merge gave it. The latest merge wins.
+func (r *ClientContactRepository) FindMergedRoute(ctx context.Context, q Querier, accountID uuid.UUID, kind domain.ChannelType, value string) ([]domain.Client, error) {
+	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND id=(
+ SELECT source.merged_into FROM client_contact retired JOIN client source ON source.account_id=retired.account_id AND source.id=retired.client_id
+ WHERE retired.account_id=$1 AND retired.kind=$2 AND retired.value=$3 AND retired.verified_at IS NOT NULL AND retired.retired_at IS NOT NULL AND source.merged_into IS NOT NULL
+   AND EXISTS(SELECT 1 FROM client_contact kept WHERE kept.account_id=$1 AND kept.client_id=source.merged_into AND kept.kind=$2 AND kept.value=$3 AND kept.retired_at IS NULL)
+ ORDER BY retired.retired_at DESC,retired.id LIMIT 1)`, accountID, kind, value)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]domain.Client, 0, 1)
+	for rows.Next() {
+		c, err := scanClient(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *c)
+	}
+	return result, rows.Err()
+}
+
 // HasAssociations checks whether enriching a fiscal identifier could expose earlier requests.
 func (r *ClientContactRepository) HasAssociations(ctx context.Context, q Querier, accountID, clientID uuid.UUID) (bool, error) {
 	var found bool
