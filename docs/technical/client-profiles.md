@@ -409,7 +409,8 @@ omitted field clears. It never writes `tax_id`:
   `INVALID_TAX_ID`.
 
 The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
-its own immutable copy of the receiver, which names the CUIT when there is one and the DNI otherwise.
+its own immutable copy of the receiver, which names the CUIT when there is one, else the DNI, and no
+document at all for an unidentified consumidor final below the threshold described next.
 
 Migration `00059_client_dni.sql` moved every 7–8 digit `tax_id` into `dni` and narrowed `tax_id` to
 11 digits. It refuses to run, naming the count, if any `tax_id` is neither shape: no route ever
@@ -419,7 +420,9 @@ migration to guess at.
 An invoice A needs the receiver's CUIT, which only the customer's registered account provides, so
 a DNI never satisfies it (`RECEIVER_CUIT_REQUIRED`). An invoice B at or above
 `INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT` needs a CUIT or a DNI (`RECEIVER_ID_REQUIRED`), and an
-invoice B below it goes to an unidentified consumidor final with no document at all. While the
+invoice B below it goes to an unidentified consumidor final with no document at all. An invoice C,
+which an issuer that is not IVA-registered bills to everyone, follows the same threshold rule as B.
+While the
 preview (`GET /v1/quotes/{quoteId}/invoice`) reports either receiver issue, it also carries
 `customer_signup_url`: the supplier's customer sign-up page at `https://<public_hostname>/signup`,
 or under `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local stack. An account with no `public_hostname` gets
