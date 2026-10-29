@@ -40,8 +40,8 @@ describe('forwardToApi fiscal documents', () => {
     expect(headers.get('Authorization')).toBe('Bearer session-token');
     expect(headers.get('X-Branch-Id')).toBe('branch-id');
   });
-  it('passes a 204 through with no body', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
+  it.each([204, 205, 304])('passes a %i through with no body', async (status) => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status }));
     const request = new Request('http://localhost/api/clients/id/merge', {
       headers: { 'X-Branch-Id': 'branch-id' },
     });
@@ -50,7 +50,7 @@ describe('forwardToApi fiscal documents', () => {
       method: 'POST',
       body: '{}',
     });
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(status);
     expect(await response.text()).toBe('');
   });
   it('refuses unauthenticated document downloads before contacting the API', async () => {

@@ -8,6 +8,9 @@ import { API_URL } from '@/lib/config';
 
 export const BRANCH_HEADER = 'X-Branch-Id';
 
+// The statuses the Fetch standard forbids a body on.
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 interface ForwardInit {
   path: string;
   method: string;
@@ -65,8 +68,9 @@ export async function forwardToApi(
       },
     });
   }
-  // A body on a 204 makes the Response constructor throw, which would turn a success into a 500.
-  if (upstream.status === 204) return new NextResponse(null, { status: 204 });
+  // A body on a null-body status makes the Response constructor throw, turning the answer into a 500.
+  if (NULL_BODY_STATUSES.has(upstream.status))
+    return new NextResponse(null, { status: upstream.status });
   const text = await upstream.text();
   return new NextResponse(text, {
     status: upstream.status,
