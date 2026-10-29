@@ -107,6 +107,8 @@ const (
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
 	// A customer profile holds a bounded number of contacts.
 	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
+	// The Google address a customer chose is already verified on another CUIT/CUIL's profile.
+	CodeContactInUse ErrorCode = "CONTACT_IN_USE"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

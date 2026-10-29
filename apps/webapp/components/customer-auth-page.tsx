@@ -10,6 +10,7 @@ interface CustomerAuthPageProps {
   mode: CustomerAuthMode;
   next: string;
   taxId?: string;
+  googleEmail?: string;
   initialError?: string;
 }
 

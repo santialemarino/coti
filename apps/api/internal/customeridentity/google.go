@@ -50,8 +50,8 @@ func (g *Google) Exchange(ctx context.Context, code, verifier, redirect, nonce s
 		Verified bool   `json:"email_verified"`
 		Name     string `json:"name"`
 	}
-	if err := id.Claims(&claims); err != nil || !claims.Verified || id.Subject == "" {
+	if err := id.Claims(&claims); err != nil || id.Subject == "" {
 		return nil, domain.ErrUnauthenticated
 	}
-	return &domain.CustomerGoogleIdentity{Subject: id.Subject, Email: claims.Email, Name: claims.Name}, nil
+	return &domain.CustomerGoogleIdentity{Subject: id.Subject, Email: claims.Email, Name: claims.Name, EmailVerified: claims.Verified}, nil
 }

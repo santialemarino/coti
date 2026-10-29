@@ -13,6 +13,24 @@ as the identity and session. Only registration assigns the CUIT. Subsequent prof
 and fiscal edits cannot assign, replace or clear it; PostgreSQL also rejects changing a non-null
 client tax identifier. Credentials remain supplier-scoped and separate from commercial contacts.
 
+## Google sign-up
+
+A first Google sign-in completes registration on /google-complete with the full name, the CUIT/CUIL
+and at least one contact, like a password registration. The Google address is never copied to the
+profile on its own: the screen offers it as an unchecked option, and only when Google's ID token
+says `email_verified`. When the customer checks it, the address is saved as a verified contact,
+because Google already proved control of it; the API refuses the option for an address Google did
+not verify. Otherwise the customer enters a WhatsApp or another email, which stays unverified until
+a code confirms it.
+
+A chosen Google address goes through the same step as a confirmed code, inside the registration
+transaction: it merges the provisional profile that holds the address verified, counts toward
+`uq_verified_client_contact`, records the customer's ownership and becomes the main contact under
+the usual default. It is the primary email even when the customer also typed another one. On an
+adopted earlier profile it proves ownership exactly when the profile already had that address (see
+below). An address already verified on another CUIT/CUIL's profile is refused with 409
+`CONTACT_IN_USE`, and the registration is not created.
+
 ## Customer profile
 
 GET and PUT /v1/customer/sites/{hostname}/profile authorize the exact authenticated CUIT and supplier.

@@ -4,7 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { ROUTES } from '@/config/routes';
 import {
+  clearCustomerCookie,
   CUSTOMER_COOKIE_OPTIONS,
+  GOOGLE_EMAIL_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   GOOGLE_STATE_COOKIE,
   postCustomerAuth,
@@ -16,7 +18,7 @@ import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
 export async function GET(request: NextRequest) {
   const jar = await cookies();
   const stored = jar.get(GOOGLE_STATE_COOKIE)?.value;
-  jar.delete(GOOGLE_STATE_COOKIE);
+  clearCustomerCookie(jar, GOOGLE_STATE_COOKIE);
   const fail = () => {
     const response = NextResponse.redirect(
       new URL(`${ROUTES.login}?error=googleFailed`, request.url),
@@ -49,7 +51,11 @@ export async function GET(request: NextRequest) {
       nonce: flow.nonce,
     });
     if (!response.ok) return fail();
-    const result = (await response.json()) as { session?: CustomerLoginRaw; signup_token?: string };
+    const result = (await response.json()) as {
+      session?: CustomerLoginRaw;
+      signup_token?: string;
+      signup_email?: string;
+    };
     let destination = safeCustomerDestination(flow.next);
     if (result.session) await acceptCustomerSession(result.session);
     else if (result.signup_token && /^[A-Za-z0-9_-]{43}$/.test(result.signup_token)) {
@@ -57,6 +63,12 @@ export async function GET(request: NextRequest) {
         ...CUSTOMER_COOKIE_OPTIONS,
         maxAge: GOOGLE_FLOW_TTL_SECONDS,
       });
+      if (result.signup_email && result.signup_email.length <= 255)
+        jar.set(GOOGLE_EMAIL_COOKIE, result.signup_email, {
+          ...CUSTOMER_COOKIE_OPTIONS,
+          maxAge: GOOGLE_FLOW_TTL_SECONDS,
+        });
+      else clearCustomerCookie(jar, GOOGLE_EMAIL_COOKIE);
       destination = `${ROUTES.googleComplete}?next=${encodeURIComponent(destination === ROUTES.orders ? ROUTES.newRequest : destination)}`;
     } else return fail();
     const redirect = NextResponse.redirect(new URL(destination, request.url));

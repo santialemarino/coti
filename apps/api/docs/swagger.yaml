@@ -1082,6 +1082,10 @@ definitions:
     type: object
   dto.CustomerGoogleCompleteRequest:
     properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactInput'
+        type: array
       name:
         maxLength: 255
         type: string
@@ -1090,6 +1094,10 @@ definitions:
         type: string
       token:
         type: string
+      use_google_email:
+        description: UseGoogleEmail adds the Google address as a verified contact;
+          a new registration needs it or a contact.
+        type: boolean
     required:
     - tax_id
     - token
@@ -1114,6 +1122,10 @@ definitions:
     properties:
       session:
         $ref: '#/definitions/dto.CustomerSessionResponse'
+      signup_email:
+        description: SignupEmail is the Google address the customer may choose as
+          a contact, sent only when Google verified it.
+        type: string
       signup_token:
         type: string
     type: object
@@ -4423,7 +4435,7 @@ paths:
         name: hostname
         required: true
         type: string
-      - description: Verified Google signup token and CUIT/CUIL
+      - description: Verified Google signup token, CUIT/CUIL and contacts
         in: body
         name: body
         required: true

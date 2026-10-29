@@ -2,7 +2,11 @@ import { redirect } from 'next/navigation';
 
 import { CustomerAuthPage } from '@/components/customer-auth-page';
 import { ROUTES } from '@/config/routes';
-import { pendingGoogleSignup, safeCustomerDestination } from '@/lib/auth/customer-flow';
+import {
+  pendingGoogleEmail,
+  pendingGoogleSignup,
+  safeCustomerDestination,
+} from '@/lib/auth/customer-flow';
 import { getCustomerSession } from '@/lib/auth/customer-session';
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
@@ -13,6 +17,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
     <CustomerAuthPage
       mode={session ? 'linkGoogle' : 'google'}
       taxId={session?.taxId}
+      googleEmail={session ? undefined : await pendingGoogleEmail()}
       next={safeCustomerDestination(query.next, ROUTES.newRequest)}
     />
   );

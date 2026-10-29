@@ -1609,7 +1609,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Verified Google signup token and CUIT/CUIL",
+                        "description": "Verified Google signup token, CUIT/CUIL and contacts",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -10581,6 +10581,12 @@ const docTemplate = `{
                 "token"
             ],
             "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactInput"
+                    }
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 255
@@ -10591,6 +10597,10 @@ const docTemplate = `{
                 },
                 "token": {
                     "type": "string"
+                },
+                "use_google_email": {
+                    "description": "UseGoogleEmail adds the Google address as a verified contact; a new registration needs it or a contact.",
+                    "type": "boolean"
                 }
             }
         },
@@ -10621,6 +10631,10 @@ const docTemplate = `{
             "properties": {
                 "session": {
                     "$ref": "#/definitions/dto.CustomerSessionResponse"
+                },
+                "signup_email": {
+                    "description": "SignupEmail is the Google address the customer may choose as a contact, sent only when Google verified it.",
+                    "type": "string"
                 },
                 "signup_token": {
                     "type": "string"

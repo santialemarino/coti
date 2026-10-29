@@ -37,6 +37,7 @@ type CustomerAuthService struct {
 	credentials customerCredentialStore
 	profiles    customerProfileRegistrar
 	google      domain.CustomerGoogleProvider
+	prover      customerContactProver
 	recovery    customerContactRecovery
 	cfg         config.CustomerAuthConfig
 	now         func() time.Time

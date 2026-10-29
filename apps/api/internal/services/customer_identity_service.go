@@ -35,15 +35,26 @@ func (s *CustomerAuthService) GetDeliveryHostname(ctx context.Context, token str
 }
 
 type customerChallengePayload struct {
-	Subject string `json:"subject,omitempty"`
-	Email   string `json:"email,omitempty"`
-	Name    string `json:"name,omitempty"`
+	Subject       string `json:"subject,omitempty"`
+	Email         string `json:"email,omitempty"`
+	EmailVerified bool   `json:"email_verified,omitempty"`
+	Name          string `json:"name,omitempty"`
+}
+
+type customerContactProver interface {
+	ProveRegisteredContact(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string) error
 }
 
 // WithIdentityProviders enables Google sign-in and credential recovery through explicit adapter wiring.
 func (s *CustomerAuthService) WithIdentityProviders(store customerCredentialStore, google domain.CustomerGoogleProvider) *CustomerAuthService {
 	s.credentials = store
 	s.google = google
+	return s
+}
+
+// WithContactProof lets a Google-verified address the customer chose count as a verified contact.
+func (s *CustomerAuthService) WithContactProof(prover customerContactProver) *CustomerAuthService {
+	s.prover = prover
 	return s
 }
 
@@ -93,24 +104,33 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, Name: google.Name})
+		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, EmailVerified: google.EmailVerified, Name: google.Name})
 		err = s.credentials.CreateChallenge(ctx, q, domain.CustomerChallenge{ID: uuid.New(), AccountID: site.AccountID, Purpose: "GOOGLE_SIGNUP", TokenHash: hashToken(secret), Payload: payload, ExpiresAt: s.now().Add(s.cfg.SignupTTL)})
 		result.SignupToken = secret
+		if email, ok := googleContactEmail(google.Email, google.EmailVerified); ok {
+			result.SignupEmail = email
+		}
 		return err
 	})
 	return result, err
 }
 
 // CompleteGoogle binds a new CUIT/CUIL or explicitly links Google to an already authenticated customer.
-func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw, taxID string, principal *domain.CustomerPrincipal, names ...string) (*domain.CustomerLogin, error) {
+// A new registration needs a name and at least one contact; the Google address is one only when the
+// customer chose it, and then it is verified because Google verified it.
+func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname string, in domain.CustomerGoogleCompletion, principal *domain.CustomerPrincipal) (*domain.CustomerLogin, error) {
 	if s.credentials == nil {
 		return nil, domain.ErrNotConfigured
 	}
-	if !validCustomerSecret(raw) {
+	if !validCustomerSecret(in.Token) {
 		return nil, domain.ErrUnauthenticated
 	}
-	taxID = domain.NormalizeTaxID(taxID)
+	taxID := domain.NormalizeTaxID(in.TaxID)
 	if !domain.ValidCUIT(taxID) {
+		return nil, domain.ErrInvalidInput
+	}
+	contacts, err := domain.NormalizeClientContacts(in.Contacts)
+	if err != nil {
 		return nil, domain.ErrInvalidInput
 	}
 	site, err := s.resolveSite(ctx, hostname)
@@ -126,7 +146,7 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 	}
 	var login *domain.CustomerLogin
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(raw), "GOOGLE_SIGNUP", s.now())
+		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(in.Token), "GOOGLE_SIGNUP", s.now())
 		if err != nil {
 			return err
 		}
@@ -134,34 +154,53 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 		if err = json.Unmarshal(token.Payload, &payload); err != nil {
 			return err
 		}
-		var identity *domain.CustomerIdentity
-		if principal == nil {
-			if len(names) > 0 && strings.TrimSpace(names[0]) != "" {
-				payload.Name = strings.TrimSpace(names[0])
-			}
-			if s.profiles == nil || payload.Name == "" || !validCustomerEmail(payload.Email) {
-				return domain.ErrInvalidInput
-			}
-			var name *string
-			if len(payload.Name) <= 255 && payload.Name != "" {
-				name = &payload.Name
-			}
-			identity, err = s.credentials.CreateGoogleIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: taxID, GoogleSubject: &payload.Subject, Name: name})
-		} else {
-			identity, err = s.store.GetIdentityForUpdate(ctx, q, site.AccountID, principal.CustomerID)
+		if principal != nil {
+			identity, err := s.store.GetIdentityForUpdate(ctx, q, site.AccountID, principal.CustomerID)
 			if err != nil {
 				return err
 			}
 			if identity.DisabledAt != nil {
 				return domain.ErrUnauthenticated
 			}
-			err = s.credentials.LinkGoogle(ctx, q, site.AccountID, principal.CustomerID, payload.Subject)
+			if err = s.credentials.LinkGoogle(ctx, q, site.AccountID, principal.CustomerID, payload.Subject); err != nil {
+				return err
+			}
+			login, err = s.createSession(ctx, q, *identity, secret)
+			return err
 		}
+		if name := strings.TrimSpace(in.Name); name != "" {
+			payload.Name = name
+		}
+		if s.profiles == nil || payload.Name == "" || len(payload.Name) > 255 {
+			return domain.ErrInvalidInput
+		}
+		google, chosen := "", false
+		if in.UseGoogleEmail {
+			if google, chosen = googleContactEmail(payload.Email, payload.EmailVerified); !chosen {
+				return domain.ErrInvalidInput
+			}
+			contacts = withGoogleContact(contacts, google)
+		}
+		if len(contacts) == 0 {
+			return domain.ErrInvalidInput
+		}
+		identity, err := s.credentials.CreateGoogleIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: taxID, GoogleSubject: &payload.Subject, Name: &payload.Name})
 		if err != nil {
 			return err
 		}
-		if principal == nil {
-			if err := s.profiles.RegisterProfile(ctx, q, domain.CustomerPrincipal{CustomerID: identity.ID, AccountID: site.AccountID, TaxID: taxID}, domain.ClientContactUpdate{Name: payload.Name, Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: payload.Email, Primary: true}}}); err != nil {
+		registered := domain.CustomerPrincipal{CustomerID: identity.ID, AccountID: site.AccountID, TaxID: taxID}
+		if err := s.profiles.RegisterProfile(ctx, q, registered, domain.ClientContactUpdate{Name: payload.Name, Contacts: contacts}); err != nil {
+			return err
+		}
+		if chosen {
+			if s.prover == nil {
+				return domain.ErrNotConfigured
+			}
+			err := s.prover.ProveRegisteredContact(ctx, q, registered, domain.ChannelTypeEmail, google)
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeContactInUse, err)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -181,4 +220,28 @@ func (s *CustomerAuthService) customerOrigin(site domain.CustomerSite) string {
 func validCustomerEmail(value string) bool {
 	a, err := mail.ParseAddress(value)
 	return err == nil && a.Address == value && len(value) <= 255
+}
+
+// googleContactEmail returns the normalized Google address only when Google verified it.
+func googleContactEmail(email string, verified bool) (string, bool) {
+	if !verified || !validCustomerEmail(email) {
+		return "", false
+	}
+	normalized, err := domain.NormalizeClientContact(domain.ChannelTypeEmail, email)
+	return normalized, err == nil
+}
+
+// withGoogleContact adds the chosen Google address as the primary email, since it is the verified one.
+func withGoogleContact(contacts []domain.ClientContact, email string) []domain.ClientContact {
+	found := false
+	for i := range contacts {
+		if contacts[i].Kind == domain.ChannelTypeEmail {
+			contacts[i].Primary = contacts[i].Value == email
+			found = found || contacts[i].Primary
+		}
+	}
+	if found {
+		return contacts
+	}
+	return append(contacts, domain.ClientContact{Kind: domain.ChannelTypeEmail, Value: email, Primary: true})
 }

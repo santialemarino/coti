@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 import { ROUTES } from '@/config/routes';
 import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import {
+  clearCustomerCookie,
+  GOOGLE_EMAIL_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   pendingGoogleSignup,
   postCustomerAuth,
@@ -84,18 +86,38 @@ export async function completeCustomerGoogle(values: {
   taxId: string;
   next: string;
   link?: boolean;
+  phone?: string;
+  email?: string;
+  useGoogleEmail?: boolean;
 }): Promise<CustomerAuthResult> {
   const token = await pendingGoogleSignup();
   if (!token) return { error: 'expired' };
   try {
     const response = await postCustomerAuth(
       values.link ? '/auth/google/link' : '/auth/google/complete',
-      { token, tax_id: values.taxId, name: values.name },
+      {
+        token,
+        tax_id: values.taxId,
+        name: values.name,
+        contacts: [
+          ...(values.phone ? [{ kind: 'WHATSAPP', value: values.phone, primary: true }] : []),
+          ...(values.email ? [{ kind: 'EMAIL', value: values.email, primary: true }] : []),
+        ],
+        use_google_email: Boolean(values.useGoogleEmail),
+      },
       values.link,
     );
-    if (!response.ok) return { error: errorForStatus(response.status) };
+    if (!response.ok) {
+      const code =
+        response.status === 409 ? ((await response.json()) as { code?: string }).code : undefined;
+      return {
+        error: code === 'CONTACT_IN_USE' ? 'contactInUse' : errorForStatus(response.status),
+      };
+    }
     await acceptCustomerSession((await response.json()) as CustomerLoginRaw);
-    (await cookies()).delete(GOOGLE_SIGNUP_COOKIE);
+    const jar = await cookies();
+    clearCustomerCookie(jar, GOOGLE_SIGNUP_COOKIE);
+    clearCustomerCookie(jar, GOOGLE_EMAIL_COOKIE);
   } catch {
     return { error: 'unavailable' };
   }

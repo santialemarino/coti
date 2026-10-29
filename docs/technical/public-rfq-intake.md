@@ -47,7 +47,8 @@ expiration and nonce through go-oidc. Google access tokens are discarded. Accoun
 the stable Google subject, never by a matching email address.
 
 An unknown subject receives a hashed, short-lived GOOGLE_SIGNUP capability. The customer must
-supply CUIT/CUIL before receiving a session. An existing CUIT/CUIL cannot be claimed through a
+supply CUIT/CUIL, a full name and at least one contact before receiving a session; the Google
+address counts only when the customer chooses it (see [Client profiles](client-profiles.md#google-sign-up)). An existing CUIT/CUIL cannot be claimed through a
 new Google subject: the customer must first authenticate to the existing account and explicitly
 link Google. Completing registration and consuming its capability happen in one transaction.
 
