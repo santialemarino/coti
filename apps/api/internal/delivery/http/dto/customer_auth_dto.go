@@ -60,6 +60,8 @@ type CustomerGoogleExchangeResponse struct {
 	SignupToken string                   `json:"signup_token,omitempty"`
 	// SignupEmail is the Google address the customer may choose as a contact, sent only when Google verified it.
 	SignupEmail string `json:"signup_email,omitempty"`
+	// SignupEmailProven is true when choosing SignupEmail verifies it; otherwise it needs a code.
+	SignupEmailProven bool `json:"signup_email_proven,omitempty"`
 }
 
 // CustomerGoogleCompleteRequest supplies CUIT/CUIL and the contacts after a verified Google exchange.

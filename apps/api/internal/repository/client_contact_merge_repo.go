@@ -57,12 +57,12 @@ func (r *ClientContactRepository) LockMergeProfiles(ctx context.Context, q Queri
 // provisional profiles it still means the contact reached the supplier, and retiring the original
 // first frees the one live verified row per contact.
 func (r *ClientContactRepository) MoveContacts(ctx context.Context, q Querier, accountID, source, target uuid.UUID) error {
-	if _, err := q.Exec(ctx, `UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND retired_at IS NULL`, accountID, source); err != nil {
-		return err
-	}
-	_, err := q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,original_value,verified_at)
+	_, err := q.Exec(ctx, `WITH retired AS (
+   UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND retired_at IS NULL
+   RETURNING account_id,kind,value,is_primary,source,original_value,verified_at)
+ INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,original_value,verified_at)
  SELECT s.account_id,$3,s.kind,s.value,s.is_primary AND NOT EXISTS(SELECT 1 FROM client_contact t WHERE t.account_id=$1 AND t.client_id=$3 AND t.kind=s.kind AND t.is_primary),s.source,s.original_value,s.verified_at
- FROM client_contact s WHERE s.account_id=$1 AND s.client_id=$2 AND s.retired_at=now()
+ FROM retired s
  ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET verified_at=COALESCE(client_contact.verified_at,excluded.verified_at)`, accountID, source, target)
 	return err
 }

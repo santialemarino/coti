@@ -101,7 +101,8 @@ func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querie
 // GetObservation locks one suggestion inside the staff caller's branch reach.
 func (r *ClientContactRepository) GetObservation(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID) (*domain.ContactObservation, error) {
 	var o domain.ContactObservation
-	err := q.QueryRow(ctx, `SELECT id,branch_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status,created_at FROM client_contact_observation WHERE account_id=$1 AND id=$2 AND ($3::uuid[] IS NULL OR branch_id=ANY($3)) FOR UPDATE`, tenant.AccountID, id, tenant.BranchFilter()).Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt)
+	err := q.QueryRow(ctx, `SELECT id,branch_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status,created_at
+ FROM client_contact_observation WHERE account_id=$1 AND id=$2 AND ($3::uuid[] IS NULL OR branch_id=ANY($3)) FOR UPDATE`, tenant.AccountID, id, tenant.BranchFilter()).Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -110,7 +111,10 @@ func (r *ClientContactRepository) GetObservation(ctx context.Context, q Querier,
 
 // FindProfiles returns exact fiscal or contact candidates without associating records.
 func (r *ClientContactRepository) FindProfiles(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, kind domain.ChannelType, value string) ([]domain.Client, error) {
-	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND (tax_id=NULLIF($2,'') OR id IN (SELECT client_id FROM client_contact WHERE account_id=$1 AND kind=$3 AND verified_at IS NOT NULL AND CASE WHEN kind='EMAIL' THEN lower(btrim(value)) ELSE regexp_replace(value,'[^0-9+]','','g') END=$4)) ORDER BY id`, accountID, taxID, kind, value)
+	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client
+ WHERE account_id=$1 AND merged_into IS NULL AND (tax_id=NULLIF($2,'') OR id IN (
+   SELECT client_id FROM client_contact WHERE account_id=$1 AND kind=$3 AND value=$4 AND verified_at IS NOT NULL))
+ ORDER BY id`, accountID, taxID, kind, value)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +162,13 @@ func (r *ClientContactRepository) HasObservation(ctx context.Context, q Querier,
 
 // CreateObservation records the original declaration once per incoming contact and message.
 func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Querier, accountID, messageID uuid.UUID, o domain.ContactObservation) error {
-	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,message_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status) VALUES($1,$2,$3,$4,$5::uuid,$6::varchar(11),$7::channel_type,$8::varchar(255),$9,$10,CASE WHEN $11::client_contact_review_status='PENDING' AND EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND branch_id=$2 AND candidate_client_id IS NOT DISTINCT FROM $5::uuid AND tax_id IS NOT DISTINCT FROM $6::varchar(11) AND kind=$7::channel_type AND value=$8::varchar(255) AND status='PENDING') THEN 'RECORDED'::client_contact_review_status ELSE $11::client_contact_review_status END) ON CONFLICT(account_id,message_id,kind,value) DO NOTHING`, accountID, o.BranchID, messageID, o.SourceClientID, o.CandidateClientID, o.TaxID, o.Kind, o.Value, o.Name, o.Original, o.Status)
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,message_id,source_client_id,candidate_client_id,tax_id,kind,value,declared_name,original_text,status)
+ VALUES($1,$2,$3,$4,$5::uuid,$6::varchar(11),$7::channel_type,$8::varchar(255),$9,$10,CASE
+   WHEN $11::client_contact_review_status='PENDING' AND EXISTS(
+     SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND branch_id=$2 AND candidate_client_id IS NOT DISTINCT FROM $5::uuid
+       AND tax_id IS NOT DISTINCT FROM $6::varchar(11) AND kind=$7::channel_type AND value=$8::varchar(255) AND status='PENDING')
+   THEN 'RECORDED'::client_contact_review_status ELSE $11::client_contact_review_status END)
+ ON CONFLICT(account_id,message_id,kind,value) DO NOTHING`, accountID, o.BranchID, messageID, o.SourceClientID, o.CandidateClientID, o.TaxID, o.Kind, o.Value, o.Name, o.Original, o.Status)
 	return err
 }
 
@@ -174,7 +184,10 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) WHERE x.kind=client_contact.kind::text AND x.value=client_contact.value)`, accountID, clientID, payload); err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source)
+	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at)
+ SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END
+ FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean)
+ ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source)
 	return err
 }
 
@@ -205,7 +218,9 @@ func (r *ClientContactRepository) SaveDeclared(ctx context.Context, q Querier, p
 	if _, err = q.Exec(ctx, `DELETE FROM client_contact WHERE account_id=$1 AND client_id=$2 AND `+own+` AND NOT `+typed, args...); err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at,declared_by) SELECT $1,$2,x.kind::channel_type,x.value,FALSE,'CUSTOMER',NULL,$3 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean) ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET declared_by=excluded.declared_by`, p.AccountID, clientID, p.CustomerID, payload)
+	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at,declared_by)
+ SELECT $1,$2,x.kind::channel_type,x.value,FALSE,'CUSTOMER',NULL,$3 FROM jsonb_to_recordset($4::jsonb) AS x(kind text,value text,"primary" boolean)
+ ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET declared_by=excluded.declared_by`, p.AccountID, clientID, p.CustomerID, payload)
 	return err
 }
 
@@ -273,7 +288,12 @@ func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID
 // Merge preserves the source profile while moving its commercial associations to the target.
 func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant domain.Tenant, source, target uuid.UUID) error {
 	var allowed bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client s JOIN client t ON t.account_id=s.account_id AND t.id=$3 WHERE s.account_id=$1 AND s.id=$2 AND s.id<>t.id AND s.merged_into IS NULL AND t.merged_into IS NULL AND s.tax_id IS NULL) AND NOT EXISTS(SELECT 1 FROM rfq WHERE account_id=$1 AND client_id=$2 AND ($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4)))) AND NOT EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND client_id=$2 AND (($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4))) OR ($5::uuid IS NOT NULL AND seller_id IS NOT NULL AND seller_id<>$5)))`, tenant.AccountID, source, target, tenant.BranchFilter(), sellerParam(tenant)).Scan(&allowed)
+	err := q.QueryRow(ctx, `SELECT EXISTS(
+   SELECT 1 FROM client s JOIN client t ON t.account_id=s.account_id AND t.id=$3
+   WHERE s.account_id=$1 AND s.id=$2 AND s.id<>t.id AND s.merged_into IS NULL AND t.merged_into IS NULL AND s.tax_id IS NULL)
+ AND NOT EXISTS(SELECT 1 FROM rfq WHERE account_id=$1 AND client_id=$2 AND ($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4))))
+ AND NOT EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND client_id=$2
+   AND (($4::uuid[] IS NOT NULL AND NOT(branch_id=ANY($4))) OR ($5::uuid IS NOT NULL AND seller_id IS NOT NULL AND seller_id<>$5)))`, tenant.AccountID, source, target, tenant.BranchFilter(), sellerParam(tenant)).Scan(&allowed)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,8 +14,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 // clientFiscalRow is what the client row holds after a request, read on the owner pool.
@@ -136,9 +139,9 @@ func TestClientFiscal_CUITIsNeverWrittenByStaff(t *testing.T) {
 	}
 }
 
-// The preview offers the supplier's sign-up page exactly when the invoice waits on the buyer's CUIT,
-// and an invoice B below the identification threshold goes to an unidentified buyer as it is.
-func TestClientFiscal_PreviewOffersSignupOnlyWhenACUITIsMissing(t *testing.T) {
+// The preview offers the supplier's sign-up page exactly when the invoice waits on the buyer's CUIT or
+// document, and an invoice B below the identification threshold goes to an unidentified buyer as it is.
+func TestClientFiscal_PreviewOffersSignupOnlyWhenTheReceiverIdentityIsMissing(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	accountID, branchID := e.seedAccount(t, "Corralón Registro")
@@ -274,5 +277,32 @@ func TestClientFiscal_MigrationSplitsTheDNIFromTheCUIT(t *testing.T) {
 	}
 	if _, err := tx.Exec(ctx, `UPDATE client SET tax_id = '28123456' WHERE id = $1`, odd); err == nil {
 		t.Fatal("tax_id took 8 digits after the migration, want only a CUIT's 11")
+	}
+}
+
+// A registered profile is its customer's, so the application role cannot delete it; a provisional
+// one it still can.
+func TestClientFiscal_RegisteredClientCannotBeDeleted(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, _ := e.seedAccount(t, "Corralón Borrado")
+	cuit := "20123456786"
+	registered := e.seedFiscalClient(t, accountID, &cuit)
+	provisional := e.seedFiscalClient(t, accountID, nil)
+	remove := func(id uuid.UUID) error {
+		return e.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q repository.Querier) error {
+			_, err := q.Exec(ctx, `DELETE FROM client WHERE account_id = $1 AND id = $2`, accountID, id)
+			return err
+		})
+	}
+	var pgErr *pgconn.PgError
+	if err := remove(registered); !errors.As(err, &pgErr) || pgErr.Code != "23514" {
+		t.Fatalf("deleting a client with a CUIT: err = %v, want check violation 23514", err)
+	}
+	if row := e.clientFiscal(t, registered); row.taxID == nil || *row.taxID != cuit {
+		t.Fatalf("registered client after the refused delete = %s", row)
+	}
+	if err := remove(provisional); err != nil {
+		t.Fatalf("deleting a provisional client: %v", err)
 	}
 }

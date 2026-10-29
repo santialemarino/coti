@@ -251,3 +251,46 @@ func TestMergeRouting_UnrelatedAndRemovedContactsDoNotRoute(t *testing.T) {
 		t.Fatalf("live verified rows for the removed contact=%d", verifiedProfiles)
 	}
 }
+
+// When two merges retired the same contact and both survivors hold a copy again, the latest merge
+// routes: Y left R1, a new provisional D3 took Y and merged into R2, then R1 took Y back.
+func TestMergeRouting_LatestMergeWinsWhenTwoSurvivorsHoldTheContact(t *testing.T) {
+	e := newEnv(t)
+	m := e.mergedRouting(t)
+	ctx := context.Background()
+	first := m.principal(t, "20123456786")
+	m.setContacts(t, first, []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: routedPhone, Primary: true}})
+	provisional := m.requestClient(t, m.deliver(t, routedEmail))
+	if provisional == m.target {
+		t.Fatal("a removed contact still routed to the first customer's profile")
+	}
+
+	other := "+5491155550188"
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) VALUES($1,$2,'WHATSAPP',$3,TRUE,'CHANNEL',now())`, m.account, provisional, other); err != nil {
+		t.Fatal(err)
+	}
+	e.registerCustomer(t, m.account, "30712345671")
+	e.verifyCustomerContact(t, m.account, "30712345671", domain.ChannelTypeWhatsApp, other)
+	var second uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT merged_into FROM client WHERE account_id=$1 AND id=$2`, m.account, provisional).Scan(&second); err != nil {
+		t.Fatalf("the provisional profile was not merged: %v", err)
+	}
+	var copies int
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT count(*) FROM client_contact WHERE account_id=$1 AND client_id=$2 AND value=$3 AND verified_at IS NULL AND retired_at IS NULL`, m.account, second, routedEmail).Scan(&copies); err != nil {
+		t.Fatal(err)
+	}
+	if copies != 1 {
+		t.Fatalf("the second customer's profile holds %d unverified copies of the contact, want 1", copies)
+	}
+	if got := m.requestClient(t, m.deliver(t, routedEmail)); got != second {
+		t.Fatalf("before the re-add the contact routed to %s, want the second customer's profile %s", got, second)
+	}
+
+	m.setContacts(t, first, []domain.ClientContact{
+		{Kind: domain.ChannelTypeWhatsApp, Value: routedPhone, Primary: true},
+		{Kind: domain.ChannelTypeEmail, Value: routedEmail, Primary: true},
+	})
+	if got := m.requestClient(t, m.deliver(t, routedEmail)); got != second {
+		t.Fatalf("after the first customer re-added the contact it routed to %s, want the latest merge's survivor %s (first customer %s)", got, second, m.target)
+	}
+}

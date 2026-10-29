@@ -153,6 +153,31 @@ func TestCustomerGoogleRegistrationNeedsAContactAndOffersOnlyAVerifiedEmail(t *t
 	}
 }
 
+func TestGoogleContactEmail_ProvesOnlyAMailboxGoogleControls(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, email, hosted string
+		verified            bool
+		ok, proven          bool
+	}{
+		{"gmail", "Juan@Gmail.com", "", true, true, true},
+		{"googlemail", "juan@googlemail.com", "", true, true, true},
+		{"workspace", "juan@corralon.com.ar", "corralon.com.ar", true, true, true},
+		{"other domain without hd", "juan@corralon.com.ar", "", true, true, false},
+		{"hd of another domain", "juan@corralon.com.ar", "otro.com.ar", true, true, false},
+		{"unverified gmail", "juan@gmail.com", "", false, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, proven, ok := googleContactEmail(tc.email, tc.verified, tc.hosted)
+			if ok != tc.ok || proven != tc.proven {
+				t.Fatalf("googleContactEmail(%q, %v, %q) = proven %v ok %v, want proven %v ok %v", tc.email, tc.verified, tc.hosted, proven, ok, tc.proven, tc.ok)
+			}
+		})
+	}
+}
+
 // recoveryFake redeems one code for one customer and counts every attempt it was asked to judge.
 type recoveryFake struct {
 	customerID uuid.UUID

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -24,8 +25,9 @@ func (g *googleStub) Exchange(context.Context, string, string, string, string) (
 }
 
 type googleExchange struct {
-	SignupToken string `json:"signup_token"`
-	SignupEmail string `json:"signup_email"`
+	SignupToken       string `json:"signup_token"`
+	SignupEmail       string `json:"signup_email"`
+	SignupEmailProven bool   `json:"signup_email_proven"`
 }
 
 func newGoogleEnv(t *testing.T) (*env, *googleStub) {
@@ -34,10 +36,17 @@ func newGoogleEnv(t *testing.T) (*env, *googleStub) {
 	return newEnvWithRFQProviders(t, rfqTestProviders{google: stub}), stub
 }
 
-// googleSignup stages one Google identity, exchanges a code for it and returns the signup capability.
+// googleSignup stages a Google Workspace identity for email, whose hosted domain proves the mailbox,
+// exchanges a code for it and returns the signup capability.
 func (e *env) googleSignup(t *testing.T, stub *googleStub, host, email string, verified bool) googleExchange {
 	t.Helper()
-	stub.identity = domain.CustomerGoogleIdentity{Subject: "google-" + uuid.NewString(), Email: email, EmailVerified: verified, Name: "Google Name"}
+	return e.googleSignupAs(t, stub, host, email, verified, email[strings.LastIndex(email, "@")+1:])
+}
+
+// googleSignupAs stages a Google identity with the given hosted domain claim, empty for none.
+func (e *env) googleSignupAs(t *testing.T, stub *googleStub, host, email string, verified bool, hostedDomain string) googleExchange {
+	t.Helper()
+	stub.identity = domain.CustomerGoogleIdentity{Subject: "google-" + uuid.NewString(), Email: email, EmailVerified: verified, HostedDomain: hostedDomain, Name: "Google Name"}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		t.Fatal(err)
@@ -281,6 +290,16 @@ func TestCustomerGoogle_EmailVerifiedOnAnotherCUITIsRefusedWithItsOwnCode(t *tes
 	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, company).Scan(&identities); err != nil || identities != 0 {
 		t.Fatalf("refused registration left %d identities: %v", identities, err)
 	}
+	// The refusal rolled everything back, the spent signup token included, so the same token still
+	// registers once the Google address is left out.
+	status, _ := e.completeGoogle(t, host, map[string]any{"token": signup.SignupToken, "tax_id": company, "name": "Empresa SA", "use_google_email": false,
+		"contacts": []map[string]any{{"kind": "WHATSAPP", "value": "+5491155550199", "primary": true}}})
+	if status != http.StatusCreated {
+		t.Fatalf("retry with the same token and the address left out: %d", status)
+	}
+	if exists, _, _ := e.contactState(t, account, company, shared); exists {
+		t.Fatal("the retry without the Google address still copied it")
+	}
 }
 
 func TestCustomerGoogle_ChosenEmailIsThePrimaryOverATypedOne(t *testing.T) {
@@ -344,5 +363,57 @@ func TestCustomerGoogle_ChosenEmailBringsTheDumbHistoryIntoAnUnprovedLegacyProfi
 	var profile adoptedProfile
 	if err := json.Unmarshal(response.Body.Bytes(), &profile); err != nil || !profile.OwnershipUnproved {
 		t.Fatalf("a merged address proved the legacy profile: %s", response.Body)
+	}
+	var email string
+	var primaries []string
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT COALESCE(p.email,''),COALESCE((SELECT array_agg(c.value ORDER BY c.value) FROM client_contact c WHERE c.account_id=p.account_id AND c.client_id=p.id AND c.is_primary AND c.retired_at IS NULL),'{}')
+ FROM client p WHERE p.account_id=$1 AND p.id=$2`, account, legacy).Scan(&email, &primaries); err != nil {
+		t.Fatal(err)
+	}
+	if email != "owner@example.test" || len(primaries) != 1 || primaries[0] != "owner@example.test" {
+		t.Fatalf("unproved legacy profile: email %q, primaries %v; want its own address alone", email, primaries)
+	}
+}
+
+// Only a mailbox Google controls today joins verified: Gmail, or a Workspace domain the hd claim
+// names. Any other address Google once verified joins pending, and a code verifies it.
+func TestCustomerGoogle_OnlyAMailboxGoogleProvesJoinsVerified(t *testing.T) {
+	e, stub := newGoogleEnv(t)
+	cases := []struct {
+		name, email, hosted string
+		proven              bool
+	}{
+		{"gmail", "juan.%s@gmail.com", "", true},
+		{"workspace", "juan@%s.example.test", "%s.example.test", true},
+		{"other domain without hd", "juan@%s.example.test", "", false},
+		{"hd of another domain", "juan@%s.example.test", "otro.example.test", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account, _ := e.seedAccount(t, "Google proof "+tc.name)
+			host := e.publicHost(t, account)
+			const tax = "20123456786"
+			unique := strings.ReplaceAll(uuid.NewString(), "-", "")
+			email := strings.ReplaceAll(tc.email, "%s", unique)
+			hosted := strings.ReplaceAll(tc.hosted, "%s", unique)
+			signup := e.googleSignupAs(t, stub, host, email, true, hosted)
+			if signup.SignupEmail != email || signup.SignupEmailProven != tc.proven {
+				t.Fatalf("exchange offered %q proven=%v, want %q proven=%v", signup.SignupEmail, signup.SignupEmailProven, email, tc.proven)
+			}
+			if status, _ := e.completeGoogle(t, host, map[string]any{"token": signup.SignupToken, "tax_id": tax, "name": "Juan Perez", "use_google_email": true}); status != http.StatusCreated {
+				t.Fatalf("registration with the Google address: %d", status)
+			}
+			exists, verified, owned := e.contactState(t, account, tax, email)
+			if !exists || verified != tc.proven || owned != tc.proven {
+				t.Fatalf("chosen address: exists=%v verified=%v owned=%v, want verified and owned = %v", exists, verified, owned, tc.proven)
+			}
+			if tc.proven {
+				return
+			}
+			e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, email, true)
+			if _, verified, owned := e.contactState(t, account, tax, email); !verified || !owned {
+				t.Fatalf("after the code: verified=%v owned=%v", verified, owned)
+			}
+		})
 	}
 }

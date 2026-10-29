@@ -77,6 +77,8 @@ type CustomerGoogleIdentity struct {
 	Name    string
 	// EmailVerified carries Google's email_verified claim; only a verified address may become a contact.
 	EmailVerified bool
+	// HostedDomain carries the hd claim, the Google Workspace domain the account belongs to.
+	HostedDomain string
 }
 
 // CustomerGoogleProvider exchanges a single-use authorization code and verifies its ID token.
@@ -101,6 +103,9 @@ type CustomerGoogleResult struct {
 	SignupToken string
 	// SignupEmail is the Google address the customer may choose as a contact; empty when Google did not verify it.
 	SignupEmail string
+	// SignupEmailProven is true when Google proves current control of SignupEmail, so choosing it
+	// verifies it; otherwise it joins pending a code.
+	SignupEmailProven bool
 }
 
 // CustomerGoogleCompletion is a first Google registration: its own contacts, and the Google address
