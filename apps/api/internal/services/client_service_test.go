@@ -52,6 +52,14 @@ func (f *fakeClientProfiles) GetByID(_ context.Context, _ repository.Querier, _ 
 	return &client, nil
 }
 
+func (f *fakeClientProfiles) GetSurvivor(_ context.Context, _ repository.Querier, _ uuid.UUID,
+	clientID uuid.UUID) (uuid.UUID, error) {
+	if _, ok := f.clients[clientID]; !ok {
+		return uuid.Nil, domain.ErrNotFound
+	}
+	return clientID, nil
+}
+
 func (f *fakeClientProfiles) FindByContacts(_ context.Context, _ repository.Querier,
 	_ uuid.UUID, phone, email *string) ([]domain.Client, error) {
 	f.findPhone, f.findEmail = phone, email

@@ -72,6 +72,24 @@ func (r *ClientRepository) GetByID(ctx context.Context, q Querier, accountID,
 		FROM client WHERE account_id = $1 AND id = $2 AND merged_into IS NULL`, accountID, clientID))
 }
 
+// GetSurvivor returns the live profile a merged one ended up in, or the profile itself when live.
+func (r *ClientRepository) GetSurvivor(ctx context.Context, q Querier, accountID,
+	clientID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `WITH RECURSIVE chain(id, merged_into, depth) AS (
+		  SELECT id, merged_into, 0 FROM client WHERE account_id = $1 AND id = $2
+		  UNION ALL
+		  SELECT c.id, c.merged_into, chain.depth + 1 FROM client c
+		  JOIN chain ON c.account_id = $1 AND c.id = chain.merged_into
+		  WHERE chain.depth < 32
+		)
+		SELECT id FROM chain WHERE merged_into IS NULL`, accountID, clientID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, domain.ErrNotFound
+	}
+	return id, err
+}
+
 // FindByContacts returns exact phone or email matches for seller confirmation.
 func (r *ClientRepository) FindByContacts(
 	ctx context.Context, q Querier, accountID uuid.UUID, phone, email *string,

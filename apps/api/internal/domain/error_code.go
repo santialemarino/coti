@@ -107,6 +107,12 @@ const (
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
 	// A customer profile holds a bounded number of contacts.
 	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
+	// A profile with a CUIT belongs to its customer: no seller renames or merges it.
+	CodeClientRegistered ErrorCode = "CLIENT_REGISTERED"
+	// A profile already merged into another one takes no further merge.
+	CodeClientMerged ErrorCode = "CLIENT_MERGED"
+	// A seller merges only profiles whose orders all sit in their own branches.
+	CodeClientOutOfReach ErrorCode = "CLIENT_OUT_OF_REACH"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

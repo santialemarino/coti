@@ -54,7 +54,6 @@ type ClientContactResponse struct {
 
 // CustomerProfileResponse is returned by GET /v1/customer/sites/{hostname}/profile.
 type CustomerProfileResponse struct {
-	ReviewPending bool `json:"review_pending"`
 	// OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer
 	// verifies a contact it already had; only what the customer entered is returned.
 	OwnershipUnproved bool                    `json:"ownership_unproved"`
@@ -82,15 +81,36 @@ type ContactSuggestionResponse struct {
 	SourceClientID    *uuid.UUID `json:"source_client_id"`
 	CandidateClientID *uuid.UUID `json:"candidate_client_id"`
 	CandidateName     *string    `json:"candidate_name"`
-	TaxID             *string    `json:"tax_id"`
-	Kind              string     `json:"kind"`
-	Value             string     `json:"value"`
-	DeclaredName      *string    `json:"declared_name"`
-	OriginalText      string     `json:"original_text"`
-	CreatedAt         time.Time  `json:"created_at"`
+	SourceName        *string    `json:"source_name"`
+	// SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.
+	SourceRegistered    bool      `json:"source_registered"`
+	CandidateRegistered bool      `json:"candidate_registered"`
+	TaxID               *string   `json:"tax_id"`
+	Kind                string    `json:"kind"`
+	Value               string    `json:"value"`
+	DeclaredName        *string   `json:"declared_name"`
+	OriginalText        string    `json:"original_text"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
-// ResolveContactSuggestionRequest records a seller's explicit commercial association decision.
+// ResolveContactSuggestionRequest is the body for PUT /v1/client-contact-suggestions/:id. MERGE keeps
+// the candidate profile unless keep_client_id names the source; SEPARATE dismisses the case.
 type ResolveContactSuggestionRequest struct {
-	Action string `json:"action" binding:"required,oneof=ASSOCIATE SEPARATE MERGE"`
+	Action       string     `json:"action" binding:"required,oneof=SEPARATE MERGE"`
+	KeepClientID *uuid.UUID `json:"keep_client_id"`
+}
+
+// RenameClientRequest is the body for PUT /v1/clients/:id/name.
+type RenameClientRequest struct {
+	Name string `json:"name" binding:"required,max=255"`
+}
+
+// MergeClientRequest is the body for POST /v1/clients/:id/merge; the path profile survives.
+type MergeClientRequest struct {
+	SourceClientID uuid.UUID `json:"source_client_id" binding:"required"`
+}
+
+// ClientMergeCandidatesResponse is returned by GET /v1/clients/:id/merge-candidates.
+type ClientMergeCandidatesResponse struct {
+	Items []ClientResponse `json:"items"`
 }

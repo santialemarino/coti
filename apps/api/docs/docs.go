@@ -1149,8 +1149,7 @@ const docTemplate = `{
                 "tags": [
                     "clients"
                 ],
-                "summary": "Reject retired contact association decisions",
-                "deprecated": true,
+                "summary": "Resolve a client contact suggestion",
                 "parameters": [
                     {
                         "type": "string",
@@ -1176,6 +1175,9 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -1436,6 +1438,231 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "INVALID_TAX_ID, TAX_ID_READ_ONLY",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Merge two client profiles without a CUIT",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Surviving client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Profile merged into the surviving one",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MergeClientRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/merge-candidates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List profiles a seller can merge with a client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientMergeCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Rename a client profile without a CUIT",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New name",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.RenameClientRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -9729,6 +9956,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientMergeCandidatesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientResponse"
+                    }
+                }
+            }
+        },
         "dto.ClientMessageResponse": {
             "type": "object",
             "properties": {
@@ -9984,6 +10222,9 @@ const docTemplate = `{
                 "candidate_name": {
                     "type": "string"
                 },
+                "candidate_registered": {
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -10001,6 +10242,13 @@ const docTemplate = `{
                 },
                 "source_client_id": {
                     "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_registered": {
+                    "description": "SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.",
+                    "type": "boolean"
                 },
                 "tax_id": {
                     "type": "string"
@@ -10733,9 +10981,6 @@ const docTemplate = `{
                 },
                 "ownership_unproved": {
                     "description": "OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer\nverifies a contact it already had; only what the customer entered is returned.",
-                    "type": "boolean"
-                },
-                "review_pending": {
                     "type": "boolean"
                 },
                 "tax_id": {
@@ -11486,6 +11731,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.MergeClientRequest": {
+            "type": "object",
+            "required": [
+                "source_client_id"
+            ],
+            "properties": {
+                "source_client_id": {
                     "type": "string"
                 }
             }
@@ -12890,6 +13146,18 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RenameClientRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.ReplaceClientTagsRequest": {
             "type": "object",
             "properties": {
@@ -12939,10 +13207,12 @@ const docTemplate = `{
                 "action": {
                     "type": "string",
                     "enum": [
-                        "ASSOCIATE",
                         "SEPARATE",
                         "MERGE"
                     ]
+                },
+                "keep_client_id": {
+                    "type": "string"
                 }
             }
         },

@@ -13,13 +13,13 @@ import (
 
 type fakeContactStore struct {
 	contactStore
-	profiles     []domain.Client
-	contacts     map[uuid.UUID][]domain.ClientContact
-	observations map[uuid.UUID]domain.ContactObservation
-	scope        uuid.UUID
-	associated   bool
-	writes       int
-	lockKeys     []string
+	profiles      []domain.Client
+	contacts      map[uuid.UUID][]domain.ClientContact
+	observations  map[uuid.UUID]domain.ContactObservation
+	scope         uuid.UUID
+	mergeProfiles map[uuid.UUID]domain.MergeProfile
+	writes        int
+	lockKeys      []string
 }
 
 func (f *fakeContactStore) GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error) {
@@ -39,14 +39,21 @@ func (f *fakeContactStore) HasObservation(_ context.Context, _ repository.Querie
 	_, found := f.observations[id]
 	return found, nil
 }
-func (f *fakeContactStore) HasPendingForTaxID(context.Context, repository.Querier, uuid.UUID, string) (bool, error) {
-	return false, nil
+func (f *fakeContactStore) ListMergeCandidates(context.Context, repository.Querier, domain.Tenant, uuid.UUID) ([]domain.Client, error) {
+	return nil, nil
 }
-func (f *fakeContactStore) HasAssociations(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error) {
-	return f.associated, nil
+func (f *fakeContactStore) LockMergeProfiles(_ context.Context, _ repository.Querier, _ domain.Tenant, ids []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error) {
+	result := make(map[uuid.UUID]domain.MergeProfile)
+	for _, id := range ids {
+		if p, ok := f.mergeProfiles[id]; ok {
+			result[id] = p
+		}
+	}
+	return result, nil
 }
-func (f *fakeContactStore) PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error) {
-	return false, nil
+func (f *fakeContactStore) CopyContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	f.writes++
+	return nil
 }
 func (f *fakeContactStore) FindProfiles(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) ([]domain.Client, error) {
 	return f.profiles, nil
