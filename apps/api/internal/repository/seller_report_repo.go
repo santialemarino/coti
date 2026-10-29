@@ -18,6 +18,46 @@ var reportStatusOrder = map[domain.QuoteStatus]int{
 	domain.QuoteStatusRejected:        5,
 }
 
+// acceptedVersionsCTE resolves which version each acceptance in the period charged.
+const acceptedVersionsCTE = `WITH accepted AS (
+		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
+		   FROM quote_status_change change
+		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
+		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
+		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
+		   GROUP BY change.quote_id
+		 ), resolved AS (
+		   SELECT accepted.quote_id,
+		          COALESCE(
+		            (SELECT action.version_id
+		             FROM client_action action
+		             WHERE action.account_id = $1 AND action.type = 'ACCEPT'
+		               AND action.version_id IN (SELECT version.id FROM quote_version version
+		                                         WHERE version.account_id = $1
+		                                           AND version.quote_id = accepted.quote_id)
+		               AND action.created_at >= accepted.accepted_at - interval '5 minutes'
+		               AND action.created_at <= accepted.accepted_at + interval '5 minutes'
+		             ORDER BY action.created_at DESC, action.id DESC LIMIT 1),
+		            (SELECT send.version_id
+		             FROM quote_send send
+		             WHERE send.account_id = $1 AND send.sent_at <= accepted.accepted_at
+		               AND send.tracking_status IN ('SENT', 'DELIVERED', 'VIEWED')
+		               AND send.version_id IN (SELECT version.id FROM quote_version version
+		                                       WHERE version.account_id = $1
+		                                         AND version.quote_id = accepted.quote_id)
+		             ORDER BY send.sent_at DESC, send.created_at DESC LIMIT 1),
+		            CASE WHEN NOT EXISTS (
+		              SELECT 1 FROM quote_version later
+		              WHERE later.account_id = $1 AND later.quote_id = accepted.quote_id
+		                AND later.created_at > accepted.accepted_at
+		            ) THEN quote.current_version_id END
+		          ) AS version_id
+		   FROM accepted
+		   JOIN quote ON quote.account_id = $1 AND quote.id = accepted.quote_id
+		 )`
+
 // SellerReportRepository owns the aggregate reads behind the seller dashboard.
 type SellerReportRepository struct{}
 
@@ -31,11 +71,12 @@ func (r *SellerReportRepository) Build(
 	ctx context.Context, q Querier, in domain.SellerReportQuery,
 ) (*domain.SellerReport, error) {
 	report := &domain.SellerReport{
-		Branches:       []domain.SellerReportBranch{},
-		QuotesByStatus: []domain.SellerReportStatusCount{},
-		Timeline:       []domain.SellerReportTimelinePoint{},
-		TopProducts:    []domain.SellerReportProduct{},
-		TopClients:     []domain.SellerReportClient{},
+		Branches:           []domain.SellerReportBranch{},
+		QuotesByStatus:     []domain.SellerReportStatusCount{},
+		Timeline:           []domain.SellerReportTimelinePoint{},
+		TopProducts:        []domain.SellerReportProduct{},
+		TopRevenueProducts: []domain.SellerReportRevenueProduct{},
+		TopClients:         []domain.SellerReportClient{},
 	}
 
 	if err := r.readKPIs(ctx, q, in, &report.KPIs); err != nil {
@@ -59,6 +100,9 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if err := r.readTopProducts(ctx, q, in, &report.TopProducts); err != nil {
+		return nil, err
+	}
+	if err := r.readTopRevenueProducts(ctx, q, in, &report.TopRevenueProducts); err != nil {
 		return nil, err
 	}
 	if err := r.readTopClients(ctx, q, in, &report.TopClients); err != nil {
@@ -105,45 +149,7 @@ func (r *SellerReportRepository) readKPIs(
 func (r *SellerReportRepository) readAccepted(
 	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportKPIs,
 ) error {
-	return q.QueryRow(ctx,
-		`WITH accepted AS (
-		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
-		   FROM quote_status_change change
-		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
-		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		   GROUP BY change.quote_id
-		 ), resolved AS (
-		   SELECT accepted.quote_id,
-		          COALESCE(
-		            (SELECT action.version_id
-		             FROM client_action action
-		             WHERE action.account_id = $1 AND action.type = 'ACCEPT'
-		               AND action.version_id IN (SELECT version.id FROM quote_version version
-		                                         WHERE version.account_id = $1
-		                                           AND version.quote_id = accepted.quote_id)
-		               AND action.created_at >= accepted.accepted_at - interval '5 minutes'
-		               AND action.created_at <= accepted.accepted_at + interval '5 minutes'
-		             ORDER BY action.created_at DESC, action.id DESC LIMIT 1),
-		            (SELECT send.version_id
-		             FROM quote_send send
-		             WHERE send.account_id = $1 AND send.sent_at <= accepted.accepted_at
-		               AND send.tracking_status IN ('SENT', 'DELIVERED', 'VIEWED')
-		               AND send.version_id IN (SELECT version.id FROM quote_version version
-		                                       WHERE version.account_id = $1
-		                                         AND version.quote_id = accepted.quote_id)
-		             ORDER BY send.sent_at DESC, send.created_at DESC LIMIT 1),
-		            CASE WHEN NOT EXISTS (
-		              SELECT 1 FROM quote_version later
-		              WHERE later.account_id = $1 AND later.quote_id = accepted.quote_id
-		                AND later.created_at > accepted.accepted_at
-		            ) THEN quote.current_version_id END
-		          ) AS version_id
-		   FROM accepted
-		   JOIN quote ON quote.account_id = $1 AND quote.id = accepted.quote_id
-		 )
+	return q.QueryRow(ctx, acceptedVersionsCTE+`
 		 SELECT count(*), COALESCE(sum(COALESCE(version.total, 0)), 0)
 		 FROM resolved
 		 LEFT JOIN quote_version version ON version.account_id = $1 AND version.id = resolved.version_id`,
@@ -341,49 +347,44 @@ func (r *SellerReportRepository) readTopProducts(
 	return rows.Err()
 }
 
+func (r *SellerReportRepository) readTopRevenueProducts(
+	ctx context.Context, q Querier, in domain.SellerReportQuery,
+	out *[]domain.SellerReportRevenueProduct,
+) error {
+	rows, err := q.Query(ctx, acceptedVersionsCTE+`
+		 SELECT item.product_id,
+		        COALESCE(max(product.canonical_name), min(item.requested_description)),
+		        sum(round(item.quantity * item.unit_price_snapshot, 2))
+		 FROM resolved
+		 JOIN quote_item item ON item.account_id = $1
+		   AND item.version_id = resolved.version_id
+		 LEFT JOIN product ON product.account_id = $1 AND product.id = item.product_id
+		 WHERE item.product_id IS NOT NULL AND item.unit_price_snapshot IS NOT NULL
+		 GROUP BY item.product_id
+		 HAVING sum(round(item.quantity * item.unit_price_snapshot, 2)) > 0
+		 ORDER BY 3 DESC, 2
+		 LIMIT 5`,
+		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item domain.SellerReportRevenueProduct
+		if err := rows.Scan(&item.ProductID, &item.Name, &item.Revenue); err != nil {
+			return err
+		}
+		*out = append(*out, item)
+	}
+	return rows.Err()
+}
+
 func (r *SellerReportRepository) readTopClients(
 	ctx context.Context, q Querier, in domain.SellerReportQuery,
 	out *[]domain.SellerReportClient,
 ) error {
-	rows, err := q.Query(ctx,
-		`WITH accepted AS (
-		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
-		   FROM quote_status_change change
-		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
-		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		   GROUP BY change.quote_id
-		 ), resolved AS (
-		   SELECT accepted.quote_id,
-		          COALESCE(
-		            (SELECT action.version_id
-		             FROM client_action action
-		             WHERE action.account_id = $1 AND action.type = 'ACCEPT'
-		               AND action.version_id IN (SELECT version.id FROM quote_version version
-		                                         WHERE version.account_id = $1
-		                                           AND version.quote_id = accepted.quote_id)
-		               AND action.created_at >= accepted.accepted_at - interval '5 minutes'
-		               AND action.created_at <= accepted.accepted_at + interval '5 minutes'
-		             ORDER BY action.created_at DESC, action.id DESC LIMIT 1),
-		            (SELECT send.version_id
-		             FROM quote_send send
-		             WHERE send.account_id = $1 AND send.sent_at <= accepted.accepted_at
-		               AND send.tracking_status IN ('SENT', 'DELIVERED', 'VIEWED')
-		               AND send.version_id IN (SELECT version.id FROM quote_version version
-		                                       WHERE version.account_id = $1
-		                                         AND version.quote_id = accepted.quote_id)
-		             ORDER BY send.sent_at DESC, send.created_at DESC LIMIT 1),
-		            CASE WHEN NOT EXISTS (
-		              SELECT 1 FROM quote_version later
-		              WHERE later.account_id = $1 AND later.quote_id = accepted.quote_id
-		                AND later.created_at > accepted.accepted_at
-		            ) THEN quote.current_version_id END
-		          ) AS version_id
-		   FROM accepted
-		   JOIN quote ON quote.account_id = $1 AND quote.id = accepted.quote_id
-		 )
+	rows, err := q.Query(ctx, acceptedVersionsCTE+`
 		 SELECT quote.client_id,
 		        COALESCE(client.name, rfq.client_label, ''),
 		        sum(COALESCE(version.total, 0))

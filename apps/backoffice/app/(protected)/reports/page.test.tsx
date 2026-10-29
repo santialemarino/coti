@@ -47,6 +47,7 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       { date: '2026-09-27', sent: 2, accepted: 1 },
     ],
     topProducts: [{ productId: 'product-1', name: 'Cemento', requests: 7 }],
+    topRevenueProducts: [{ productId: 'product-1', name: 'Cemento', revenue: '1000.00' }],
     topClients: [{ clientId: 'client-1', name: 'Obra Norte', acceptedAmount: '1250.50' }],
     aiMatch: {
       matched: 8,
@@ -79,9 +80,19 @@ describe('ReportsPage', () => {
     expect(screen.getByText(copy.kpis.rfqs)).toBeTruthy();
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getAllByText('$ 1250.50')).toHaveLength(2);
-    expect(screen.getByText('50%')).toBeTruthy();
+    expect(screen.getAllByText('50%').length).toBeGreaterThan(0);
     expect(screen.getByText(/10 minutos/)).toBeTruthy();
     expect(screen.queryByText(copy.branches.title)).toBeNull();
+  });
+
+  it('shows a status pie chart and ranks accepted product revenue', async () => {
+    await renderReport(report());
+
+    expect(screen.getByRole('img', { name: copy.status.aria })).toBeTruthy();
+    expect(screen.getByText(copy.revenueProducts.title)).toBeTruthy();
+    expect(screen.getByText(copy.revenueProducts.description)).toBeTruthy();
+    expect(screen.getByText('$ 1000.00')).toBeTruthy();
+    expect(screen.getByText('7 líneas')).toBeTruthy();
   });
 
   it('passes the requested dates and seeds the filters from the returned range', async () => {
@@ -105,6 +116,7 @@ describe('ReportsPage', () => {
         },
         quotesByStatus: [],
         topProducts: [],
+        topRevenueProducts: [],
         topClients: [],
         aiMatch: { matched: 0, total: 0, rate: null, confidence: { low: 0, medium: 0, high: 0 } },
       }),
@@ -135,7 +147,7 @@ describe('ReportsPage', () => {
 
     expect(screen.getByText(copy.kpis.acceptedAmountDetail)).toBeTruthy();
     expect(screen.getByText('Obra Norte')).toBeTruthy();
-    expect(screen.getByText('Cemento')).toBeTruthy();
+    expect(screen.getAllByText('Cemento').length).toBeGreaterThan(0);
     expect(screen.getByText('80%')).toBeTruthy();
   });
 
@@ -159,6 +171,7 @@ describe('ReportsPage', () => {
         },
         quotesByStatus: [{ status: 'DRAFT', count: 1 }],
         topProducts: [],
+        topRevenueProducts: [],
         topClients: [],
         aiMatch: { matched: 0, total: 0, rate: null, confidence: { low: 0, medium: 0, high: 0 } },
       }),

@@ -27,6 +27,7 @@ interface SellerReportRaw {
   quotes_by_status: { status: string; count: number }[];
   timeline: { date: string; sent: number; accepted: number }[];
   top_products: { product_id: string | null; name: string; requests: number }[];
+  top_revenue_products: { product_id: string; name: string; revenue: string }[];
   top_clients: { client_id: string | null; name: string; accepted_amount: string }[];
   ai_match: {
     matched: number;
@@ -54,6 +55,7 @@ export interface SellerReport {
   quotesByStatus: { status: string; count: number }[];
   timeline: { date: string; sent: number; accepted: number }[];
   topProducts: { productId: string | null; name: string; requests: number }[];
+  topRevenueProducts: { productId: string; name: string; revenue: string }[];
   topClients: { clientId: string | null; name: string; acceptedAmount: string }[];
   aiMatch: {
     matched: number;
@@ -103,6 +105,11 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       productId: item.product_id,
       name: item.name,
       requests: item.requests,
+    })),
+    topRevenueProducts: raw.top_revenue_products.map((item) => ({
+      productId: item.product_id,
+      name: item.name,
+      revenue: item.revenue,
     })),
     topClients: raw.top_clients.map((item) => ({
       clientId: item.client_id,

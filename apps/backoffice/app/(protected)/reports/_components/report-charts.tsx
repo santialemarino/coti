@@ -1,39 +1,186 @@
 import { cn } from '@repo/ui/lib';
 
-export interface BarItem {
-  label: string;
-  value: number;
-  tone?: 'sent' | 'accepted' | 'neutral';
-}
+export type StatusTone = 'draft' | 'quoted' | 'sent' | 'changeRequested' | 'accepted' | 'rejected';
 
-const TONES: Record<NonNullable<BarItem['tone']>, string> = {
-  sent: 'bg-status-sent',
-  accepted: 'bg-status-accepted',
-  neutral: 'bg-primary',
+const STATUS_TONES: Record<StatusTone, { fill: string; dot: string }> = {
+  draft: { fill: 'var(--status-draft-base)', dot: 'bg-status-draft' },
+  quoted: { fill: 'var(--status-quoted-base)', dot: 'bg-status-quoted' },
+  sent: { fill: 'var(--status-sent-base)', dot: 'bg-status-sent' },
+  changeRequested: {
+    fill: 'var(--status-change-requested-base)',
+    dot: 'bg-status-change-requested',
+  },
+  accepted: { fill: 'var(--status-accepted-base)', dot: 'bg-status-accepted' },
+  rejected: { fill: 'var(--status-rejected-base)', dot: 'bg-status-rejected' },
 };
 
-// Horizontal bars keep long status names legible where a donut would not.
-export function HorizontalBars({ items }: { items: BarItem[] }) {
-  const max = Math.max(1, ...items.map((item) => item.value));
+export function statusTone(status: string): StatusTone {
+  switch (status) {
+    case 'QUOTED':
+      return 'quoted';
+    case 'SENT':
+      return 'sent';
+    case 'CHANGE_REQUESTED':
+      return 'changeRequested';
+    case 'ACCEPTED':
+      return 'accepted';
+    case 'REJECTED':
+      return 'rejected';
+    default:
+      return 'draft';
+  }
+}
+
+export interface PieItem {
+  key: string;
+  label: string;
+  value: number;
+  tone: StatusTone;
+}
+
+function pointOnCircle(angle: number, radius: number) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  return [50 + radius * Math.cos(radians), 50 + radius * Math.sin(radians)];
+}
+
+function slicePath(start: number, end: number) {
+  const [startX, startY] = pointOnCircle(start, 44);
+  const [endX, endY] = pointOnCircle(end, 44);
+  const largeArc = end - start > 180 ? 1 : 0;
+  return `M 50 50 L ${startX} ${startY} A 44 44 0 ${largeArc} 1 ${endX} ${endY} Z`;
+}
+
+export function StatusPieChart({
+  items,
+  summary,
+  ariaLabel,
+  label,
+  valueLabel,
+}: {
+  items: PieItem[];
+  summary: string;
+  ariaLabel: string;
+  label: string;
+  valueLabel: string;
+}) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  const visible = items.filter((item) => item.value > 0);
+  const soleSlice = visible.length === 1 ? visible[0] : undefined;
+  let angle = 0;
+
   return (
-    <ul className="flex flex-col gap-y-4">
-      {items.map((item) => (
-        <li key={item.label} className="flex flex-col gap-y-1.5">
-          <div className="flex items-baseline justify-between gap-x-4">
-            <span className="text-paragraph-sm text-foreground">{item.label}</span>
-            <span className="text-paragraph-sm-semibold tabular-nums text-foreground">
+    <figure className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+      <div className="shrink-0" role="img" aria-label={ariaLabel}>
+        <svg viewBox="0 0 100 100" aria-hidden="true" className="size-40 sm:size-44">
+          {soleSlice ? (
+            <circle cx="50" cy="50" r="44" style={{ fill: STATUS_TONES[soleSlice.tone].fill }} />
+          ) : (
+            visible.map((item) => {
+              const start = angle;
+              angle += (item.value / total) * 360;
+              return (
+                <path
+                  key={item.key}
+                  d={slicePath(start, angle)}
+                  style={{ fill: STATUS_TONES[item.tone].fill }}
+                  stroke="var(--card)"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              );
+            })
+          )}
+        </svg>
+      </div>
+      <div className="flex w-full min-w-0 flex-col gap-y-3">
+        <p className="text-paragraph-xs text-foreground-subtle">{summary}</p>
+        <ul className="flex flex-col gap-y-2.5">
+          {items.map((item) => {
+            const percent = total === 0 ? 0 : Math.round((item.value / total) * 100);
+            return (
+              <li
+                key={item.key}
+                className="flex items-center justify-between gap-x-4 text-paragraph-sm"
+              >
+                <span className="inline-flex min-w-0 items-center gap-x-2">
+                  <span
+                    className={cn('size-2.5 shrink-0 rounded-full', STATUS_TONES[item.tone].dot)}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate text-foreground-muted">{item.label}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-foreground">
+                  <span className="font-semibold">{item.value}</span>
+                  <span className="ml-2 text-paragraph-xs text-foreground-subtle">{percent}%</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+      <table className="sr-only">
+        <caption>{ariaLabel}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{label}</th>
+            <th scope="col">{valueLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.key}>
+              <th scope="row">{item.label}</th>
+              <td>{item.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </figure>
+  );
+}
+
+export interface RankingItem {
+  key: string;
+  label: string;
+  value: string;
+  magnitude: number;
+}
+
+export function RankingList({
+  items,
+  tone = 'primary',
+}: {
+  items: RankingItem[];
+  tone?: 'primary' | 'accepted';
+}) {
+  const max = Math.max(1, ...items.map((item) => item.magnitude));
+  return (
+    <ol className="divide-y divide-border">
+      {items.map((item, index) => (
+        <li key={item.key} className="flex flex-col gap-y-2 px-6 py-3.5">
+          <div className="flex items-center gap-x-3">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-paragraph-xs font-semibold tabular-nums text-accent-foreground">
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-paragraph-sm text-foreground">
+              {item.label}
+            </span>
+            <span className="shrink-0 text-paragraph-sm-semibold tabular-nums text-foreground">
               {item.value}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+          <div className="ml-9 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
             <div
-              className={cn('h-full rounded-full', TONES[item.tone ?? 'neutral'])}
-              style={{ width: `${(item.value / max) * 100}%` }}
+              className={cn(
+                'h-full rounded-full',
+                tone === 'accepted' ? 'bg-status-accepted' : 'bg-primary',
+              )}
+              style={{ width: `${(item.magnitude / max) * 100}%` }}
             />
           </div>
         </li>
       ))}
-    </ul>
+    </ol>
   );
 }
 

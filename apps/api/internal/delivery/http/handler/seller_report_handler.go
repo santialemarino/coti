@@ -81,7 +81,9 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 		QuotesByStatus: make([]dto.SellerReportStatusResponse, 0, len(report.QuotesByStatus)),
 		Timeline:       make([]dto.SellerReportTimelineResponse, 0, len(report.Timeline)),
 		TopProducts:    make([]dto.SellerReportProductResponse, 0, len(report.TopProducts)),
-		TopClients:     make([]dto.SellerReportClientResponse, 0, len(report.TopClients)),
+		TopRevenueProducts: make([]dto.SellerReportRevenueProductResponse, 0,
+			len(report.TopRevenueProducts)),
+		TopClients: make([]dto.SellerReportClientResponse, 0, len(report.TopClients)),
 		AIMatch: dto.SellerReportAIMatchResponse{
 			Matched: report.AIMatch.Matched,
 			Total:   report.AIMatch.Total,
@@ -112,6 +114,14 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 		response.TopProducts = append(response.TopProducts, dto.SellerReportProductResponse{
 			ProductID: product.ProductID, Name: product.Name, Requests: product.Requests,
 		})
+	}
+	for _, product := range report.TopRevenueProducts {
+		response.TopRevenueProducts = append(response.TopRevenueProducts,
+			dto.SellerReportRevenueProductResponse{
+				ProductID: product.ProductID,
+				Name:      product.Name,
+				Revenue:   product.Revenue.StringFixed(2),
+			})
 	}
 	for _, client := range report.TopClients {
 		response.TopClients = append(response.TopClients, dto.SellerReportClientResponse{

@@ -4,15 +4,16 @@ import "github.com/google/uuid"
 
 // SellerReportResponse is the seller dashboard read for one period.
 type SellerReportResponse struct {
-	Range          SellerReportRangeResponse      `json:"range"`
-	Scope          SellerReportScopeResponse      `json:"scope"`
-	KPIs           SellerReportKPIsResponse       `json:"kpis"`
-	Branches       []SellerReportBranchResponse   `json:"branches,omitempty"`
-	QuotesByStatus []SellerReportStatusResponse   `json:"quotes_by_status"`
-	Timeline       []SellerReportTimelineResponse `json:"timeline"`
-	TopProducts    []SellerReportProductResponse  `json:"top_products"`
-	TopClients     []SellerReportClientResponse   `json:"top_clients"`
-	AIMatch        SellerReportAIMatchResponse    `json:"ai_match"`
+	Range              SellerReportRangeResponse            `json:"range"`
+	Scope              SellerReportScopeResponse            `json:"scope"`
+	KPIs               SellerReportKPIsResponse             `json:"kpis"`
+	Branches           []SellerReportBranchResponse         `json:"branches,omitempty"`
+	QuotesByStatus     []SellerReportStatusResponse         `json:"quotes_by_status"`
+	Timeline           []SellerReportTimelineResponse       `json:"timeline"`
+	TopProducts        []SellerReportProductResponse        `json:"top_products"`
+	TopRevenueProducts []SellerReportRevenueProductResponse `json:"top_revenue_products"`
+	TopClients         []SellerReportClientResponse         `json:"top_clients"`
+	AIMatch            SellerReportAIMatchResponse          `json:"ai_match"`
 }
 
 // SellerReportRangeResponse is the inclusive period the report covers.
@@ -69,6 +70,13 @@ type SellerReportProductResponse struct {
 	ProductID *uuid.UUID `json:"product_id"`
 	Name      string     `json:"name"`
 	Requests  int        `json:"requests"`
+}
+
+// SellerReportRevenueProductResponse is one matched product ranked by accepted line revenue.
+type SellerReportRevenueProductResponse struct {
+	ProductID uuid.UUID `json:"product_id"`
+	Name      string    `json:"name"`
+	Revenue   string    `json:"revenue"`
 }
 
 // SellerReportClientResponse is one client ranked by accepted amount.

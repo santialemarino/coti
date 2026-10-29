@@ -219,6 +219,70 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	}
 }
 
+func TestSellerReportRepositorySeparatesLineCountsFromAcceptedRevenue(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Reportes de productos")
+	var branchID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT id FROM branch WHERE account_id = $1`, accountID).Scan(&branchID); err != nil {
+		t.Fatal(err)
+	}
+	productID := seedProduct(t, db, accountID, "Cemento")
+	acceptedQuoteID, acceptedVersionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	otherQuoteID, otherVersionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(),
+			`DELETE FROM quote_send WHERE version_id IN ($1, $2)`,
+			acceptedVersionID, otherVersionID)
+	})
+
+	exec := func(what, query string, args ...any) {
+		t.Helper()
+		if _, err := db.CrossAccount().Exec(ctx, query, args...); err != nil {
+			t.Fatalf("seed %s: %v", what, err)
+		}
+	}
+	exec("accepted rfq date", `UPDATE rfq SET received_at = $2 WHERE id =
+	   (SELECT rfq_id FROM quote WHERE id = $1)`,
+		acceptedQuoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	exec("other rfq date", `UPDATE rfq SET received_at = $2 WHERE id =
+	   (SELECT rfq_id FROM quote WHERE id = $1)`,
+		otherQuoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	exec("accepted quote", `UPDATE quote SET created_at = $2, current_status = 'ACCEPTED'
+	   WHERE id = $1`, acceptedQuoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+	exec("accepted version", `UPDATE quote_version SET total = 1000 WHERE id = $1`,
+		acceptedVersionID)
+	exec("accepted line", `UPDATE quote_item
+	   SET quantity = 2, unit_price_snapshot = 500, subtotal = 1000
+	   WHERE version_id = $1`, acceptedVersionID)
+	exec("other version", `UPDATE quote_version SET total = 5000 WHERE id = $1`, otherVersionID)
+	exec("other line", `UPDATE quote_item
+	   SET quantity = 10, unit_price_snapshot = 500, subtotal = 5000
+	   WHERE version_id = $1`, otherVersionID)
+	exec("send", `INSERT INTO quote_send
+	   (account_id, version_id, channel_id, format, sent_at, tracking_status)
+	   SELECT $1, $2, rfq.channel_id, 'PDF', $3, 'SENT'
+	   FROM quote JOIN rfq ON rfq.account_id = quote.account_id AND rfq.id = quote.rfq_id
+	   WHERE quote.id = $4`,
+		accountID, acceptedVersionID, time.Date(2026, 10, 1, 13, 0, 0, 0, time.UTC),
+		acceptedQuoteID)
+	exec("accepted", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`,
+		accountID, acceptedQuoteID, time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC))
+
+	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
+	if len(report.TopProducts) != 1 || report.TopProducts[0].Requests != 2 {
+		t.Fatalf("requested products = %+v, want two line occurrences", report.TopProducts)
+	}
+	if len(report.TopRevenueProducts) != 1 ||
+		report.TopRevenueProducts[0].Revenue.StringFixed(2) != "1000.00" {
+		t.Fatalf("revenue products = %+v, want only the accepted line value",
+			report.TopRevenueProducts)
+	}
+}
+
 func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
@@ -272,6 +336,8 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 					versionID, laterVersionID)
 				if laterVersionID != uuid.Nil {
 					mustCleanup(t, db.CrossAccount(),
+						`DELETE FROM quote_item WHERE version_id = $1`, laterVersionID)
+					mustCleanup(t, db.CrossAccount(),
 						`UPDATE quote SET current_version_id = NULL WHERE id = $1`, quoteID)
 					mustCleanup(t, db.CrossAccount(),
 						`DELETE FROM quote_version WHERE id = $1`, laterVersionID)
@@ -287,11 +353,19 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 			exec("version one", `UPDATE quote_version SET total = 1000, created_at = $2,
 			   is_immutable = TRUE, frozen_at = $2 WHERE id = $1`,
 				versionID, time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC))
+			exec("version one line", `UPDATE quote_item
+			   SET quantity = 10, unit_price_snapshot = 100, subtotal = 1000
+			   WHERE version_id = $1`, versionID)
 			if laterVersionID != uuid.Nil {
 				exec("later version", `INSERT INTO quote_version
 				   (id, account_id, quote_id, version_number, total, created_at)
 				   VALUES ($1, $2, $3, 2, 2000, $4)`,
 					laterVersionID, accountID, quoteID, *tc.laterVersionAt)
+				exec("later version line", `INSERT INTO quote_item
+				   (account_id, version_id, product_id, requested_description, quantity,
+				    unit_price_snapshot, subtotal, match_status)
+				   VALUES ($1, $2, $3, 'cal', 10, 200, 2000, 'MATCHED')`,
+					accountID, laterVersionID, productID)
 			}
 
 			acceptedAt := time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC)
@@ -334,11 +408,19 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 				if len(report.TopClients) != 0 {
 					t.Fatalf("top clients = %+v, want none for an unresolved acceptance", report.TopClients)
 				}
+				if len(report.TopRevenueProducts) != 0 {
+					t.Fatalf("revenue products = %+v, want none for an unresolved acceptance",
+						report.TopRevenueProducts)
+				}
 				return
 			}
 			if len(report.TopClients) != 1 ||
 				report.TopClients[0].AcceptedAmount.StringFixed(2) != tc.wantAmount {
 				t.Fatalf("top clients = %+v, want the resolved version", report.TopClients)
+			}
+			if len(report.TopRevenueProducts) != 1 ||
+				report.TopRevenueProducts[0].Revenue.StringFixed(2) != tc.wantAmount {
+				t.Fatalf("revenue products = %+v, want the resolved version", report.TopRevenueProducts)
 			}
 		})
 	}

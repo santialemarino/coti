@@ -2790,6 +2790,10 @@ definitions:
         items:
           $ref: '#/definitions/dto.SellerReportProductResponse'
         type: array
+      top_revenue_products:
+        items:
+          $ref: '#/definitions/dto.SellerReportRevenueProductResponse'
+        type: array
     type: object
   dto.SellerReportResponseTimeResponse:
     properties:
@@ -2799,6 +2803,15 @@ definitions:
         type: integer
       sample:
         type: integer
+    type: object
+  dto.SellerReportRevenueProductResponse:
+    properties:
+      name:
+        type: string
+      product_id:
+        type: string
+      revenue:
+        type: string
     type: object
   dto.SellerReportScopeResponse:
     properties:

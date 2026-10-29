@@ -11,6 +11,7 @@ import { getTranslations } from 'next-intl/server';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
   EmptyState,
@@ -25,7 +26,9 @@ import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import {
   ConfidenceBar,
-  HorizontalBars,
+  RankingList,
+  StatusPieChart,
+  statusTone,
   TimelineChart,
 } from '@/app/(protected)/reports/_components/report-charts';
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
@@ -90,12 +93,14 @@ export default async function ReportsPage({
   };
 
   const { kpis, aiMatch } = report;
+  const statusTotal = report.quotesByStatus.reduce((total, item) => total + item.count, 0);
   const noActivity =
     kpis.rfqsReceived === 0 &&
     kpis.quotesSent === 0 &&
     kpis.quotesAccepted === 0 &&
     report.quotesByStatus.length === 0 &&
     report.topProducts.length === 0 &&
+    report.topRevenueProducts.length === 0 &&
     report.topClients.length === 0 &&
     aiMatch.total === 0;
   const responseDetail =
@@ -172,32 +177,33 @@ export default async function ReportsPage({
             />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Card className="gap-y-4 py-5">
+          <div className="grid gap-5 xl:grid-cols-12">
+            <Card className="gap-y-4 py-5 xl:col-span-5">
               <CardHeader>
                 <CardTitle>{t('status.title')}</CardTitle>
+                <CardDescription>{t('status.description')}</CardDescription>
               </CardHeader>
               <CardContent>
                 {report.quotesByStatus.length === 0 ? (
                   <EmptyState icon={ChartColumnIcon} size="inline" title={t('status.empty')} />
                 ) : (
-                  <HorizontalBars
+                  <StatusPieChart
                     items={report.quotesByStatus.map((item) => ({
+                      key: item.status,
                       label: tStatus(item.status),
                       value: item.count,
-                      tone:
-                        item.status === 'ACCEPTED'
-                          ? 'accepted'
-                          : item.status === 'SENT'
-                            ? 'sent'
-                            : 'neutral',
+                      tone: statusTone(item.status),
                     }))}
+                    summary={t('status.total', { count: statusTotal })}
+                    ariaLabel={t('status.aria')}
+                    label={t('status.label')}
+                    valueLabel={t('status.count')}
                   />
                 )}
               </CardContent>
             </Card>
 
-            <Card className="gap-y-4 py-5">
+            <Card className="gap-y-4 py-5 xl:col-span-7">
               <CardHeader>
                 <CardTitle>{t('timeline.title')}</CardTitle>
               </CardHeader>
@@ -215,35 +221,54 @@ export default async function ReportsPage({
               </CardContent>
             </Card>
 
-            <Card className="gap-y-0 overflow-hidden py-0">
+            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-6">
               <CardHeader className="pb-4 pt-5">
                 <CardTitle>{t('products.title')}</CardTitle>
+                <CardDescription>{t('products.description')}</CardDescription>
               </CardHeader>
               {report.topProducts.length === 0 ? (
                 <CardContent className="pb-5">
                   <EmptyState icon={ChartColumnIcon} size="inline" title={t('products.empty')} />
                 </CardContent>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead kind="text">{t('products.name')}</TableHead>
-                      <TableHead kind="count">{t('products.requests')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.topProducts.map((product, index) => (
-                      <TableRow key={`${product.productId ?? product.name}-${index}`}>
-                        <TableCell>{product.name || t('products.unnamed')}</TableCell>
-                        <TableCell>{fmt.value(product.requests)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <RankingList
+                  items={report.topProducts.map((product, index) => ({
+                    key: `${product.productId ?? product.name}-${index}`,
+                    label: product.name || t('products.unnamed'),
+                    value: `${fmt.value(product.requests)} ${t('products.requests')}`,
+                    magnitude: product.requests,
+                  }))}
+                />
               )}
             </Card>
 
-            <Card className="gap-y-0 overflow-hidden py-0">
+            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-6">
+              <CardHeader className="pb-4 pt-5">
+                <CardTitle>{t('revenueProducts.title')}</CardTitle>
+                <CardDescription>{t('revenueProducts.description')}</CardDescription>
+              </CardHeader>
+              {report.topRevenueProducts.length === 0 ? (
+                <CardContent className="pb-5">
+                  <EmptyState
+                    icon={ChartColumnIcon}
+                    size="inline"
+                    title={t('revenueProducts.empty')}
+                  />
+                </CardContent>
+              ) : (
+                <RankingList
+                  tone="accepted"
+                  items={report.topRevenueProducts.map((product) => ({
+                    key: product.productId,
+                    label: product.name || t('products.unnamed'),
+                    value: fmt.currency(product.revenue),
+                    magnitude: Number(product.revenue),
+                  }))}
+                />
+              )}
+            </Card>
+
+            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-7">
               <CardHeader className="pb-4 pt-5">
                 <CardTitle>{t('clients.title')}</CardTitle>
               </CardHeader>
@@ -271,7 +296,7 @@ export default async function ReportsPage({
               )}
             </Card>
 
-            <Card className="gap-y-4 py-5">
+            <Card className="gap-y-4 py-5 xl:col-span-5">
               <CardHeader>
                 <CardTitle>{t('ai.title')}</CardTitle>
               </CardHeader>

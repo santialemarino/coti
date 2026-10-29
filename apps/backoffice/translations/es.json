@@ -1993,7 +1993,12 @@
     "noDataShort": "—",
     "status": {
       "title": "Cotizaciones por estado",
-      "empty": "Todavía no hay cotizaciones en el período."
+      "description": "Distribución de las cotizaciones creadas en el período.",
+      "empty": "Todavía no hay cotizaciones en el período.",
+      "total": "{count, plural, one {# cotización} other {# cotizaciones}}",
+      "label": "Estado",
+      "count": "Cotizaciones",
+      "aria": "Cotizaciones creadas en el período agrupadas por estado"
     },
     "timeline": {
       "title": "Envíos y aceptaciones",
@@ -2003,11 +2008,17 @@
       "aria": "Envíos y aceptaciones por día entre {from} y {to}"
     },
     "products": {
-      "title": "Productos más pedidos",
+      "title": "Productos más solicitados",
+      "description": "Ranking por cantidad de líneas, sin importar la cantidad pedida.",
       "empty": "Todavía no hay productos en el período.",
       "name": "Producto",
-      "requests": "Pedidos",
+      "requests": "líneas",
       "unnamed": "Sin nombre"
+    },
+    "revenueProducts": {
+      "title": "Productos con mayor ingreso",
+      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "empty": "Todavía no hay productos aceptados en el período."
     },
     "clients": {
       "title": "Clientes por importe aceptado",

@@ -12535,6 +12535,12 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.SellerReportProductResponse"
                     }
+                },
+                "top_revenue_products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportRevenueProductResponse"
+                    }
                 }
             }
         },
@@ -12549,6 +12555,20 @@ const docTemplate = `{
                 },
                 "sample": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportRevenueProductResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "revenue": {
+                    "type": "string"
                 }
             }
         },

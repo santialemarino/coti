@@ -35,8 +35,13 @@ rest of the API enforces.
 - `quotes_by_status`: quotes created in the period, grouped by their current status.
 - `timeline`: one point per calendar day, with sent and accepted events. Days with no activity are
   present with zeroes.
-- `top_products`: the five most requested products across each visible RFQ's current quote version.
-  Matched products use the canonical catalog name; unmatched lines use the requested description.
+- `top_products`: the five most requested products across each visible RFQ's current quote version,
+  ranked by line occurrences. Every quote line counts once, regardless of its quantity. Matched
+  products use the canonical catalog name; unmatched lines use the requested description.
+- `top_revenue_products`: the five matched products with the largest accepted line revenue in the
+  period. Revenue is `quantity × unit_price_snapshot` summed across the lines of the resolved
+  accepted version, rounded to two decimals. Unmatched lines are excluded because they have no
+  product identity.
 - `top_clients`: the five clients with the largest accepted amount in the period. Anonymous quotes
   and zero-amount groups are omitted.
 - `ai_match`: the latest AI generation per quote, its matched-line rate, and the confidence split of
@@ -53,7 +58,14 @@ from the first of these that resolves:
 
 The fallback is deliberately narrow. A later version is not charged to the client, and an
 acceptance that cannot be tied to a version contributes to the accepted count but zero to the
-amount. The same resolution feeds the accepted amount and the top clients.
+amount. The same resolution feeds the accepted amount, the top clients and the product revenue
+ranking.
+
+Product revenue is gross line value and subtracts no discounts: the ranking deliberately reports
+`quantity × unit_price_snapshot` even when an `ITEM` discount names a single line, because a
+`TOTAL` or `ITEM_SET` discount cannot be attributed to one product without inventing an allocation
+rule. This means `top_revenue_products` does not sum to `kpis.accepted_amount` when the accepted
+version carries discounts, and it excludes unmatched lines.
 
 ## AI confidence
 

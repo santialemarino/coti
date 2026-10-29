@@ -42,6 +42,11 @@ func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {
 			ConversionRate: &rate,
 			AcceptedAmount: decimal.RequireFromString("1250.5"),
 		},
+		TopRevenueProducts: []domain.SellerReportRevenueProduct{{
+			ProductID: uuid.New(),
+			Name:      "Cemento",
+			Revenue:   decimal.RequireFromString("1250.5"),
+		}},
 		AIMatch: domain.SellerReportAIMatch{Rate: &aiRate},
 	}}
 	handler := NewSellerReportHandler(service)
@@ -71,6 +76,10 @@ func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {
 	if response.AIMatch.Rate == nil || *response.AIMatch.Rate != "0.5000" {
 		t.Fatalf("AI rate = %v, want 0.5000", response.AIMatch.Rate)
 	}
+	if len(response.TopRevenueProducts) != 1 ||
+		response.TopRevenueProducts[0].Revenue != "1250.50" {
+		t.Fatalf("revenue products = %+v, want 1250.50", response.TopRevenueProducts)
+	}
 }
 
 func TestSellerReportResponseKeepsEmptyCollectionsAsArrays(t *testing.T) {
@@ -82,6 +91,7 @@ func TestSellerReportResponseKeepsEmptyCollectionsAsArrays(t *testing.T) {
 		`"quotes_by_status":[]`,
 		`"timeline":[]`,
 		`"top_products":[]`,
+		`"top_revenue_products":[]`,
 		`"top_clients":[]`,
 	} {
 		if !strings.Contains(string(payload), field) {

@@ -22,15 +22,16 @@ type SellerReportQuery struct {
 
 // SellerReport is the seller dashboard's read model.
 type SellerReport struct {
-	Range          SellerReportRange
-	Scope          SellerReportScope
-	KPIs           SellerReportKPIs
-	Branches       []SellerReportBranch
-	QuotesByStatus []SellerReportStatusCount
-	Timeline       []SellerReportTimelinePoint
-	TopProducts    []SellerReportProduct
-	TopClients     []SellerReportClient
-	AIMatch        SellerReportAIMatch
+	Range              SellerReportRange
+	Scope              SellerReportScope
+	KPIs               SellerReportKPIs
+	Branches           []SellerReportBranch
+	QuotesByStatus     []SellerReportStatusCount
+	Timeline           []SellerReportTimelinePoint
+	TopProducts        []SellerReportProduct
+	TopRevenueProducts []SellerReportRevenueProduct
+	TopClients         []SellerReportClient
+	AIMatch            SellerReportAIMatch
 }
 
 // SellerReportRange is the inclusive Argentine calendar-day period the report covers.
@@ -90,6 +91,13 @@ type SellerReportProduct struct {
 	ProductID *uuid.UUID
 	Name      string
 	Requests  int
+}
+
+// SellerReportRevenueProduct is one matched product, ranked by its accepted line revenue.
+type SellerReportRevenueProduct struct {
+	ProductID uuid.UUID
+	Name      string
+	Revenue   decimal.Decimal
 }
 
 // SellerReportClient is one client, ranked by the commercial amount accepted in the period.
