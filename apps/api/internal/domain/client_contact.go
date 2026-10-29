@@ -37,7 +37,6 @@ type ClientContact struct {
 
 // ClientContactProfile is the authenticated customer's unique fiscal profile.
 type ClientContactProfile struct {
-	ReviewPending bool
 	// OwnershipUnproved hides an earlier profile's data until a contact it already had is verified.
 	OwnershipUnproved bool
 	ClientID          *uuid.UUID
@@ -74,13 +73,27 @@ type ContactObservation struct {
 	SourceClientID    *uuid.UUID
 	CandidateClientID *uuid.UUID
 	CandidateName     *string
-	TaxID             *string
-	Kind              ChannelType
-	Value             string
-	Name              *string
-	Original          string
-	Status            ContactReviewStatus
-	CreatedAt         time.Time
+	SourceName        *string
+	// SourceRegistered and CandidateRegistered report a CUIT on that profile, which no seller merges.
+	SourceRegistered    bool
+	CandidateRegistered bool
+	TaxID               *string
+	Kind                ChannelType
+	Value               string
+	Name                *string
+	Original            string
+	Status              ContactReviewStatus
+	CreatedAt           time.Time
+}
+
+// MergeProfile is what a seller merge checks on one profile before moving anything.
+type MergeProfile struct {
+	ID         uuid.UUID
+	TaxID      *string
+	MergedInto *uuid.UUID
+	// InReach is true when every order of the profile is in the caller's branches and, for a seller,
+	// no quote is another seller's.
+	InReach bool
 }
 
 // NormalizeClientContact validates one destination without inferring ownership.

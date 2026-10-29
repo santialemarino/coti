@@ -40,6 +40,19 @@ describe('forwardToApi fiscal documents', () => {
     expect(headers.get('Authorization')).toBe('Bearer session-token');
     expect(headers.get('X-Branch-Id')).toBe('branch-id');
   });
+  it('passes a 204 through with no body', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
+    const request = new Request('http://localhost/api/clients/id/merge', {
+      headers: { 'X-Branch-Id': 'branch-id' },
+    });
+    const response = await forwardToApi(request, {
+      path: '/v1/clients/id/merge',
+      method: 'POST',
+      body: '{}',
+    });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+  });
   it('refuses unauthenticated document downloads before contacting the API', async () => {
     vi.mocked(cookies).mockResolvedValue({ get: () => undefined } as Awaited<
       ReturnType<typeof cookies>

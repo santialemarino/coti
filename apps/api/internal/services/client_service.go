@@ -25,6 +25,8 @@ type clientProfileRepository interface {
 		tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID,
 		clientID uuid.UUID) (*domain.Client, error)
+	GetSurvivor(ctx context.Context, q repository.Querier, accountID,
+		clientID uuid.UUID) (uuid.UUID, error)
 	FindByContacts(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		phone, email *string) ([]domain.Client, error)
 	ListAcceptedSales(ctx context.Context, q repository.Querier, tenant domain.Tenant,
@@ -119,12 +121,18 @@ func (s *ClientService) ListClients(
 	return summaries, err
 }
 
-// GetClient returns one profile and the accepted sales visible to the caller.
+// GetClient returns one profile and the accepted sales visible to the caller. A merged profile's id
+// answers with the profile it was merged into, whose id tells the caller where it now lives.
 func (s *ClientService) GetClient(
 	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID,
 ) (*domain.ClientProfile, error) {
 	var profile *domain.ClientProfile
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		clientID, err = s.clients.GetSurvivor(ctx, q, tenant.AccountID, clientID)
+		if err != nil {
+			return err
+		}
 		client, err := s.clients.GetByID(ctx, q, tenant.AccountID, clientID)
 		if err != nil {
 			return err

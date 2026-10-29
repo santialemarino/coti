@@ -60,8 +60,9 @@ profile and its provenance, sets merged_into, retires its old contacts, unions c
 and tags, and moves RFQ, quotation and notification history to the fiscal profile. The registered
 name prevails. Only the proved contact becomes verified; other newly imported contacts remain
 pending. Successful proof also records customer-specific contact ownership and snapshots access
-to the source orders before the merge. Delivery destinations already recorded on sends remain immutable. Staff cannot bypass
-proof using the retired contact suggestion mutation endpoint, which returns 403.
+to the source orders before the merge. Delivery destinations already recorded on sends remain
+immutable. No staff route merges into a registered profile: the seller merges only provisional
+profiles (see [Seller actions on provisional profiles](#seller-actions-on-provisional-profiles)).
 
 The source's other contacts keep routing. An inbound message from one of them attaches to the fiscal
 profile, with no new provisional profile and no name question. The marker is the source's retired,
@@ -71,6 +72,43 @@ new orders reach the customer only through the profile's own history. Routing yi
 verified contact: once anyone in the supplier proves that destination, messages go to the profile
 that proved it. Routing stops when the customer removes the pending copy from their profile. When
 several merges retired the same destination, the latest one routes.
+
+Every merge, whichever path ran it, also fills the target's empty DNI, legal name, IVA condition and
+fiscal address from the source without overwriting a value the target holds, repoints any profile
+already merged into the source so `merged_into` always names a live profile, settles any open name
+question to the source's contacts (so a late reply cannot rename the target), and writes a
+`client_merge_audit` row (source, target, `merged_by`, `merged_at`; `merged_by` is NULL when the
+customer's own proof merged them).
+
+## Seller actions on provisional profiles
+
+A provisional profile (no CUIT) is the seller's to tidy; a registered one belongs to its customer.
+
+- **Rename.** `PUT /v1/clients/{id}/name` sets the name of a provisional profile, for one that kept a
+  WhatsApp display name, and settles any open name question to its contacts so a late reply cannot
+  overwrite the correction. A registered profile answers **403** `CLIENT_REGISTERED`. The client detail
+  shows the name with an inline editor, or, on a registered profile, a line saying the customer
+  manages it.
+- **Merge.** `POST /v1/clients/{id}/merge` with `source_client_id` merges the source into the path
+  profile, which survives. `GET /v1/clients/{id}/merge-candidates` lists the profiles a merge would
+  accept. Both profiles must be live, have no CUIT (**403** `CLIENT_REGISTERED`), and be within the
+  caller's reach: every order in the caller's branches and, for a seller, no quote of another seller
+  (**403** `CLIENT_OUT_OF_REACH`). An already merged profile is **409** `CLIENT_MERGED`, and another
+  account's is **404**. The source's orders, tags and notifications move; its live contacts retire
+  and the target gets a copy of each that keeps its channel verification, so they route to the
+  target directly and a customer who later proves one brings the whole merged history in. Both profiles
+  are locked with the same per-profile key inbound routing takes, so a message arriving mid-merge
+  routes to the survivor.
+- **Coincidencias.** `GET /v1/client-contact-suggestions` lists the PENDING observations in the
+  caller's branches, such as the duplicate legacy contacts migration 00062 raised, with both
+  profiles' names and whether either is registered. `PUT /v1/client-contact-suggestions/{id}` takes
+  `MERGE`, which runs the same merge into the candidate (or into the source when `keep_client_id`
+  names it; any other id is **422**), or `SEPARATE`, which dismisses the case; either marks the
+  observation decided with the seller and time. A side merged since the case was raised is settled on
+  the profile it ended up in, and a case whose two sides already share one survivor is just marked
+  merged. With a CUIT on either side the backoffice offers only the dismissal.
+- **Old links.** `GET /v1/clients/{id}` on a merged profile answers with the profile it ended up in,
+  and the backoffice redirects the old URL there.
 
 ## Adopting an earlier profile
 
@@ -317,7 +355,8 @@ or silently merged. Migration 00064 adds `client_contact.declared_by` and attrib
 customer-entered contacts to the identity that entered them. Migration 00065 adds the outbox's
 `status_changed_at`, backfilled from `created_at`, which bounds both the reply window and the
 delivery lease. Migration 00067 drops the separate recovery email and its link challenges, adds the
-challenge purpose and the main-contact flag. Migrations are executable; the
+challenge purpose and the main-contact flag. Migration 00068 adds `client_merge_audit` with RLS.
+Migrations are executable; the
 consolidated database schema is a reference only.
 
 Integration tests cover proof-gated history movement, contact history bounded by the ownership

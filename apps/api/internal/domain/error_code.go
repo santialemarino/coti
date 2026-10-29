@@ -107,6 +107,12 @@ const (
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
 	// A customer profile holds a bounded number of contacts.
 	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
+	// A profile with a CUIT belongs to its customer: no seller renames or merges it.
+	CodeClientRegistered ErrorCode = "CLIENT_REGISTERED"
+	// A profile already merged into another one takes no further merge.
+	CodeClientMerged ErrorCode = "CLIENT_MERGED"
+	// A seller merges only profiles whose orders all sit in their own branches.
+	CodeClientOutOfReach ErrorCode = "CLIENT_OUT_OF_REACH"
 	// The Google address a customer chose is already verified on another CUIT/CUIL's profile.
 	CodeContactInUse ErrorCode = "CONTACT_IN_USE"
 )

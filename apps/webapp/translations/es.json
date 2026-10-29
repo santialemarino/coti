@@ -352,7 +352,6 @@
       "contactLimit": "Cargaste más contactos de los que admite la ficha. Quitá alguno y guardá de nuevo.",
       "mainUnverified": "Solo podés elegir un contacto verificado."
     },
-    "reviewPending": "Recibimos datos de contacto nuevos con tu CUIT/CUIL. Revisá tus datos y agregalos si corresponden.",
     "ownershipUnproved": "Este CUIT/CUIL ya tenía una ficha en el corralón. Verificá un contacto que ya tenía la ficha para ver tus datos y pedidos anteriores.",
     "fiscalTitle": "Datos de facturación (opcional)",
     "legalName": "Razón social (opcional)",

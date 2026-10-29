@@ -349,6 +349,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM client_contact_outbox WHERE account_id=$1`,
 			`DELETE FROM client_contact_observation WHERE account_id=$1`,
 			`DELETE FROM client_contact WHERE account_id=$1`,
+			`DELETE FROM client_merge_audit WHERE account_id=$1`,
 			`UPDATE client SET merged_into=NULL WHERE account_id=$1`,
 			`DELETE FROM customer_auth_challenge WHERE account_id=$1`,
 			`DELETE FROM customer_session WHERE account_id=$1`,

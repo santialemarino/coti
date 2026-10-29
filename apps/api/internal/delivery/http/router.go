@@ -283,6 +283,9 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		clients.POST("/:clientId/registration-link", h.ClientContacts.SendRegistrationLink)
 		verified.GET("/client-contact-suggestions", h.ClientContacts.ListSuggestions)
 		verified.PUT("/client-contact-suggestions/:suggestionId", h.ClientContacts.ResolveSuggestion)
+		clients.GET("/:clientId/merge-candidates", h.ClientContacts.ListMergeCandidates)
+		clients.PUT("/:clientId/name", h.ClientContacts.RenameClient)
+		clients.POST("/:clientId/merge", h.ClientContacts.MergeClients)
 	}
 	clients.GET("/:clientId", h.Client.Get)
 	if h.Invoice != nil {

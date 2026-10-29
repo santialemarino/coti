@@ -492,6 +492,13 @@ definitions:
           $ref: '#/definitions/dto.ClientTagResponse'
         type: array
     type: object
+  dto.ClientMergeCandidatesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientResponse'
+        type: array
+    type: object
   dto.ClientMessageResponse:
     properties:
       body:
@@ -662,6 +669,8 @@ definitions:
         type: string
       candidate_name:
         type: string
+      candidate_registered:
+        type: boolean
       created_at:
         type: string
       declared_name:
@@ -674,6 +683,12 @@ definitions:
         type: string
       source_client_id:
         type: string
+      source_name:
+        type: string
+      source_registered:
+        description: SourceRegistered and CandidateRegistered mark a profile with
+          a CUIT, which no seller merges.
+        type: boolean
       tax_id:
         type: string
       value:
@@ -1203,8 +1218,6 @@ definitions:
           OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer
           verifies a contact it already had; only what the customer entered is returned.
         type: boolean
-      review_pending:
-        type: boolean
       tax_id:
         type: string
     type: object
@@ -1728,6 +1741,13 @@ definitions:
         type: string
       role:
         type: string
+    type: object
+  dto.MergeClientRequest:
+    properties:
+      source_client_id:
+        type: string
+    required:
+    - source_client_id
     type: object
   dto.OnboardingChecklistItemResponse:
     properties:
@@ -2665,6 +2685,14 @@ definitions:
     required:
     - refresh_token
     type: object
+  dto.RenameClientRequest:
+    properties:
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - name
+    type: object
   dto.ReplaceClientTagsRequest:
     properties:
       tag_ids:
@@ -2696,9 +2724,10 @@ definitions:
     properties:
       action:
         enum:
-        - ASSOCIATE
         - SEPARATE
         - MERGE
+        type: string
+      keep_client_id:
         type: string
     required:
     - action
@@ -4135,7 +4164,6 @@ paths:
     put:
       consumes:
       - application/json
-      deprecated: true
       parameters:
       - description: Branch filter
         in: header
@@ -4153,6 +4181,8 @@ paths:
         schema:
           $ref: '#/definitions/dto.ResolveContactSuggestionRequest'
       responses:
+        "204":
+          description: No Content
         "400":
           description: Bad Request
           schema:
@@ -4179,7 +4209,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Reject retired contact association decisions
+      summary: Resolve a client contact suggestion
       tags:
       - clients
   /v1/clients:
@@ -4330,6 +4360,150 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a client's fiscal data
+      tags:
+      - clients
+  /v1/clients/{clientId}/merge:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Surviving client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Profile merged into the surviving one
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.MergeClientRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Merge two client profiles without a CUIT
+      tags:
+      - clients
+  /v1/clients/{clientId}/merge-candidates:
+    get:
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMergeCandidatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List profiles a seller can merge with a client
+      tags:
+      - clients
+  /v1/clients/{clientId}/name:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: New name
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RenameClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rename a client profile without a CUIT
       tags:
       - clients
   /v1/clients/{clientId}/registration-link:

@@ -408,7 +408,10 @@
     "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
-    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "CLIENT_REGISTERED": "Esta ficha tiene CUIT: sus datos los administra el cliente desde su cuenta.",
+    "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
+    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
   },
   "meta": {
     "home": {
@@ -1975,6 +1978,41 @@
       "selectBranch": "Elegí una sucursal para enviar el enlace",
       "sent": "Enviamos el enlace al cliente.",
       "failed": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+    },
+    "rename": {
+      "label": "Nombre",
+      "formLabel": "Corregir el nombre del cliente",
+      "placeholder": "Ingresá el nombre y apellido del cliente",
+      "required": "Ingresá el nombre del cliente.",
+      "edit": "Corregir nombre",
+      "unnamed": "Sin nombre",
+      "registered": "Lo administra el cliente desde su cuenta.",
+      "submit": "Guardar",
+      "submitting": "Guardando…",
+      "cancel": "Cancelar",
+      "saved": "Guardamos el nombre «{name}»."
+    },
+    "merge": {
+      "open": "Unir con otra ficha",
+      "title": "Unir con otra ficha",
+      "description": "Juntá en una sola ficha los pedidos y contactos de {name} y otra ficha del mismo cliente.",
+      "other": {
+        "label": "Otra ficha",
+        "placeholder": "Seleccioná una ficha",
+        "search": "Buscá por nombre o contacto",
+        "empty": "No hay fichas con ese nombre o contacto",
+        "none": "No hay otras fichas sin CUIT de tus sucursales para unir."
+      },
+      "survivor": {
+        "label": "Ficha que queda",
+        "hint": "Los pedidos y contactos de {merged} pasan a esta ficha. No se puede deshacer."
+      },
+      "loadError": "No pudimos cargar las fichas.",
+      "retry": "Reintentar",
+      "submit": "Unir fichas",
+      "submitting": "Uniendo…",
+      "cancel": "Cancelar",
+      "merged": "Unimos «{merged}» en «{kept}»."
     }
   },
   "reports": {
@@ -3098,22 +3136,23 @@
     "unknown": "Cliente sin nombre",
     "review": "Revisar",
     "reviewTitle": "Revisar coincidencia",
+    "reviewDescription": "Dos fichas comparten el contacto {value}. Si son el mismo cliente, unilas; si no, descartá la coincidencia.",
     "taxId": "CUIT/CUIL declarado",
-    "incoming": "Contacto de entrada",
-    "candidate": "Ficha candidata",
+    "incoming": "Contacto compartido",
+    "candidate": "Ficha que tiene el contacto",
+    "source": "Otra ficha",
     "absent": "Sin datos",
     "original": "Mensaje original",
-    "associate": "Asociar contacto",
-    "separate": "Mantener separado",
-    "merge": "Revisar fusión",
-    "confirm": "Confirmar",
-    "decisionDescription": "Confirmá tu decisión sobre {value}. Los datos recibidos se conservarán.",
-    "mergeDescription": "Se incorporarán los contactos y las asociaciones de la ficha de origen a la ficha candidata. Se conservará el registro de origen y el mensaje recibido de {value}.",
-    "saving": "Guardando…",
-    "cancel": "Cancelar",
+    "keep": "Ficha que queda",
+    "keepHint": "Los pedidos y contactos de la otra ficha pasan a esta. No se puede deshacer.",
+    "registered": "Una de las fichas tiene CUIT: solo el cliente puede unirla, desde su cuenta. Podés descartar la coincidencia.",
+    "merge": "Unir fichas",
+    "merging": "Uniendo…",
+    "separate": "Descartar",
+    "separating": "Descartando…",
+    "merged": "Unimos las fichas en «{name}».",
+    "separated": "Descartamos la coincidencia de {value}.",
     "retry": "Reintentar",
-    "loadError": "No pudimos cargar las coincidencias.",
-    "resolveError": "No pudimos resolver la coincidencia. Revisá tus permisos o volvé a cargar la página.",
-    "verificationRequired": "La asociación se realiza cuando el cliente confirma el contacto desde Mis datos."
+    "loadError": "No pudimos cargar las coincidencias."
   }
 }

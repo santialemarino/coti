@@ -47,7 +47,16 @@ func (acceptingContacts) SetMainContact(context.Context, domain.CustomerPrincipa
 func (acceptingContacts) ListSuggestions(context.Context, domain.Tenant) ([]domain.ContactObservation, error) {
 	return nil, nil
 }
-func (acceptingContacts) ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, string) error {
+func (acceptingContacts) ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, domain.ContactReviewStatus, *uuid.UUID) error {
+	return nil
+}
+func (acceptingContacts) ListMergeCandidates(context.Context, domain.Tenant, uuid.UUID) ([]domain.Client, error) {
+	return nil, nil
+}
+func (acceptingContacts) RenameClient(context.Context, domain.Tenant, uuid.UUID, string) (*domain.Client, error) {
+	return &domain.Client{}, nil
+}
+func (acceptingContacts) MergeClients(context.Context, domain.Tenant, uuid.UUID, uuid.UUID) error {
 	return nil
 }
 func (acceptingContacts) SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error {

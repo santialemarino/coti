@@ -98,7 +98,6 @@ export function CustomerProfileForm({ profile }: CustomerProfileFormProps) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(submit)} noValidate className="flex flex-col gap-y-6">
         {profile.ownershipUnproved ? <Callout>{t('ownershipUnproved')}</Callout> : null}
-        {profile.reviewPending ? <Callout>{t('reviewPending')}</Callout> : null}
         <Card className="px-6 gap-y-5">
           <div className="flex flex-col gap-y-2">
             <Label htmlFor="profile-tax-id">{t('taxId')}</Label>

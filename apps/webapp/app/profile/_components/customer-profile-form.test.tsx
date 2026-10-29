@@ -27,7 +27,6 @@ function renderForm(
           clientId: null,
           taxId: '20123456786',
           name: 'Customer',
-          reviewPending: false,
           ownershipUnproved,
           contacts,
         }}

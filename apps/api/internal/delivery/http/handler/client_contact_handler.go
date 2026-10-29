@@ -18,8 +18,11 @@ type ClientContactService interface {
 	UpdateProfile(context.Context, domain.CustomerPrincipal, domain.ClientContactUpdate) error
 	SetMainContact(context.Context, domain.CustomerPrincipal, domain.ChannelType, string) error
 	ListSuggestions(context.Context, domain.Tenant) ([]domain.ContactObservation, error)
-	ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, string) error
+	ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, domain.ContactReviewStatus, *uuid.UUID) error
 	SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error
+	ListMergeCandidates(context.Context, domain.Tenant, uuid.UUID) ([]domain.Client, error)
+	RenameClient(context.Context, domain.Tenant, uuid.UUID, string) (*domain.Client, error)
+	MergeClients(context.Context, domain.Tenant, uuid.UUID, uuid.UUID) error
 }
 
 // SendRegistrationLink sends a seller-confirmed request to complete the customer's own portal data.
@@ -173,7 +176,7 @@ func (h *ClientContactHandler) GetProfile(c *gin.Context) {
 		value := string(*profile.IVACondition)
 		condition = &value
 	}
-	c.JSON(http.StatusOK, dto.CustomerProfileResponse{ClientID: profile.ClientID, TaxID: profile.TaxID, Name: profile.Name, Contacts: contacts, ReviewPending: profile.ReviewPending, OwnershipUnproved: profile.OwnershipUnproved, LegalName: profile.LegalName, Address: profile.Address, IVACondition: condition})
+	c.JSON(http.StatusOK, dto.CustomerProfileResponse{ClientID: profile.ClientID, TaxID: profile.TaxID, Name: profile.Name, Contacts: contacts, OwnershipUnproved: profile.OwnershipUnproved, LegalName: profile.LegalName, Address: profile.Address, IVACondition: condition})
 }
 
 // UpdateProfile saves only the authenticated customer's commercial data.
@@ -262,20 +265,20 @@ func (h *ClientContactHandler) ListSuggestions(c *gin.Context) {
 	}
 	result := make([]dto.ContactSuggestionResponse, 0, len(items))
 	for _, o := range items {
-		result = append(result, dto.ContactSuggestionResponse{ID: o.ID, SourceClientID: o.SourceClientID, CandidateClientID: o.CandidateClientID, CandidateName: o.CandidateName, TaxID: o.TaxID, Kind: string(o.Kind), Value: o.Value, DeclaredName: o.Name, OriginalText: o.Original, CreatedAt: o.CreatedAt})
+		result = append(result, dto.ContactSuggestionResponse{ID: o.ID, SourceClientID: o.SourceClientID, CandidateClientID: o.CandidateClientID, CandidateName: o.CandidateName, SourceName: o.SourceName, SourceRegistered: o.SourceRegistered, CandidateRegistered: o.CandidateRegistered, TaxID: o.TaxID, Kind: string(o.Kind), Value: o.Value, DeclaredName: o.Name, OriginalText: o.Original, CreatedAt: o.CreatedAt})
 	}
 	c.JSON(http.StatusOK, result)
 }
 
-// ResolveSuggestion rejects retired staff decisions that bypass contact ownership verification.
-// @Summary Reject retired contact association decisions
-// @Deprecated
+// ResolveSuggestion merges the two profiles of a pending case or dismisses it.
+// @Summary Resolve a client contact suggestion
 // @Tags clients
 // @Accept json
 // @Security BearerAuth
 // @Param X-Branch-Id header string false "Branch filter"
 // @Param suggestionId path string true "Suggestion ID"
 // @Param body body dto.ResolveContactSuggestionRequest true "Seller decision"
+// @Success 204
 // @Failure 400,401,403,404,409,422 {object} dto.ErrorResponse
 // @Router /v1/client-contact-suggestions/{suggestionId} [put]
 func (h *ClientContactHandler) ResolveSuggestion(c *gin.Context) {
@@ -292,7 +295,108 @@ func (h *ClientContactHandler) ResolveSuggestion(c *gin.Context) {
 		Respond(c, domain.ErrInvalidInput)
 		return
 	}
-	if err := h.contacts.ResolveSuggestion(c.Request.Context(), tenant, id, body.Action); err != nil {
+	action := domain.ContactReviewSeparate
+	if body.Action == "MERGE" {
+		action = domain.ContactReviewMerged
+	}
+	if err := h.contacts.ResolveSuggestion(c.Request.Context(), tenant, id, action, body.KeepClientID); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListMergeCandidates returns the profiles without a CUIT the caller could merge with this one.
+// @Summary List profiles a seller can merge with a client
+// @Tags clients
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string false "Branch filter"
+// @Param clientId path string true "Client ID"
+// @Success 200 {object} dto.ClientMergeCandidatesResponse
+// @Failure 400,401,403,404 {object} dto.ErrorResponse
+// @Router /v1/clients/{clientId}/merge-candidates [get]
+func (h *ClientContactHandler) ListMergeCandidates(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	clients, err := h.contacts.ListMergeCandidates(c.Request.Context(), tenant, id)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	items := make([]dto.ClientResponse, 0, len(clients))
+	for i := range clients {
+		items = append(items, toClientResponse(clients[i]))
+	}
+	c.JSON(http.StatusOK, dto.ClientMergeCandidatesResponse{Items: items})
+}
+
+// RenameClient corrects the name of a profile without a CUIT; a registered profile answers 403.
+// @Summary Rename a client profile without a CUIT
+// @Tags clients
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string false "Branch filter"
+// @Param clientId path string true "Client ID"
+// @Param body body dto.RenameClientRequest true "New name"
+// @Success 200 {object} dto.ClientResponse
+// @Failure 400,401,403,404,422 {object} dto.ErrorResponse
+// @Router /v1/clients/{clientId}/name [put]
+func (h *ClientContactHandler) RenameClient(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	var body dto.RenameClientRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+	client, err := h.contacts.RenameClient(c.Request.Context(), tenant, id, body.Name)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toClientResponse(*client))
+}
+
+// MergeClients merges another profile without a CUIT into this one, which survives.
+// @Summary Merge two client profiles without a CUIT
+// @Tags clients
+// @Accept json
+// @Security BearerAuth
+// @Param X-Branch-Id header string false "Branch filter"
+// @Param clientId path string true "Surviving client ID"
+// @Param body body dto.MergeClientRequest true "Profile merged into the surviving one"
+// @Success 204
+// @Failure 400,401,403,404,409,422 {object} dto.ErrorResponse
+// @Router /v1/clients/{clientId}/merge [post]
+func (h *ClientContactHandler) MergeClients(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	var body dto.MergeClientRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+	if err := h.contacts.MergeClients(c.Request.Context(), tenant, id, body.SourceClientID); err != nil {
 		Respond(c, err)
 		return
 	}

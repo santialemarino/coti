@@ -164,7 +164,12 @@ func TestCustomerGoogle_ChosenEmailMergesTheDumbProfileThatOwnsIt(t *testing.T) 
 	ctx := context.Background()
 	const tax = "20123456786"
 	dumb, channel, rfq := uuid.New(), uuid.New(), uuid.New()
-	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,email) VALUES($1,$2,'Mostrador','dumb@example.test')`, dumb, account); err != nil {
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,email,dni,legal_name) VALUES($1,$2,'Mostrador','dumb@example.test','28123456','Mostrador SA')`, dumb, account); err != nil {
+		t.Fatal(err)
+	}
+	// A profile a seller had already merged into the dumb one follows it into the registered profile.
+	earlier := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,merged_into) VALUES($1,$2,'Mostrador viejo',$3)`, earlier, account, dumb); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel(id,account_id,branch_id,type) VALUES ($1,$2,$3,'MANUAL_ENTRY')`, channel, account, branch); err != nil {
@@ -185,6 +190,24 @@ func TestCustomerGoogle_ChosenEmailMergesTheDumbProfileThatOwnsIt(t *testing.T) 
 	}
 	if mergedInto == nil || *mergedInto != registered {
 		t.Fatalf("dumb profile merged into %v, want %v", mergedInto, registered)
+	}
+	var earlierInto *uuid.UUID
+	var dni, legalName *string
+	var audits, bySeller int
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT e.merged_into,r.dni,r.legal_name,
+ (SELECT count(*) FROM client_merge_audit WHERE account_id=$1 AND source_client_id=$3 AND target_client_id=$4),
+ (SELECT count(*) FROM client_merge_audit WHERE account_id=$1 AND merged_by IS NOT NULL)
+ FROM client e, client r WHERE e.id=$2 AND r.id=$4`, account, earlier, dumb, registered).Scan(&earlierInto, &dni, &legalName, &audits, &bySeller); err != nil {
+		t.Fatal(err)
+	}
+	if earlierInto == nil || *earlierInto != registered {
+		t.Fatalf("the profile merged into the dumb one now points at %v, want the registered %v", earlierInto, registered)
+	}
+	if text(dni) != "28123456" || text(legalName) != "Mostrador SA" {
+		t.Fatalf("registered dni = %s, legal name = %s, want the dumb profile's carried over", text(dni), text(legalName))
+	}
+	if audits != 1 || bySeller != 0 {
+		t.Fatalf("audit rows = %d (%d by staff), want one with no staff user", audits, bySeller)
 	}
 	if exists, verified, owned := e.contactState(t, account, tax, "dumb@example.test"); !exists || !verified || !owned {
 		t.Fatalf("merged address: exists=%v verified=%v owned=%v", exists, verified, owned)

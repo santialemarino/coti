@@ -78,7 +78,11 @@ func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querie
 
 // ListObservations reads pending suggestions within the staff caller's branch reach.
 func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
-	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at FROM client_contact_observation o LEFT JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING' ORDER BY o.created_at,o.id`, tenant.AccountID, tenant.BranchFilter())
+	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,s.name,s.tax_id IS NOT NULL,c.tax_id IS NOT NULL,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
+ FROM client_contact_observation o
+ LEFT JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id
+ LEFT JOIN client s ON s.account_id=o.account_id AND s.id=o.source_client_id
+ WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING' ORDER BY o.created_at,o.id`, tenant.AccountID, tenant.BranchFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +90,7 @@ func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querie
 	result := make([]domain.ContactObservation, 0)
 	for rows.Next() {
 		var o domain.ContactObservation
-		if err := rows.Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.CandidateName, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.CandidateName, &o.SourceName, &o.SourceRegistered, &o.CandidateRegistered, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, o)
@@ -145,31 +149,10 @@ func (r *ClientContactRepository) FindMergedRoute(ctx context.Context, q Querier
 	return result, rows.Err()
 }
 
-// HasAssociations checks whether enriching a fiscal identifier could expose earlier requests.
-func (r *ClientContactRepository) HasAssociations(ctx context.Context, q Querier, accountID, clientID uuid.UUID) (bool, error) {
-	var found bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rfq WHERE account_id=$1 AND client_id=$2) OR EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND client_id=$2)`, accountID, clientID).Scan(&found)
-	return found, err
-}
-
-// HasPendingForTaxID reports only whether the authenticated customer's profile needs review.
-func (r *ClientContactRepository) HasPendingForTaxID(ctx context.Context, q Querier, accountID uuid.UUID, taxID string) (bool, error) {
-	var found bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND tax_id=$2 AND status='PENDING')`, accountID, taxID).Scan(&found)
-	return found, err
-}
-
 // HasObservation prevents a replay from restoring a contact the customer later removed.
 func (r *ClientContactRepository) HasObservation(ctx context.Context, q Querier, accountID, messageID uuid.UUID) (bool, error) {
 	var found bool
 	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND message_id=$2)`, accountID, messageID).Scan(&found)
-	return found, err
-}
-
-// PriorSeparation recognizes a seller's earlier decision for the same declared contact.
-func (r *ClientContactRepository) PriorSeparation(ctx context.Context, q Querier, accountID uuid.UUID, taxID string, kind domain.ChannelType, value string) (bool, error) {
-	var found bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_observation WHERE account_id=$1 AND tax_id=$2 AND kind=$3 AND value=$4 AND status='SEPARATE')`, accountID, taxID, kind, value).Scan(&found)
 	return found, err
 }
 
@@ -248,12 +231,6 @@ func (r *ClientContactRepository) UpdateCustomerName(ctx context.Context, q Quer
 	return err
 }
 
-// AttachSource retains the independently created profile behind a discarded match.
-func (r *ClientContactRepository) AttachSource(ctx context.Context, q Querier, accountID, id, clientID uuid.UUID) error {
-	_, err := q.Exec(ctx, `UPDATE client_contact_observation SET source_client_id=$3 WHERE account_id=$1 AND id=$2`, accountID, id, clientID)
-	return err
-}
-
 // Decide retains the seller and outcome without deleting the original observation.
 func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID, status string) error {
 	_, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5))`, tenant.AccountID, id, status, tenant.UserID, tenant.BranchFilter())
@@ -303,6 +280,9 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if !allowed {
 		return domain.ErrForbidden
 	}
+	if err = r.CompleteNameRequests(ctx, q, tenant.AccountID, source); err != nil {
+		return err
+	}
 	if _, err = q.Exec(ctx, `UPDATE client_contact SET retired_at=now(),is_main=FALSE WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source); err != nil {
 		return err
 	}
@@ -318,7 +298,16 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if _, err = q.Exec(ctx, `UPDATE notification SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, `UPDATE client SET merged_into=$3 WHERE account_id=$1 AND id=$2`, tenant.AccountID, source, target)
+	// The DNI and fiscal data fill only what the target lacks; nothing it already holds is overwritten.
+	if _, err = q.Exec(ctx, `UPDATE client t SET dni=COALESCE(t.dni,s.dni),legal_name=COALESCE(t.legal_name,s.legal_name),iva_condition=COALESCE(t.iva_condition,s.iva_condition),fiscal_address=COALESCE(t.fiscal_address,s.fiscal_address)
+ FROM client s WHERE t.account_id=$1 AND t.id=$3 AND s.account_id=$1 AND s.id=$2`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	// Profiles merged into the source follow it, so a merged profile always names a live survivor.
+	if _, err = q.Exec(ctx, `UPDATE client SET merged_into=$3 WHERE account_id=$1 AND (id=$2 OR merged_into=$2)`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `INSERT INTO client_merge_audit(account_id,source_client_id,target_client_id,merged_by) VALUES($1,$2,$3,$4)`, tenant.AccountID, source, target, actorParam(tenant))
 	return err
 }
 

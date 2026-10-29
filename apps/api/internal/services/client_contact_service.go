@@ -14,6 +14,7 @@ import (
 type contactProfiles interface {
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
 	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.Client, error)
+	GetSurvivor(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.NewClient) (*domain.Client, error)
 }
 
@@ -25,10 +26,6 @@ type contactStore interface {
 	ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	SetMain(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
-	AttachSource(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
-	PriorSeparation(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) (bool, error)
-	HasAssociations(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
-	HasPendingForTaxID(context.Context, repository.Querier, uuid.UUID, string) (bool, error)
 	Merge(context.Context, repository.Querier, domain.Tenant, uuid.UUID, uuid.UUID) error
 	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error)
 	HasObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
@@ -40,6 +37,10 @@ type contactStore interface {
 	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
 	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
+	ListMergeCandidates(context.Context, repository.Querier, domain.Tenant, uuid.UUID) ([]domain.Client, error)
+	LockMergeProfiles(context.Context, repository.Querier, domain.Tenant, []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error)
+	MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
+	CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	Lock(context.Context, repository.Querier, uuid.UUID, ...string) error
 	GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error)
 	SaveFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ClientContactUpdate) error
@@ -85,11 +86,6 @@ func (s *ClientContactService) GetProfile(ctx context.Context, p domain.Customer
 	}
 	result := &domain.ClientContactProfile{TaxID: p.TaxID, Contacts: []domain.ClientContact{}}
 	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
-		pending, err := s.contacts.HasPendingForTaxID(ctx, q, p.AccountID, p.TaxID)
-		if err != nil {
-			return err
-		}
-		result.ReviewPending = pending
 		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
 		if err != nil {
 			return err
@@ -250,11 +246,6 @@ func markDisplayedPrimary(contacts []domain.ClientContact) {
 		contacts[i].Primary = !shown[contacts[i].Kind]
 		shown[contacts[i].Kind] = true
 	}
-}
-
-// ResolveSuggestion refuses staff association decisions that would bypass customer contact proofs.
-func (s *ClientContactService) ResolveSuggestion(context.Context, domain.Tenant, uuid.UUID, string) error {
-	return domain.ErrForbidden
 }
 
 // RecordInbound identifies senders by verified contact without accepting a declared CUIT as identity.
