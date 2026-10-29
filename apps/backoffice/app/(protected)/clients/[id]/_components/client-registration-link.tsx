@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 
 import { Button, ConfirmDialog } from '@repo/ui/components';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { errorCodeOf, throwApiError } from '@/lib/api/errors';
 
 interface ClientRegistrationLinkProps {
   clientId: string;
@@ -15,6 +17,7 @@ interface ClientRegistrationLinkProps {
 
 export function ClientRegistrationLink({ clientId, phone, email }: ClientRegistrationLinkProps) {
   const t = useTranslations('clients.registration');
+  const message = useApiErrorMessage('clients.registration');
   const { activeBranchId } = useRfqList();
   const [selected, setSelected] = useState<{ kind: 'EMAIL' | 'WHATSAPP'; value: string } | null>(
     null,
@@ -32,14 +35,11 @@ export function ClientRegistrationLink({ clientId, phone, email }: ClientRegistr
           body: JSON.stringify({ kind: selected.kind }),
         },
       );
-      if (!response.ok) {
-        toast.error(t('failed'));
-        return;
-      }
+      if (!response.ok) await throwApiError(response);
       toast.success(t('sent'));
       setSelected(null);
-    } catch {
-      toast.error(t('failed'));
+    } catch (cause) {
+      toast.error(message(errorCodeOf(cause)));
     } finally {
       setPending(false);
     }

@@ -226,6 +226,7 @@
     "existingAccount": "Ya tengo una cuenta: ingresar y vincular Google",
     "googleContactHint": "Necesitamos al menos un dato de contacto para enviarte tus cotizaciones.",
     "useGoogleEmail": "Usar {email} como contacto",
+    "useGoogleEmailWithCode": "Usar {email} como contacto (después lo verificás con un código)",
     "forgot": "Olvidé mi contraseña",
     "pending": "Procesando…",
     "validation": {
@@ -346,6 +347,7 @@
       "unavailable": "No pudimos guardar tus datos. Intentá de nuevo.",
       "verificationWait": "Pediste varios códigos para este contacto. Esperá un rato y probá de nuevo.",
       "verificationUnavailable": "No pudimos enviar la verificación. Intentá más tarde.",
+      "verificationNotConfigured": "El corralón todavía no terminó de configurar su sitio, así que no podemos verificar contactos.",
       "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo.",
       "verificationLocked": "Hubo demasiados intentos con este contacto. Esperá un rato y probá de nuevo.",
       "tooManyRequests": "Hiciste muchos cambios seguidos. Esperá un minuto y probá de nuevo.",

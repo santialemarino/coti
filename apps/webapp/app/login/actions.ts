@@ -8,6 +8,7 @@ import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import {
   clearCustomerCookie,
   GOOGLE_EMAIL_COOKIE,
+  GOOGLE_EMAIL_PROVEN_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   pendingGoogleSignup,
   postCustomerAuth,
@@ -118,6 +119,7 @@ export async function completeCustomerGoogle(values: {
     const jar = await cookies();
     clearCustomerCookie(jar, GOOGLE_SIGNUP_COOKIE);
     clearCustomerCookie(jar, GOOGLE_EMAIL_COOKIE);
+    clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
   } catch {
     return { error: 'unavailable' };
   }

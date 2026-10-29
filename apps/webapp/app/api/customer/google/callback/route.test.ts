@@ -6,6 +6,7 @@ import { cookieJar } from '@repo/vitest-config/cookies';
 import { GET } from '@/app/api/customer/google/callback/route';
 import {
   GOOGLE_EMAIL_COOKIE,
+  GOOGLE_EMAIL_PROVEN_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   GOOGLE_STATE_COOKIE,
   postCustomerAuth,
@@ -86,7 +87,13 @@ it('keeps a first-time Google identity in a short-lived HttpOnly cookie until CU
 it('keeps the Google-verified address to offer it as an optional contact', async () => {
   const jar = flow();
   vi.mocked(postCustomerAuth).mockResolvedValue(
-    new Response(JSON.stringify({ signup_token: 'p'.repeat(43), signup_email: 'juan@gmail.com' })),
+    new Response(
+      JSON.stringify({
+        signup_token: 'p'.repeat(43),
+        signup_email: 'juan@gmail.com',
+        signup_email_proven: true,
+      }),
+    ),
   );
   await GET(callback());
   expect(jar.set).toHaveBeenCalledWith(
@@ -94,6 +101,32 @@ it('keeps the Google-verified address to offer it as an optional contact', async
     'juan@gmail.com',
     expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
   );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_PROVEN_COOKIE,
+    '1',
+    expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+  );
+});
+
+it('clears the proven mark for an address Google does not prove', async () => {
+  const jar = flow();
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(
+      JSON.stringify({ signup_token: 'p'.repeat(43), signup_email: 'juan@corralon.com.ar' }),
+    ),
+  );
+  await GET(callback());
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    'juan@corralon.com.ar',
+    expect.objectContaining({ httpOnly: true }),
+  );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_PROVEN_COOKIE,
+    '',
+    expect.objectContaining({ expires: new Date(0), path: '/' }),
+  );
+  expect(jar.set).not.toHaveBeenCalledWith(GOOGLE_EMAIL_PROVEN_COOKIE, '1', expect.anything());
 });
 
 it('starts a known account session and refuses an external post-login destination', async () => {
