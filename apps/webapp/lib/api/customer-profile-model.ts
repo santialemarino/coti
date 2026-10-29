@@ -9,7 +9,6 @@ export interface CustomerContact {
 }
 export interface CustomerProfileRaw {
   client_id: string | null;
-  review_pending: boolean;
   ownership_unproved: boolean;
   tax_id: string;
   name: string;
@@ -23,7 +22,6 @@ export interface CustomerProfile {
   ivaCondition?: string | null;
   address?: string | null;
   clientId: string | null;
-  reviewPending: boolean;
   // An earlier profile with this CUIT stays hidden, fiscal data included, until a contact it had is verified.
   ownershipUnproved: boolean;
   taxId: string;
@@ -34,7 +32,6 @@ export interface CustomerProfile {
 export function mapCustomerProfile(raw: CustomerProfileRaw): CustomerProfile {
   return {
     clientId: raw.client_id,
-    reviewPending: raw.review_pending,
     ownershipUnproved: raw.ownership_unproved,
     taxId: raw.tax_id,
     name: raw.name,
