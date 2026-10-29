@@ -243,6 +243,7 @@
     },
     "errors": {
       "conflict": "Ese CUIT/CUIL ya tiene una cuenta. Ingresá a ella para continuar.",
+      "contactInUse": "Ese email ya está verificado en otra cuenta. Destildalo y cargá otro contacto.",
       "locked": "Demasiados intentos. Esperá unos minutos e intentá de nuevo.",
       "credentials": "Revisá el CUIT/CUIL y la contraseña.",
       "invalid": "Revisá los datos ingresados.",

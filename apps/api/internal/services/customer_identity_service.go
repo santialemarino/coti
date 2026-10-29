@@ -196,7 +196,11 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname strin
 			if s.prover == nil {
 				return domain.ErrNotConfigured
 			}
-			if err := s.prover.ProveRegisteredContact(ctx, q, registered, domain.ChannelTypeEmail, google); err != nil {
+			err := s.prover.ProveRegisteredContact(ctx, q, registered, domain.ChannelTypeEmail, google)
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeContactInUse, err)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -227,16 +231,17 @@ func googleContactEmail(email string, verified bool) (string, bool) {
 	return normalized, err == nil
 }
 
-// withGoogleContact adds the chosen Google address, primary only when no other email is.
+// withGoogleContact adds the chosen Google address as the primary email, since it is the verified one.
 func withGoogleContact(contacts []domain.ClientContact, email string) []domain.ClientContact {
-	primary := true
-	for _, contact := range contacts {
-		if contact.Kind == domain.ChannelTypeEmail {
-			if contact.Value == email {
-				return contacts
-			}
-			primary = false
+	found := false
+	for i := range contacts {
+		if contacts[i].Kind == domain.ChannelTypeEmail {
+			contacts[i].Primary = contacts[i].Value == email
+			found = found || contacts[i].Primary
 		}
 	}
-	return append(contacts, domain.ClientContact{Kind: domain.ChannelTypeEmail, Value: email, Primary: primary})
+	if found {
+		return contacts
+	}
+	return append(contacts, domain.ClientContact{Kind: domain.ChannelTypeEmail, Value: email, Primary: true})
 }

@@ -18,7 +18,7 @@ import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
 export async function GET(request: NextRequest) {
   const jar = await cookies();
   const stored = jar.get(GOOGLE_STATE_COOKIE)?.value;
-  jar.delete(GOOGLE_STATE_COOKIE);
+  clearCustomerCookie(jar, GOOGLE_STATE_COOKIE);
   const fail = () => {
     const response = NextResponse.redirect(
       new URL(`${ROUTES.login}?error=googleFailed`, request.url),

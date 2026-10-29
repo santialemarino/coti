@@ -107,7 +107,13 @@ export async function completeCustomerGoogle(values: {
       },
       values.link,
     );
-    if (!response.ok) return { error: errorForStatus(response.status) };
+    if (!response.ok) {
+      const code =
+        response.status === 409 ? ((await response.json()) as { code?: string }).code : undefined;
+      return {
+        error: code === 'CONTACT_IN_USE' ? 'contactInUse' : errorForStatus(response.status),
+      };
+    }
     await acceptCustomerSession((await response.json()) as CustomerLoginRaw);
     const jar = await cookies();
     clearCustomerCookie(jar, GOOGLE_SIGNUP_COOKIE);

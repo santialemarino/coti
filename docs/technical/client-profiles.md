@@ -26,8 +26,10 @@ a code confirms it.
 A chosen Google address goes through the same step as a confirmed code, inside the registration
 transaction: it merges the provisional profile that holds the address verified, counts toward
 `uq_verified_client_contact`, records the customer's ownership and becomes the main contact under
-the usual default. On an adopted earlier profile it proves ownership exactly when the profile
-already had that address (see below).
+the usual default. It is the primary email even when the customer also typed another one. On an
+adopted earlier profile it proves ownership exactly when the profile already had that address (see
+below). An address already verified on another CUIT/CUIL's profile is refused with 409
+`CONTACT_IN_USE`, and the registration is not created.
 
 ## Customer profile
 

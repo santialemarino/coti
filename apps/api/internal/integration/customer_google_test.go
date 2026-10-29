@@ -241,3 +241,85 @@ func TestCustomerGoogle_NewEmailDoesNotProveTheLegacyProfile(t *testing.T) {
 		t.Fatalf("an address the legacy profile never had proved ownership: %s", response.Body)
 	}
 }
+
+func TestCustomerGoogle_EmailVerifiedOnAnotherCUITIsRefusedWithItsOwnCode(t *testing.T) {
+	e, stub := newGoogleEnv(t)
+	account, _ := e.seedAccount(t, "Google in use")
+	const personal, company = "20123456786", "30712345671"
+	host, _ := e.registerCustomer(t, account, personal)
+	shared := "customer" + personal + "@example.test"
+	e.verifyCustomerContact(t, account, personal, domain.ChannelTypeEmail, shared, true)
+	signup := e.googleSignup(t, stub, host, shared, true)
+	response := e.do(t, request{method: http.MethodPost, path: "/v1/customer/sites/" + host + "/auth/google/complete", body: map[string]any{"token": signup.SignupToken, "tax_id": company, "name": "Empresa SA", "use_google_email": true}})
+	if response.Code != http.StatusConflict || errorCode(t, response) != string(domain.CodeContactInUse) {
+		t.Fatalf("address verified on another CUIT: %d %s", response.Code, response.Body)
+	}
+	var identities int
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, company).Scan(&identities); err != nil || identities != 0 {
+		t.Fatalf("refused registration left %d identities: %v", identities, err)
+	}
+}
+
+func TestCustomerGoogle_ChosenEmailIsThePrimaryOverATypedOne(t *testing.T) {
+	e, stub := newGoogleEnv(t)
+	account, _ := e.seedAccount(t, "Google primary")
+	host := e.publicHost(t, account)
+	const tax = "20123456786"
+	signup := e.googleSignup(t, stub, host, "verified@example.test", true)
+	status, _ := e.completeGoogle(t, host, map[string]any{"token": signup.SignupToken, "tax_id": tax, "name": "Juan Perez", "use_google_email": true,
+		"contacts": []map[string]any{{"kind": "EMAIL", "value": "typed@example.test", "primary": true}}})
+	if status != http.StatusCreated {
+		t.Fatalf("registration with both emails: %d", status)
+	}
+	var projected, primary string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT COALESCE(p.email,''),(SELECT value FROM client_contact WHERE account_id=p.account_id AND client_id=p.id AND kind='EMAIL' AND is_primary) FROM client p WHERE p.account_id=$1 AND p.tax_id=$2`, account, tax).Scan(&projected, &primary); err != nil {
+		t.Fatal(err)
+	}
+	if projected != "verified@example.test" || primary != "verified@example.test" {
+		t.Fatalf("primary email %q, projected %q; want the verified Google address", primary, projected)
+	}
+	if exists, verified, _ := e.contactState(t, account, tax, "typed@example.test"); !exists || verified {
+		t.Fatalf("typed email: exists=%v verified=%v, want pending verification", exists, verified)
+	}
+}
+
+func TestCustomerGoogle_ChosenEmailBringsTheDumbHistoryIntoAnUnprovedLegacyProfile(t *testing.T) {
+	e, stub := newGoogleEnv(t)
+	account, branch := e.seedAccount(t, "Google legacy merge")
+	host := e.publicHost(t, account)
+	ctx := context.Background()
+	const tax = "20123456786"
+	legacy, dumb, channel, rfq := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,tax_id,email) VALUES($1,$2,'Dueño SA',$3,'owner@example.test')`, legacy, account, tax); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,email) VALUES($1,$2,'Mostrador','walkin@example.test')`, dumb, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel(id,account_id,branch_id,type) VALUES ($1,$2,$3,'MANUAL_ENTRY')`, channel, account, branch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO rfq(id,account_id,branch_id,channel_id,client_id,raw_text) VALUES($1,$2,$3,$4,$5,'Pedido de mostrador')`, rfq, account, branch, channel, dumb); err != nil {
+		t.Fatal(err)
+	}
+	signup := e.googleSignup(t, stub, host, "walkin@example.test", true)
+	status, token := e.completeGoogle(t, host, map[string]any{"token": signup.SignupToken, "tax_id": tax, "name": "Juan Perez", "use_google_email": true})
+	if status != http.StatusCreated {
+		t.Fatalf("registration over the legacy profile: %d", status)
+	}
+	var mergedInto *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT merged_into FROM client WHERE account_id=$1 AND id=$2`, account, dumb).Scan(&mergedInto); err != nil {
+		t.Fatal(err)
+	}
+	if mergedInto == nil || *mergedInto != legacy {
+		t.Fatalf("dumb profile merged into %v, want the legacy profile %v", mergedInto, legacy)
+	}
+	if response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/orders/" + rfq.String(), token: token}); response.Code != http.StatusOK {
+		t.Fatalf("the proved address's orders are not visible on the unproved legacy profile: %d %s", response.Code, response.Body)
+	}
+	response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/profile", token: token})
+	var profile adoptedProfile
+	if err := json.Unmarshal(response.Body.Bytes(), &profile); err != nil || !profile.OwnershipUnproved {
+		t.Fatalf("a merged address proved the legacy profile: %s", response.Body)
+	}
+}
