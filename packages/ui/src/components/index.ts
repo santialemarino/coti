@@ -1,3 +1,4 @@
+export * from './animated-height';
 export * from './avatar';
 export * from './badge';
 export * from './button';

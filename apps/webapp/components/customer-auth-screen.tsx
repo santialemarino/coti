@@ -43,6 +43,8 @@ interface CustomerAuthScreenProps {
   minimum: number;
   taxId?: string;
   googleEmail?: string;
+  // Choosing a proven address verifies it; any other one joins pending a code.
+  googleEmailProven?: boolean;
   initialError?: string;
   googleEnabled: boolean;
 }
@@ -55,6 +57,7 @@ export function CustomerAuthScreen({
   minimum,
   taxId = '',
   googleEmail,
+  googleEmailProven = false,
   initialError,
   googleEnabled,
 }: CustomerAuthScreenProps) {
@@ -227,7 +230,12 @@ export function CustomerAuthScreen({
                                         />
                                       </FormControl>
                                       <FormLabel className="cursor-pointer break-all text-paragraph-sm">
-                                        {t('useGoogleEmail', { email: googleEmail })}
+                                        {t(
+                                          googleEmailProven
+                                            ? 'useGoogleEmail'
+                                            : 'useGoogleEmailWithCode',
+                                          { email: googleEmail },
+                                        )}
                                       </FormLabel>
                                     </FormItem>
                                   )}

@@ -243,7 +243,12 @@ measured before/after, which is motion's layout animation:
 - **`PendingButton`** — a submit whose label swaps mid-action (`Eliminar` → `Eliminando…`),
   resizing smoothly both ways and crossfading the two labels.
 
-Both are clients; nothing else in the package is one because of motion. Reach for
+A box that holds a form cannot use `layout`, which scale-corrects its children and squashes the
+inputs mid-flight. **`AnimatedHeight`** measures its content and animates the height directly, armed
+by a `trigger` that names the stage or step; the backoffice's sign-in and sign-up cards and the
+webapp's account recovery card use it. Under reduced motion it snaps.
+
+These three are clients; nothing else in the package is one because of motion. Reach for
 `PendingButton` rather than a hand-rolled `{pending ? … : …}` ternary — that is the case it
 exists for. Two constraints worth knowing before adding a third: `mode="wait"` and `layout`
 do **not** compose (the incoming child mounts in a commit the parent never re-renders for,

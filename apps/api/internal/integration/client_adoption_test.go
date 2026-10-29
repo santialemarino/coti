@@ -185,7 +185,7 @@ func TestCustomerProfile_OwnContactProofNeverMovesEarlierPrimaries(t *testing.T)
 	}
 	service := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
 	route := domain.InboundChannelRoute{AccountID: account, BranchID: branch}
-	if err := service.RecordCustomer(ctx, p, route, uuid.New(), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "customer" + tax + "@example.test", Phone: "+5491166660001"}); err != nil {
+	if err := service.RecordCustomer(ctx, p, route, e.storedMessage(t, account, branch), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "customer" + tax + "@example.test", Phone: "+5491166660001"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := flags(); got != want {
@@ -284,7 +284,7 @@ func TestCustomerProfile_NonProvingMergeMovesNoEarlierPrimary(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
-	if err := service.RecordCustomer(ctx, p, domain.InboundChannelRoute{AccountID: account, BranchID: branch}, uuid.New(), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "otro@example.test"}); err != nil {
+	if err := service.RecordCustomer(ctx, p, domain.InboundChannelRoute{AccountID: account, BranchID: branch}, e.storedMessage(t, account, branch), domain.PublicRFQContact{TaxID: tax, Name: "Juan Perez", Email: "otro@example.test"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.profileProjection(t, account, legacy); got != want {

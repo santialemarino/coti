@@ -409,6 +409,8 @@
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
     "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
+    "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
     "CLIENT_REGISTERED": "Esta ficha tiene CUIT: sus datos los administra el cliente desde su cuenta.",
     "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
     "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
@@ -1615,7 +1617,7 @@
         "clientChoose": "Seleccioná un cliente",
         "clientTax": "CUIT/CUIL",
         "clientName": "Nombre y apellido",
-        "clientEmail": "Email (opcional)",
+        "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No se pudieron cargar los clientes. Cerrá el diálogo e intentá nuevamente.",
@@ -1623,10 +1625,10 @@
         "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
         "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
         "clientNameRequired": "Ingresá el nombre o razón social.",
-        "clientEmailInvalid": "Ingresá un email válido.",
+        "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
-        "clientContactRequired": "Ingresá al menos un teléfono o un email."
+        "clientContactRequired": "Ingresá al menos un teléfono o un correo."
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1764,7 +1766,7 @@
         "title": "Datos del solicitante",
         "taxId": "CUIT",
         "name": "Nombre o razón social",
-        "email": "Email",
+        "email": "Correo",
         "phone": "Teléfono",
         "original": "Pedido original",
         "file": "Ver archivo del pedido"
@@ -1974,10 +1976,14 @@
       "sending": "Enviando…",
       "cancel": "Cancelar",
       "whatsapp": "Solicitar datos por WhatsApp",
-      "email": "Solicitar datos por email",
+      "email": "Solicitar datos por correo",
       "selectBranch": "Elegí una sucursal para enviar el enlace",
       "sent": "Enviamos el enlace al cliente.",
-      "failed": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+      "errors": {
+        "NOT_CONFIGURED": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "DELIVERY_UNAVAILABLE": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "INTERNAL": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+      }
     },
     "rename": {
       "label": "Nombre",

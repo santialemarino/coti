@@ -77,7 +77,7 @@ func (h *CustomerAuthHandler) GoogleExchange(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	response := dto.CustomerGoogleExchangeResponse{SignupToken: result.SignupToken, SignupEmail: result.SignupEmail}
+	response := dto.CustomerGoogleExchangeResponse{SignupToken: result.SignupToken, SignupEmail: result.SignupEmail, SignupEmailProven: result.SignupEmailProven}
 	if result.Login != nil {
 		response.Session = &dto.CustomerSessionResponse{SessionToken: result.Login.SessionToken, Customer: toCustomerIdentityResponse(result.Login.Principal)}
 	}

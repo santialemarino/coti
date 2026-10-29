@@ -115,6 +115,10 @@ const (
 	CodeClientOutOfReach ErrorCode = "CLIENT_OUT_OF_REACH"
 	// The Google address a customer chose is already verified on another CUIT/CUIL's profile.
 	CodeContactInUse ErrorCode = "CONTACT_IN_USE"
+	// A link to the supplier's customer portal needs the account's public hostname.
+	CodePortalNotConfigured ErrorCode = "PORTAL_NOT_CONFIGURED"
+	// WhatsApp takes free text only within 24 hours of the customer's last message.
+	CodeWhatsAppWindowClosed ErrorCode = "WHATSAPP_WINDOW_CLOSED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

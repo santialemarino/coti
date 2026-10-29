@@ -272,3 +272,38 @@ func TestClientContacts_ProfileContactCapIsEnforced(t *testing.T) {
 		t.Fatalf("signup past the cap: %d %s", signup.Code, signup.Body)
 	}
 }
+
+// The destination counts run past row level security, so they answer only for the account the
+// transaction is scoped to: naming another supplier's account is refused, not counted.
+func TestContactVerification_ActivityAnswersOnlyForTheCurrentAccount(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	destination := "activity-" + uuid.NewString() + "@example.test"
+	customers := e.customersSharingDestination(t, 2, destinationCaps(5, 5, 5), destination)
+	if err := customers[1].request(destination); err != nil {
+		t.Fatal(err)
+	}
+	own, other := customers[0].principal.AccountID, customers[1].principal.AccountID
+	store := repository.NewClientContactRepository()
+	since := time.Now().Add(-time.Hour)
+	windows := domain.DestinationWindows{Challenges: since, Failures: since, AllSuppliers: since}
+	activity := func(account uuid.UUID) (*domain.DestinationActivity, error) {
+		var a *domain.DestinationActivity
+		err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: own}, func(q repository.Querier) error {
+			var err error
+			a, err = store.GetDestinationActivity(ctx, q, account, domain.ChannelTypeEmail, destination, windows)
+			return err
+		})
+		return a, err
+	}
+	if a, err := activity(other); err == nil {
+		t.Fatalf("another account's activity was read: %+v", *a)
+	}
+	a, err := activity(own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.SupplierChallenges != 0 || a.AllChallenges != 1 {
+		t.Fatalf("own activity = %+v, want no own proof and one across suppliers", *a)
+	}
+}

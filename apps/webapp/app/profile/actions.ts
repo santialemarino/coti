@@ -61,8 +61,17 @@ export async function requestContactVerification(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind, value }),
     });
-    if (!response.ok)
-      return { error: t(response.status === 429 ? 'verificationWait' : 'verificationUnavailable') };
+    if (response.status === 429) return { error: t('verificationWait') };
+    if (!response.ok) {
+      const code = (await response.json().catch(() => ({}))) as { code?: string };
+      return {
+        error: t(
+          code.code === 'PORTAL_NOT_CONFIGURED'
+            ? 'verificationNotConfigured'
+            : 'verificationUnavailable',
+        ),
+      };
+    }
     const raw = (await response.json()) as { id: string };
     return { id: raw.id };
   } catch {

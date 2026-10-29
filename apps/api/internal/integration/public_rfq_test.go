@@ -25,7 +25,6 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 		(id, account_id, branch_id, type) VALUES ($1, $2, $3, 'WEBAPP')`, channelID, accountID, branchID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM inbound_channel_message WHERE account_id = $1`, accountID) })
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for key, value := range map[string]string{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public file customer", "email": "customer@example.com"} {
@@ -115,7 +114,6 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 		(id, account_id, branch_id, type) VALUES ($1, $2, $3, 'WEBAPP')`, channelID, accountID, branchID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM inbound_channel_message WHERE account_id = $1`, accountID) })
 	path := "/v1/public/rfq-channels/" + channelID.String()
 	contextResponse := e.do(t, request{method: http.MethodGet, path: path})
 	if contextResponse.Code != http.StatusOK {

@@ -13,6 +13,10 @@ export const GOOGLE_SIGNUP_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_google_signup' : 'coti_google_signup';
 export const GOOGLE_EMAIL_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_google_email' : 'coti_google_email';
+export const GOOGLE_EMAIL_PROVEN_COOKIE =
+  process.env.NODE_ENV === 'production'
+    ? '__Host-coti_google_email_proven'
+    : 'coti_google_email_proven';
 export const CUSTOMER_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
@@ -73,4 +77,9 @@ export async function pendingGoogleSignup(): Promise<string | undefined> {
 /* The address Google verified, offered as an optional contact; display only, the API keeps its own. */
 export async function pendingGoogleEmail(): Promise<string | undefined> {
   return (await cookies()).get(GOOGLE_EMAIL_COOKIE)?.value || undefined;
+}
+
+/* Whether choosing that address verifies it; otherwise it joins pending a code. Display only. */
+export async function pendingGoogleEmailProven(): Promise<boolean> {
+  return (await cookies()).get(GOOGLE_EMAIL_PROVEN_COOKIE)?.value === '1';
 }

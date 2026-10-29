@@ -2,8 +2,8 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
+import { AnimatedHeight } from '@repo/ui/components';
 import { MOTION } from '@repo/ui/lib';
-import { AnimatedHeight } from '@/app/(auth)/_components/animated-height';
 
 interface AuthStageProps {
   /* Changing this key is what triggers the crossfade, so it must name the stage. */

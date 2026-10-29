@@ -4,6 +4,7 @@ import { CustomerAuthPage } from '@/components/customer-auth-page';
 import { ROUTES } from '@/config/routes';
 import {
   pendingGoogleEmail,
+  pendingGoogleEmailProven,
   pendingGoogleSignup,
   safeCustomerDestination,
 } from '@/lib/auth/customer-flow';
@@ -18,6 +19,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ n
       mode={session ? 'linkGoogle' : 'google'}
       taxId={session?.taxId}
       googleEmail={session ? undefined : await pendingGoogleEmail()}
+      googleEmailProven={await pendingGoogleEmailProven()}
       next={safeCustomerDestination(query.next, ROUTES.newRequest)}
     />
   );

@@ -108,9 +108,9 @@ func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier
 }
 
 // MarkVerified activates exactly the destination whose ownership was proved. A repeated proof keeps
-// the first ownership time, which bounds the history the contact opens.
+// the first verification and ownership times, which bound the history the contact opens.
 func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
-	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, p.AccountID, clientID, kind, value)
+	result, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=COALESCE(verified_at,now()) WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, p.AccountID, clientID, kind, value)
 	if isUniqueViolation(err, "uq_verified_client_contact") {
 		return domain.ErrConflict
 	}
@@ -136,13 +136,31 @@ func (r *ClientContactRepository) MarkVerified(ctx context.Context, q Querier, p
 func (r *ClientContactRepository) GetContactHostname(ctx context.Context, q Querier, accountID uuid.UUID) (string, error) {
 	var hostname string
 	err := q.QueryRow(ctx, `SELECT public_hostname FROM account WHERE id=$1 AND is_active AND public_hostname IS NOT NULL`, accountID).Scan(&hostname)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.WithCode(domain.CodePortalNotConfigured, domain.ErrNotConfigured)
+	}
 	return hostname, err
+}
+
+// HasRecentWhatsAppMessage reports whether any of senders wrote to a WhatsApp channel of the branch
+// within window, by the database's clock.
+func (r *ClientContactRepository) HasRecentWhatsAppMessage(ctx context.Context, q Querier, accountID, branchID uuid.UUID, senders []string, window time.Duration) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM inbound_channel_message m JOIN channel c ON c.account_id=m.account_id AND c.id=m.channel_id
+ WHERE m.account_id=$1 AND m.branch_id=$2 AND c.type='WHATSAPP' AND m.sender_id=ANY($3)
+   AND m.provider_received_at>now()-make_interval(secs=>$4::double precision))`, accountID, branchID, senders, window.Seconds()).Scan(&found)
+	return found, err
 }
 
 // GetMessagingConfiguration selects an active supplier-owned channel without exposing its secrets.
 func (r *ClientContactRepository) GetMessagingConfiguration(ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID, kind domain.ChannelType) (*domain.ChannelConfiguration, error) {
 	c := &domain.ChannelConfiguration{}
-	err := q.QueryRow(ctx, `SELECT c.id,c.branch_id,c.type,c.config FROM channel c JOIN branch b ON b.account_id=c.account_id AND b.id=c.branch_id AND b.is_active JOIN account a ON a.id=c.account_id AND a.is_active WHERE c.account_id=$1 AND c.type=$2 AND c.is_active AND c.config IS NOT NULL AND ($3::uuid='00000000-0000-0000-0000-000000000000' OR c.id=$3) AND ($4::uuid='00000000-0000-0000-0000-000000000000' OR c.branch_id=$4) ORDER BY c.id LIMIT 1`, accountID, kind, channelID, branchID).Scan(&c.ChannelID, &c.BranchID, &c.Type, &c.Config)
+	err := q.QueryRow(ctx, `SELECT c.id,c.branch_id,c.type,c.config FROM channel c
+ JOIN branch b ON b.account_id=c.account_id AND b.id=c.branch_id AND b.is_active
+ JOIN account a ON a.id=c.account_id AND a.is_active
+ WHERE c.account_id=$1 AND c.type=$2 AND c.is_active AND c.config IS NOT NULL
+   AND ($3::uuid='00000000-0000-0000-0000-000000000000' OR c.id=$3) AND ($4::uuid='00000000-0000-0000-0000-000000000000' OR c.branch_id=$4)
+ ORDER BY c.id LIMIT 1`, accountID, kind, channelID, branchID).Scan(&c.ChannelID, &c.BranchID, &c.Type, &c.Config)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotConfigured
 	}

@@ -46,6 +46,17 @@ it('asks to wait when a code request is refused for the destination', async () =
   });
 });
 
+it('says the supplier site is not ready when the portal has no hostname', async () => {
+  answer(503, { code: 'PORTAL_NOT_CONFIGURED' });
+  expect(await requestContactVerification('EMAIL', 'juan@example.test')).toEqual({
+    error: errors.verificationNotConfigured,
+  });
+  answer(503, { code: 'NOT_CONFIGURED' });
+  expect(await requestContactVerification('EMAIL', 'juan@example.test')).toEqual({
+    error: errors.verificationUnavailable,
+  });
+});
+
 it('tells a locked destination apart from a wrong code', async () => {
   answer(429, { code: 'ACCOUNT_LOCKED' });
   expect(await confirmContactVerification('proof', '123456')).toEqual({

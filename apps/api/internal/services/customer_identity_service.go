@@ -38,6 +38,7 @@ type customerChallengePayload struct {
 	Subject       string `json:"subject,omitempty"`
 	Email         string `json:"email,omitempty"`
 	EmailVerified bool   `json:"email_verified,omitempty"`
+	HostedDomain  string `json:"hosted_domain,omitempty"`
 	Name          string `json:"name,omitempty"`
 }
 
@@ -104,11 +105,11 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, EmailVerified: google.EmailVerified, Name: google.Name})
+		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, EmailVerified: google.EmailVerified, HostedDomain: google.HostedDomain, Name: google.Name})
 		err = s.credentials.CreateChallenge(ctx, q, domain.CustomerChallenge{ID: uuid.New(), AccountID: site.AccountID, Purpose: "GOOGLE_SIGNUP", TokenHash: hashToken(secret), Payload: payload, ExpiresAt: s.now().Add(s.cfg.SignupTTL)})
 		result.SignupToken = secret
-		if email, ok := googleContactEmail(google.Email, google.EmailVerified); ok {
-			result.SignupEmail = email
+		if email, proven, ok := googleContactEmail(google.Email, google.EmailVerified, google.HostedDomain); ok {
+			result.SignupEmail, result.SignupEmailProven = email, proven
 		}
 		return err
 	})
@@ -117,7 +118,7 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 
 // CompleteGoogle binds a new CUIT/CUIL or explicitly links Google to an already authenticated customer.
 // A new registration needs a name and at least one contact; the Google address is one only when the
-// customer chose it, and then it is verified because Google verified it.
+// customer chose it, verified when Google proves the mailbox and pending a code otherwise.
 func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname string, in domain.CustomerGoogleCompletion, principal *domain.CustomerPrincipal) (*domain.CustomerLogin, error) {
 	if s.credentials == nil {
 		return nil, domain.ErrNotConfigured
@@ -174,9 +175,9 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname strin
 		if s.profiles == nil || payload.Name == "" || len(payload.Name) > 255 {
 			return domain.ErrInvalidInput
 		}
-		google, chosen := "", false
+		google, proven, chosen := "", false, false
 		if in.UseGoogleEmail {
-			if google, chosen = googleContactEmail(payload.Email, payload.EmailVerified); !chosen {
+			if google, proven, chosen = googleContactEmail(payload.Email, payload.EmailVerified, payload.HostedDomain); !chosen {
 				return domain.ErrInvalidInput
 			}
 			contacts = withGoogleContact(contacts, google)
@@ -192,7 +193,7 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname strin
 		if err := s.profiles.RegisterProfile(ctx, q, registered, domain.ClientContactUpdate{Name: payload.Name, Contacts: contacts}); err != nil {
 			return err
 		}
-		if chosen {
+		if proven {
 			if s.prover == nil {
 				return domain.ErrNotConfigured
 			}
@@ -222,16 +223,23 @@ func validCustomerEmail(value string) bool {
 	return err == nil && a.Address == value && len(value) <= 255
 }
 
-// googleContactEmail returns the normalized Google address only when Google verified it.
-func googleContactEmail(email string, verified bool) (string, bool) {
+// googleContactEmail returns the normalized Google address only when Google verified it, and whether
+// Google proves current control of the mailbox: a Gmail address, or a Workspace account whose hosted
+// domain is the address's. Any other domain was proved only when the account was created.
+func googleContactEmail(email string, verified bool, hostedDomain string) (address string, proven, ok bool) {
 	if !verified || !validCustomerEmail(email) {
-		return "", false
+		return "", false, false
 	}
 	normalized, err := domain.NormalizeClientContact(domain.ChannelTypeEmail, email)
-	return normalized, err == nil
+	if err != nil {
+		return "", false, false
+	}
+	mailDomain := normalized[strings.LastIndex(normalized, "@")+1:]
+	proven = mailDomain == "gmail.com" || mailDomain == "googlemail.com" || strings.EqualFold(hostedDomain, mailDomain)
+	return normalized, proven, true
 }
 
-// withGoogleContact adds the chosen Google address as the primary email, since it is the verified one.
+// withGoogleContact adds the chosen Google address as the primary email.
 func withGoogleContact(contacts []domain.ClientContact, email string) []domain.ClientContact {
 	found := false
 	for i := range contacts {

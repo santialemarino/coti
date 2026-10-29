@@ -104,7 +104,6 @@ func (s *ClientService) ConfirmForSend(ctx context.Context, q repository.Querier
 	var clientID uuid.UUID
 	if in.ClientID != nil {
 		clientID = *in.ClientID
-
 	} else {
 		client, err := s.clients.Create(ctx, q, tenant.AccountID, *in.New)
 		if err != nil {

@@ -7,6 +7,7 @@ import {
   clearCustomerCookie,
   CUSTOMER_COOKIE_OPTIONS,
   GOOGLE_EMAIL_COOKIE,
+  GOOGLE_EMAIL_PROVEN_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   GOOGLE_STATE_COOKIE,
   postCustomerAuth,
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
       session?: CustomerLoginRaw;
       signup_token?: string;
       signup_email?: string;
+      signup_email_proven?: boolean;
     };
     let destination = safeCustomerDestination(flow.next);
     if (result.session) await acceptCustomerSession(result.session);
@@ -69,6 +71,12 @@ export async function GET(request: NextRequest) {
           maxAge: GOOGLE_FLOW_TTL_SECONDS,
         });
       else clearCustomerCookie(jar, GOOGLE_EMAIL_COOKIE);
+      if (result.signup_email && result.signup_email_proven === true)
+        jar.set(GOOGLE_EMAIL_PROVEN_COOKIE, '1', {
+          ...CUSTOMER_COOKIE_OPTIONS,
+          maxAge: GOOGLE_FLOW_TTL_SECONDS,
+        });
+      else clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
       destination = `${ROUTES.googleComplete}?next=${encodeURIComponent(destination === ROUTES.orders ? ROUTES.newRequest : destination)}`;
     } else return fail();
     const redirect = NextResponse.redirect(new URL(destination, request.url));

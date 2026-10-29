@@ -91,6 +91,11 @@ func (s *PublicRFQService) GetDestination(ctx context.Context, channelID uuid.UU
 
 // Create retains customer declarations and acknowledges only a durably stored request.
 func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput) error {
+	return s.create(ctx, channelID, in, nil)
+}
+
+// create stores the request and, when messageID is given, reports the inbound message that carries it.
+func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput, messageID *uuid.UUID) error {
 	destination, err := s.GetDestination(ctx, channelID)
 	if err != nil {
 		return err
@@ -142,6 +147,9 @@ func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in d
 		})
 		if err != nil {
 			return err
+		}
+		if messageID != nil {
+			*messageID = reserved.ID
 		}
 		var original, current publicRFQEnvelope
 		if err := json.Unmarshal(reserved.Payload, &original); err != nil {
@@ -256,11 +264,12 @@ func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.Custo
 	if err != nil {
 		return err
 	}
-	if err := s.Create(ctx, channelID, in); err != nil {
+	var messageID uuid.UUID
+	if err := s.create(ctx, channelID, in, &messageID); err != nil {
 		return err
 	}
 	if s.contacts != nil {
-		return s.contacts.RecordCustomer(ctx, p, destination.Route, in.RequestID, in.Contact)
+		return s.contacts.RecordCustomer(ctx, p, destination.Route, messageID, in.Contact)
 	}
 	return nil
 }

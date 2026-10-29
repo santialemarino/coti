@@ -10884,6 +10884,10 @@ const docTemplate = `{
                     "description": "SignupEmail is the Google address the customer may choose as a contact, sent only when Google verified it.",
                     "type": "string"
                 },
+                "signup_email_proven": {
+                    "description": "SignupEmailProven is true when choosing SignupEmail verifies it; otherwise it needs a code.",
+                    "type": "boolean"
+                },
                 "signup_token": {
                     "type": "string"
                 }

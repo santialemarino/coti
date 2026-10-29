@@ -18,12 +18,18 @@ client tax identifier. Credentials remain supplier-scoped and separate from comm
 A first Google sign-in completes registration on /google-complete with the full name, the CUIT/CUIL
 and at least one contact, like a password registration. The Google address is never copied to the
 profile on its own: the screen offers it as an unchecked option, and only when Google's ID token
-says `email_verified`. When the customer checks it, the address is saved as a verified contact,
-because Google already proved control of it; the API refuses the option for an address Google did
-not verify. Otherwise the customer enters a WhatsApp or another email, which stays unverified until
-a code confirms it.
+says `email_verified`; the API refuses the option for an address Google did not verify. Otherwise the
+customer enters a WhatsApp or another email, which stays unverified until a code confirms it.
 
-A chosen Google address goes through the same step as a confirmed code, inside the registration
+A checked address counts as verified only when Google proves current control of the mailbox: a
+`@gmail.com` or `@googlemail.com` address, or a Google Workspace account whose `hd` (hosted domain)
+claim equals the address's domain. For any other domain Google proved control only once, when the
+account was created, and the mailbox may have changed hands since; that address joins as an
+unverified contact and goes through the usual code. The rule lives in one function,
+`googleContactEmail`. The exchange returns `signup_email_proven`, which the webapp keeps beside the
+offered address so the checkbox says «(después lo verificás con un código)» when it applies.
+
+A proven Google address goes through the same step as a confirmed code, inside the registration
 transaction: it merges the provisional profile that holds the address verified, counts toward
 `uq_verified_client_contact`, records the customer's ownership and becomes the main contact under
 the usual default. It is the primary email even when the customer also typed another one. On an
@@ -70,8 +76,9 @@ verified contact row together with `merged_into`; no column records it. Routing 
 the contact stays pending on the fiscal profile, has no `customer_contact_ownership` row, and its
 new orders reach the customer only through the profile's own history. Routing yields to a live
 verified contact: once anyone in the supplier proves that destination, messages go to the profile
-that proved it. Routing stops when the customer removes the pending copy from their profile. When
-several merges retired the same destination, the latest one routes.
+that proved it. Routing stops when the customer removes the pending copy from their profile, and
+resumes if they add it back while no profile holds the destination verified. When several merges
+retired the same destination and their survivors all hold a copy, the latest merge routes.
 
 Every merge, whichever path ran it, also fills the target's empty DNI, legal name, IVA condition and
 fiscal address from the source without overwriting a value the target holds, repoints any profile
@@ -145,7 +152,9 @@ GET /orders lists a request when any of these holds:
 The last rule compares the inbound message's `provider_received_at`, the provider's arrival time,
 with `customer_contact_ownership.verified_at`. A phone or email that changes hands therefore opens
 only what its new owner sent: an order from a recycled company number stays with the customer who
-had it then. Ownership is timed by the first proof; repeating the proof keeps that time, and
+had it then, as long as that customer registered and proved it. If the earlier holder never
+registered, their orders sit on a provisional profile holding the number verified, and the new owner
+who proves the number merges that profile into theirs, bringing its orders along. Ownership is timed by the first proof; repeating the proof keeps that time, and
 removing the contact deletes the row, so adding it again starts a new period.
 
 ## Deterministic channel onboarding
@@ -299,11 +308,14 @@ The daily cap and the lockout count per supplier because a code only works at th
 it: pooling them across suppliers would buy nothing against brute force and would let an attacker at
 one supplier lock the real owner out of every other. Within one supplier the attacker and the owner
 share the counters, so an attacker who declares the owner's destination there can still exhaust them
-for that supplier; that is the accepted trade-off.
+for that supplier; that is the accepted trade-off. The cross-supplier cap has the same limit one
+level up: one person registered at enough public portals (four, with the defaults of 5 per supplier
+and 20 across suppliers) can spend the whole anti-spam allowance for a destination, so its real owner
+gets no code from any supplier until the window passes.
 
 The caps are read in the database, so they hold across API instances. The counts come from
 `contact_destination_activity`, a `SECURITY DEFINER` function that sees every account's rows and
-returns only three numbers, under a transaction-scoped advisory lock on the destination so concurrent
+returns only three numbers, and refuses an account other than the transaction's own, under a transaction-scoped advisory lock on the destination so concurrent
 requests cannot both pass. A refused request or confirm answers 429 `ACCOUNT_LOCKED`, the same as the
 per-customer resend cooldown, so the caller cannot tell whether another supplier asked for the
 destination.
@@ -343,7 +355,9 @@ collections and retained observations. Migration 00062 adds contact verification
 unique index, challenges, onboarding outbox, composite channel scope and immutable-CUIT protection.
 Legacy Argentine phones (area 11, 2xx or 3xx, written nationally or after 54) are stored in the
 +549 form WhatsApp reports; a value the contact normalizer would reject stays unverified, and so
-does a malformed email. Each other legacy value is trusted for channel routing with one owner per account:
+does a malformed email. The rule cannot tell a landline from a mobile, so a Buenos Aires landline
+written `+54 11 4xxx xxxx` becomes `+54911 4xxx xxxx`, a mobile-shaped number, and is trusted like
+any other; it only routes messages that WhatsApp reports from that exact number. Each other legacy value is trusted for channel routing with one owner per account:
 the profile with a CUIT, else the most recently created one. Every other copy stays unverified
 and raises a PENDING observation, with no source message or CUIT, so a seller reviews the shared
 contact.
@@ -356,6 +370,10 @@ customer-entered contacts to the identity that entered them. Migration 00065 add
 `status_changed_at`, backfilled from `created_at`, which bounds both the reply window and the
 delivery lease. Migration 00067 drops the separate recovery email and its link challenges, adds the
 challenge purpose and the main-contact flag. Migration 00068 adds `client_merge_audit` with RLS.
+Migration 00069 makes `contact_destination_activity` answer only for the current account, links
+each observation to its message by a composite tenant foreign key (an observation whose message is
+gone or belongs to another account keeps its review and loses the link), and stops the application
+role deleting a client that has a CUIT.
 Migrations are executable; the
 consolidated database schema is a reference only.
 
@@ -409,7 +427,8 @@ omitted field clears. It never writes `tax_id`:
   `INVALID_TAX_ID`.
 
 The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
-its own immutable copy of the receiver, which names the CUIT when there is one and the DNI otherwise.
+its own immutable copy of the receiver, which names the CUIT when there is one, else the DNI, and no
+document at all for an unidentified consumidor final below the threshold described next.
 
 Migration `00059_client_dni.sql` moved every 7–8 digit `tax_id` into `dni` and narrowed `tax_id` to
 11 digits. It refuses to run, naming the count, if any `tax_id` is neither shape: no route ever
@@ -419,7 +438,9 @@ migration to guess at.
 An invoice A needs the receiver's CUIT, which only the customer's registered account provides, so
 a DNI never satisfies it (`RECEIVER_CUIT_REQUIRED`). An invoice B at or above
 `INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT` needs a CUIT or a DNI (`RECEIVER_ID_REQUIRED`), and an
-invoice B below it goes to an unidentified consumidor final with no document at all. While the
+invoice B below it goes to an unidentified consumidor final with no document at all. An invoice C,
+which an issuer that is not IVA-registered bills to everyone, follows the same threshold rule as B.
+While the
 preview (`GET /v1/quotes/{quoteId}/invoice`) reports either receiver issue, it also carries
 `customer_signup_url`: the supplier's customer sign-up page at `https://<public_hostname>/signup`,
 or under `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local stack. An account with no `public_hostname` gets
@@ -427,5 +448,10 @@ no link, because customer sign-up resolves the supplier by its hostname; the car
 customer site is not configured yet (see [public RFQ intake](public-rfq-intake.md)). With a link,
 the invoice card offers a copy dialog so the seller can send it through their own channel. The
 client detail also offers an explicit registration-link send through a configured contact channel.
+WhatsApp takes free text only within 24 hours of the customer's last message, so that send goes by
+WhatsApp only while the customer wrote to one of the branch's WhatsApp channels in the last 24 hours;
+otherwise it is refused with 422 `WHATSAPP_WINDOW_CLOSED`, and the seller sends it by email when the
+client has one or waits for the customer to write. An account with no `public_hostname` has no portal to link to, and the send,
+like a customer's verification request, answers 503 `PORTAL_NOT_CONFIGURED`.
 
 Quotation publication cannot assign a CUIT; it creates provisional profiles or selects existing ones.

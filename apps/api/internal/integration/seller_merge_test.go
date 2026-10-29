@@ -323,4 +323,44 @@ func TestSellerMerge_ResolvesPendingObservations(t *testing.T) {
 	if s, _ := status(dismiss); s != "SEPARATE" || m.mergedInto(t, a) != nil || m.mergedInto(t, b) != nil {
 		t.Fatalf("dismiss: observation %s, want SEPARATE and both profiles live", s)
 	}
+
+	// Both sides already merged into one survivor: the case settles with no merge of its own.
+	left := m.profile(t, "Shared left", "shared-left@example.test", nil)
+	right := m.profile(t, "Shared right", "shared-right@example.test", nil)
+	survivor := m.profile(t, "Shared survivor", "shared-survivor@example.test", nil)
+	shared := observe(left, right, "shared-right@example.test")
+	for _, source := range []uuid.UUID{left, right} {
+		if code, errCode := m.merge(t, survivor, source); code != http.StatusNoContent {
+			t.Fatalf("seed merge into the survivor: %d %s", code, errCode)
+		}
+	}
+	if code := resolve(shared, map[string]any{"action": "MERGE"}); code != http.StatusNoContent {
+		t.Fatalf("resolve MERGE on a shared survivor: status = %d, want 204", code)
+	}
+	if s, _ := status(shared); s != "MERGED" {
+		t.Fatalf("shared-survivor observation = %s, want MERGED", s)
+	}
+	if into := m.mergedInto(t, survivor); into != nil {
+		t.Fatalf("the shared survivor was merged into %s", *into)
+	}
+	if n, _ := m.audits(t, survivor, survivor); n != 0 {
+		t.Fatalf("a survivor merged into itself %d times", n)
+	}
+
+	// A side whose survivor now has a CUIT belongs to its customer: the seller cannot merge it.
+	provisional := m.profile(t, "Still provisional", "still-provisional@example.test", nil)
+	adopted := m.profile(t, "Adopted", "adopted@example.test", nil)
+	cuit := "20123456786"
+	registered := m.profile(t, "Registered", "registered@example.test", &cuit)
+	refused := observe(provisional, adopted, "adopted@example.test")
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client SET merged_into=$2 WHERE id=$1`, adopted, registered); err != nil {
+		t.Fatal(err)
+	}
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + refused.String(), token: m.token, body: map[string]any{"action": "MERGE"}})
+	if rec.Code != http.StatusForbidden || errorCode(t, rec) != string(domain.CodeClientRegistered) {
+		t.Fatalf("resolve MERGE into a registered survivor: %d %s, want 403 %s", rec.Code, rec.Body, domain.CodeClientRegistered)
+	}
+	if s, _ := status(refused); s != "PENDING" || m.mergedInto(t, provisional) != nil {
+		t.Fatalf("refused case: observation %s, provisional merged into %v; want PENDING and live", s, m.mergedInto(t, provisional))
+	}
 }
