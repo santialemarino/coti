@@ -1,12 +1,14 @@
 // Runtime settings read from the environment, with the defaults in one place.
 
-const DEFAULT_API_URL = 'http://localhost:8000';
+const DEFAULT_PUBLIC_API_URL = 'http://localhost:8000';
 const DEFAULT_REFRESH_SKEW_SECONDS = 60;
 const DEFAULT_REMEMBERED_SESSION_DAYS = 30;
 const DEFAULT_RESEND_COOLDOWN_SECONDS = 30;
 const DEFAULT_ARCA_CERTIFICATE_RENEWAL_DAYS = 30;
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_URL;
+// URLs returned to the browser must stay public, while server-side fetches may use the compose network.
+export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_PUBLIC_API_URL;
+export const API_URL = process.env.API_INTERNAL_URL ?? PUBLIC_API_URL;
 
 // How long before an access token expires the session is renewed, so a request
 // cannot start with a token that expires mid-flight.

@@ -376,6 +376,8 @@ response leaves the user with a retry rather than a broken page.
 
 ## Configuration
 
-`apps/backoffice/.env.example`: `NEXT_PUBLIC_API_URL`, `AUTH_REFRESH_SKEW_SECONDS` and
-`AUTH_REMEMBERED_SESSION_DAYS`. `AUTH_JWT_SECRET` is **not** among them, by the reasoning at the
-top of this file.
+`apps/backoffice/.env.example`: `NEXT_PUBLIC_API_URL`, `API_INTERNAL_URL`,
+`AUTH_REFRESH_SKEW_SECONDS` and `AUTH_REMEMBERED_SESSION_DAYS`. The public URL builds links and
+browser-facing assets; server-side requests use the internal URL, which Docker Compose sets to
+`http://api:8000`. `AUTH_JWT_SECRET` is **not** among them, by the reasoning at the top of this
+file.

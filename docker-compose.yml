@@ -69,6 +69,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - API_INTERNAL_URL=http://api:8000
 
   webapp:
     container_name: coti-webapp
