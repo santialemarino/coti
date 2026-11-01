@@ -29,17 +29,20 @@ type SellerReportSettings struct {
 
 // SellerReportService turns a requested period into a scoped seller dashboard read.
 type SellerReportService struct {
-	db      tenantTxRunner
-	reports sellerReportStore
-	now     func() time.Time
-	cfg     SellerReportSettings
+	db       tenantTxRunner
+	reports  sellerReportStore
+	renderer domain.SellerReportPDFRenderer
+	now      func() time.Time
+	cfg      SellerReportSettings
 }
 
 // NewSellerReportService builds a SellerReportService.
 func NewSellerReportService(db tenantTxRunner, reports sellerReportStore,
-	cfg SellerReportSettings,
+	renderer domain.SellerReportPDFRenderer, cfg SellerReportSettings,
 ) *SellerReportService {
-	return &SellerReportService{db: db, reports: reports, now: time.Now, cfg: cfg}
+	return &SellerReportService{
+		db: db, reports: reports, renderer: renderer, now: time.Now, cfg: cfg,
+	}
 }
 
 // Get returns the report for the requested inclusive dates, defaulting to the last 30 days.
@@ -86,6 +89,17 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		report.Scope.BranchID = &branchID
 	}
 	return report, nil
+}
+
+// RenderPDF returns the report for the requested period as a PDF document.
+func (s *SellerReportService) RenderPDF(ctx context.Context, tenant domain.Tenant, fromRaw,
+	toRaw string,
+) ([]byte, error) {
+	report, err := s.Get(ctx, tenant, fromRaw, toRaw)
+	if err != nil {
+		return nil, err
+	}
+	return s.renderer.Render(*report, s.now().In(domain.Argentina))
 }
 
 func (s *SellerReportService) resolveRange(fromRaw, toRaw string) (time.Time, time.Time, error) {

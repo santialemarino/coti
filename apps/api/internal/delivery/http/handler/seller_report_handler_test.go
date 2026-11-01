@@ -18,10 +18,11 @@ import (
 )
 
 type sellerReportServiceStub struct {
-	from   string
-	to     string
-	report *domain.SellerReport
-	err    error
+	from    string
+	to      string
+	report  *domain.SellerReport
+	content []byte
+	err     error
 }
 
 func (s *sellerReportServiceStub) Get(
@@ -30,6 +31,61 @@ func (s *sellerReportServiceStub) Get(
 	s.from = from
 	s.to = to
 	return s.report, s.err
+}
+
+func (s *sellerReportServiceStub) RenderPDF(
+	_ context.Context, _ domain.Tenant, from, to string,
+) ([]byte, error) {
+	s.from = from
+	s.to = to
+	return s.content, s.err
+}
+
+func TestSellerReportHandlerDownloadPDFStreamsTheDocument(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &sellerReportServiceStub{content: []byte("%PDF-1.4 report")}
+	handler := NewSellerReportHandler(service)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/reports/pdf?from=2026-10-01&to=2026-10-02", nil)
+	middleware.SetTenant(c, domain.Tenant{AccountID: uuid.New()})
+
+	handler.DownloadPDF(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if service.from != "2026-10-01" || service.to != "2026-10-02" {
+		t.Fatalf("dates = %s..%s, want the query values", service.from, service.to)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/pdf" {
+		t.Fatalf("content type = %q, want application/pdf", got)
+	}
+	if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="reporte-2026-10-01-2026-10-02.pdf"` {
+		t.Fatalf("content disposition = %q", got)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "private, no-store" {
+		t.Fatalf("cache control = %q", got)
+	}
+	if recorder.Body.String() != "%PDF-1.4 report" {
+		t.Fatalf("body = %q", recorder.Body.String())
+	}
+}
+
+func TestSellerReportHandlerDownloadPDFUsesTheDefaultFilename(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &sellerReportServiceStub{content: []byte("%PDF-1.4 report")}
+	handler := NewSellerReportHandler(service)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/reports/pdf", nil)
+	middleware.SetTenant(c, domain.Tenant{AccountID: uuid.New()})
+
+	handler.DownloadPDF(c)
+
+	if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="reporte.pdf"` {
+		t.Fatalf("content disposition = %q", got)
+	}
 }
 
 func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {

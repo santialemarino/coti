@@ -77,6 +77,7 @@ describe('ReportsPage', () => {
     await renderReport(report());
 
     expect(screen.getByRole('heading', { level: 1, name: copy.title })).toBeTruthy();
+    expect(screen.getByRole('button', { name: copy.download.label })).toBeTruthy();
     expect(screen.getByText(copy.kpis.rfqs)).toBeTruthy();
     expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getAllByText('$ 1250.50')).toHaveLength(2);

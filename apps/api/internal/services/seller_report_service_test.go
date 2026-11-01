@@ -45,13 +45,30 @@ func (f *sellerReportTestStore) Build(
 	return f.report, nil
 }
 
+type sellerReportTestRenderer struct {
+	report      domain.SellerReport
+	generatedAt time.Time
+	err         error
+}
+
+func (f *sellerReportTestRenderer) Render(
+	report domain.SellerReport, generatedAt time.Time,
+) ([]byte, error) {
+	f.report = report
+	f.generatedAt = generatedAt
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []byte("%PDF-1.4 report"), nil
+}
+
 func newSellerReportTestService(
 	t *testing.T, tenant domain.Tenant,
 ) (*SellerReportService, *sellerReportTestDB, *sellerReportTestStore) {
 	t.Helper()
 	db := &sellerReportTestDB{}
 	store := &sellerReportTestStore{}
-	service := NewSellerReportService(db, store, SellerReportSettings{
+	service := NewSellerReportService(db, store, &sellerReportTestRenderer{}, SellerReportSettings{
 		MaxRangeDays:   366,
 		HighConfidence: decimal.NewFromFloat(0.8),
 	})
@@ -154,6 +171,46 @@ func TestSellerReportScopesToSelectedBranchAndSeller(t *testing.T) {
 	}
 	if report.KPIs.AcceptedAmount.StringFixed(2) != "1250.50" {
 		t.Fatalf("stores' KPIs were lost: %+v", report.KPIs)
+	}
+}
+
+func TestSellerReportRenderPDFReusesTheReportScope(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
+	service, _, store := newSellerReportTestService(t, tenant)
+	store.report = &domain.SellerReport{KPIs: domain.SellerReportKPIs{
+		AcceptedAmount: decimal.RequireFromString("1250.50"),
+	}}
+	renderer := service.renderer.(*sellerReportTestRenderer)
+
+	content, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "%PDF-1.4 report" {
+		t.Fatalf("content = %q", content)
+	}
+	if renderer.report.Range.From != "2026-10-01" || renderer.report.Range.To != "2026-10-02" {
+		t.Fatalf("rendered range = %+v", renderer.report.Range)
+	}
+	if renderer.report.KPIs.AcceptedAmount.StringFixed(2) != "1250.50" {
+		t.Fatalf("rendered KPIs = %+v", renderer.report.KPIs)
+	}
+	wantTime := time.Date(2026, time.October, 25, 15, 0, 0, 0, domain.Argentina)
+	if !renderer.generatedAt.Equal(wantTime) {
+		t.Fatalf("generated at = %s, want %s", renderer.generatedAt, wantTime)
+	}
+}
+
+func TestSellerReportRenderPDFPropagatesRendererError(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
+	service, _, _ := newSellerReportTestService(t, tenant)
+	want := errors.New("render failed")
+	service.renderer.(*sellerReportTestRenderer).err = want
+
+	if _, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02"); !errors.Is(
+		err, want,
+	) {
+		t.Fatalf("RenderPDF() = %v, want %v", err, want)
 	}
 }
 

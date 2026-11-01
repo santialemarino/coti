@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 // SellerReportService is the reporting surface the handler needs.
 type SellerReportService interface {
 	Get(context.Context, domain.Tenant, string, string) (*domain.SellerReport, error)
+	RenderPDF(context.Context, domain.Tenant, string, string) ([]byte, error)
 }
 
 // SellerReportHandler serves the authenticated seller dashboard.
@@ -53,6 +55,42 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toSellerReportResponse(*report))
+}
+
+// DownloadPDF returns the report for the requested period as an A4 PDF.
+//
+//	@Summary		Download seller report PDF
+//	@Description	Renders the same scoped seller dashboard metrics as a printable PDF.
+//	@Tags			reports
+//	@Produce		application/pdf
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header	string	false	"Active branch; omitted reports on every branch the caller reaches"
+//	@Param			from		query	string	false	"First day, YYYY-MM-DD; defaults to 30 days ago"
+//	@Param			to			query	string	false	"Last day, YYYY-MM-DD; defaults to today"
+//	@Success		200			{file}	binary
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		403			{object}	dto.ErrorResponse
+//	@Failure		500			{object}	dto.ErrorResponse
+//	@Router			/v1/reports/pdf [get]
+func (h *SellerReportHandler) DownloadPDF(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	from, to := c.Query("from"), c.Query("to")
+	content, err := h.reports.RenderPDF(c.Request.Context(), tenant, from, to)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	filename := "reporte.pdf"
+	if from != "" && to != "" {
+		filename = fmt.Sprintf("reporte-%s-%s.pdf", from, to)
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Data(http.StatusOK, "application/pdf", content)
 }
 
 func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse {

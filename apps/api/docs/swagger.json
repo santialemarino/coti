@@ -7257,6 +7257,75 @@
                 }
             }
         },
+        "/v1/reports/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Renders the same scoped seller dashboard metrics as a printable PDF.",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Download seller report PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted reports on every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "First day, YYYY-MM-DD; defaults to 30 days ago",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last day, YYYY-MM-DD; defaults to today",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/rfqs": {
             "get": {
                 "security": [

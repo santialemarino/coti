@@ -20,6 +20,11 @@ type SellerReportQuery struct {
 	HighConfidence decimal.Decimal
 }
 
+// SellerReportPDFRenderer renders the seller dashboard snapshot as a PDF.
+type SellerReportPDFRenderer interface {
+	Render(report SellerReport, generatedAt time.Time) ([]byte, error)
+}
+
 // SellerReport is the seller dashboard's read model.
 type SellerReport struct {
 	Range              SellerReportRange

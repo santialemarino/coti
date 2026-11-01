@@ -1,8 +1,9 @@
 # Seller reports
 
-The backoffice reports page reads `GET /v1/reports`. It is an audited summary of the RFQs and
-quotes the caller can already see, not a second source of truth: every number is derived from the
-same rows the inbox and quote screens use.
+The backoffice reports page reads `GET /v1/reports` and downloads the same report from
+`GET /v1/reports/pdf`. It is an audited summary of the RFQs and quotes the caller can already see,
+not a second source of truth: every number is derived from the same rows the inbox and quote
+screens use, and the PDF is rendered from that same read model.
 
 ## Period and scope
 
@@ -74,6 +75,23 @@ screen uses: `LOW` for `NO_MATCH`, `MEDIUM` for `AMBIGUOUS` or a `MATCHED` line 
 `CATALOG_MATCH_HIGH_CONFIDENCE_PERCENT`, and `HIGH` for `MATCHED` at or above it. Lines with no
 score, such as a product a person chose manually, are not counted in any bucket. The matched rate
 is matched lines over the generation's total lines.
+
+## PDF export
+
+The page's "Descargar PDF" action calls the backoffice proxy `GET /api/reports/pdf`, which forwards
+to `GET /v1/reports/pdf` with the same `from`, `to` and branch scope as the page read. The proxy
+deliberately does not fall back to an account's only branch: an admin viewing every branch must get
+an all-branch PDF, matching the report itself. The endpoint reuses `SellerReportService.Get`, so
+authorization, period validation, seller visibility and every metric are identical to the JSON
+response. The filename is `reporte-<from>-<to>.pdf`, or `reporte.pdf` when the period is defaulted;
+the response is `application/pdf` and is never stored by an intermediary.
+
+`SellerReportRenderer` renders the server-provided `domain.SellerReport`; it never queries the
+database and never recomputes a metric. The document includes the Coti mark, period, generation
+timestamp and scope, the six headline KPIs, the status distribution and timeline, both product
+rankings, top clients, AI match confidence, the branch breakdown when the report spans branches,
+and the metric definitions that could otherwise be misread. Amounts are shown in Argentine pesos,
+matching the dashboard. Empty sections say so rather than printing fabricated zeroes.
 
 ## Configuration and indexes
 

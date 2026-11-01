@@ -8053,6 +8053,51 @@ paths:
       summary: Get seller report
       tags:
       - reports
+  /v1/reports/pdf:
+    get:
+      description: Renders the same scoped seller dashboard metrics as a printable
+        PDF.
+      parameters:
+      - description: Active branch; omitted reports on every branch the caller reaches
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: First day, YYYY-MM-DD; defaults to 30 days ago
+        in: query
+        name: from
+        type: string
+      - description: Last day, YYYY-MM-DD; defaults to today
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download seller report PDF
+      tags:
+      - reports
   /v1/rfqs:
     get:
       description: Returns the RFQ list scoped to the tenant and, when set, the active

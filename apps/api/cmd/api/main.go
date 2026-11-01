@@ -331,7 +331,8 @@ func run() error {
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 			Report: handler.NewSellerReportHandler(services.NewSellerReportService(db,
-				repository.NewSellerReportRepository(), services.SellerReportSettings{
+				repository.NewSellerReportRepository(), quotePDF.NewSellerReportRenderer(),
+				services.SellerReportSettings{
 					MaxRangeDays:   cfg.Reports.MaxRangeDays,
 					HighConfidence: highConfidence,
 				})),

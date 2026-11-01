@@ -1961,6 +1961,11 @@
     "title": "Reportes",
     "description": "Actividad de pedidos y cotizaciones en el período.",
     "descriptionAll": "Actividad de pedidos y cotizaciones de todas las sucursales en el período.",
+    "download": {
+      "label": "Descargar PDF",
+      "pending": "Generando PDF.",
+      "error": "No pudimos generar el PDF. Probá de nuevo."
+    },
     "filters": {
       "from": "Desde",
       "to": "Hasta",

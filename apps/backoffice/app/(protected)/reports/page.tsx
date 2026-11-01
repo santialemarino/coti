@@ -31,6 +31,7 @@ import {
   statusTone,
   TimelineChart,
 } from '@/app/(protected)/reports/_components/report-charts';
+import { ReportDownloadButton } from '@/app/(protected)/reports/_components/report-download-button';
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
 import { SummaryCard } from '@/app/(protected)/reports/_components/report-summary';
 import { ApiError } from '@/lib/api/errors';
@@ -116,6 +117,7 @@ export default async function ReportsPage({
       <PageHeader
         title={t('title')}
         description={t(report.scope.multiBranch ? 'descriptionAll' : 'description')}
+        actions={<ReportDownloadButton from={report.range.from} to={report.range.to} />}
       />
       <Card className="gap-y-0 py-5">
         <CardContent>

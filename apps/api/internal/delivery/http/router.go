@@ -250,6 +250,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 	if h.Report != nil {
 		verified.GET("/reports", h.Report.Get)
+		verified.GET("/reports/pdf", h.Report.DownloadPDF)
 	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
