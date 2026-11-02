@@ -6,6 +6,7 @@ export const ROUTES = {
   forgotPassword: '/forgot-password',
   googleComplete: '/google-complete',
   googleStart: '/api/customer/google/start',
+  googleCallback: '/api/customer/google/callback',
   orders: '/orders',
   profile: '/profile',
   verifyContact: '/verify-contact',

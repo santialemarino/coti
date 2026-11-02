@@ -42,8 +42,14 @@ const COOKIE_OPTIONS = {
 } as const;
 
 export async function getCustomerHostname(): Promise<string> {
-  const host = PUBLIC_SITE_HOSTNAME || (await headers()).get('host') || '';
-  return host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+  const host = ((await headers()).get('host') || '')
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
+  const loopback = host === 'localhost' || host === '127.0.0.1';
+  return loopback && process.env.NODE_ENV !== 'production' && PUBLIC_SITE_HOSTNAME
+    ? PUBLIC_SITE_HOSTNAME.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
+    : host;
 }
 
 export async function getCustomerToken(): Promise<string | undefined> {

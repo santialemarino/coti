@@ -65,7 +65,7 @@ func (s *CustomerAuthService) GoogleOptions(ctx context.Context, hostname string
 	if err != nil {
 		return nil, err
 	}
-	return &domain.CustomerAuthOptions{ClientID: s.cfg.GoogleClientID, RedirectURI: s.customerOrigin(*site) + "/api/customer/google/callback", PasswordMinLength: s.cfg.PasswordMinLength, SupplierName: site.SupplierName, LogoURL: site.LogoURL}, nil
+	return &domain.CustomerAuthOptions{ClientID: s.cfg.GoogleClientID, RedirectURI: s.customerGoogleRedirectURI(*site), PasswordMinLength: s.cfg.PasswordMinLength, SupplierName: site.SupplierName, LogoURL: site.LogoURL}, nil
 }
 
 // GoogleExchange authenticates a linked Google subject or issues a short-lived first-registration capability.
@@ -80,7 +80,7 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 	if code == "" || len(code) > 4096 || len(verifier) < 43 || len(verifier) > 128 || !validCustomerSecret(nonce) {
 		return nil, domain.ErrInvalidInput
 	}
-	google, err := s.google.Exchange(ctx, code, verifier, s.customerOrigin(*site)+"/api/customer/google/callback", nonce)
+	google, err := s.google.Exchange(ctx, code, verifier, s.customerGoogleRedirectURI(*site), nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -212,10 +212,7 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname strin
 }
 
 func (s *CustomerAuthService) customerOrigin(site domain.CustomerSite) string {
-	if s.cfg.GoogleLocalOrigin != "" {
-		return strings.TrimRight(s.cfg.GoogleLocalOrigin, "/")
-	}
-	return "https://" + site.Hostname
+	return customerSiteOrigin(site.Hostname, s.cfg.GoogleLocalOrigin)
 }
 
 func validCustomerEmail(value string) bool {
@@ -252,4 +249,11 @@ func withGoogleContact(contacts []domain.ClientContact, email string) []domain.C
 		return contacts
 	}
 	return append(contacts, domain.ClientContact{Kind: domain.ChannelTypeEmail, Value: email, Primary: true})
+}
+
+func (s *CustomerAuthService) customerGoogleRedirectURI(site domain.CustomerSite) string {
+	if s.cfg.GoogleLocalOrigin != "" {
+		return strings.TrimRight(s.cfg.GoogleLocalOrigin, "/") + "/api/customer/google/callback"
+	}
+	return s.customerOrigin(site) + "/api/customer/google/callback"
 }

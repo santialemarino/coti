@@ -73,10 +73,7 @@ func (s *ClientContactService) SendRegistrationLink(ctx context.Context, tenant 
 	if err != nil {
 		return err
 	}
-	origin := "https://" + hostname
-	if s.localOrigin != "" {
-		origin = strings.TrimRight(s.localOrigin, "/")
-	}
+	origin := customerSiteOrigin(hostname, s.localOrigin)
 	body := contactRegistrationLink(origin + "/login?next=%2Fprofile")
 	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: tenant.AccountID, BranchID: tenant.BranchID, Purpose: domain.ContactPurposeRegistrationLink, Kind: kind, To: destination, Body: body})
 	return err

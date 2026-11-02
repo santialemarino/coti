@@ -9,6 +9,7 @@ import {
   safeCustomerDestination,
 } from '@/lib/auth/customer-flow';
 import { customerApiPath } from '@/lib/auth/customer-session';
+import { customerRequestOrigin, localGoogleState } from '@/lib/auth/local-google-flow';
 import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
 
 export async function GET(request: NextRequest) {
@@ -20,7 +21,10 @@ export async function GET(request: NextRequest) {
   const options = (await response.json()) as { client_id: string; redirect_uri: string };
   if (!options.client_id)
     return NextResponse.redirect(new URL(`${ROUTES.login}?error=googleUnavailable`, request.url));
-  const state = randomBytes(32).toString('base64url');
+  const state = localGoogleState(
+    randomBytes(32).toString('base64url'),
+    customerRequestOrigin(request.url, request.headers.get('host')),
+  );
   const nonce = randomBytes(32).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   const next = safeCustomerDestination(request.nextUrl.searchParams.get('next'));

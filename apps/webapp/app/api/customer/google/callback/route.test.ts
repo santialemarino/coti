@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { cookieJar } from '@repo/vitest-config/cookies';
 import { GET } from '@/app/api/customer/google/callback/route';
@@ -12,6 +12,7 @@ import {
   postCustomerAuth,
 } from '@/lib/auth/customer-flow';
 import { acceptCustomerSession } from '@/lib/auth/customer-session';
+import { localGoogleState } from '@/lib/auth/local-google-flow';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('@/lib/auth/customer-flow', async (original) => ({
@@ -144,4 +145,45 @@ it('starts a known account session and refuses an external post-login destinatio
   const response = await GET(callback());
   expect(acceptCustomerSession).toHaveBeenCalledWith(session);
   expect(response.headers.get('location')).toBe('https://supplier.test/orders');
+});
+
+afterEach(() => vi.unstubAllEnvs());
+it('relays the local provider code before consuming the supplier cookie and validates state there', async () => {
+  const localState = localGoogleState(state, 'http://sanmartin.localhost:3001');
+  const relay = await GET(
+    new NextRequest(
+      'http://localhost:3001/api/customer/google/callback?code=provider-code&state=' + localState,
+    ),
+  );
+  expect(relay.headers.get('location')).toBe(
+    'http://sanmartin.localhost:3001/api/customer/google/callback?code=provider-code&state=' +
+      localState,
+  );
+  expect(cookies).not.toHaveBeenCalled();
+  expect(postCustomerAuth).not.toHaveBeenCalled();
+  const jar = flow();
+  jar.set(
+    GOOGLE_STATE_COOKIE,
+    JSON.stringify({
+      state: localState,
+      nonce: 'n'.repeat(43),
+      verifier: 'v'.repeat(43),
+      next: '/orders',
+      expiresAt: Date.now() + 60000,
+    }),
+  );
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ session: { session_token: 'token' } })),
+  );
+  const completed = await GET(new NextRequest(relay.headers.get('location')!));
+  expect(completed.headers.get('location')).toBe('http://sanmartin.localhost:3001/orders');
+  expect(acceptCustomerSession).toHaveBeenCalledTimes(1);
+  const denied = await GET(
+    new NextRequest(
+      'http://otro.localhost:3001/api/customer/google/callback?code=provider-code&state=' +
+        localState,
+    ),
+  );
+  expect(denied.headers.get('location')).toContain('/login?error=googleFailed');
+  expect(acceptCustomerSession).toHaveBeenCalledTimes(1);
 });

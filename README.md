@@ -80,11 +80,11 @@ pnpm db:init
 pnpm dev
 ```
 
-| App        | URL                   |
-| ---------- | --------------------- |
-| backoffice | http://localhost:3000 |
-| webapp     | http://localhost:3001 |
-| api        | http://localhost:8000 |
+| App        | URL                                                         |
+| ---------- | ----------------------------------------------------------- |
+| backoffice | http://localhost:3000                                       |
+| webapp     | http://sanmartin.localhost:3001 (registered local supplier) |
+| api        | http://localhost:8000                                       |
 
 Outbound mail goes to the log by default. To read a captured message — a password-reset or
 address-verification link — start the Mailpit sandbox, set these values in `apps/api/.env`,
