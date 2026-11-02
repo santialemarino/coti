@@ -246,3 +246,8 @@ type QuoteRepresentationDiscountResponse struct {
 	Description string `json:"description"`
 	Amount      string `json:"amount"`
 }
+
+// QuoteFollowupDraftResponse is a follow-up message drafted for the seller to edit and send.
+type QuoteFollowupDraftResponse struct {
+	Message string `json:"message"`
+}

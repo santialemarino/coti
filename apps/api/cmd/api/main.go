@@ -221,8 +221,10 @@ func run() error {
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	var changeProposer domain.ChangeRequestHandler
+	var followupDrafter domain.FollowupDrafter
 	if providers.LanguageModelBound() {
 		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
+		followupDrafter = ai.NewFollowupDrafter(providers.Generator)
 	}
 	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
@@ -324,7 +326,9 @@ func run() error {
 			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
-			Conversation:   handler.NewConversationHandler(conversationReviewService),
+			Conversation: handler.NewConversationHandler(conversationReviewService),
+			QuoteFollowup: handler.NewQuoteFollowupHandler(services.NewQuoteFollowupService(db,
+				quoteRepo, accountRepo, clientRepo, userRepo, followupDrafter)),
 			Client:         handler.NewClientHandler(clientService),
 			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			Prices:         handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),

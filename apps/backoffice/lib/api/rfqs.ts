@@ -210,6 +210,11 @@ export interface QuoteResponse {
   invoice_waived_by_user_id: string | null;
 }
 
+// A follow-up message drafted for the seller to edit and send themselves.
+export interface QuoteFollowupDraftResponse {
+  message: string;
+}
+
 export interface QuoteVersionResponse {
   id: string;
   quote_id: string;

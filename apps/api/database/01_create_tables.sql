@@ -107,7 +107,8 @@ CREATE TYPE ai_operation AS ENUM (
   'CATALOG_MATCH_REVIEW',
   'CATALOG_EMBEDDING',
   'CORRECTION_LEARNING',
-  'CHANGE_REQUEST_HANDLING'
+  'CHANGE_REQUEST_HANDLING',
+  'FOLLOWUP_DRAFT'
 );
 
 -- =============================================================================

@@ -373,6 +373,7 @@
     "BRANCH_MAILBOX_REQUIRED": "La sucursal envía sus correos desde esa casilla, así que no se puede dejar vacía.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_SENT": "La cotización no está esperando una respuesta del cliente.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
@@ -1457,7 +1458,22 @@
           "customer": "El cliente no respondió desde el {date}. Escribile para retomar la cotización.",
           "customerUndated": "El cliente todavía no respondió. Escribile para retomar la cotización.",
           "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
-          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente."
+          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente.",
+          "draft": {
+            "action": "Redactar mensaje",
+            "again": "Redactar otro",
+            "pending": "Redactando…",
+            "label": "Mensaje de seguimiento para el cliente",
+            "copy": "Copiar mensaje",
+            "copied": "Mensaje copiado",
+            "copyFailed": "No pudimos copiar el mensaje. Seleccionalo y copialo a mano.",
+            "hint": "Revisalo y mandalo vos por WhatsApp o correo: Coti no lo envía.",
+            "errors": {
+              "AI_UNAVAILABLE": "No pudimos redactar el mensaje ahora. Probá de nuevo en unos minutos.",
+              "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente.",
+              "QUOTE_ARCHIVED": "La cotización está archivada."
+            }
+          }
         }
       },
       "items": {
