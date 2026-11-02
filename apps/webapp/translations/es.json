@@ -223,7 +223,6 @@
     "passwordLogin": "Ingresar con CUIT/CUIL",
     "createAccount": "Crear cuenta",
     "backToLogin": "Volver al ingreso",
-    "existingAccount": "Ya tengo una cuenta: ingresar y vincular Google",
     "googleContactHint": "Necesitamos al menos un dato de contacto para enviarte tus cotizaciones.",
     "useGoogleEmail": "Usar {email} como contacto",
     "useGoogleEmailWithCode": "Usar {email} como contacto (después lo verificás con un código)",

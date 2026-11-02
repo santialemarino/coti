@@ -329,15 +329,6 @@ export function CustomerAuthScreen({
                       <Link href={ROUTES.forgotPassword}>{t('forgot')}</Link>
                     </InlineLink>
                   ) : null}
-                  {mode === 'google' ? (
-                    <InlineLink asChild>
-                      <Link
-                        href={`${ROUTES.login}?method=password&next=${encodeURIComponent(`${ROUTES.googleComplete}?next=${encodeURIComponent(next)}`)}`}
-                      >
-                        {t('existingAccount')}
-                      </Link>
-                    </InlineLink>
-                  ) : null}
                   <InlineLink asChild className="self-center">
                     <Link href={`${ROUTES.login}?next=${encodeURIComponent(next)}`}>
                       {t('backToLogin')}
