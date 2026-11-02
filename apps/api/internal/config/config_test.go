@@ -819,7 +819,7 @@ func TestLoad_Invalid(t *testing.T) {
 			name: "a client's silence flagged no earlier than it is archived",
 			mutate: func(e map[string]string) {
 				e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "10"
-				e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "11"
+				e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "10"
 			},
 			wantSub: "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS",
 		},

@@ -191,3 +191,25 @@ func TestQuoteFollowup_AFlaggedQuoteIsStillArchived(t *testing.T) {
 		t.Error("flagged idle quote not archived, want the flag to leave its inactivity alone")
 	}
 }
+
+// A write that raises the flag together with any other change is activity, so it does not keep the
+// quote's inactivity and the flag does not survive it.
+func TestQuoteFollowup_AFlagWrittenWithAnotherChangeIsActivity(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Follow-up mixed write")
+	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	quoteID := e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusQuoted, 6*24*time.Hour,
+		nil, nil)
+	before := e.followupOf(t, quoteID)
+
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote SET needs_followup = TRUE, followup_flagged_at = now(), seller_id = $2
+		 WHERE id = $1`, quoteID, seller.ID); err != nil {
+		t.Fatalf("write the flag and the seller: %v", err)
+	}
+	after := e.followupOf(t, quoteID)
+	if after.flagged || after.updatedAt.Equal(before.updatedAt) {
+		t.Errorf("flagged = %v, updated_at %v -> %v, want the assignment to count as activity",
+			after.flagged, before.updatedAt, after.updatedAt)
+	}
+}
