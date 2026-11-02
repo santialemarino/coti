@@ -9,7 +9,7 @@ import { useFormatters } from '@/lib/i18n/formatters';
 // The two stalls follow-up chases: the seller has not sent the quote, or the client has not answered.
 const FOLLOWUP_STATUSES = new Set(['GENERATED', 'QUOTED', 'SENT']);
 
-// Whether a flag still means something: nothing clears it once the quote moves on or is archived.
+// Whether a flag still means something; the server clears it on the quote's next write.
 export function followupDue(flagged: boolean, status: string, archived: boolean): boolean {
   return flagged && !archived && FOLLOWUP_STATUSES.has(status);
 }
