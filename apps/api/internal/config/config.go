@@ -85,6 +85,7 @@ type Config struct {
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
 	QuoteArchive    QuoteArchiveConfig
+	QuoteFollowup   QuoteFollowupConfig
 	Conversation    ConversationConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
@@ -609,12 +610,21 @@ type QuoteQualityConfig struct {
 // QuoteArchiveConfig drives the sweep that archives quotes nobody has moved.
 type QuoteArchiveConfig struct {
 	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
-	// (US-41) flags on the same measure, so this belongs above its threshold.
+	// flags on the same measure, so this belongs above its thresholds.
 	InactiveAfter time.Duration
 	// ClosedAfter is how long a closed outcome — a complete sale or a rejected quote — stays in the
 	// queue without a change before it is archived.
 	ClosedAfter time.Duration
 	BatchSize   int
+}
+
+// QuoteFollowupConfig drives the sweep that flags the quotes a seller has to chase.
+type QuoteFollowupConfig struct {
+	// SellerIdleAfter is how long a DRAFT or QUOTED quote may go without a change before it is flagged.
+	SellerIdleAfter time.Duration
+	// CustomerSilentAfter is how long a SENT quote may go without a change before it is flagged.
+	CustomerSilentAfter time.Duration
+	BatchSize           int
 }
 
 // ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
@@ -967,6 +977,13 @@ func Load() (*Config, error) {
 				&problems),
 			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
 		},
+		QuoteFollowup: QuoteFollowupConfig{
+			SellerIdleAfter: getDuration("QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", 3*24*time.Hour,
+				&problems),
+			CustomerSilentAfter: getDuration("QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS", 3*24*time.Hour,
+				&problems),
+			BatchSize: getInt("QUOTE_FOLLOWUP_BATCH_SIZE", 100, &problems),
+		},
 		Conversation: ConversationConfig{
 			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
 			WindowMax:       getDuration("CONVERSATION_WINDOW_MAX_SECONDS", 600*time.Second, &problems),
@@ -1227,6 +1244,24 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteArchive.BatchSize < 1 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
+	}
+	// A quote has to be flagged before the archive sweep can put it away.
+	if cfg.QuoteFollowup.SellerIdleAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.SellerIdleAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.CustomerSilentAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.CustomerSilentAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.BatchSize < 1 {
+		problems = append(problems, "QUOTE_FOLLOWUP_BATCH_SIZE must be greater than zero")
 	}
 	if cfg.Conversation.WindowReset <= 0 {
 		problems = append(problems, "CONVERSATION_WINDOW_RESET_SECONDS must be greater than zero")

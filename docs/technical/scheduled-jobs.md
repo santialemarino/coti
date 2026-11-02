@@ -104,6 +104,9 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`        | 30      | Days without movement before archiving    |
 | `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`          | 30      | The same, for a complete sale or REJECTED |
 | `QUOTE_AUTO_ARCHIVE_BATCH_SIZE`           | 100     | Quotes archived per statement             |
+| `QUOTE_FOLLOWUP_SELLER_IDLE_DAYS`         | 3       | Days a DRAFT/QUOTED waits before flagging |
+| `QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS`     | 3       | The same, for a SENT quote unanswered     |
+| `QUOTE_FOLLOWUP_BATCH_SIZE`               | 100     | Quotes flagged per statement              |
 | `CONVERSATION_MAX_ATTEMPTS`               | 3       | Failed attempts before a batch is FAILED  |
 | `CONVERSATION_PROCESSING_TIMEOUT_SECONDS` | 600     | One attempt's bound; older claims reclaim |
 | `CONVERSATION_SWEEP_BATCH_SIZE`           | 100     | Windows closed per page, claims per pass  |
@@ -118,6 +121,7 @@ No request has any reason to read an audit trail, let alone rewrite one.
 | `catalog-embedding`         | Every 15 minutes      | Embed products created or edited since last run  |
 | `quote-auto-archive`        | Daily at 03:30 (AR)   | Archive quotes nobody has moved in a month       |
 | `conversation-batches`      | Every 15 minutes      | Backstop for the API's conversation ticker       |
+| `quote-followup`            | Daily at 07:00 (AR)   | Flag the quotes the seller has to chase          |
 
 App Platform's scheduled jobs accept a cron expression and a timezone, with a **minimum interval of
 every 15 minutes** — a tighter cron is not honoured, and `doctl apps spec validate --schema-only`
@@ -205,10 +209,9 @@ credit note (`InvoiceService.markIssued` claims the row in the same transaction)
 so a quote the seller brings back starts a fresh window instead of being put away again on the next
 run. A line, discount or alternative edit claims the quote row first (`ClaimForEdit`), which touches
 it and holds its lock until the edit commits, so a quote being worked on is never idle and the sweep
-can never archive it between the edit's archive check and its write. US-41's follow-up flag is meant
-to read the same measure on a shorter threshold, so a quote is flagged before it is archived;
-because setting the flag writes the quote row too, that job has to compare against the time before
-its own write.
+can never archive it between the edit's archive check and its write. The follow-up flag reads the same
+measure on shorter thresholds, so a quote is flagged before it is archived, and raising it is not
+activity (see [`quote-followup`](#quote-followup)).
 
 **How it runs.** One statement archives up to `QUOTE_AUTO_ARCHIVE_BATCH_SIZE` quotes across every
 account and returns them; the run repeats until a batch comes back short, so a backlog clears in one
@@ -216,6 +219,35 @@ firing and each batch commits on its own. `FOR UPDATE SKIP LOCKED` leaves a quot
 at that moment for the next run. A second run finds nothing new — an archived quote is never matched
 again — and every archived quote is logged with its account, branch, number, status and last
 activity.
+
+### `quote-followup`
+
+**What it flags.** «Requiere seguimiento» (`quote.needs_followup`, `quote.followup_flagged_at`) on a
+quote not archived and not already flagged whose row has not changed in its origin's threshold:
+
+| Origin                      | Statuses          | Threshold                             |
+| --------------------------- | ----------------- | ------------------------------------- |
+| The seller has not moved    | `DRAFT`, `QUOTED` | `QUOTE_FOLLOWUP_SELLER_IDLE_DAYS`     |
+| The client has not answered | `SENT`            | `QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS` |
+
+A `SENT` quote whose offer lapsed unanswered is still flagged: it is the one most worth a call.
+`CHANGE_REQUESTED` is never flagged (the client is waiting on the seller, and the queue already
+puts it first), nor any closed outcome. The flag only sorts the quote to the top of the queue and
+highlights it; the job never contacts anyone and nothing is pushed to the seller.
+
+**Flagging is not activity, and activity clears the flag.** Both live in the quote's update trigger,
+`set_quote_updated_at`: a write that changes only the two flag columns keeps `updated_at` as it was,
+so the archive sweep still measures from the quote's last real change; any other write stamps
+`updated_at` and clears the flag in the same statement. So a seller who edits, sends, assigns or
+transitions a flagged quote settles it at once, and the next run flags it again only once it has
+gone quiet for the whole threshold. Startup refuses either threshold at or above
+`QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS`, which would archive a quote before anyone was asked to chase it.
+
+**How it runs.** The seller's sweep and then the client's, each one statement flagging up to
+`QUOTE_FOLLOWUP_BATCH_SIZE` quotes across every account, repeated until a batch comes back short.
+`FOR UPDATE SKIP LOCKED` leaves a quote being written for the next run. A flagged quote is never
+matched again, so a second run changes nothing, and every flagged quote is logged with its account,
+branch, number, status and last activity.
 
 ### `conversation-batches`
 

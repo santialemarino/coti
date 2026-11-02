@@ -58,6 +58,8 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"JOB_TIMEOUT_MINUTES",
 		"QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS",
 		"QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
+		"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS",
+		"QUOTE_FOLLOWUP_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
 		"RFQ_PIPELINE_TIMEOUT_SECONDS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
@@ -531,6 +533,34 @@ func TestLoad_QuoteArchiveKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 }
 
+func TestLoad_QuoteFollowupDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteFollowup.SellerIdleAfter != 3*24*time.Hour ||
+		cfg.QuoteFollowup.CustomerSilentAfter != 3*24*time.Hour || cfg.QuoteFollowup.BatchSize != 100 {
+		t.Errorf("QuoteFollowup = %+v, want 72h/72h/100", cfg.QuoteFollowup)
+	}
+}
+
+func TestLoad_QuoteFollowupKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "2"
+	env["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "5"
+	env["QUOTE_FOLLOWUP_BATCH_SIZE"] = "9"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteFollowup.SellerIdleAfter != 2*24*time.Hour ||
+		cfg.QuoteFollowup.CustomerSilentAfter != 5*24*time.Hour || cfg.QuoteFollowup.BatchSize != 9 {
+		t.Errorf("QuoteFollowup = %+v, want 48h/120h/9", cfg.QuoteFollowup)
+	}
+}
+
 func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["QUOTE_CORRECTION_SIMILARITY_PERCENT"] = "81"
@@ -765,6 +795,38 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "an archive sweep that takes nothing per batch",
 			mutate:  func(e map[string]string) { e["QUOTE_AUTO_ARCHIVE_BATCH_SIZE"] = "0" },
 			wantSub: "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero",
+		},
+		{
+			name:    "a quote flagged the moment the seller stops moving it",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a sent quote flagged the moment it is sent",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero",
+		},
+		{
+			// The archive sweep would put the quote away before anyone was asked to chase it.
+			name: "a seller's stall flagged no earlier than it is archived",
+			mutate: func(e map[string]string) {
+				e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "10"
+				e["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "10"
+			},
+			wantSub: "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS",
+		},
+		{
+			name: "a client's silence flagged no earlier than it is archived",
+			mutate: func(e map[string]string) {
+				e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "10"
+				e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "10"
+			},
+			wantSub: "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS",
+		},
+		{
+			name:    "a follow-up sweep that takes nothing per batch",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_BATCH_SIZE"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_BATCH_SIZE must be greater than zero",
 		},
 		{
 			// An allowance above the global one can never bite, so it reads as a cost bound that

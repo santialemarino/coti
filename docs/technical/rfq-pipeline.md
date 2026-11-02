@@ -762,6 +762,11 @@ Quotes also archive themselves: the `quote-auto-archive` job puts away the ones 
 `QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS` — a sent one only once its offer has lapsed — and the complete
 sales and rejected quotes quiet for `QUOTE_AUTO_ARCHIVE_CLOSED_DAYS`. See [scheduled-jobs.md](scheduled-jobs.md#quote-auto-archive).
 
+Before that, the `quote-followup` job flags «Requiere seguimiento» on a `DRAFT` or `QUOTED` quote
+nobody moved in `QUOTE_FOLLOWUP_SELLER_IDLE_DAYS` and a `SENT` one unanswered for
+`QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS`. The queue sorts flagged quotes first and highlights them; the
+next write to the quote clears the flag. See [scheduled-jobs.md](scheduled-jobs.md#quote-followup).
+
 ## Where the code lives
 
 | Piece                       | File                                                         |

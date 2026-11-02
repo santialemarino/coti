@@ -99,6 +99,9 @@ export function RfqDetailView({
         latestClientAction.version_number === detail.version.version_number - 1));
   const canDiscardAIChanges = !archived && detail.conversation?.can_discard_ai_changes === true;
   const followupOrigin = rfqStatus === 'SENT' ? 'customer' : 'seller';
+  // Raising the flag is not activity and any later write clears it, so a flagged quote's
+  // updated_at is when it went quiet.
+  const followupQuietSince = detail.quote?.updated_at ?? null;
   const showFollowup = followupDue(
     detail.rfq.needs_followup,
     rfqStatus,
@@ -271,9 +274,9 @@ export function RfqDetailView({
 
       {showFollowup ? (
         <Callout tone="followup" title={t('detail.callouts.followup.title')}>
-          {detail.rfq.followup_flagged_at
+          {followupQuietSince
             ? t(`detail.callouts.followup.${followupOrigin}`, {
-                date: fmt.date(detail.rfq.followup_flagged_at),
+                date: fmt.date(followupQuietSince),
               })
             : t(`detail.callouts.followup.${followupOrigin}Undated`)}
         </Callout>
