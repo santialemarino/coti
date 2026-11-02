@@ -25,7 +25,7 @@ vi.mock('@/app/login/actions', () => ({
   completeCustomerGoogle: vi.fn(),
 }));
 
-function screen(mode: CustomerAuthMode, googleEmail?: string, googleEmailProven = true) {
+function screen(mode: CustomerAuthMode, googleEmail?: string) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -38,7 +38,6 @@ function screen(mode: CustomerAuthMode, googleEmail?: string, googleEmailProven 
         next="/orders"
         minimum={12}
         googleEmail={googleEmail}
-        googleEmailProven={googleEmailProven}
         googleEnabled
       />
     </NextIntlClientProvider>,
@@ -122,11 +121,11 @@ it('offers the Google address unchecked and refuses to continue without any cont
   expect(completeCustomerGoogle).not.toHaveBeenCalled();
 });
 
-it('says an address Google does not prove still needs a code', () => {
-  const view = screen('google', 'juan@corralon.com.ar', false);
+it('offers the selected Google address without verification instructions', () => {
+  const view = screen('google', 'juan@corralon.com.ar');
   expect(
     view.getByRole('checkbox', {
-      name: 'Usar juan@corralon.com.ar como contacto (después lo verificás con un código)',
+      name: 'Usar juan@corralon.com.ar como contacto',
     }),
   ).toBeTruthy();
 });

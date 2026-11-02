@@ -43,8 +43,6 @@ interface CustomerAuthScreenProps {
   minimum: number;
   taxId?: string;
   googleEmail?: string;
-  // Choosing a proven address verifies it; any other one joins pending a code.
-  googleEmailProven?: boolean;
   initialError?: string;
   googleEnabled: boolean;
 }
@@ -57,7 +55,6 @@ export function CustomerAuthScreen({
   minimum,
   taxId = '',
   googleEmail,
-  googleEmailProven = false,
   initialError,
   googleEnabled,
 }: CustomerAuthScreenProps) {
@@ -262,6 +259,11 @@ export function CustomerAuthScreen({
                                       disabled={
                                         mode === 'google' && name === 'email' && useGoogleEmail
                                       }
+                                      containerClassName={
+                                        mode === 'google' && name === 'email' && useGoogleEmail
+                                          ? 'bg-surface-hover opacity-100'
+                                          : undefined
+                                      }
                                       type={name === 'email' ? 'email' : 'password'}
                                       maxLength={name === 'email' ? 255 : 72}
                                       autoComplete={
@@ -298,13 +300,8 @@ export function CustomerAuthScreen({
                                           className="mt-0.5"
                                         />
                                       </FormControl>
-                                      <FormLabel className="cursor-pointer break-all text-paragraph-sm">
-                                        {t(
-                                          googleEmailProven
-                                            ? 'useGoogleEmail'
-                                            : 'useGoogleEmailWithCode',
-                                          { email: googleEmail },
-                                        )}
+                                      <FormLabel className="min-w-0 cursor-pointer [overflow-wrap:anywhere] text-paragraph-sm">
+                                        {t('useGoogleEmail', { email: googleEmail })}
                                       </FormLabel>
                                     </FormItem>
                                   )}

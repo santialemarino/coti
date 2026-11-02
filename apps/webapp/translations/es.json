@@ -221,7 +221,6 @@
     "createAccount": "Crear cuenta",
     "backToLogin": "Volver al ingreso",
     "useGoogleEmail": "Usar {email} como contacto",
-    "useGoogleEmailWithCode": "Usar {email} como contacto (después lo verificás con un código)",
     "forgot": "Olvidé mi contraseña",
     "pending": "Procesando…",
     "validation": {

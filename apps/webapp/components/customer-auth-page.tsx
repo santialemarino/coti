@@ -11,7 +11,6 @@ interface CustomerAuthPageProps {
   next: string;
   taxId?: string;
   googleEmail?: string;
-  googleEmailProven?: boolean;
   initialError?: string;
 }
 
