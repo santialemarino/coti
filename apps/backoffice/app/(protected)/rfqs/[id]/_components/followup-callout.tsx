@@ -66,6 +66,7 @@ export function FollowupCallout({ quoteId, branchId, origin, quietSince }: Follo
             <Textarea
               aria-label={t('draft.label')}
               value={draft}
+              disabled={pending}
               onChange={(event) => setDraft(event.target.value)}
             />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

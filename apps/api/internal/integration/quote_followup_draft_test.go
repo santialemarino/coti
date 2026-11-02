@@ -48,7 +48,17 @@ func TestQuoteFollowupDraft_DraftsASentQuoteAndWritesNothing(t *testing.T) {
 	seller := e.seedUser(t, accountID, domain.UserRoleAdmin)
 	seeded := e.seedDraftQuote(t, accountID, branchID, seller,
 		[]draftLine{{description: "10 bolsas de cemento", quantity: "10"}})
-	e.setQuoteStatus(t, seeded.quoteID, domain.QuoteStatusSent)
+	var clientID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx,
+		`INSERT INTO client(account_id, name) VALUES ($1, 'Juan Pérez') RETURNING id`,
+		accountID).Scan(&clientID); err != nil {
+		t.Fatalf("seed client: %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx,
+		`UPDATE quote SET current_status = 'SENT', client_id = $2, expires_at = now() - interval '1 day'
+		 WHERE id = $1`, seeded.quoteID, clientID); err != nil {
+		t.Fatalf("send the quote: %v", err)
+	}
 	e.backdateQuote(t, seeded.quoteID, 6*24*time.Hour)
 	jobs, name := e.followupJobs(t)
 	if _, err := jobs.Run(ctx, name); err != nil {
@@ -72,6 +82,10 @@ func TestQuoteFollowupDraft_DraftsASentQuoteAndWritesNothing(t *testing.T) {
 	if in.SupplierName != "Follow-up draft" || in.SellerName != seller.Name {
 		t.Errorf("supplier, seller = %q, %q, want the account and the quote's seller", in.SupplierName,
 			in.SellerName)
+	}
+	if in.ClientName != "Juan Pérez" || !in.Lapsed {
+		t.Errorf("client, lapsed = %q, %v, want the quote's client and its expired offer",
+			in.ClientName, in.Lapsed)
 	}
 	if !slices.Equal(in.Items, []string{"10 bolsas de cemento"}) {
 		t.Errorf("items = %q, want the quote's line", in.Items)
