@@ -121,6 +121,22 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Inactivity is quote.updated_at: raising the follow-up flag must not count as activity, and any other
+-- write to the quote is activity that settles the flag.
+CREATE OR REPLACE FUNCTION set_quote_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.updated_at = OLD.updated_at
+     AND (NEW.needs_followup, NEW.followup_flagged_at) IS DISTINCT FROM (OLD.needs_followup, OLD.followup_flagged_at)
+     AND to_jsonb(NEW) - ARRAY['needs_followup', 'followup_flagged_at'] = to_jsonb(OLD) - ARRAY['needs_followup', 'followup_flagged_at'] THEN
+    RETURN NEW;
+  END IF;
+  NEW.updated_at = now();
+  NEW.needs_followup = FALSE;
+  NEW.followup_flagged_at = NULL;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Resolves the request's account from the per-transaction GUC. current_setting with its
 -- second argument true returns NULL when unset, so a session with no context matches no
 -- row: it fails closed.
@@ -1405,7 +1421,7 @@ CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EA
 CREATE TRIGGER trg_client_updated         BEFORE UPDATE ON client         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_channel_updated        BEFORE UPDATE ON channel        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_rfq_updated            BEFORE UPDATE ON rfq            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_quote_updated          BEFORE UPDATE ON quote          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_quote_updated          BEFORE UPDATE ON quote          FOR EACH ROW EXECUTE FUNCTION set_quote_updated_at();
 CREATE TRIGGER trg_promotion_updated      BEFORE UPDATE ON promotion      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =============================================================================
