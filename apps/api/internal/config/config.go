@@ -1248,13 +1248,15 @@ func Load() (*Config, error) {
 	// A quote has to be flagged before the archive sweep can put it away.
 	if cfg.QuoteFollowup.SellerIdleAfter <= 0 {
 		problems = append(problems, "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero")
-	} else if cfg.QuoteFollowup.SellerIdleAfter >= cfg.QuoteArchive.InactiveAfter {
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.SellerIdleAfter >= cfg.QuoteArchive.InactiveAfter {
 		problems = append(problems,
 			"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
 	}
 	if cfg.QuoteFollowup.CustomerSilentAfter <= 0 {
 		problems = append(problems, "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero")
-	} else if cfg.QuoteFollowup.CustomerSilentAfter >= cfg.QuoteArchive.InactiveAfter {
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.CustomerSilentAfter >= cfg.QuoteArchive.InactiveAfter {
 		problems = append(problems,
 			"QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
 	}
