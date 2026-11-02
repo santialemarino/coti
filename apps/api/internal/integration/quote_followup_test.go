@@ -65,13 +65,13 @@ func TestQuoteFollowup_FlagsOnlyTheStallsQuietPastTheirThreshold(t *testing.T) {
 	}
 	left := map[string]uuid.UUID{
 		// Past the seller's threshold but short of the client's: each origin keeps its own.
-		"SENT silent three days":    e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, threeDays, nil, nil),
-		"DRAFT idle a day":          e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, 24*time.Hour, nil, nil),
-		"idle CHANGE_REQUESTED":     e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusChangeRequested, sixDays, nil, nil),
-		"idle ACCEPTED":             e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusAccepted, sixDays, nil, nil),
-		"idle REJECTED":             e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusRejected, sixDays, nil, nil),
-		"archived idle DRAFT":       e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, sixDays, &boxed, nil),
-		"archived silent SENT":      e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, sixDays, &boxed, nil),
+		"SENT silent three days": e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, threeDays, nil, nil),
+		"DRAFT idle a day":       e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, 24*time.Hour, nil, nil),
+		"idle CHANGE_REQUESTED":  e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusChangeRequested, sixDays, nil, nil),
+		"idle ACCEPTED":          e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusAccepted, sixDays, nil, nil),
+		"idle REJECTED":          e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusRejected, sixDays, nil, nil),
+		"archived idle DRAFT":    e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusDraft, sixDays, &boxed, nil),
+		"archived silent SENT":   e.seedIdleQuote(t, accountID, branchID, domain.QuoteStatusSent, sixDays, &boxed, nil),
 	}
 	before := map[uuid.UUID]time.Time{}
 	for _, id := range eligible {
