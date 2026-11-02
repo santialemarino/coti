@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -6,6 +7,17 @@ import { completeCustomerGoogle, signUpCustomer } from '@/app/login/actions';
 import type { CustomerAuthMode } from '@/components/customer-auth-schema';
 import { CustomerAuthScreen } from '@/components/customer-auth-screen';
 import messages from '@/translations/es.json';
+
+vi.mock('next/link', async (original) => {
+  const actual = await original<typeof import('next/link')>();
+  const { createElement } = await import('react');
+  return {
+    ...actual,
+    default: vi.fn((props: React.ComponentProps<typeof actual.default>) =>
+      createElement(actual.default, props),
+    ),
+  };
+});
 
 vi.mock('@/app/login/actions', () => ({
   signInCustomer: vi.fn(),
@@ -33,6 +45,18 @@ function screen(mode: CustomerAuthMode, googleEmail?: string, googleEmailProven 
   );
 }
 beforeEach(() => vi.clearAllMocks());
+
+it.each(['welcome'] as const)('starts Google with document navigation from %s', (mode) => {
+  const view = screen(mode);
+  expect(view.getByRole('link', { name: 'Continuar con Google' }).getAttribute('href')).toBe(
+    '/api/customer/google/start?next=%2Forders',
+  );
+  expect(
+    vi
+      .mocked(Link)
+      .mock.calls.some(([props]) => String(props.href).startsWith('/api/customer/google/start')),
+  ).toBe(false);
+});
 
 it('offers Google first with explicit local login and registration alternatives', () => {
   const view = screen('welcome');

@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       else clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
       destination = `${ROUTES.googleComplete}?next=${encodeURIComponent(destination === ROUTES.orders ? ROUTES.newRequest : destination)}`;
     } else return fail();
-    const redirect = NextResponse.redirect(new URL(destination, request.url));
+    const redirect = NextResponse.redirect(new URL(destination, requestOrigin));
     redirect.headers.set('Cache-Control', 'no-store');
     return redirect;
   } catch {

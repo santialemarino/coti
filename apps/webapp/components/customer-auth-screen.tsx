@@ -165,9 +165,9 @@ export function CustomerAuthScreen({
                 <>
                   {googleEnabled ? (
                     <Button asChild variant="outline" size="lg">
-                      <Link href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
+                      <a href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
                         {googleLabel}
-                      </Link>
+                      </a>
                     </Button>
                   ) : (
                     <Button variant="outline" size="lg" disabled>

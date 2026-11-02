@@ -13,6 +13,21 @@ vi.mock('@/lib/auth/customer-session', () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 
+it.each([
+  [new Response(null, { status: 503 }), 'unavailable'],
+  [new Response(JSON.stringify({ client_id: '' })), 'googleUnavailable'],
+])('keeps configuration failures on the supplier host', async (options, error) => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(options));
+  const response = await GET(
+    new NextRequest('http://localhost:3001/api/customer/google/start', {
+      headers: { host: 'sanmartin.localhost:3001' },
+    }),
+  );
+  expect(response.headers.get('location')).toBe(
+    `http://sanmartin.localhost:3001/login?error=${error}`,
+  );
+});
+
 it('keeps state, nonce and PKCE in the starting supplier cookie while using the shared callback', async () => {
   const jar = cookieJar({});
   vi.mocked(cookies).mockResolvedValue(jar as unknown as Awaited<ReturnType<typeof cookies>>);

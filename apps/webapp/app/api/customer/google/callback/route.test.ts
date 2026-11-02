@@ -45,6 +45,34 @@ function callback(value = state) {
 }
 beforeEach(() => vi.clearAllMocks());
 
+it('keeps the supplier host after signup when Next normalizes the callback URL', async () => {
+  const localState = localGoogleState(state, 'http://sanmartin.localhost:3001');
+  const jar = flow();
+  jar.set(
+    GOOGLE_STATE_COOKIE,
+    JSON.stringify({
+      state: localState,
+      nonce: 'n'.repeat(43),
+      verifier: 'v'.repeat(43),
+      next: '/orders',
+      expiresAt: Date.now() + 60000,
+    }),
+  );
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ signup_token: 'p'.repeat(43) })),
+  );
+  const response = await GET(
+    new NextRequest(
+      'http://localhost:3001/api/customer/google/callback?code=provider-code&state=' + localState,
+      { headers: { host: 'sanmartin.localhost:3001' } },
+    ),
+  );
+  expect(response.headers.get('location')).toBe(
+    'http://sanmartin.localhost:3001/google-complete?next=%2Fnew-request',
+  );
+  expect(jar.set).toHaveBeenCalledWith(GOOGLE_SIGNUP_COOKIE, 'p'.repeat(43), expect.anything());
+});
+
 it('rejects a mismatched or expired browser state before exchanging any code', async () => {
   flow();
   const denied = await GET(callback('wrong-state'));

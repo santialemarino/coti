@@ -13,18 +13,16 @@ import { customerRequestOrigin, localGoogleState } from '@/lib/auth/local-google
 import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
 
 export async function GET(request: NextRequest) {
+  const requestOrigin = customerRequestOrigin(request.url, request.headers.get('host'));
   const response = await fetch(await customerApiPath('/auth/google/options'), {
     cache: 'no-store',
   });
   if (!response.ok)
-    return NextResponse.redirect(new URL(`${ROUTES.login}?error=unavailable`, request.url));
+    return NextResponse.redirect(new URL(`${ROUTES.login}?error=unavailable`, requestOrigin));
   const options = (await response.json()) as { client_id: string; redirect_uri: string };
   if (!options.client_id)
-    return NextResponse.redirect(new URL(`${ROUTES.login}?error=googleUnavailable`, request.url));
-  const state = localGoogleState(
-    randomBytes(32).toString('base64url'),
-    customerRequestOrigin(request.url, request.headers.get('host')),
-  );
+    return NextResponse.redirect(new URL(`${ROUTES.login}?error=googleUnavailable`, requestOrigin));
+  const state = localGoogleState(randomBytes(32).toString('base64url'), requestOrigin);
   const nonce = randomBytes(32).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   const next = safeCustomerDestination(request.nextUrl.searchParams.get('next'));
