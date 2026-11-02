@@ -22,6 +22,7 @@ import {
   setQuoteArchived,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { FollowupCallout } from './followup-callout';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
@@ -273,13 +274,12 @@ export function RfqDetailView({
       {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
 
       {showFollowup ? (
-        <Callout tone="followup" title={t('detail.callouts.followup.title')}>
-          {followupQuietSince
-            ? t(`detail.callouts.followup.${followupOrigin}`, {
-                date: fmt.date(followupQuietSince),
-              })
-            : t(`detail.callouts.followup.${followupOrigin}Undated`)}
-        </Callout>
+        <FollowupCallout
+          quoteId={quoteId}
+          branchId={branchId}
+          origin={followupOrigin}
+          quietSince={followupQuietSince}
+        />
       ) : null}
 
       {rfqStatus === 'ACCEPTED' && (
