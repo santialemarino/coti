@@ -233,7 +233,10 @@ quote not archived and not already flagged whose row has not changed in its orig
 A `SENT` quote whose offer lapsed unanswered is still flagged: it is the one most worth a call.
 `CHANGE_REQUESTED` is never flagged (the client is waiting on the seller, and the queue already
 puts it first), nor any closed outcome. The flag only sorts the quote to the top of the queue and
-highlights it; the job never contacts anyone and nothing is pushed to the seller.
+highlights it; the job never contacts anyone and nothing is pushed to the seller. On a flagged `SENT`
+quote the seller can ask for a draft message to the client on demand (see
+[ai-providers.md](ai-providers.md#feature-ports-sit-on-top)); drafting writes nothing, so it does not clear the
+flag.
 
 **Flagging is not activity, and activity clears the flag.** Both live in the quote's update trigger,
 `set_quote_updated_at`: a write that changes only the two flag columns keeps `updated_at` as it was,

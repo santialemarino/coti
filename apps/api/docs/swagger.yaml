@@ -2264,6 +2264,11 @@ definitions:
     required:
     - address
     type: object
+  dto.QuoteFollowupDraftResponse:
+    properties:
+      message:
+        type: string
+    type: object
   dto.QuoteItemAlternativeResponse:
     properties:
       approved_by_seller:
@@ -7861,6 +7866,54 @@ paths:
       summary: Update a discount
       tags:
       - rfqs
+  /v1/quotes/{quoteId}/followup-draft:
+    post:
+      description: Drafts, from the quote as it stands, a message the seller can edit
+        and send to a client who has not answered. It contains no prices and is never
+        sent by Coti.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteFollowupDraftResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED or QUOTE_NOT_SENT
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: AI_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Draft a follow-up message
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/invoice:
     get:
       description: Returns the invoice type, buyer and amounts the quote would be
