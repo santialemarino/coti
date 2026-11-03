@@ -14,15 +14,29 @@ import {
   safeCustomerDestination,
 } from '@/lib/auth/customer-flow';
 import { acceptCustomerSession, type CustomerLoginRaw } from '@/lib/auth/customer-session';
+import { customerRequestOrigin, localGoogleReturnOrigin } from '@/lib/auth/local-google-flow';
 import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
 
 export async function GET(request: NextRequest) {
+  const requestOrigin = customerRequestOrigin(request.url, request.headers.get('host'));
+  const returnOrigin = localGoogleReturnOrigin(
+    request.nextUrl.searchParams.get('state') || '',
+    requestOrigin,
+  );
+  if (returnOrigin) {
+    const destination = new URL(ROUTES.googleCallback, returnOrigin);
+    destination.search = request.nextUrl.search;
+    const response = NextResponse.redirect(destination);
+    response.headers.set('Cache-Control', 'no-store');
+    response.headers.set('Referrer-Policy', 'no-referrer');
+    return response;
+  }
   const jar = await cookies();
   const stored = jar.get(GOOGLE_STATE_COOKIE)?.value;
   clearCustomerCookie(jar, GOOGLE_STATE_COOKIE);
   const fail = () => {
     const response = NextResponse.redirect(
-      new URL(`${ROUTES.login}?error=googleFailed`, request.url),
+      new URL(`${ROUTES.login}?error=googleFailed`, requestOrigin),
     );
     response.headers.set('Cache-Control', 'no-store');
     return response;
@@ -79,7 +93,7 @@ export async function GET(request: NextRequest) {
       else clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
       destination = `${ROUTES.googleComplete}?next=${encodeURIComponent(destination === ROUTES.orders ? ROUTES.newRequest : destination)}`;
     } else return fail();
-    const redirect = NextResponse.redirect(new URL(destination, request.url));
+    const redirect = NextResponse.redirect(new URL(destination, requestOrigin));
     redirect.headers.set('Cache-Control', 'no-store');
     return redirect;
   } catch {

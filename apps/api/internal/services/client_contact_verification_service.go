@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -121,10 +120,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 	if err != nil {
 		return nil, err
 	}
-	origin := "https://" + hostname
-	if s.cfg.GoogleLocalOrigin != "" {
-		origin = strings.TrimRight(s.cfg.GoogleLocalOrigin, "/")
-	}
+	origin := customerSiteOrigin(hostname, s.cfg.GoogleLocalOrigin)
 	body := contactVerificationLink(origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret))
 	code := ""
 	if kind == domain.ChannelTypeWhatsApp {

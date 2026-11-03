@@ -66,6 +66,7 @@ export function customerAuthSchema(
       }
       if (
         ['signup', 'google'].includes(mode) &&
+        !(mode === 'google' && values.useGoogleEmail) &&
         values.email.trim() !== '' &&
         !z.email().max(255).safeParse(values.email.trim()).success
       )

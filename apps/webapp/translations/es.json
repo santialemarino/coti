@@ -204,12 +204,9 @@
     },
     "fields": {
       "name": "Nombre y apellido",
-      "phone": "WhatsApp (opcional si cargás un email)",
+      "phone": "WhatsApp",
       "taxId": "CUIT/CUIL",
       "email": "Email",
-      "emailOptional": "Email (opcional si cargás un WhatsApp)",
-      "emailOther": "Otro email (opcional)",
-      "phoneOptional": "WhatsApp (opcional)",
       "password": "Contraseña",
       "confirmation": "Repetí la contraseña"
     },
@@ -223,10 +220,7 @@
     "passwordLogin": "Ingresar con CUIT/CUIL",
     "createAccount": "Crear cuenta",
     "backToLogin": "Volver al ingreso",
-    "existingAccount": "Ya tengo una cuenta: ingresar y vincular Google",
-    "googleContactHint": "Necesitamos al menos un dato de contacto para enviarte tus cotizaciones.",
     "useGoogleEmail": "Usar {email} como contacto",
-    "useGoogleEmailWithCode": "Usar {email} como contacto (después lo verificás con un código)",
     "forgot": "Olvidé mi contraseña",
     "pending": "Procesando…",
     "validation": {

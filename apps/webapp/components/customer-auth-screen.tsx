@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Building2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 
 import {
   Button,
@@ -43,8 +43,6 @@ interface CustomerAuthScreenProps {
   minimum: number;
   taxId?: string;
   googleEmail?: string;
-  // Choosing a proven address verifies it; any other one joins pending a code.
-  googleEmailProven?: boolean;
   initialError?: string;
   googleEnabled: boolean;
 }
@@ -57,7 +55,6 @@ export function CustomerAuthScreen({
   minimum,
   taxId = '',
   googleEmail,
-  googleEmailProven = false,
   initialError,
   googleEnabled,
 }: CustomerAuthScreenProps) {
@@ -80,6 +77,7 @@ export function CustomerAuthScreen({
       useGoogleEmail: false,
     },
   });
+  const useGoogleEmail = useWatch({ control: form.control, name: 'useGoogleEmail' });
   const fields: ('name' | 'taxId' | 'email' | 'phone' | 'password' | 'confirmation')[] = [];
   if (mode === 'signup' || mode === 'google') fields.push('name');
   if (['login', 'signup', 'google', 'linkGoogle'].includes(mode)) fields.push('taxId');
@@ -122,7 +120,7 @@ export function CustomerAuthScreen({
               link: mode === 'linkGoogle',
               ...(mode === 'google'
                 ? {
-                    email: values.email.trim(),
+                    email: values.useGoogleEmail ? '' : values.email.trim(),
                     phone: values.phone || '',
                     useGoogleEmail: Boolean(googleEmail && values.useGoogleEmail),
                   }
@@ -165,9 +163,9 @@ export function CustomerAuthScreen({
                 <>
                   {googleEnabled ? (
                     <Button asChild variant="outline" size="lg">
-                      <Link href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
+                      <a href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
                         {googleLabel}
-                      </Link>
+                      </a>
                     </Button>
                   ) : (
                     <Button variant="outline" size="lg" disabled>
@@ -207,42 +205,6 @@ export function CustomerAuthScreen({
                     >
                       {fields.map((name) => (
                         <Fragment key={name}>
-                          {mode === 'google' && name === 'email' ? (
-                            <div className="flex flex-col gap-y-3">
-                              <p className="text-paragraph-sm text-foreground-muted">
-                                {t('googleContactHint')}
-                              </p>
-                              {googleEmail ? (
-                                <FormField
-                                  control={form.control}
-                                  name="useGoogleEmail"
-                                  render={({ field }) => (
-                                    <FormItem className="flex-row items-start gap-x-2">
-                                      <FormControl>
-                                        <Checkbox
-                                          checked={Boolean(field.value)}
-                                          onCheckedChange={(checked) => {
-                                            field.onChange(checked === true);
-                                            if (form.formState.isSubmitted)
-                                              void form.trigger('email');
-                                          }}
-                                          className="mt-0.5"
-                                        />
-                                      </FormControl>
-                                      <FormLabel className="cursor-pointer break-all text-paragraph-sm">
-                                        {t(
-                                          googleEmailProven
-                                            ? 'useGoogleEmail'
-                                            : 'useGoogleEmailWithCode',
-                                          { email: googleEmail },
-                                        )}
-                                      </FormLabel>
-                                    </FormItem>
-                                  )}
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
                           <FormField
                             control={form.control}
                             name={name}
@@ -256,13 +218,7 @@ export function CustomerAuthScreen({
                                     )
                                   }
                                 >
-                                  {t(
-                                    mode === 'google' && name === 'email'
-                                      ? 'fields.emailOther'
-                                      : mode === 'google' && name === 'phone'
-                                        ? 'fields.phoneOptional'
-                                        : `fields.${name}${name === 'email' && mode === 'signup' ? 'Optional' : ''}`,
-                                  )}
+                                  {t(`fields.${name}`)}
                                 </FormLabel>
                                 <FormControl>
                                   {name === 'phone' ? (
@@ -295,6 +251,19 @@ export function CustomerAuthScreen({
                                   ) : (
                                     <Input
                                       {...field}
+                                      value={
+                                        name === 'email' && useGoogleEmail
+                                          ? googleEmail || ''
+                                          : field.value
+                                      }
+                                      disabled={
+                                        mode === 'google' && name === 'email' && useGoogleEmail
+                                      }
+                                      containerClassName={
+                                        mode === 'google' && name === 'email' && useGoogleEmail
+                                          ? 'bg-surface-hover opacity-100'
+                                          : undefined
+                                      }
                                       type={name === 'email' ? 'email' : 'password'}
                                       maxLength={name === 'email' ? 255 : 72}
                                       autoComplete={
@@ -312,6 +281,34 @@ export function CustomerAuthScreen({
                               </FormItem>
                             )}
                           />
+                          {mode === 'google' && name === 'email' ? (
+                            <div className="flex flex-col gap-y-3">
+                              {googleEmail ? (
+                                <FormField
+                                  control={form.control}
+                                  name="useGoogleEmail"
+                                  render={({ field }) => (
+                                    <FormItem className="flex-row items-start gap-x-2">
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={Boolean(field.value)}
+                                          onCheckedChange={(checked) => {
+                                            field.onChange(checked === true);
+                                            if (form.formState.isSubmitted)
+                                              void form.trigger('email');
+                                          }}
+                                          className="mt-0.5"
+                                        />
+                                      </FormControl>
+                                      <FormLabel className="min-w-0 cursor-pointer [overflow-wrap:anywhere] text-paragraph-sm">
+                                        {t('useGoogleEmail', { email: googleEmail })}
+                                      </FormLabel>
+                                    </FormItem>
+                                  )}
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
                         </Fragment>
                       ))}
                       <FormRootMessage />
@@ -327,15 +324,6 @@ export function CustomerAuthScreen({
                   {mode === 'login' ? (
                     <InlineLink asChild className="self-center">
                       <Link href={ROUTES.forgotPassword}>{t('forgot')}</Link>
-                    </InlineLink>
-                  ) : null}
-                  {mode === 'google' ? (
-                    <InlineLink asChild>
-                      <Link
-                        href={`${ROUTES.login}?method=password&next=${encodeURIComponent(`${ROUTES.googleComplete}?next=${encodeURIComponent(next)}`)}`}
-                      >
-                        {t('existingAccount')}
-                      </Link>
                     </InlineLink>
                   ) : null}
                   <InlineLink asChild className="self-center">

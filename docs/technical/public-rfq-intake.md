@@ -10,8 +10,13 @@ through database administration. No channel configuration screen is introduced i
 Unknown or inactive suppliers return 404. Customer login remains available when there are no
 active intake branches. The new-request page resolves active branches and WEBAPP destinations
 through GET /v1/public/rfq-sites/{hostname}. Migration 00050 and branch creation provision
-WEBAPP channels. WEB_PUBLIC_SITE_HOSTNAME is a server-only development override for Host;
-leave it unset in a shared production deployment.
+WEBAPP channels. Every supplier is resolved from the request Host. For local development, register
+`account.public_hostname` as `sanmartin.localhost` and open
+`http://sanmartin.localhost:3001/login`. Each supplier uses its own hostname and host-only cookies.
+Bare localhost and unknown supplier subdomains return 404. No hosts-file entry or paid domain is
+needed for these local URLs. `WEB_PUBLIC_SITE_HOSTNAME` is an optional single-supplier override
+only for bare loopback requests during development; it never overrides a supplier subdomain or a
+production request. Leave it empty for local subdomain testing.
 
 ## Customer credentials and sessions
 
@@ -53,8 +58,15 @@ new Google subject: the customer must first authenticate to the existing account
 link Google. Completing registration and consuming its capability happen in one transaction.
 
 For development, CUSTOMER_GOOGLE_LOCAL_ORIGIN may point to an HTTP localhost origin, for example
-http://localhost:3001. It controls the callback and outgoing portal links and is rejected in
-production. WEB_GOOGLE_FLOW_TTL_SECONDS bounds the browser flow cookie. API provider, signup,
+http://localhost:3001. Register `http://localhost:3001/api/customer/google/callback` with Google.
+Local sign-in retains state, nonce and PKCE in the starting supplier's host-only cookie. The shared
+localhost callback relays the provider response to that supplier's callback, which verifies the
+original cookie before exchanging the code or setting any credential cookie. The relay accepts
+only HTTP single-label `*.localhost` origins on the same port and is disabled in production.
+Development Host handling preserves the supplier when Next normalizes the request URL to localhost.
+Outgoing customer, verification and quotation links use the registered `*.localhost` supplier with
+the local origin's port. This override is rejected in production, which uses each registered HTTPS
+hostname and its exact Google redirect URI. WEB_GOOGLE_FLOW_TTL_SECONDS bounds the browser flow cookie. API provider, signup,
 recovery and verification timeouts are listed in apps/api/.env.example.
 
 ## Account recovery

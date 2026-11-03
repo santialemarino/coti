@@ -18,7 +18,7 @@ type customerQuoteHostnameReader interface {
 // customerPortal resolves the base URL of a supplier's customer webapp.
 type customerPortal struct {
 	hostnames   customerQuoteHostnameReader
-	localOrigin string // overrides every supplier's hostname on a local stack.
+	localOrigin string // supplies the HTTP scheme and port for local supplier sites.
 	fallback    string // the shared webapp, for a supplier without a hostname of its own.
 }
 
@@ -31,7 +31,7 @@ func (s *QuoteDeliveryService) WithCustomerHostnames(reader customerQuoteHostnam
 
 func (s *QuoteDeliveryService) customerQuoteBase(ctx context.Context, accountID uuid.UUID) (string, error) {
 	portal := customerPortal{hostnames: s.customerHostnames, localOrigin: s.customerLocalOrigin, fallback: s.webappURL}
-	if portal.localOrigin != "" || portal.hostnames == nil {
+	if portal.hostnames == nil {
 		return portal.base(ctx, nil, accountID)
 	}
 	var base string
@@ -55,20 +55,17 @@ func (p customerPortal) base(ctx context.Context, q repository.Querier, accountI
 // siteOrigin is the account's own customer site, empty when it has none: sign-up resolves the
 // supplier by hostname, so the shared webapp cannot register anyone. q is read only for a lookup.
 func (p customerPortal) siteOrigin(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, error) {
-	if p.localOrigin != "" {
-		return strings.TrimRight(p.localOrigin, "/"), nil
-	}
 	if p.hostnames == nil {
-		return "", nil
+		return strings.TrimRight(p.localOrigin, "/"), nil
 	}
 	hostname, err := p.hostnames.GetCustomerHostname(ctx, q, accountID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return "", nil
+		return strings.TrimRight(p.localOrigin, "/"), nil
 	}
 	if err != nil {
 		return "", err
 	}
-	return "https://" + hostname, nil
+	return customerSiteOrigin(hostname, p.localOrigin), nil
 }
 
 func customerQuoteURL(base, token string) string { return base + "/quotes/" + url.PathEscape(token) }

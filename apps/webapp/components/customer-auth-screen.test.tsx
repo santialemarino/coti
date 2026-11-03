@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
@@ -7,13 +8,24 @@ import type { CustomerAuthMode } from '@/components/customer-auth-schema';
 import { CustomerAuthScreen } from '@/components/customer-auth-screen';
 import messages from '@/translations/es.json';
 
+vi.mock('next/link', async (original) => {
+  const actual = await original<typeof import('next/link')>();
+  const { createElement } = await import('react');
+  return {
+    ...actual,
+    default: vi.fn((props: React.ComponentProps<typeof actual.default>) =>
+      createElement(actual.default, props),
+    ),
+  };
+});
+
 vi.mock('@/app/login/actions', () => ({
   signInCustomer: vi.fn(),
   signUpCustomer: vi.fn(),
   completeCustomerGoogle: vi.fn(),
 }));
 
-function screen(mode: CustomerAuthMode, googleEmail?: string, googleEmailProven = true) {
+function screen(mode: CustomerAuthMode, googleEmail?: string) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -26,13 +38,24 @@ function screen(mode: CustomerAuthMode, googleEmail?: string, googleEmailProven 
         next="/orders"
         minimum={12}
         googleEmail={googleEmail}
-        googleEmailProven={googleEmailProven}
         googleEnabled
       />
     </NextIntlClientProvider>,
   );
 }
 beforeEach(() => vi.clearAllMocks());
+
+it.each(['welcome'] as const)('starts Google with document navigation from %s', (mode) => {
+  const view = screen(mode);
+  expect(view.getByRole('link', { name: 'Continuar con Google' }).getAttribute('href')).toBe(
+    '/api/customer/google/start?next=%2Forders',
+  );
+  expect(
+    vi
+      .mocked(Link)
+      .mock.calls.some(([props]) => String(props.href).startsWith('/api/customer/google/start')),
+  ).toBe(false);
+});
 
 it('offers Google first with explicit local login and registration alternatives', () => {
   const view = screen('welcome');
@@ -69,7 +92,7 @@ it('creates password credentials with a single commercial contact', async () => 
 it('asks for CUIT/CUIL and a contact, never a password, after Google has authenticated the user', () => {
   const view = screen('google');
   expect(view.getByLabelText('CUIT/CUIL', { exact: false })).toBeTruthy();
-  expect(view.getByLabelText('Otro email', { exact: false })).toBeTruthy();
+  expect(view.getByLabelText('Email', { exact: true })).toBeTruthy();
   expect(view.getByLabelText(/^WhatsApp/)).toBeTruthy();
   expect(view.queryByRole('checkbox')).toBeNull();
   expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
@@ -98,11 +121,11 @@ it('offers the Google address unchecked and refuses to continue without any cont
   expect(completeCustomerGoogle).not.toHaveBeenCalled();
 });
 
-it('says an address Google does not prove still needs a code', () => {
-  const view = screen('google', 'juan@corralon.com.ar', false);
+it('offers the selected Google address without verification instructions', () => {
+  const view = screen('google', 'juan@corralon.com.ar');
   expect(
     view.getByRole('checkbox', {
-      name: 'Usar juan@corralon.com.ar como contacto (después lo verificás con un código)',
+      name: 'Usar juan@corralon.com.ar como contacto',
     }),
   ).toBeTruthy();
 });
@@ -118,4 +141,26 @@ it('sends the Google address only when the customer chooses it', async () => {
       expect.objectContaining({ taxId: '20123456786', email: '', phone: '', useGoogleEmail: true }),
     ),
   );
+});
+
+it('fills and disables Email when Google is selected and restores the editable address when cleared', async () => {
+  vi.mocked(completeCustomerGoogle).mockResolvedValue({ error: 'unavailable' });
+  const view = screen('google', 'juan@gmail.com');
+  const email = view.getByLabelText('Email', { exact: true }) as HTMLInputElement;
+  const option = view.getByRole('checkbox', { name: 'Usar juan@gmail.com como contacto' });
+  expect(email.compareDocumentPosition(option) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(email, { target: { value: 'correo incompleto' } });
+  fireEvent.click(option);
+  expect(email.value).toBe('juan@gmail.com');
+  expect(email.disabled).toBe(true);
+  fillGoogleIdentity(view);
+  fireEvent.click(view.getByRole('button', { name: 'Continuar' }));
+  await waitFor(() =>
+    expect(completeCustomerGoogle).toHaveBeenCalledWith(
+      expect.objectContaining({ email: '', useGoogleEmail: true }),
+    ),
+  );
+  fireEvent.click(option);
+  expect(email.disabled).toBe(false);
+  expect(email.value).toBe('correo incompleto');
 });
