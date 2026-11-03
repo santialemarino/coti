@@ -124,6 +124,28 @@ describe('PendingInvoicesTable', () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  // A waiver undone elsewhere brings the sale back: the server's list wins over the hidden row.
+  it('shows again whatever the next refresh still lists', async () => {
+    vi.mocked(setInvoiceWaived).mockResolvedValue({} as never);
+    const { rerender } = renderTable(SALES);
+
+    fireEvent.click(
+      within(rows()[0]!).getByRole('button', {
+        name: closing.labelled.replace('{action}', closing.WAIVE).replace('{id}', '#42'),
+      }),
+    );
+    await waitFor(() => expect(rows()).toHaveLength(1));
+
+    rerender(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <PendingInvoicesTable sales={[...SALES]} showBranch={false} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(rows()).toHaveLength(2);
+    expect(within(rows()[0]!).getByRole('link', { name: '#42' })).toBeTruthy();
+  });
+
   it('keeps the sale and says why when the waiver is refused', async () => {
     vi.mocked(setInvoiceWaived).mockRejectedValue(new ApiError('QUOTE_ALREADY_INVOICED', 409));
     renderTable(SALES);

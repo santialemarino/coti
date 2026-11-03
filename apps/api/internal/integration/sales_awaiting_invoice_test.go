@@ -25,6 +25,7 @@ type awaitingPage struct {
 		RFQID      uuid.UUID  `json:"rfq_id"`
 		BranchID   uuid.UUID  `json:"branch_id"`
 		BranchName string     `json:"branch_name"`
+		ClientID   *uuid.UUID `json:"client_id"`
 		Client     string     `json:"client"`
 		Total      string     `json:"total"`
 		AcceptedAt time.Time  `json:"accepted_at"`
@@ -236,6 +237,29 @@ func TestSalesAwaitingInvoice_Pages(t *testing.T) {
 		if rec.Code != want {
 			t.Fatalf("page %s: status = %d, want %d", bad, rec.Code, want)
 		}
+	}
+}
+
+// A sale's client is the quote's, set when it was sent, so the view names the same client the
+// client profile files the sale under even when the order's own client differs.
+func TestSalesAwaitingInvoice_NamesTheQuotesClient(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón Cliente De La Venta")
+	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	e.setInvoicing(t, accountID, true)
+	quoteClient, rfqClient := uuid.New(), uuid.New()
+	e.exec(t, `INSERT INTO client (id, account_id, name) VALUES ($1, $3, 'Obra Norte'), ($2, $3, 'Obra Vieja')`,
+		quoteClient, rfqClient, accountID)
+	sale := e.seedAcceptedSale(t, accountID, branchID, admin)
+	e.exec(t, `UPDATE quote SET client_id = $2 WHERE id = $1`, sale.quoteID, quoteClient)
+	e.exec(t, `UPDATE rfq SET client_id = $2 WHERE id = $1`, sale.rfqID, rfqClient)
+
+	page := e.awaitingInvoice(t, e.tokenFor(t, admin), branchID.String(), "")
+	if len(page.Items) != 1 {
+		t.Fatalf("awaiting = %v, want only %s", page.quoteIDs(), sale.quoteID)
+	}
+	if got := page.Items[0]; got.Client != "Obra Norte" || got.ClientID == nil || *got.ClientID != quoteClient {
+		t.Fatalf("row client = %q (%v), want the quote's Obra Norte (%s)", got.Client, got.ClientID, quoteClient)
 	}
 }
 

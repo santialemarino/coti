@@ -704,8 +704,9 @@ waiver but does not count as invoiced here, and the sale reopens waiting for its
 order, `paid_at`, `paid_by` (the user's name), `invoice_waived_at`, `invoice_waived_by`, `invoiced`
 — an issued invoice no credit note cancelled, in this server's ARCA environment or in production —
 `invoice_pending` — a voucher still waiting for ARCA, so the queue offers no second one — and
-`sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with
-Coti — never while any voucher of the sale still waits for ARCA, in either environment. `domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
+`sale_complete`: accepted, paid, and invoiced or waived, or the account does not invoice with Coti —
+never while any voucher of the sale still waits for ARCA, in either environment.
+`domain.SaleComplete` is the one place that rule lives; a screen reads the answer rather than
 re-deriving fiscal state.
 
 ### Sales awaiting an invoice («Por facturar»)
@@ -721,7 +722,9 @@ invoice, and among the rest the oldest has waited longest.
 It reads the same reach as the queue — the active branch, or every branch the caller reaches when
 `X-Branch-Id` is absent, and for a seller only the sales they own or nobody claimed — so the list
 never offers a sale its reader cannot open. Each row carries the quote and order ids, the number,
-the branch, the client (or the order's loose label), the total, the acceptance date and `paid_at`.
+the branch, the sale's client — `quote.client_id`, set when it was sent, the same one the client
+profile files the sale under — or the order's loose label, the total, the acceptance date and
+`paid_at`.
 It pages like the invoice history: `{items, total, page, page_size}`, 25 rows a page, a page
 outside 1–100000 refused with **422**. One count and one page query, the invoice facts read by
 lateral `EXISTS` subqueries rather than per row.
@@ -729,7 +732,10 @@ lateral `EXISTS` subqueries rather than per row.
 The backoffice shows it as the «Por facturar» view of Administración, beside «Comprobantes», only
 while the account invoices (`?view=pending`; any other value, or the switch off, is the history).
 Each row offers «Facturar», through the same confirmation as the queue and the invoice card, and
-«No requiere factura», which takes the row off the list at once and reads the page again.
+«No requiere factura», which takes the row off the list at once and reads the page again; every
+read puts the server's list back as the only truth, so a waiver undone elsewhere shows its sale
+again. A page past the last one — the last row of the last page just invoiced or waived — shows the
+page that is now last instead of an empty list.
 
 ### Archiving a quote
 

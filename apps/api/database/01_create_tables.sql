@@ -406,9 +406,12 @@ CREATE TABLE client (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_account UNIQUE (account_id, id),
   legal_name VARCHAR(255),
-  tax_id VARCHAR(11) CHECK (tax_id ~ '^[0-9]{7,11}$'),
+  -- CUIT or CUIL, only from the customer's own account.
+  tax_id VARCHAR(11) CONSTRAINT ck_client_tax_id CHECK (tax_id ~ '^[0-9]{11}$'),
   iva_condition iva_condition,
-  fiscal_address VARCHAR(255)
+  fiscal_address VARCHAR(255),
+  -- A consumidor final's DNI, loaded by the seller; not unique.
+  dni VARCHAR(8) CONSTRAINT ck_client_dni CHECK (dni ~ '^[0-9]{7,8}$')
 );
 
 CREATE TABLE tag (

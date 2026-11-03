@@ -232,8 +232,10 @@ func newEnvWithRFQProviders(
 		t.Fatalf("NewAESGCM() = %v, want no error", err)
 	}
 	invoiceService := services.NewInvoiceService(db, repository.NewInvoicingRepository(), quoteRepo,
-		quoteDiscountRepo, nil, arcaSealer, services.InvoiceSettings{Environment: domain.ARCAEnvironmentHomologation},
-		nil, nil, invoicepdf.NewInvoiceRenderer())
+		quoteDiscountRepo, nil, arcaSealer, services.InvoiceSettings{Environment: domain.ARCAEnvironmentHomologation,
+			UnidentifiedMax: decimal.NewFromInt(10_000_000)},
+		nil, nil, invoicepdf.NewInvoiceRenderer()).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
 
 	objectStorage, err := storageprovider.Bind(cfg.Storage, quiet)
 	if err != nil {

@@ -51,9 +51,15 @@ export function PendingInvoicesTable({ sales, showBranch }: PendingInvoicesTable
   const waiverMessage = useApiErrorMessage('invoicing.card');
   const [invoicing, setInvoicing] = useState<SaleAwaitingInvoice | null>(null);
   const [waiving, setWaiving] = useState<string | null>(null);
-  // Waived rows leave at once; the refresh that follows confirms it.
+  // Waived rows leave at once; each refresh brings the server's list back as the only truth.
   const [waived, setWaived] = useState<ReadonlySet<string>>(new Set());
+  const [waivedFrom, setWaivedFrom] = useState(sales);
   const [, startRefresh] = useTransition();
+
+  if (waivedFrom !== sales) {
+    setWaivedFrom(sales);
+    setWaived(new Set());
+  }
 
   const shown = useHeldWhileClosed(invoicing, invoicing !== null);
   const visible = sales.filter((sale) => !waived.has(sale.quoteId));

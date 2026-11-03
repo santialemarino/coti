@@ -1254,7 +1254,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replaces the client's legal name, CUIT or DNI (check digit verified) and IVA condition; omitted fields clear.",
+                "description": "Replaces the client's legal name, address, IVA condition and DNI; omitted fields clear. A CUIT comes only from the customer's account, so tax_id is refused.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1309,7 +1309,7 @@ const docTemplate = `{
                         }
                     },
                     "422": {
-                        "description": "INVALID_TAX_ID",
+                        "description": "INVALID_TAX_ID, TAX_ID_READ_ONLY",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -9195,6 +9195,9 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
+                "dni": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -9208,6 +9211,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "tax_id": {
+                    "description": "CUIT or CUIL, from the customer's account; read-only.",
                     "type": "string"
                 }
             }
@@ -10466,6 +10470,10 @@ const docTemplate = `{
                     ]
                 },
                 "currency": {
+                    "type": "string"
+                },
+                "customer_signup_url": {
+                    "description": "CustomerSignupURL is where the customer creates the account that carries their CUIT; present\nonly while the issues ask for the receiver's CUIT or document and the supplier has its own\ncustomer site.",
                     "type": "string"
                 },
                 "environment": {
@@ -13058,6 +13066,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255
                 },
+                "dni": {
+                    "description": "DNI identifies a consumidor final, beside any CUIT the customer's account carries.",
+                    "type": "string",
+                    "maxLength": 32
+                },
                 "iva_condition": {
                     "type": "string",
                     "enum": [
@@ -13070,10 +13083,6 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
-                },
-                "tax_id": {
-                    "type": "string",
-                    "maxLength": 32
                 }
             }
         },

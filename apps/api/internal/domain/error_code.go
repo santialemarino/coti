@@ -79,6 +79,8 @@ const (
 	CodeQuoteAlreadyInvoiced ErrorCode = "QUOTE_ALREADY_INVOICED"
 	CodeARCACredentials      ErrorCode = "ARCA_CREDENTIALS"
 	CodeInvalidTaxID         ErrorCode = "INVALID_TAX_ID"
+	// A client's CUIT comes only from the customer's own account, so no staff route writes one.
+	CodeTaxIDReadOnly        ErrorCode = "TAX_ID_READ_ONLY"
 	CodeInvoicingUnavailable ErrorCode = "INVOICING_UNAVAILABLE"
 	// The account's CUIT is what ARCA is connected with: it is required to connect and locked
 	// while connected.

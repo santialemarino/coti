@@ -325,12 +325,13 @@ image and applies the whole migration chain **from inside it** against a real Po
 PRE_DEPLOY job's exact command.
 
 `.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
---schema-only`, which needs no account, plus the three things a schema check cannot see — that no
-`type: SECRET` entry carries a value, that every component builds `/` with a Dockerfile that
-exists, and that every ingress rule names a component the spec declares. Its second job **boots the
-api image on the spec's own settings**, with only those four secrets filled, and requires `/ready`.
-That is the one check that catches a capability switched on beside an empty credential, which is a
-deploy that never starts and looks like a valid spec until it is applied.
+--schema-only`, which needs no account, plus the four things a schema check cannot see — that no
+`type: SECRET` entry carries a value, that every component repeating `ARCA_ENVIRONMENT` carries the
+api service's value, that every component builds `/` with a Dockerfile that exists, and that every
+ingress rule names a component the spec declares. Its second job **boots the api image on the spec's
+own settings**, with only those four secrets filled, and requires `/ready`. That is the one check
+that catches a capability switched on beside an empty credential, which is a deploy that never
+starts and looks like a valid spec until it is applied.
 
 So the image half of a deploy is continuously verified, and the spec is checked for the mistakes
 that are checkable offline. What remains unverified is the platform half — whether the app the spec

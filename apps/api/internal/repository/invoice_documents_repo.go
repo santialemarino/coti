@@ -79,7 +79,7 @@ func (r *InvoicingRepository) ListAwaitingInvoice(
 		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), env).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	rows, err := q.Query(ctx, `SELECT q.id, q.rfq_id, q.number, q.branch_id, b.name, r.client_id,
+	rows, err := q.Query(ctx, `SELECT q.id, q.rfq_id, q.number, q.branch_id, b.name, q.client_id,
 		        COALESCE(cl.name, r.client_label, ''), version.total,
 		        COALESCE(accepted.accepted_at, q.updated_at), q.paid_at
 		 FROM quote q
@@ -87,7 +87,7 @@ func (r *InvoicingRepository) ListAwaitingInvoice(
 		 JOIN rfq r ON r.account_id = q.account_id AND r.id = q.rfq_id
 		 JOIN branch b ON b.account_id = q.account_id AND b.id = q.branch_id
 		 JOIN quote_version version ON version.account_id = q.account_id AND version.id = q.current_version_id
-		 LEFT JOIN client cl ON cl.account_id = q.account_id AND cl.id = r.client_id
+		 LEFT JOIN client cl ON cl.account_id = q.account_id AND cl.id = q.client_id
 		 LEFT JOIN LATERAL (
 		   SELECT max(change.changed_at) AS accepted_at
 		   FROM quote_status_change change

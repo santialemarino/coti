@@ -58,6 +58,46 @@ Profile tag editing and tag creation remain available through their existing end
 The backoffice maps API snake_case to camelCase in its fetch boundary. The send dialog uses the
 shared form controls, CUIT/CUIL input, phone input, validation states, and semantic design tokens.
 
+## Fiscal data
+
+A profile's CUIT or CUIL comes from the customer, when they create their account on the supplier's
+webapp; neither the seller nor the AI loads, changes or deletes it. It lives in `client.tax_id`
+(11 digits). A consumidor final's DNI lives apart in `client.dni` (7 or 8 digits, not unique: one
+person may have several profiles). A DNI never makes a client registered — registered means a CUIT
+— and never stands in for one where an invoice needs it.
+
+`PUT /v1/clients/{id}/fiscal` replaces the legal name, fiscal address, IVA condition and DNI, and an
+omitted field clears. It never writes `tax_id`:
+
+- A body that carries `tax_id` is refused with **422** `TAX_ID_READ_ONLY`, so a caller still sending
+  a CUIT learns it was not saved instead of reading a 200 as success.
+- `dni` accepts 7 or 8 digits (separators dropped); anything else, a CUIT included, is **422**
+  `INVALID_TAX_ID`.
+
+The rest of the fiscal data stays editable by the seller, last write wins, and every invoice keeps
+its own immutable copy of the receiver, which names the CUIT when there is one and the DNI otherwise.
+
+Migration `00059_client_dni.sql` moved every 7–8 digit `tax_id` into `dni` and narrowed `tax_id` to
+11 digits. It refuses to run, naming the count, if any `tax_id` is neither shape: no route ever
+stored one, so such a value is hand-edited data for a person to settle rather than for the
+migration to guess at.
+
+An invoice A needs the receiver's CUIT, and an invoice B at or above
+`INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT` needs a CUIT or DNI. While the preview
+(`GET /v1/quotes/{quoteId}/invoice`) reports `RECEIVER_CUIT_REQUIRED` or `RECEIVER_ID_REQUIRED`, it
+also carries `customer_signup_url`: the supplier's customer sign-up page at
+`https://<public_hostname>/signup`, or under `CUSTOMER_GOOGLE_LOCAL_ORIGIN` on a local stack. An
+account with no `public_hostname` gets no link, because customer sign-up resolves the supplier by its
+hostname and the shared webapp cannot register anyone; the card then says the customer site is not
+configured yet (it is set through database administration, see
+[public RFQ intake](public-rfq-intake.md)). With a link, the invoice card offers «Enviar link de
+registro», a dialog with the link and a copy button; the seller sends it through their own channel,
+because Coti has no free-text message to the client. An invoice B below the threshold goes to an
+unidentified consumidor final unchanged.
+
+The association at publication above is the one remaining place a seller sets a CUIT; it moves to
+the same rule with the contact-management work.
+
 ## Verification
 
 Service and PostgreSQL integration tests cover validated selections, branch and account isolation,
