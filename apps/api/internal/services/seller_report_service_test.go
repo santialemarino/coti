@@ -83,7 +83,7 @@ func TestSellerReportDefaultsToLastThirtyArgentineDays(t *testing.T) {
 		Role: domain.UserRoleAdmin}
 	service, db, store := newSellerReportTestService(t, tenant)
 
-	report, err := service.Get(context.Background(), tenant, "", "")
+	report, err := service.Get(context.Background(), tenant, "", "", domain.SellerReportFilterInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestSellerReportRejectsInvalidPeriods(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := service.Get(context.Background(), tenant, tt.from, tt.to); !errors.Is(
+			if _, err := service.Get(context.Background(), tenant, tt.from, tt.to, domain.SellerReportFilterInput{}); !errors.Is(
 				err, domain.ErrInvalidInput,
 			) {
 				t.Fatalf("Get(%q, %q) = %v, want ErrInvalidInput", tt.from, tt.to, err)
@@ -148,7 +148,7 @@ func TestSellerReportScopesToSelectedBranchAndSeller(t *testing.T) {
 		AcceptedAmount: decimal.RequireFromString("1250.50"),
 	}}
 
-	report, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02")
+	report, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +174,86 @@ func TestSellerReportScopesToSelectedBranchAndSeller(t *testing.T) {
 	}
 }
 
+func TestSellerReportResolvesFiltersForAnAdministrator(t *testing.T) {
+	sellerID, clientID := uuid.New(), uuid.New()
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(),
+		Role: domain.UserRoleAdmin}
+	service, _, store := newSellerReportTestService(t, tenant)
+
+	report, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{
+			Statuses: []string{"sent,ACCEPTED", "SENT"},
+			Channel:  " email ",
+			SellerID: sellerID.String(),
+			ClientID: clientID.String(),
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.query.Statuses) != 2 || store.query.Statuses[0] != domain.QuoteStatusSent ||
+		store.query.Statuses[1] != domain.QuoteStatusAccepted {
+		t.Fatalf("statuses = %v, want SENT and ACCEPTED once", store.query.Statuses)
+	}
+	if store.query.Channel == nil || *store.query.Channel != domain.ChannelTypeEmail {
+		t.Fatalf("channel = %v, want EMAIL", store.query.Channel)
+	}
+	if store.query.SellerID != nil {
+		t.Fatalf("reach seller = %v, want none for an administrator", store.query.SellerID)
+	}
+	if store.query.SellerFilter == nil || *store.query.SellerFilter != sellerID {
+		t.Fatalf("seller filter = %v, want %s", store.query.SellerFilter, sellerID)
+	}
+	if store.query.ClientFilter == nil || *store.query.ClientFilter != clientID {
+		t.Fatalf("client filter = %v, want %s", store.query.ClientFilter, clientID)
+	}
+	if len(report.Filters.Statuses) != 2 || report.Filters.Channel == nil {
+		t.Fatalf("response filters = %+v, want the applied narrowing", report.Filters)
+	}
+}
+
+func TestSellerReportIgnoresTheSellerFilterForASeller(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(),
+		Role: domain.UserRoleSeller}
+	service, _, store := newSellerReportTestService(t, tenant)
+
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{SellerID: uuid.New().String()}); err != nil {
+		t.Fatal(err)
+	}
+	if store.query.SellerFilter != nil {
+		t.Fatalf("seller filter = %v, want the caller's own reach only", store.query.SellerFilter)
+	}
+	if store.query.SellerID == nil || *store.query.SellerID != tenant.UserID {
+		t.Fatalf("reach seller = %v, want %s", store.query.SellerID, tenant.UserID)
+	}
+}
+
+func TestSellerReportRejectsInvalidFilters(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
+	service, _, store := newSellerReportTestService(t, tenant)
+
+	tests := []struct {
+		name  string
+		input domain.SellerReportFilterInput
+	}{
+		{"unknown status", domain.SellerReportFilterInput{Statuses: []string{"LOST"}}},
+		{"unknown channel", domain.SellerReportFilterInput{Channel: "carrier-pigeon"}},
+		{"bad seller", domain.SellerReportFilterInput{SellerID: "not-a-uuid"}},
+		{"bad client", domain.SellerReportFilterInput{ClientID: "not-a-uuid"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+				tt.input); !errors.Is(err, domain.ErrInvalidInput) {
+				t.Fatalf("Get() = %v, want ErrInvalidInput", err)
+			}
+		})
+	}
+	if store.query.StartAt != (time.Time{}) {
+		t.Fatal("the store ran for an invalid filter")
+	}
+}
+
 func TestSellerReportRenderPDFReusesTheReportScope(t *testing.T) {
 	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
 	service, _, store := newSellerReportTestService(t, tenant)
@@ -182,7 +262,7 @@ func TestSellerReportRenderPDFReusesTheReportScope(t *testing.T) {
 	}}
 	renderer := service.renderer.(*sellerReportTestRenderer)
 
-	content, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02")
+	content, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +287,7 @@ func TestSellerReportRenderPDFPropagatesRendererError(t *testing.T) {
 	want := errors.New("render failed")
 	service.renderer.(*sellerReportTestRenderer).err = want
 
-	if _, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02"); !errors.Is(
+	if _, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{}); !errors.Is(
 		err, want,
 	) {
 		t.Fatalf("RenderPDF() = %v, want %v", err, want)
@@ -220,7 +300,7 @@ func TestSellerReportPropagatesStoreError(t *testing.T) {
 	want := errors.New("read failed")
 	store.err = want
 
-	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02"); !errors.Is(
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{}); !errors.Is(
 		err, want,
 	) {
 		t.Fatalf("Get() = %v, want %v", err, want)

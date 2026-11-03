@@ -90,7 +90,7 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 	}
 	y = r.drawRankings(doc, report, y)
 	if y+reportSectionGap+r.clientsHeight(report) <= reportContentBottom {
-		y = r.drawClients(doc, report, y+reportSectionGap)
+		r.drawClients(doc, report, y+reportSectionGap)
 		r.newContentPage(doc, report, generatedAt)
 		y = doc.GetY()
 	} else {
@@ -162,6 +162,12 @@ func (r *SellerReportRenderer) drawReportHeader(doc *gofpdf.Fpdf, report domain.
 	doc.CellFormat(pageWidth*0.38, 4.5, "Generado: "+r.reportTimestamp(generatedAt), "", 1, "R", false, 0, "")
 	doc.SetX(leftMargin)
 	doc.CellFormat(pageWidth, 4.5, r.reportScopeLabel(report), "", 1, "L", false, 0, "")
+	if filters := r.reportFiltersLabel(report); filters != "" {
+		doc.SetX(leftMargin)
+		doc.CellFormat(pageWidth, 4.5, r.fitText(doc, filters, pageWidth), "", 1, "L", false, 0, "")
+		doc.SetY(startY + 33)
+		return
+	}
 	doc.SetY(startY + 28)
 }
 
@@ -713,6 +719,30 @@ func (r *SellerReportRenderer) reportScopeLabel(report domain.SellerReport) stri
 	return "Alcance: sucursal activa."
 }
 
+func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) string {
+	parts := make([]string, 0, 4)
+	if len(report.Filters.Statuses) > 0 {
+		labels := make([]string, 0, len(report.Filters.Statuses))
+		for _, status := range report.Filters.Statuses {
+			labels = append(labels, r.statusLabel(status))
+		}
+		parts = append(parts, "Estados: "+strings.Join(labels, ", "))
+	}
+	if report.Filters.Channel != nil {
+		parts = append(parts, "Canal: "+r.channelLabel(*report.Filters.Channel))
+	}
+	if report.Filters.SellerID != nil {
+		parts = append(parts, "Vendedor: "+reportFilterName(report.Filters.SellerName))
+	}
+	if report.Filters.ClientID != nil {
+		parts = append(parts, "Cliente: "+reportFilterName(report.Filters.ClientName))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Filtros: " + strings.Join(parts, " · ")
+}
+
 func (r *SellerReportRenderer) reportTimestamp(value time.Time) string {
 	return value.In(domain.Argentina).Format("02/01/2006 15:04")
 }
@@ -766,6 +796,28 @@ func (r *SellerReportRenderer) statusColor(status domain.QuoteStatus) (int, int,
 	default:
 		return reportMuted[0], reportMuted[1], reportMuted[2]
 	}
+}
+
+func (r *SellerReportRenderer) channelLabel(channel domain.ChannelType) string {
+	switch channel {
+	case domain.ChannelTypeWhatsApp:
+		return "WhatsApp"
+	case domain.ChannelTypeEmail:
+		return "Email"
+	case domain.ChannelTypeWebApp:
+		return "Web"
+	case domain.ChannelTypeManualEntry:
+		return "Carga manual"
+	default:
+		return string(channel)
+	}
+}
+
+func reportFilterName(name string) string {
+	if name == "" {
+		return "Sin nombre"
+	}
+	return name
 }
 
 func (r *SellerReportRenderer) statusLabel(status domain.QuoteStatus) string {

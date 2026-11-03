@@ -219,6 +219,106 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	}
 }
 
+func TestSellerReportRepositoryAppliesStatusChannelSellerAndClientFilters(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Reportes filtrados")
+	var branchID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT id FROM branch WHERE account_id = $1`, accountID).Scan(&branchID); err != nil {
+		t.Fatal(err)
+	}
+	productID := uuid.New()
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO product (id, account_id, canonical_name) VALUES ($1, $2, 'Cal')`,
+		productID, accountID); err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE id = $1`, productID)
+	})
+	sellerA := seedUser(t, db, accountID, "SELLER")
+	sellerB := seedUser(t, db, accountID, "SELLER")
+	clientA, clientB := uuid.New(), uuid.New()
+	if _, err := db.CrossAccount().Exec(ctx,
+		`INSERT INTO client (id, account_id, name) VALUES ($1, $2, 'Obra Norte'), ($3, $2, 'Obra Sur')`,
+		clientA, accountID, clientB); err != nil {
+		t.Fatalf("seed clients: %v", err)
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM client WHERE id = ANY($1)`,
+			[]uuid.UUID{clientA, clientB})
+	})
+
+	quoteA, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	quoteB, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	for _, seed := range []struct {
+		what string
+		sql  string
+		args []any
+	}{
+		{"quote A", `UPDATE quote SET seller_id = $2, current_status = 'SENT' WHERE id = $1`,
+			[]any{quoteA, sellerA}},
+		{"quote B", `UPDATE quote SET seller_id = $2, current_status = 'ACCEPTED' WHERE id = $1`,
+			[]any{quoteB, sellerB}},
+		{"rfq A", `UPDATE rfq SET client_id = $2, received_at = $3
+		           WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`,
+			[]any{quoteA, clientA, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}},
+		{"rfq B", `UPDATE rfq SET client_id = $2, received_at = $3
+		           WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`,
+			[]any{quoteB, clientB, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}},
+		{"channel B", `UPDATE channel SET type = 'EMAIL', identifier = $2
+		               WHERE id = (SELECT rfq.channel_id FROM quote JOIN rfq
+		                           ON rfq.account_id = quote.account_id AND rfq.id = quote.rfq_id
+		                           WHERE quote.id = $1)`,
+			[]any{quoteB, "reportes-" + uuid.NewString() + "@example.com"}},
+	} {
+		if _, err := db.CrossAccount().Exec(ctx, seed.sql, seed.args...); err != nil {
+			t.Fatalf("seed %s: %v", seed.what, err)
+		}
+	}
+
+	tests := []struct {
+		name  string
+		apply func(*domain.SellerReportQuery)
+		want  int
+	}{
+		{"status", func(in *domain.SellerReportQuery) {
+			in.Statuses = []domain.QuoteStatus{domain.QuoteStatusSent}
+		}, 1},
+		{"channel", func(in *domain.SellerReportQuery) {
+			channel := domain.ChannelTypeEmail
+			in.Channel = &channel
+		}, 1},
+		{"seller", func(in *domain.SellerReportQuery) { in.SellerFilter = &sellerA }, 1},
+		{"client", func(in *domain.SellerReportQuery) { in.ClientFilter = &clientA }, 1},
+		{"combined match", func(in *domain.SellerReportQuery) {
+			channel := domain.ChannelTypeWhatsApp
+			in.Statuses = []domain.QuoteStatus{domain.QuoteStatusSent}
+			in.Channel = &channel
+			in.SellerFilter = &sellerA
+			in.ClientFilter = &clientA
+		}, 1},
+		{"combined mismatch", func(in *domain.SellerReportQuery) {
+			channel := domain.ChannelTypeEmail
+			in.Statuses = []domain.QuoteStatus{domain.QuoteStatusSent}
+			in.Channel = &channel
+			in.SellerFilter = &sellerA
+			in.ClientFilter = &clientA
+		}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := reportQuery(accountID)
+			tt.apply(&in)
+			report := buildReport(t, db, domain.Tenant{AccountID: accountID}, in)
+			if report.KPIs.RFQsReceived != tt.want {
+				t.Fatalf("RFQsReceived = %d, want %d", report.KPIs.RFQsReceived, tt.want)
+			}
+		})
+	}
+}
+
 func TestSellerReportRepositorySeparatesLineCountsFromAcceptedRevenue(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

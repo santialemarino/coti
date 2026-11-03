@@ -36,4 +36,36 @@ describe('ReportFilters', () => {
 
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('submits every active filter and shows the seller selector to administrators', () => {
+    const { container } = render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <ReportFilters
+          from="2026-10-01"
+          to="2026-10-25"
+          statuses={['SENT', 'ACCEPTED']}
+          channel="EMAIL"
+          sellerId="seller-1"
+          clientId="client-1"
+          sellers={[{ id: 'seller-1', name: 'Ana' }]}
+          clients={[{ id: 'client-1', name: 'Obra Norte' }]}
+          showSeller
+        />
+      </NextIntlClientProvider>,
+    );
+
+    expect(
+      [...container.querySelectorAll<HTMLInputElement>('input[name="status"]')].map(
+        (input) => input.value,
+      ),
+    ).toEqual(['SENT', 'ACCEPTED']);
+    expect(container.querySelector<HTMLInputElement>('input[name="channel"]')?.value).toBe('EMAIL');
+    expect(container.querySelector<HTMLInputElement>('input[name="seller_id"]')?.value).toBe(
+      'seller-1',
+    );
+    expect(container.querySelector<HTMLInputElement>('input[name="client_id"]')?.value).toBe(
+      'client-1',
+    );
+    expect(screen.getByRole('combobox', { name: copy.seller })).toBeTruthy();
+  });
 });

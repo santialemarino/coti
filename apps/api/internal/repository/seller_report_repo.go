@@ -18,15 +18,29 @@ var reportStatusOrder = map[domain.QuoteStatus]int{
 	domain.QuoteStatusRejected:        5,
 }
 
+// scopedRfqsCTE narrows RFQ-level metrics to the caller's reach and the report filters.
+const scopedRfqsCTE = `scoped_rfqs AS (
+		   SELECT r.id, r.received_at, c.type::text AS channel_type
+		   FROM rfq r
+		   JOIN channel c ON c.account_id = r.account_id AND c.id = r.channel_id
+		   LEFT JOIN quote q ON q.account_id = r.account_id AND q.rfq_id = r.id
+		   WHERE r.account_id = $1
+		     AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
+		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
+		     AND ($6::text[] IS NULL OR q.current_status::text = ANY($6::text[]))
+		     AND ($7::text IS NULL OR c.type::text = $7)
+		     AND ($8::uuid IS NULL OR r.client_id = $8)
+		     AND ($9::uuid IS NULL OR q.seller_id = $9)
+		 )`
+
 // acceptedVersionsCTE resolves which version each acceptance in the period charged.
-const acceptedVersionsCTE = `WITH accepted AS (
+const acceptedVersionsCTE = `WITH ` + scopedRfqsCTE + `, accepted AS (
 		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
 		     AND change.changed_at >= $4 AND change.changed_at < $5
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   GROUP BY change.quote_id
 		 ), resolved AS (
 		   SELECT accepted.quote_id,
@@ -77,8 +91,19 @@ func (r *SellerReportRepository) Build(
 		TopProducts:        []domain.SellerReportProduct{},
 		TopRevenueProducts: []domain.SellerReportRevenueProduct{},
 		TopClients:         []domain.SellerReportClient{},
+		Filters: domain.SellerReportFilters{
+			Statuses: in.Statuses,
+			Channel:  in.Channel,
+			SellerID: in.SellerFilter,
+			ClientID: in.ClientFilter,
+		},
 	}
 
+	if in.SellerFilter != nil || in.ClientFilter != nil {
+		if err := r.readFilterNames(ctx, q, in, &report.Filters); err != nil {
+			return nil, err
+		}
+	}
 	if err := r.readKPIs(ctx, q, in, &report.KPIs); err != nil {
 		return nil, err
 	}
@@ -119,30 +144,53 @@ func (r *SellerReportRepository) Build(
 	return report, nil
 }
 
+func (r *SellerReportRepository) readFilterNames(
+	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportFilters,
+) error {
+	return q.QueryRow(ctx,
+		`SELECT COALESCE((SELECT name FROM app_user
+		                  WHERE account_id = $1 AND id = $2), ''),
+		        COALESCE((SELECT name FROM client
+		                  WHERE account_id = $1 AND id = $3), '')`,
+		in.AccountID, in.SellerFilter, in.ClientFilter,
+	).Scan(&out.SellerName, &out.ClientName)
+}
+
+func reportArgs(in domain.SellerReportQuery) []any {
+	var statuses []string
+	if len(in.Statuses) > 0 {
+		statuses = make([]string, 0, len(in.Statuses))
+		for _, status := range in.Statuses {
+			statuses = append(statuses, string(status))
+		}
+	}
+	var channel *string
+	if in.Channel != nil {
+		value := string(*in.Channel)
+		channel = &value
+	}
+	return []any{
+		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		statuses, channel, in.ClientFilter, in.SellerFilter,
+	}
+}
+
 func (r *SellerReportRepository) readKPIs(
 	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportKPIs,
 ) error {
 	return q.QueryRow(ctx,
-		`WITH visible AS (
-		   SELECT r.id
-		   FROM rfq r
-		   LEFT JOIN quote q ON q.account_id = r.account_id AND q.rfq_id = r.id
-		   WHERE r.account_id = $1
-		     AND r.received_at >= $4 AND r.received_at < $5
-		     AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		 ), first_sent AS (
+		`WITH `+scopedRfqsCTE+`, first_sent AS (
 		   SELECT change.quote_id, min(change.changed_at) AS sent_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   GROUP BY change.quote_id
 		 )
-		 SELECT (SELECT count(*) FROM visible),
+		 SELECT (SELECT count(*) FROM scoped_rfqs
+		         WHERE received_at >= $4 AND received_at < $5),
 		        (SELECT count(*) FROM first_sent WHERE sent_at >= $4 AND sent_at < $5)`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	).Scan(&out.RFQsReceived, &out.QuotesSent)
 }
 
@@ -153,7 +201,7 @@ func (r *SellerReportRepository) readAccepted(
 		 SELECT count(*), COALESCE(sum(COALESCE(version.total, 0)), 0)
 		 FROM resolved
 		 LEFT JOIN quote_version version ON version.account_id = $1 AND version.id = resolved.version_id`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	).Scan(&out.QuotesAccepted, &out.AcceptedAmount)
 }
 
@@ -162,33 +210,24 @@ func (r *SellerReportRepository) readResponseTime(
 ) error {
 	var average, median int64
 	err := q.QueryRow(ctx,
-		`WITH visible AS (
-		   SELECT r.id, r.received_at
-		   FROM rfq r
-		   JOIN channel c ON c.account_id = r.account_id AND c.id = r.channel_id
-		   LEFT JOIN quote q ON q.account_id = r.account_id AND q.rfq_id = r.id
-		   WHERE r.account_id = $1
-		     AND r.received_at >= $4 AND r.received_at < $5
-		     AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		     AND c.type::text <> 'MANUAL_ENTRY'
-		 ), sent AS (
-		   SELECT visible.id, min(change.changed_at) AS sent_at
-		   FROM visible
-		   JOIN quote q ON q.account_id = $1 AND q.rfq_id = visible.id
+		`WITH `+scopedRfqsCTE+`, sent AS (
+		   SELECT scoped.id, scoped.received_at, min(change.changed_at) AS sent_at
+		   FROM scoped_rfqs scoped
+		   JOIN quote q ON q.account_id = $1 AND q.rfq_id = scoped.id
 		   JOIN quote_status_change change ON change.account_id = $1
 		     AND change.quote_id = q.id AND change.new_status = 'SENT'
-		   GROUP BY visible.id
+		   WHERE scoped.received_at >= $4 AND scoped.received_at < $5
+		     AND scoped.channel_type <> 'MANUAL_ENTRY'
+		   GROUP BY scoped.id, scoped.received_at
 		 )
 		 SELECT count(*),
-		        COALESCE(avg(extract(epoch FROM (sent.sent_at - visible.received_at))), 0)::bigint,
+		        COALESCE(avg(extract(epoch FROM (sent.sent_at - sent.received_at))), 0)::bigint,
 		        COALESCE(percentile_cont(0.5) WITHIN GROUP (
-		          ORDER BY extract(epoch FROM (sent.sent_at - visible.received_at))
+		          ORDER BY extract(epoch FROM (sent.sent_at - sent.received_at))
 		        ), 0)::bigint
 		 FROM sent
-		 JOIN visible ON visible.id = sent.id
-		 WHERE sent.sent_at >= visible.received_at`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		 WHERE sent.sent_at >= sent.received_at`,
+		reportArgs(in)...,
 	).Scan(&out.Sample, &average, &median)
 	if err != nil {
 		return err
@@ -205,14 +244,14 @@ func (r *SellerReportRepository) readQuotesByStatus(
 	out *[]domain.SellerReportStatusCount,
 ) error {
 	rows, err := q.Query(ctx,
-		`SELECT quote.current_status::text, count(*)
+		`WITH `+scopedRfqsCTE+`
+		 SELECT quote.current_status::text, count(*)
 		 FROM quote
+		 JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		 WHERE quote.account_id = $1
 		   AND quote.created_at >= $4 AND quote.created_at < $5
-		   AND ($2::uuid[] IS NULL OR quote.branch_id = ANY($2::uuid[]))
-		   AND ($3::uuid IS NULL OR quote.seller_id = $3 OR quote.seller_id IS NULL)
 		 GROUP BY quote.current_status`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	)
 	if err != nil {
 		return err
@@ -244,18 +283,17 @@ func (r *SellerReportRepository) readTimeline(
 	out *[]domain.SellerReportTimelinePoint,
 ) error {
 	rows, err := q.Query(ctx,
-		`WITH days AS (
-		   SELECT generate_series($6::date, $7::date, interval '1 day')::date AS day
+		`WITH `+scopedRfqsCTE+`, days AS (
+		   SELECT generate_series($10::date, $11::date, interval '1 day')::date AS day
 		 ), first_sent AS (
 		   SELECT change.quote_id, min(change.changed_at) AS sent_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   GROUP BY change.quote_id
 		 ), sent AS (
-		   SELECT (sent_at AT TIME ZONE $8)::date AS day, count(*) AS total
+		   SELECT (sent_at AT TIME ZONE $12)::date AS day, count(*) AS total
 		   FROM first_sent
 		   WHERE sent_at >= $4 AND sent_at < $5
 		   GROUP BY 1
@@ -263,13 +301,12 @@ func (r *SellerReportRepository) readTimeline(
 		   SELECT DISTINCT ON (change.quote_id) change.quote_id, change.changed_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
 		     AND change.changed_at >= $4 AND change.changed_at < $5
-		     AND ($2::uuid[] IS NULL OR q.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   ORDER BY change.quote_id, change.changed_at DESC
 		 ), accepted_by_day AS (
-		   SELECT (changed_at AT TIME ZONE $8)::date AS day, count(*) AS total
+		   SELECT (changed_at AT TIME ZONE $12)::date AS day, count(*) AS total
 		   FROM accepted
 		   GROUP BY 1
 		 )
@@ -279,8 +316,7 @@ func (r *SellerReportRepository) readTimeline(
 		 LEFT JOIN sent ON sent.day = days.day
 		 LEFT JOIN accepted_by_day ON accepted_by_day.day = days.day
 		 ORDER BY days.day`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt, in.FromDate,
-		in.ToDate, in.TimeZone,
+		append(reportArgs(in), in.FromDate, in.ToDate, in.TimeZone)...,
 	)
 	if err != nil {
 		return err
@@ -301,19 +337,12 @@ func (r *SellerReportRepository) readTopProducts(
 	out *[]domain.SellerReportProduct,
 ) error {
 	rows, err := q.Query(ctx,
-		`WITH visible AS (
-		   SELECT r.id
-		   FROM rfq r
-		   LEFT JOIN quote q ON q.account_id = r.account_id AND q.rfq_id = r.id
-		   WHERE r.account_id = $1
-		     AND r.received_at >= $4 AND r.received_at < $5
-		     AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		 ), latest_quote AS (
+		`WITH `+scopedRfqsCTE+`, latest_quote AS (
 		   SELECT DISTINCT ON (quote.rfq_id) quote.id, quote.current_version_id
 		   FROM quote
-		   JOIN visible ON visible.id = quote.rfq_id
+		   JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		   WHERE quote.account_id = $1
+		     AND scoped.received_at >= $4 AND scoped.received_at < $5
 		   ORDER BY quote.rfq_id, quote.created_at DESC
 		 ), items AS (
 		   SELECT item.product_id, product.canonical_name, item.requested_description
@@ -331,7 +360,7 @@ func (r *SellerReportRepository) readTopProducts(
 		          CASE WHEN product_id IS NULL THEN requested_description ELSE '' END
 		 ORDER BY count(*) DESC, 2
 		 LIMIT 5`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	)
 	if err != nil {
 		return err
@@ -364,7 +393,7 @@ func (r *SellerReportRepository) readTopRevenueProducts(
 		 HAVING sum(round(item.quantity * item.unit_price_snapshot, 2)) > 0
 		 ORDER BY 3 DESC, 2
 		 LIMIT 5`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	)
 	if err != nil {
 		return err
@@ -399,7 +428,7 @@ func (r *SellerReportRepository) readTopClients(
 		 HAVING sum(COALESCE(version.total, 0)) > 0
 		 ORDER BY sum(COALESCE(version.total, 0)) DESC, 2
 		 LIMIT 5`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	)
 	if err != nil {
 		return err
@@ -420,21 +449,14 @@ func (r *SellerReportRepository) readAIMatch(
 ) error {
 	var matched, low, medium, high int
 	err := q.QueryRow(ctx,
-		`WITH visible AS (
-		   SELECT r.id
-		   FROM rfq r
-		   LEFT JOIN quote q ON q.account_id = r.account_id AND q.rfq_id = r.id
-		   WHERE r.account_id = $1
-		     AND r.received_at >= $4 AND r.received_at < $5
-		     AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
-		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		 ), latest_generation AS (
+		`WITH `+scopedRfqsCTE+`, latest_generation AS (
 		   SELECT DISTINCT ON (generation.quote_id) generation.id
 		   FROM quote_ai_generation generation
 		   JOIN quote ON quote.account_id = generation.account_id
 		     AND quote.id = generation.quote_id
-		   JOIN visible ON visible.id = quote.rfq_id
+		   JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		   WHERE generation.account_id = $1
+		     AND scoped.received_at >= $4 AND scoped.received_at < $5
 		   ORDER BY generation.quote_id, generation.created_at DESC
 		 )
 		 SELECT count(*),
@@ -443,13 +465,13 @@ func (r *SellerReportRepository) readAIMatch(
 		          AND item.match_status = 'NO_MATCH'),
 		        count(*) FILTER (WHERE item.confidence_score IS NOT NULL AND (
 		          item.match_status = 'AMBIGUOUS'
-		          OR (item.match_status = 'MATCHED' AND item.confidence_score < $6))),
+		          OR (item.match_status = 'MATCHED' AND item.confidence_score < $10))),
 		        count(*) FILTER (WHERE item.confidence_score IS NOT NULL
-		          AND item.match_status = 'MATCHED' AND item.confidence_score >= $6)
+		          AND item.match_status = 'MATCHED' AND item.confidence_score >= $10)
 		 FROM latest_generation
 		 JOIN quote_ai_generation_item item ON item.account_id = $1
 		   AND item.generation_id = latest_generation.id`,
-		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt, in.HighConfidence,
+		append(reportArgs(in), in.HighConfidence)...,
 	).Scan(&out.Total, &matched, &low, &medium, &high)
 	if err != nil {
 		return err
@@ -468,14 +490,27 @@ func (r *SellerReportRepository) readBranches(
 	ctx context.Context, q Querier, in domain.SellerReportQuery, out *[]domain.SellerReportBranch,
 ) error {
 	rows, err := q.Query(ctx,
-		`SELECT branch.id, branch.name, count(rfq.id)
+		`SELECT branch.id, branch.name, count(scoped.id)
 		 FROM branch
-		 LEFT JOIN rfq ON rfq.account_id = branch.account_id AND rfq.branch_id = branch.id
-		   AND rfq.received_at >= $2 AND rfq.received_at < $3
+		 LEFT JOIN LATERAL (
+		   SELECT rfq.id
+		   FROM rfq
+		   JOIN channel c ON c.account_id = rfq.account_id AND c.id = rfq.channel_id
+		   LEFT JOIN quote q ON q.account_id = rfq.account_id AND q.rfq_id = rfq.id
+		   WHERE rfq.account_id = branch.account_id
+		     AND rfq.branch_id = branch.id
+		     AND ($2::uuid[] IS NULL OR rfq.branch_id = ANY($2::uuid[]))
+		     AND rfq.received_at >= $4 AND rfq.received_at < $5
+		     AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
+		     AND ($6::text[] IS NULL OR q.current_status::text = ANY($6::text[]))
+		     AND ($7::text IS NULL OR c.type::text = $7)
+		     AND ($8::uuid IS NULL OR rfq.client_id = $8)
+		     AND ($9::uuid IS NULL OR q.seller_id = $9)
+		 ) scoped ON TRUE
 		 WHERE branch.account_id = $1
 		 GROUP BY branch.id, branch.name
 		 ORDER BY branch.name`,
-		in.AccountID, in.StartAt, in.EndAt,
+		reportArgs(in)...,
 	)
 	if err != nil {
 		return err

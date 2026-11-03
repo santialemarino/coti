@@ -19,8 +19,14 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
   })),
 }));
 vi.mock('@/lib/api/reports', () => ({ getSellerReport: vi.fn() }));
+vi.mock('@/lib/api/clients', () => ({ getClients: vi.fn() }));
+vi.mock('@/lib/api/users', () => ({ getSellers: vi.fn() }));
+vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 
 const { getSellerReport } = await import('@/lib/api/reports');
+const { getClients } = await import('@/lib/api/clients');
+const { getSellers } = await import('@/lib/api/users');
+const { getSession } = await import('@/lib/auth/session');
 const { default: ReportsPage } = await import('@/app/(protected)/reports/page');
 
 const copy = messages.reports;
@@ -29,6 +35,14 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
   return {
     range: { from: '2026-09-26', to: '2026-10-25' },
     scope: { multiBranch: false, branchId: 'branch-1' },
+    filters: {
+      statuses: [],
+      channel: null,
+      sellerId: null,
+      sellerName: '',
+      clientId: null,
+      clientName: '',
+    },
     kpis: {
       rfqsReceived: 12,
       quotesSent: 4,
@@ -59,9 +73,12 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
   };
 }
 
-async function renderReport(data: SellerReport, searchParams: { from?: string; to?: string } = {}) {
+async function renderReport(
+  data: SellerReport,
+  searchParams: { from?: string; to?: string; [key: string]: string | string[] | undefined } = {},
+) {
   vi.mocked(getSellerReport).mockResolvedValue(data);
-  render(
+  return render(
     <NextIntlClientProvider locale="es" messages={messages}>
       {await ReportsPage({ searchParams: Promise.resolve(searchParams) })}
     </NextIntlClientProvider>,
@@ -70,6 +87,18 @@ async function renderReport(data: SellerReport, searchParams: { from?: string; t
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getSession).mockResolvedValue({
+    userId: 'user-1',
+    accountId: 'account-1',
+    name: 'Ana',
+    email: 'ana@example.com',
+    emailVerified: true,
+    role: 'ADMIN',
+    emailVerificationRequired: false,
+    mailDelivery: true,
+  });
+  vi.mocked(getClients).mockResolvedValue([]);
+  vi.mocked(getSellers).mockResolvedValue([]);
 });
 
 describe('ReportsPage', () => {
@@ -99,9 +128,77 @@ describe('ReportsPage', () => {
   it('passes the requested dates and seeds the filters from the returned range', async () => {
     await renderReport(report(), { from: '2026-10-01', to: '2026-10-02' });
 
-    expect(getSellerReport).toHaveBeenCalledWith('2026-10-01', '2026-10-02');
+    expect(getSellerReport).toHaveBeenCalledWith({
+      from: '2026-10-01',
+      to: '2026-10-02',
+      statuses: [],
+      channel: undefined,
+      sellerId: undefined,
+      clientId: undefined,
+    });
     expect((screen.getByLabelText(copy.filters.from) as HTMLInputElement).value).toBe('2026-09-26');
     expect((screen.getByLabelText(copy.filters.to) as HTMLInputElement).value).toBe('2026-10-25');
+  });
+
+  it('forwards every report filter and seeds the controls from the URL', async () => {
+    vi.mocked(getClients).mockResolvedValue([{ id: 'client-1', name: 'Obra Norte' }] as never);
+    vi.mocked(getSellers).mockResolvedValue([{ id: 'seller-1', name: 'Ana' }]);
+    const { container } = await renderReport(
+      report({
+        filters: {
+          statuses: ['SENT', 'ACCEPTED'],
+          channel: 'EMAIL',
+          sellerId: 'seller-1',
+          sellerName: 'Ana',
+          clientId: 'client-1',
+          clientName: 'Obra Norte',
+        },
+      }),
+      {
+        status: 'SENT,ACCEPTED',
+        channel: 'EMAIL',
+        seller_id: 'seller-1',
+        client_id: 'client-1',
+      },
+    );
+
+    expect(getSellerReport).toHaveBeenCalledWith({
+      from: undefined,
+      to: undefined,
+      statuses: ['SENT', 'ACCEPTED'],
+      channel: 'EMAIL',
+      sellerId: 'seller-1',
+      clientId: 'client-1',
+    });
+    expect(
+      [...container.querySelectorAll<HTMLInputElement>('input[name="status"]')].map(
+        (input) => input.value,
+      ),
+    ).toEqual(['SENT', 'ACCEPTED']);
+    expect(container.querySelector<HTMLInputElement>('input[name="channel"]')?.value).toBe('EMAIL');
+    expect(container.querySelector<HTMLInputElement>('input[name="seller_id"]')?.value).toBe(
+      'seller-1',
+    );
+    expect(container.querySelector<HTMLInputElement>('input[name="client_id"]')?.value).toBe(
+      'client-1',
+    );
+  });
+
+  it('hides the seller filter from a non-administrator', async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: 'user-1',
+      accountId: 'account-1',
+      name: 'Ana',
+      email: 'ana@example.com',
+      emailVerified: true,
+      role: 'SELLER',
+      emailVerificationRequired: false,
+      mailDelivery: true,
+    });
+    await renderReport(report());
+
+    expect(screen.queryByRole('button', { name: copy.filters.seller })).toBeNull();
+    expect(getSellers).not.toHaveBeenCalled();
   });
 
   it('says when the period has no activity instead of showing zeroes as data', async () => {

@@ -14,8 +14,10 @@ import (
 
 // SellerReportService is the reporting surface the handler needs.
 type SellerReportService interface {
-	Get(context.Context, domain.Tenant, string, string) (*domain.SellerReport, error)
-	RenderPDF(context.Context, domain.Tenant, string, string) ([]byte, error)
+	Get(context.Context, domain.Tenant, string, string,
+		domain.SellerReportFilterInput) (*domain.SellerReport, error)
+	RenderPDF(context.Context, domain.Tenant, string, string,
+		domain.SellerReportFilterInput) ([]byte, error)
 }
 
 // SellerReportHandler serves the authenticated seller dashboard.
@@ -38,6 +40,10 @@ func NewSellerReportHandler(reports SellerReportService) *SellerReportHandler {
 //	@Param			X-Branch-Id	header	string	false	"Active branch; omitted reports on every branch the caller reaches"
 //	@Param			from		query	string	false	"First day, YYYY-MM-DD; defaults to 30 days ago"
 //	@Param			to			query	string	false	"Last day, YYYY-MM-DD; defaults to today"
+//	@Param			status		query	[]string	false	"Quote statuses to include; repeat or comma-separate"
+//	@Param			channel		query	string	false	"Intake channel type"
+//	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
+//	@Param			client_id	query	string	false	"Client UUID"
 //	@Success		200			{object}	dto.SellerReportResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -49,7 +55,12 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 	if !ok {
 		return
 	}
-	report, err := h.reports.Get(c.Request.Context(), tenant, c.Query("from"), c.Query("to"))
+	query, ok := reportFilterQuery(c)
+	if !ok {
+		return
+	}
+	report, err := h.reports.Get(c.Request.Context(), tenant, query.From, query.To,
+		reportFilterInput(query))
 	if err != nil {
 		Respond(c, err)
 		return
@@ -67,6 +78,10 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 //	@Param			X-Branch-Id	header	string	false	"Active branch; omitted reports on every branch the caller reaches"
 //	@Param			from		query	string	false	"First day, YYYY-MM-DD; defaults to 30 days ago"
 //	@Param			to			query	string	false	"Last day, YYYY-MM-DD; defaults to today"
+//	@Param			status		query	[]string	false	"Quote statuses to include; repeat or comma-separate"
+//	@Param			channel		query	string	false	"Intake channel type"
+//	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
+//	@Param			client_id	query	string	false	"Client UUID"
 //	@Success		200			{file}	binary
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -78,22 +93,58 @@ func (h *SellerReportHandler) DownloadPDF(c *gin.Context) {
 	if !ok {
 		return
 	}
-	from, to := c.Query("from"), c.Query("to")
-	content, err := h.reports.RenderPDF(c.Request.Context(), tenant, from, to)
+	query, ok := reportFilterQuery(c)
+	if !ok {
+		return
+	}
+	content, err := h.reports.RenderPDF(c.Request.Context(), tenant, query.From, query.To,
+		reportFilterInput(query))
 	if err != nil {
 		Respond(c, err)
 		return
 	}
 	filename := "reporte.pdf"
-	if from != "" && to != "" {
-		filename = fmt.Sprintf("reporte-%s-%s.pdf", from, to)
+	if query.From != "" && query.To != "" {
+		filename = fmt.Sprintf("reporte-%s-%s.pdf", query.From, query.To)
 	}
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.Data(http.StatusOK, "application/pdf", content)
 }
 
+func reportFilterQuery(c *gin.Context) (dto.SellerReportFilterQuery, bool) {
+	var query dto.SellerReportFilterQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		Respond(c, fmt.Errorf("%w: invalid report filters", domain.ErrInvalidInput))
+		return query, false
+	}
+	return query, true
+}
+
+func reportFilterInput(query dto.SellerReportFilterQuery) domain.SellerReportFilterInput {
+	return domain.SellerReportFilterInput{
+		Statuses: query.Statuses,
+		Channel:  query.Channel,
+		SellerID: query.SellerID,
+		ClientID: query.ClientID,
+	}
+}
+
 func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse {
+	filters := dto.SellerReportFiltersResponse{
+		Statuses:   make([]string, 0, len(report.Filters.Statuses)),
+		SellerName: report.Filters.SellerName,
+		ClientName: report.Filters.ClientName,
+		SellerID:   report.Filters.SellerID,
+		ClientID:   report.Filters.ClientID,
+	}
+	for _, status := range report.Filters.Statuses {
+		filters.Statuses = append(filters.Statuses, string(status))
+	}
+	if report.Filters.Channel != nil {
+		channel := string(*report.Filters.Channel)
+		filters.Channel = &channel
+	}
 	response := dto.SellerReportResponse{
 		Range: dto.SellerReportRangeResponse{
 			From: report.Range.From,
@@ -103,6 +154,7 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			MultiBranch: report.Scope.MultiBranch,
 			BranchID:    report.Scope.BranchID,
 		},
+		Filters: filters,
 		KPIs: dto.SellerReportKPIsResponse{
 			RFQsReceived:   report.KPIs.RFQsReceived,
 			QuotesSent:     report.KPIs.QuotesSent,

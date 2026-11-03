@@ -7,17 +7,39 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// SellerReportQuery is the resolved scope and period one report read runs with.
+// SellerReportQuery is the resolved scope, period and filters one report read runs with.
 type SellerReportQuery struct {
 	AccountID      uuid.UUID
 	BranchFilter   []uuid.UUID
 	SellerID       *uuid.UUID
+	SellerFilter   *uuid.UUID
+	ClientFilter   *uuid.UUID
+	Statuses       []QuoteStatus
+	Channel        *ChannelType
 	StartAt        time.Time
 	EndAt          time.Time
 	FromDate       string
 	ToDate         string
 	TimeZone       string
 	HighConfidence decimal.Decimal
+}
+
+// SellerReportFilterInput carries the raw filter values of one report request.
+type SellerReportFilterInput struct {
+	Statuses []string
+	Channel  string
+	SellerID string
+	ClientID string
+}
+
+// SellerReportFilters is the applied narrowing, with the display names the response echoes.
+type SellerReportFilters struct {
+	Statuses   []QuoteStatus
+	Channel    *ChannelType
+	SellerID   *uuid.UUID
+	SellerName string
+	ClientID   *uuid.UUID
+	ClientName string
 }
 
 // SellerReportPDFRenderer renders the seller dashboard snapshot as a PDF.
@@ -29,6 +51,7 @@ type SellerReportPDFRenderer interface {
 type SellerReport struct {
 	Range              SellerReportRange
 	Scope              SellerReportScope
+	Filters            SellerReportFilters
 	KPIs               SellerReportKPIs
 	Branches           []SellerReportBranch
 	QuotesByStatus     []SellerReportStatusCount

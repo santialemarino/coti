@@ -7,6 +7,14 @@ import { apiRequest } from '@/lib/api/client';
 interface SellerReportRaw {
   range: { from: string; to: string };
   scope: { multi_branch: boolean; branch_id: string | null };
+  filters: {
+    statuses: string[];
+    channel: string | null;
+    seller_id: string | null;
+    seller_name: string;
+    client_id: string | null;
+    client_name: string;
+  };
   kpis: {
     rfqs_received: number;
     quotes_sent: number;
@@ -39,9 +47,28 @@ interface SellerReportRaw {
 
 // --- Frontend types (camelCase) ---
 
+export interface SellerReportFilters {
+  statuses: string[];
+  channel: string | null;
+  sellerId: string | null;
+  sellerName: string;
+  clientId: string | null;
+  clientName: string;
+}
+
+export interface SellerReportFilterSelection {
+  from?: string;
+  to?: string;
+  statuses?: string[];
+  channel?: string;
+  sellerId?: string;
+  clientId?: string;
+}
+
 export interface SellerReport {
   range: { from: string; to: string };
   scope: { multiBranch: boolean; branchId: string | null };
+  filters: SellerReportFilters;
   kpis: {
     rfqsReceived: number;
     quotesSent: number;
@@ -75,6 +102,14 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
   return {
     range: { from: raw.range.from, to: raw.range.to },
     scope: { multiBranch: raw.scope.multi_branch, branchId: raw.scope.branch_id },
+    filters: {
+      statuses: raw.filters.statuses,
+      channel: raw.filters.channel,
+      sellerId: raw.filters.seller_id,
+      sellerName: raw.filters.seller_name,
+      clientId: raw.filters.client_id,
+      clientName: raw.filters.client_name,
+    },
     kpis: {
       rfqsReceived: raw.kpis.rfqs_received,
       quotesSent: raw.kpis.quotes_sent,
@@ -128,10 +163,19 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
 // --- API functions ---
 
 // The seller dashboard for one inclusive period; omitting both dates asks for the last 30 days.
-export async function getSellerReport(from?: string, to?: string): Promise<SellerReport> {
+export async function getSellerReport(
+  filters: SellerReportFilterSelection = {},
+): Promise<SellerReport> {
   const raw = await apiRequest<SellerReportRaw>({
     path: '/v1/reports',
-    query: { from, to },
+    query: {
+      from: filters.from,
+      to: filters.to,
+      status: filters.statuses?.length ? filters.statuses.join(',') : undefined,
+      channel: filters.channel,
+      seller_id: filters.sellerId,
+      client_id: filters.clientId,
+    },
   });
   return mapSellerReport(raw);
 }

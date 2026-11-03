@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,9 +48,13 @@ func NewSellerReportService(db tenantTxRunner, reports sellerReportStore,
 
 // Get returns the report for the requested inclusive dates, defaulting to the last 30 days.
 func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fromRaw,
-	toRaw string,
+	toRaw string, filterInput domain.SellerReportFilterInput,
 ) (*domain.SellerReport, error) {
 	from, to, err := s.resolveRange(fromRaw, toRaw)
+	if err != nil {
+		return nil, err
+	}
+	filters, err := resolveReportFilters(tenant, filterInput)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +65,10 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		AccountID:      tenant.AccountID,
 		BranchFilter:   tenant.BranchFilter(),
 		SellerID:       sellerID,
+		SellerFilter:   filters.SellerID,
+		ClientFilter:   filters.ClientID,
+		Statuses:       filters.Statuses,
+		Channel:        filters.Channel,
 		StartAt:        start,
 		EndAt:          end,
 		FromDate:       from.Format(reportDateLayout),
@@ -88,18 +97,86 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		branchID := tenant.BranchID
 		report.Scope.BranchID = &branchID
 	}
+	report.Filters = domain.SellerReportFilters{
+		Statuses:   filters.Statuses,
+		Channel:    filters.Channel,
+		SellerID:   filters.SellerID,
+		SellerName: report.Filters.SellerName,
+		ClientID:   filters.ClientID,
+		ClientName: report.Filters.ClientName,
+	}
 	return report, nil
 }
 
 // RenderPDF returns the report for the requested period as a PDF document.
 func (s *SellerReportService) RenderPDF(ctx context.Context, tenant domain.Tenant, fromRaw,
-	toRaw string,
+	toRaw string, filterInput domain.SellerReportFilterInput,
 ) ([]byte, error) {
-	report, err := s.Get(ctx, tenant, fromRaw, toRaw)
+	report, err := s.Get(ctx, tenant, fromRaw, toRaw, filterInput)
 	if err != nil {
 		return nil, err
 	}
 	return s.renderer.Render(*report, s.now().In(domain.Argentina))
+}
+
+func resolveReportFilters(tenant domain.Tenant, in domain.SellerReportFilterInput) (
+	domain.SellerReportFilters, error,
+) {
+	filters := domain.SellerReportFilters{Statuses: []domain.QuoteStatus{}}
+	seen := make(map[domain.QuoteStatus]struct{})
+	for _, raw := range in.Statuses {
+		for _, part := range strings.Split(raw, ",") {
+			trimmed := strings.TrimSpace(part)
+			if trimmed == "" {
+				continue
+			}
+			status := domain.QuoteStatus(strings.ToUpper(trimmed))
+			if !domain.IsValidQuoteStatus(status) {
+				return domain.SellerReportFilters{},
+					fmt.Errorf("%w: unknown status %q", domain.ErrInvalidInput, part)
+			}
+			if _, ok := seen[status]; ok {
+				continue
+			}
+			seen[status] = struct{}{}
+			filters.Statuses = append(filters.Statuses, status)
+		}
+	}
+
+	if raw := strings.TrimSpace(in.Channel); raw != "" {
+		channel := domain.ChannelType(strings.ToUpper(raw))
+		if !domain.IsValidChannelType(channel) {
+			return domain.SellerReportFilters{},
+				fmt.Errorf("%w: unknown channel %q", domain.ErrInvalidInput, in.Channel)
+		}
+		filters.Channel = &channel
+	}
+
+	if tenant.IsAdmin() {
+		sellerID, err := reportFilterID(in.SellerID, "seller_id")
+		if err != nil {
+			return domain.SellerReportFilters{}, err
+		}
+		filters.SellerID = sellerID
+	}
+	clientID, err := reportFilterID(in.ClientID, "client_id")
+	if err != nil {
+		return domain.SellerReportFilters{}, err
+	}
+	filters.ClientID = clientID
+	return filters, nil
+}
+
+func reportFilterID(raw, field string) (*uuid.UUID, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s must be a UUID", domain.ErrInvalidInput, field)
+	}
+	return &id, nil
 }
 
 func (s *SellerReportService) resolveRange(fromRaw, toRaw string) (time.Time, time.Time, error) {

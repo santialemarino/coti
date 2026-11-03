@@ -2,10 +2,21 @@ package dto
 
 import "github.com/google/uuid"
 
+// SellerReportFilterQuery is the optional narrowing of GET /v1/reports and its PDF.
+type SellerReportFilterQuery struct {
+	From     string   `form:"from"`
+	To       string   `form:"to"`
+	Statuses []string `form:"status"`
+	Channel  string   `form:"channel"`
+	SellerID string   `form:"seller_id"`
+	ClientID string   `form:"client_id"`
+}
+
 // SellerReportResponse is the seller dashboard read for one period.
 type SellerReportResponse struct {
 	Range              SellerReportRangeResponse            `json:"range"`
 	Scope              SellerReportScopeResponse            `json:"scope"`
+	Filters            SellerReportFiltersResponse          `json:"filters"`
 	KPIs               SellerReportKPIsResponse             `json:"kpis"`
 	Branches           []SellerReportBranchResponse         `json:"branches,omitempty"`
 	QuotesByStatus     []SellerReportStatusResponse         `json:"quotes_by_status"`
@@ -26,6 +37,16 @@ type SellerReportRangeResponse struct {
 type SellerReportScopeResponse struct {
 	MultiBranch bool       `json:"multi_branch"`
 	BranchID    *uuid.UUID `json:"branch_id"`
+}
+
+// SellerReportFiltersResponse is the applied narrowing echoed back with display names.
+type SellerReportFiltersResponse struct {
+	Statuses   []string   `json:"statuses"`
+	Channel    *string    `json:"channel"`
+	SellerID   *uuid.UUID `json:"seller_id"`
+	SellerName string     `json:"seller_name"`
+	ClientID   *uuid.UUID `json:"client_id"`
+	ClientName string     `json:"client_name"`
 }
 
 // SellerReportKPIsResponse holds the period's headline numbers.

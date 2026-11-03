@@ -62,6 +62,39 @@ describe('ReportDownloadButton', () => {
     expect(href).toBe('blob:report');
   });
 
+  it('forwards the active filters to the PDF proxy', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response('%PDF-1.4', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': 'attachment; filename="reporte.pdf"',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(
+      <NextIntlClientProvider locale="es" messages={messages}>
+        <ReportDownloadButton
+          from="2026-10-01"
+          to="2026-10-02"
+          statuses={['SENT', 'ACCEPTED']}
+          channel="EMAIL"
+          sellerId="seller-1"
+          clientId="client-1"
+        />
+      </NextIntlClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: copy.label }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/reports/pdf?from=2026-10-01&to=2026-10-02&status=SENT%2CACCEPTED&channel=EMAIL&seller_id=seller-1&client_id=client-1',
+    );
+  });
+
   it('reports a failed download without navigating away', async () => {
     vi.stubGlobal(
       'fetch',

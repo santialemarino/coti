@@ -13,7 +13,23 @@ function filenameFrom(disposition: string | null): string {
   return match?.[1] ?? 'reporte.pdf';
 }
 
-export function ReportDownloadButton({ from, to }: { from: string; to: string }) {
+interface ReportDownloadButtonProps {
+  from: string;
+  to: string;
+  statuses?: string[];
+  channel?: string | null;
+  sellerId?: string | null;
+  clientId?: string | null;
+}
+
+export function ReportDownloadButton({
+  from,
+  to,
+  statuses = [],
+  channel,
+  sellerId,
+  clientId,
+}: ReportDownloadButtonProps) {
   const t = useTranslations('reports.download');
   const [pending, setPending] = React.useState(false);
 
@@ -21,6 +37,10 @@ export function ReportDownloadButton({ from, to }: { from: string; to: string })
     setPending(true);
     try {
       const query = new URLSearchParams({ from, to });
+      if (statuses.length > 0) query.set('status', statuses.join(','));
+      if (channel) query.set('channel', channel);
+      if (sellerId) query.set('seller_id', sellerId);
+      if (clientId) query.set('client_id', clientId);
       const response = await fetch(`/api/reports/pdf?${query.toString()}`, { cache: 'no-store' });
       if (!response.ok) await throwApiError(response);
 

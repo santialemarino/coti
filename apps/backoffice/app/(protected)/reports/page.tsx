@@ -34,8 +34,12 @@ import {
 import { ReportDownloadButton } from '@/app/(protected)/reports/_components/report-download-button';
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
 import { SummaryCard } from '@/app/(protected)/reports/_components/report-summary';
+import { getClients } from '@/lib/api/clients';
 import { ApiError } from '@/lib/api/errors';
 import { getSellerReport, type SellerReport } from '@/lib/api/reports';
+import { getSellers } from '@/lib/api/users';
+import { getSession } from '@/lib/auth/session';
+import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
@@ -45,20 +49,65 @@ function single(value: string | string[] | undefined): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function many(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  return value ? [value] : [];
+}
+
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string | string[]; to?: string | string[] }>;
+  searchParams: Promise<{
+    from?: string | string[];
+    to?: string | string[];
+    status?: string | string[];
+    channel?: string | string[];
+    seller_id?: string | string[];
+    client_id?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
   const from = single(params.from);
   const to = single(params.to);
+  const statuses = many(params.status)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+  const channel = single(params.channel);
+  const sellerId = single(params.seller_id);
+  const clientId = single(params.client_id);
   const fmt = await getFormatters();
   const t = await getTranslations('reports');
 
+  const session = await getSession();
+  const isAdmin = session?.role === ADMIN_ROLE;
+  let clients: { id: string; name: string }[] = [];
+  let sellers: { id: string; name: string }[] = [];
+  try {
+    clients = (await getClients())
+      .filter((client) => client.name)
+      .map((client) => ({ id: client.id, name: client.name as string }));
+  } catch {
+    clients = [];
+  }
+  if (isAdmin) {
+    try {
+      sellers = await getSellers();
+    } catch {
+      sellers = [];
+    }
+  }
+
   let report: SellerReport | null = null;
   try {
-    report = await getSellerReport(from, to);
+    report = await getSellerReport({
+      from,
+      to,
+      statuses,
+      channel,
+      sellerId: isAdmin ? sellerId : undefined,
+      clientId,
+    });
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 400) throw error;
   }
@@ -69,7 +118,17 @@ export default async function ReportsPage({
         <PageHeader title={t('title')} description={t('description')} />
         <Card className="gap-y-0 py-5">
           <CardContent>
-            <ReportFilters from={from ?? ''} to={to ?? ''} />
+            <ReportFilters
+              from={from ?? ''}
+              to={to ?? ''}
+              statuses={statuses}
+              channel={channel}
+              sellerId={isAdmin ? sellerId : undefined}
+              clientId={clientId}
+              sellers={sellers}
+              clients={clients}
+              showSeller={isAdmin}
+            />
             <p role="alert" className="mt-3 text-paragraph-xs text-danger-foreground">
               {t('filters.invalidPeriod')}
             </p>
@@ -117,14 +176,30 @@ export default async function ReportsPage({
       <PageHeader
         title={t('title')}
         description={t(report.scope.multiBranch ? 'descriptionAll' : 'description')}
-        actions={<ReportDownloadButton from={report.range.from} to={report.range.to} />}
+        actions={
+          <ReportDownloadButton
+            from={report.range.from}
+            to={report.range.to}
+            statuses={report.filters.statuses}
+            channel={report.filters.channel}
+            sellerId={report.filters.sellerId}
+            clientId={report.filters.clientId}
+          />
+        }
       />
       <Card className="gap-y-0 py-5">
         <CardContent>
           <ReportFilters
-            key={`${report.range.from}-${report.range.to}`}
+            key={`${report.range.from}-${report.range.to}-${report.filters.statuses.join(',')}-${report.filters.channel ?? ''}-${report.filters.sellerId ?? ''}-${report.filters.clientId ?? ''}`}
             from={report.range.from}
             to={report.range.to}
+            statuses={report.filters.statuses}
+            channel={report.filters.channel ?? undefined}
+            sellerId={report.filters.sellerId ?? undefined}
+            clientId={report.filters.clientId ?? undefined}
+            sellers={sellers}
+            clients={clients}
+            showSeller={isAdmin}
           />
         </CardContent>
       </Card>

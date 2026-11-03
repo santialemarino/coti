@@ -7228,6 +7228,34 @@ const docTemplate = `{
                         "description": "Last day, YYYY-MM-DD; defaults to today",
                         "name": "to",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Quote statuses to include; repeat or comma-separate",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Intake channel type",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Seller UUID; administrators only",
+                        "name": "seller_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client UUID",
+                        "name": "client_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -7296,6 +7324,34 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Last day, YYYY-MM-DD; defaults to today",
                         "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Quote statuses to include; repeat or comma-separate",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Intake channel type",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Seller UUID; administrators only",
+                        "name": "seller_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client UUID",
+                        "name": "client_id",
                         "in": "query"
                     }
                 ],
@@ -12512,6 +12568,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SellerReportFiltersResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "seller_name": {
+                    "type": "string"
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "dto.SellerReportKPIsResponse": {
             "type": "object",
             "properties": {
@@ -12571,6 +12653,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.SellerReportBranchResponse"
                     }
+                },
+                "filters": {
+                    "$ref": "#/definitions/dto.SellerReportFiltersResponse"
                 },
                 "kpis": {
                     "$ref": "#/definitions/dto.SellerReportKPIsResponse"
