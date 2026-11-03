@@ -16,7 +16,10 @@ vi.mock('@/app/(protected)/settings/catalog/actions', () => ({
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
   deactivateProduct: vi.fn(),
+  listProductRecommendations: vi.fn(),
+  removeProductRecommendation: vi.fn(),
   reactivateProduct: vi.fn(),
+  setProductRecommendation: vi.fn(),
   uploadProductImage: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
@@ -36,7 +39,7 @@ vi.mock('motion/react', async (importOriginal) => ({
   ),
 }));
 
-const { deactivateProduct, reactivateProduct, updateProduct } =
+const { deactivateProduct, listProductRecommendations, reactivateProduct, updateProduct } =
   await import('@/app/(protected)/settings/catalog/actions');
 
 const FAMILY: ProductFamily = {
@@ -179,6 +182,21 @@ describe('ProductManager', () => {
       PRODUCT.id,
       expect.objectContaining({ name: PRODUCT.name, isActive: true }),
     );
+  });
+
+  it('opens the commercial recommendation slots for the selected product', async () => {
+    vi.mocked(listProductRecommendations).mockResolvedValue({ ok: true, items: [] });
+    const view = renderManager();
+    const row = within(view.getByRole('row', { name: new RegExp(PRODUCT.name) }));
+
+    fireEvent.click(row.getByRole('button', { name: messages.products.recommendations.action }));
+
+    expect(
+      await view.findByText(
+        messages.products.recommendations.title.replace('{name}', PRODUCT.name),
+      ),
+    ).toBeTruthy();
+    await waitFor(() => expect(listProductRecommendations).toHaveBeenCalledWith(PRODUCT.id));
   });
 });
 

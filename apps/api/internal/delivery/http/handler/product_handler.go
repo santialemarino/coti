@@ -27,6 +27,7 @@ type ProductService interface {
 	RemoveSynonym(ctx context.Context, tenant domain.Tenant, productID, synonymID uuid.UUID) error
 	ListAlternatives(ctx context.Context, tenant domain.Tenant, productID uuid.UUID, direction domain.AlternativeDirection) ([]domain.ProductAlternativeView, error)
 	AddAlternative(ctx context.Context, tenant domain.Tenant, baseProductID, alternativeProductID uuid.UUID, alternativeType domain.ProductAlternativeType) (*domain.ProductAlternative, error)
+	SetRecommendation(ctx context.Context, tenant domain.Tenant, baseProductID, alternativeProductID uuid.UUID, alternativeType domain.ProductAlternativeType) (*domain.ProductAlternative, error)
 	RemoveAlternative(ctx context.Context, tenant domain.Tenant, productID, alternativeID uuid.UUID) error
 }
 
@@ -559,6 +560,52 @@ func (h *ProductHandler) AddAlternative(c *gin.Context) {
 	})
 }
 
+// SetRecommendation replaces a product's premium or economical recommendation.
+//
+//	@Summary		Set a product recommendation
+//	@Description	Replaces the base product's ECONOMY or PREMIUM relation with the requested catalog product.
+//	@Tags			catalog
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			productId			path	string	true	"Base product id"
+//	@Param			recommendationType	path	string	true	"ECONOMY or PREMIUM"
+//	@Param			body				body	dto.SetProductRecommendationRequest	true	"Recommendation product"
+//	@Success		200	{object}	dto.AlternativeResponse
+//	@Failure		400,401,404,422	{object}	dto.ErrorResponse
+//	@Router			/v1/products/{productId}/recommendations/{recommendationType} [put]
+func (h *ProductHandler) SetRecommendation(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	productID, ok := pathUUID(c, "productId")
+	if !ok {
+		return
+	}
+	recommendationType, err := parseRecommendationType(c.Param("recommendationType"))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	var body dto.SetProductRecommendationRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+
+	link, err := h.products.SetRecommendation(c.Request.Context(), tenant, productID,
+		body.AlternativeProductID, recommendationType)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.AlternativeResponse{
+		ID: link.ID, BaseProductID: link.BaseProductID, AlternativeProductID: link.AlternativeProductID,
+		Type: string(link.Type), CreatedAt: link.CreatedAt,
+	})
+}
+
 // RemoveAlternative drops one alternative link.
 //
 //	@Summary		Remove a product alternative
@@ -592,6 +639,14 @@ func (h *ProductHandler) RemoveAlternative(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func parseRecommendationType(raw string) (domain.ProductAlternativeType, error) {
+	kind := domain.ProductAlternativeType(raw)
+	if kind == domain.ProductAlternativeEconomy || kind == domain.ProductAlternativePremium {
+		return kind, nil
+	}
+	return "", fmt.Errorf("%w: %q is not an ECONOMY or PREMIUM recommendation", domain.ErrInvalidInput, raw)
 }
 
 func toProductResponse(p domain.Product) dto.ProductResponse {

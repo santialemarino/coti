@@ -19,6 +19,9 @@ type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
 	ApproveAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
 		alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
+	SetRecommendationAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
+		productID uuid.UUID, recommendationType domain.ProductAlternativeType,
+		saveToCatalog bool) (*domain.QuoteItemAlternative, error)
 	Reactivate(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		mode domain.QuoteReactivationMode) (*domain.Quote, error)
 	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
@@ -104,6 +107,54 @@ func (h *QuoteHandler) ApproveAlternative(c *gin.Context) {
 	}
 	alternative, err := h.quotes.ApproveAlternative(c.Request.Context(), tenant, quoteID,
 		itemID, alternativeID, *request.ApprovedBySeller)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteItemAlternativeResponse(*alternative))
+}
+
+// SetRecommendationAlternative replaces one commercial recommendation on a priced line.
+//
+// @Summary Set a quote item recommendation
+// @Description Replaces the line's ECONOMY or PREMIUM option. The seller can also save it as the catalog default.
+// @Tags quotes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param quoteId path string true "Quote id"
+// @Param itemId path string true "Item id"
+// @Param recommendationType path string true "ECONOMY or PREMIUM"
+// @Param request body dto.SetQuoteItemRecommendationRequest true "Recommendation product"
+// @Success 200 {object} dto.QuoteItemAlternativeResponse
+// @Failure 400,401,404,409,422,503 {object} dto.ErrorResponse
+// @Router /v1/quotes/{quoteId}/items/{itemId}/recommendations/{recommendationType} [put]
+func (h *QuoteHandler) SetRecommendationAlternative(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	itemID, ok := pathUUID(c, "itemId")
+	if !ok {
+		return
+	}
+	recommendationType, err := parseQuoteRecommendationType(c.Param("recommendationType"))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	var request dto.SetQuoteItemRecommendationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	alternative, err := h.quotes.SetRecommendationAlternative(c.Request.Context(), tenant, quoteID,
+		itemID, request.ProductID, recommendationType, request.SaveToCatalog)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -707,6 +758,14 @@ func parseQuoteReactivationMode(raw string) (domain.QuoteReactivationMode, error
 		return "", fmt.Errorf("%w: %q is not a quote reactivation mode", domain.ErrInvalidInput,
 			raw)
 	}
+}
+
+func parseQuoteRecommendationType(raw string) (domain.ProductAlternativeType, error) {
+	kind := domain.ProductAlternativeType(raw)
+	if kind == domain.ProductAlternativeEconomy || kind == domain.ProductAlternativePremium {
+		return kind, nil
+	}
+	return "", fmt.Errorf("%w: %q is not an ECONOMY or PREMIUM recommendation", domain.ErrInvalidInput, raw)
 }
 
 func toPricedQuoteResponse(

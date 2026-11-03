@@ -266,7 +266,8 @@ func run() error {
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
-		WithInvoicingSwitch(invoicingRepo)
+		WithInvoicingSwitch(invoicingRepo).
+		WithCatalogRecommendations(productAlternativeRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,

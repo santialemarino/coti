@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchQueue, sendQuote, updateQuoteAlternativeApproval } from '@/lib/api/rfqs-client';
+import {
+  fetchQueue,
+  sendQuote,
+  setQuoteItemRecommendation,
+  updateQuoteAlternativeApproval,
+} from '@/lib/api/rfqs-client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -94,6 +99,26 @@ describe('updateQuoteAlternativeApproval', () => {
     expect(url).toBe('/api/quotes/quote-1/items/item-1/alternatives/alternative-1');
     expect(options?.method).toBe('PATCH');
     expect(JSON.parse(options?.body as string)).toEqual({ approved_by_seller: true });
+    expect(new Headers(options?.headers).get('X-Branch-Id')).toBe('branch-1');
+  });
+});
+
+describe('setQuoteItemRecommendation', () => {
+  it('maps a quote-only economical choice to the recommendation API contract', async () => {
+    answer(200, {});
+
+    await setQuoteItemRecommendation('quote-1', 'item-1', 'ECONOMY', 'branch-1', {
+      product_id: 'product-1',
+      save_to_catalog: false,
+    });
+
+    const [url, options] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('/api/quotes/quote-1/items/item-1/recommendations/ECONOMY');
+    expect(options?.method).toBe('PUT');
+    expect(JSON.parse(options?.body as string)).toEqual({
+      product_id: 'product-1',
+      save_to_catalog: false,
+    });
     expect(new Headers(options?.headers).get('X-Branch-Id')).toBe('branch-1');
   });
 });

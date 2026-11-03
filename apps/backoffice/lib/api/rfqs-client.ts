@@ -341,6 +341,33 @@ export async function updateQuoteAlternativeApproval(
 }
 
 /*
+ * Replaces one commercial recommendation slot on a priced line. The seller may keep the choice
+ * local to this quote or make it the default relation in the account catalog.
+ */
+export async function setQuoteItemRecommendation(
+  quoteId: string,
+  itemId: string,
+  recommendationType: 'ECONOMY' | 'PREMIUM',
+  branchId: string,
+  body: { product_id: string; save_to_catalog: boolean },
+): Promise<QuoteItemAlternativeResponse> {
+  const response = await fetch(
+    `/api/quotes/${quoteId}/items/${itemId}/recommendations/${recommendationType}`,
+    {
+      method: 'PUT',
+      headers: branchHeaders(branchId, true),
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteItemAlternativeResponse>;
+}
+
+/*
  * Generate (price) a draft quote. Calls the existing accept-materials endpoint.
  */
 export async function generateQuote(

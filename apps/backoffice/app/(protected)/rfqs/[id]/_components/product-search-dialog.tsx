@@ -27,6 +27,7 @@ interface ProductSearchDialogProps {
   title?: string;
   /* The candidates matching already weighed for the line, listed first while they fit the query. */
   suggestions?: ProductSuggestion[];
+  excludedProductIds?: string[];
 }
 
 function folded(text: string): string {
@@ -42,6 +43,7 @@ export function ProductSearchDialog({
   onSelect,
   title,
   suggestions = [],
+  excludedProductIds = [],
 }: ProductSearchDialogProps) {
   const t = useTranslations('rfqs.detail.items');
   const [query, setQuery] = useState('');
@@ -75,14 +77,19 @@ export function ProductSearchDialog({
   }, [query, open]);
 
   const needle = folded(query.trim());
+  const excluded = new Set(excludedProductIds);
   const suggested = suggestions.filter(
-    (product) => !needle || folded(`${product.name} ${product.code}`).includes(needle),
+    (product) =>
+      !excluded.has(product.id) &&
+      (!needle || folded(`${product.name} ${product.code}`).includes(needle)),
   );
   const suggestedIds = new Set(suggested.map((product) => product.id));
   // A search in flight hides the previous one's answer rather than show it under the new query.
   const results = [
     ...suggested,
-    ...(loading ? [] : catalog.filter((product) => !suggestedIds.has(product.id))),
+    ...(loading
+      ? []
+      : catalog.filter((product) => !suggestedIds.has(product.id) && !excluded.has(product.id))),
   ];
 
   function suggestedLabel(product: ProductSuggestion): string {

@@ -2783,6 +2783,22 @@ definitions:
     required:
     - price
     type: object
+  dto.SetProductRecommendationRequest:
+    properties:
+      alternative_product_id:
+        type: string
+    required:
+    - alternative_product_id
+    type: object
+  dto.SetQuoteItemRecommendationRequest:
+    properties:
+      product_id:
+        type: string
+      save_to_catalog:
+        type: boolean
+    required:
+    - product_id
+    type: object
   dto.SignupRequest:
     properties:
       account_name:
@@ -5910,6 +5926,57 @@ paths:
       summary: Set a per-branch price
       tags:
       - catalog
+  /v1/products/{productId}/recommendations/{recommendationType}:
+    put:
+      consumes:
+      - application/json
+      description: Replaces the base product's ECONOMY or PREMIUM relation with the
+        requested catalog product.
+      parameters:
+      - description: Base product id
+        in: path
+        name: productId
+        required: true
+        type: string
+      - description: ECONOMY or PREMIUM
+        in: path
+        name: recommendationType
+        required: true
+        type: string
+      - description: Recommendation product
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetProductRecommendationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AlternativeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set a product recommendation
+      tags:
+      - catalog
   /v1/products/{productId}/synonyms:
     get:
       description: Trade vocabulary that improves lexical catalog matching.
@@ -7521,6 +7588,75 @@ paths:
       security:
       - BearerAuth: []
       summary: Approve or withdraw a quote alternative
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/items/{itemId}/recommendations/{recommendationType}:
+    put:
+      consumes:
+      - application/json
+      description: Replaces the line's ECONOMY or PREMIUM option. The seller can also
+        save it as the catalog default.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: ECONOMY or PREMIUM
+        in: path
+        name: recommendationType
+        required: true
+        type: string
+      - description: Recommendation product
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetQuoteItemRecommendationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set a quote item recommendation
       tags:
       - quotes
   /v1/quotes/{quoteId}/message-batches/{batchId}/retry:

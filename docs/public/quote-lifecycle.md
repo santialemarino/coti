@@ -4,10 +4,12 @@ Coti keeps the full commercial outcome on the same quote. A customer can accept,
 changes from the public quote link. A seller can also record an acceptance or rejection received by
 phone, WhatsApp, or another channel from the order detail screen.
 
-When the seller approves them, a sent quote can include economical or premium product alternatives
-for individual lines. The customer keeps the quoted product or selects one approved alternative per
-line, then accepts the quote directly. Coti preserves the sent offer and records the selected
-combination as a new immutable version, so the original offer remains auditable.
+When the seller approves them, a sent quote can include one economical and one premium product
+alternative for each individual line. The seller can use recommendations configured in the catalog
+or replace a line's option for that quote, then chooses which options to send. The customer keeps
+the quoted product or selects one approved alternative per line, then accepts the quote directly.
+Coti recalculates the price, promotions, and discounts for the selected combination and preserves
+the sent offer as an immutable version, so the original offer remains auditable.
 
 After reviewing a quote, the seller can send its link by email, WhatsApp, or both. The original
 channel is selected by default when the order arrives through email or WhatsApp.

@@ -140,6 +140,34 @@ func (r *ProductAlternativeRepository) Create(
 	return &a, nil
 }
 
+// SetRecommendation replaces the base product's one ECONOMY or PREMIUM relation. Replacing a
+// relation is intentional: a recommendation slot must never accumulate competing products.
+func (r *ProductAlternativeRepository) SetRecommendation(
+	ctx context.Context, q Querier, accountID, baseProductID, alternativeProductID uuid.UUID,
+	alternativeType domain.ProductAlternativeType,
+) (*domain.ProductAlternative, error) {
+	if _, err := q.Exec(ctx,
+		`DELETE FROM product_alternative
+		 WHERE account_id = $1 AND base_product_id = $2
+		   AND (type = $4 OR alternative_product_id = $3)`,
+		accountID, baseProductID, alternativeProductID, alternativeType); err != nil {
+		return nil, err
+	}
+
+	var a domain.ProductAlternative
+	err := q.QueryRow(ctx,
+		`INSERT INTO product_alternative
+		   (account_id, base_product_id, alternative_product_id, type)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING `+productAlternativeColumns,
+		accountID, baseProductID, alternativeProductID, alternativeType,
+	).Scan(&a.ID, &a.AccountID, &a.BaseProductID, &a.AlternativeProductID, &a.Type, &a.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 // Delete removes one link, from either end. The product id has to match one of the two, so
 // a link between two other products is not deletable through a third one.
 func (r *ProductAlternativeRepository) Delete(

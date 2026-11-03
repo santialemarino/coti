@@ -918,6 +918,42 @@ func (r *QuoteRepository) CreateAlternatives(
 	return nil
 }
 
+// SetRecommendationAlternative replaces one ECONOMY or PREMIUM slot on a mutable quote item.
+func (r *QuoteRepository) SetRecommendationAlternative(
+	ctx context.Context, q Querier, accountID, versionID, itemID, productID uuid.UUID,
+	recommendationType domain.ProductAlternativeType, priceSnapshot, minPriceSnapshot decimal.NullDecimal,
+) (*domain.QuoteItemAlternative, error) {
+	row := q.QueryRow(ctx, `WITH removed AS (
+		DELETE FROM quote_item_alternative alternative
+		USING quote_item item, quote_version version
+		WHERE alternative.account_id = $1
+		  AND alternative.quote_item_id = $3
+		  AND alternative.recommendation_type = $5::product_alternative_type
+		  AND item.account_id = $1 AND item.id = $3 AND item.version_id = $2
+		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE
+	), created AS (
+		INSERT INTO quote_item_alternative (
+		  account_id, quote_item_id, product_id, type, recommendation_type, origin, rank,
+		  price_snapshot, min_price_snapshot
+		)
+		SELECT $1, item.id, $4, 'PRODUCT', $5::product_alternative_type, 'SELLER', 1, $6, $7
+		FROM quote_item item
+		JOIN quote_version version ON version.account_id = $1 AND version.id = $2
+		WHERE item.account_id = $1 AND item.id = $3 AND item.version_id = $2
+		  AND version.is_immutable = FALSE
+		RETURNING *
+	)
+	SELECT created.id, created.account_id, created.quote_item_id, created.product_id,
+	       created.combo_id, created.type, created.recommendation_type, created.origin,
+	       created.rank, created.confidence_score, created.price_snapshot, created.min_price_snapshot,
+	       created.approved_by_seller, created.chosen_by_client, created.created_at, product.code,
+	       product.canonical_name, product.unit
+	FROM created
+	LEFT JOIN product ON product.account_id = created.account_id AND product.id = created.product_id`,
+		accountID, versionID, itemID, productID, recommendationType, priceSnapshot, minPriceSnapshot)
+	return scanQuoteItemAlternative(row)
+}
+
 // UpdateAlternativeApproval records the seller's decision on a candidate of a mutable version.
 func (r *QuoteRepository) UpdateAlternativeApproval(
 	ctx context.Context, q Querier, accountID, versionID, itemID, alternativeID uuid.UUID,

@@ -116,6 +116,13 @@ type QuoteAlternativeApprovalRequest struct {
 	ApprovedBySeller *bool `json:"approved_by_seller" binding:"required"`
 }
 
+// SetQuoteItemRecommendationRequest selects the product in one quote item's recommendation slot.
+// SaveToCatalog also replaces that product's matching catalog recommendation.
+type SetQuoteItemRecommendationRequest struct {
+	ProductID     uuid.UUID `json:"product_id" binding:"required"`
+	SaveToCatalog bool      `json:"save_to_catalog"`
+}
+
 // QuoteSendRequest selects delivery destinations and an optional validity override.
 type QuoteSendRequest struct {
 	ClientAssociation *AssociateQuoteClientRequest `json:"client_association"`

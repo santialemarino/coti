@@ -21,14 +21,21 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   addQuoteItem: vi.fn(),
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
+  setQuoteItemRecommendation: vi.fn(),
   updateDiscount: vi.fn(),
   updateQuoteAlternativeApproval: vi.fn(),
   updateQuoteItem: vi.fn(),
 }));
 
 const { toast } = await import('sonner');
-const { deleteQuoteItem, updateDiscount, updateQuoteAlternativeApproval, updateQuoteItem } =
-  await import('@/lib/api/rfqs-client');
+const {
+  deleteQuoteItem,
+  setQuoteItemRecommendation,
+  updateDiscount,
+  updateQuoteAlternativeApproval,
+  updateQuoteItem,
+} = await import('@/lib/api/rfqs-client');
+const { searchCatalog } = await import('@/lib/api/catalog');
 
 const copy = messages.rfqs;
 
@@ -185,6 +192,43 @@ describe('RfqItemsTable customer alternatives', () => {
     ]);
 
     expect(view.queryByText(copy.detail.items.alternatives.title)).toBeNull();
+  });
+
+  it('lets the seller define an economical option just for this quotation', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      {
+        id: 'p0000000-0000-4000-8000-000000000007',
+        code: 'LAD-ECO-10',
+        name: 'Ladrillo económico',
+        unit: 'unidad',
+      },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000007',
+      product_id: 'p0000000-0000-4000-8000-000000000007',
+      canonical_name: 'Ladrillo económico',
+    });
+    const onItemsChange = vi.fn();
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
+
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.setType.ECONOMY }),
+    );
+    const candidate = await view.findByText('Ladrillo económico');
+    fireEvent.click(candidate);
+
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'ECONOMY',
+        BRANCH_ID,
+        { product_id: 'p0000000-0000-4000-8000-000000000007', save_to_catalog: false },
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives[0]?.canonical_name).toBe('Ladrillo económico');
   });
 });
 

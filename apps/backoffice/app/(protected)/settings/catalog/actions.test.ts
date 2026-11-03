@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createProduct,
   deactivateProduct,
+  listProductRecommendations,
+  removeProductRecommendation,
+  setProductRecommendation,
   updateProduct,
   uploadProductImage,
 } from '@/app/(protected)/settings/catalog/actions';
@@ -121,5 +124,70 @@ describe('catalog product actions', () => {
         formData: expect.any(FormData),
       }),
     );
+  });
+
+  it('reads only the commercial recommendation slots from the catalog relation list', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      items: [
+        {
+          id: 'economy-link',
+          alternative_product_id: 'economy-product',
+          type: 'ECONOMY',
+          product: { code: 'CEM-ECO', canonical_name: 'Cemento económico', unit: 'bolsa' },
+        },
+        {
+          id: 'equivalent-link',
+          alternative_product_id: 'equivalent-product',
+          type: 'EQUIVALENT',
+          product: { code: 'CEM-EQ', canonical_name: 'Cemento equivalente', unit: 'bolsa' },
+        },
+      ],
+    });
+
+    await expect(listProductRecommendations('base-product')).resolves.toEqual({
+      ok: true,
+      items: [
+        {
+          id: 'economy-link',
+          productId: 'economy-product',
+          type: 'ECONOMY',
+          name: 'Cemento económico',
+          code: 'CEM-ECO',
+          unit: 'bolsa',
+        },
+      ],
+    });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/products/base-product/alternatives',
+      branchScoped: false,
+    });
+  });
+
+  it('replaces a catalog recommendation and returns its new relation id', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ id: 'premium-link' });
+
+    await expect(
+      setProductRecommendation('base-product', 'PREMIUM', 'premium-product'),
+    ).resolves.toEqual({ ok: true, productId: 'base-product', recommendationId: 'premium-link' });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/products/base-product/recommendations/PREMIUM',
+      method: 'PUT',
+      branchScoped: false,
+      body: { alternative_product_id: 'premium-product' },
+    });
+  });
+
+  it('removes a configured recommendation through its catalog link', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await expect(removeProductRecommendation('base-product', 'economy-link')).resolves.toEqual({
+      ok: true,
+      productId: 'base-product',
+    });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/products/base-product/alternatives/economy-link',
+      method: 'DELETE',
+      branchScoped: false,
+    });
   });
 });

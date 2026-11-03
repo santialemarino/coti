@@ -148,6 +148,13 @@ func (f *fakeAlternatives) Create(
 	return &link, nil
 }
 
+func (f *fakeAlternatives) SetRecommendation(
+	ctx context.Context, q repository.Querier, accountID, baseProductID, alternativeProductID uuid.UUID,
+	alternativeType domain.ProductAlternativeType,
+) (*domain.ProductAlternative, error) {
+	return f.Create(ctx, q, accountID, baseProductID, alternativeProductID, alternativeType)
+}
+
 func (f *fakeAlternatives) Delete(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID) error {
 	return nil
 }
@@ -498,6 +505,35 @@ func TestProductService_AddAlternative_LinksBothProducts(t *testing.T) {
 	}
 	if link.Type != domain.ProductAlternativePremium {
 		t.Errorf("type = %q, want %q", link.Type, domain.ProductAlternativePremium)
+	}
+}
+
+func TestProductService_SetRecommendation_UsesOneCommercialSlot(t *testing.T) {
+	h := newCatalogHarness(testProductID, testAlternativeID)
+
+	link, err := h.service.SetRecommendation(context.Background(), testTenant(), testProductID,
+		testAlternativeID, domain.ProductAlternativeEconomy)
+	if err != nil {
+		t.Fatalf("SetRecommendation() = %v, want no error", err)
+	}
+	if link.Type != domain.ProductAlternativeEconomy {
+		t.Errorf("type = %q, want ECONOMY", link.Type)
+	}
+	if len(h.alternatives.created) != 1 {
+		t.Fatalf("recommendations written = %d, want 1", len(h.alternatives.created))
+	}
+}
+
+func TestProductService_SetRecommendation_RejectsEquivalent(t *testing.T) {
+	h := newCatalogHarness(testProductID, testAlternativeID)
+
+	_, err := h.service.SetRecommendation(context.Background(), testTenant(), testProductID,
+		testAlternativeID, domain.ProductAlternativeEquivalent)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("SetRecommendation() = %v, want %v", err, domain.ErrInvalidInput)
+	}
+	if len(h.alternatives.created) != 0 {
+		t.Error("a non-commercial recommendation reached the repository")
 	}
 }
 

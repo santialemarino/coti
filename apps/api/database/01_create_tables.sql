@@ -350,6 +350,10 @@ CREATE TABLE product_alternative (
   CONSTRAINT uq_product_alternative UNIQUE (base_product_id, alternative_product_id)
 );
 
+CREATE UNIQUE INDEX uq_product_alternative_recommendation
+  ON product_alternative (account_id, base_product_id, type)
+  WHERE type IN ('ECONOMY', 'PREMIUM');
+
 -- A composite product sold as one unit. Different from the ITEM_SET promotion type.
 -- Account-scoped like the product: per-branch availability lives in branch_combo. It has no
 -- price of its own — that derives from its items, already priced per branch — and no stock,

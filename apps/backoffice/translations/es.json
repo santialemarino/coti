@@ -1480,14 +1480,42 @@
         },
         "alternatives": {
           "title": "Alternativas para el cliente",
-          "description": "Elegí cuáles opciones aprobadas se envían junto con la cotización.",
+          "description": "Definí una opción económica y una premium por material, y elegí cuáles se envían junto con la cotización.",
           "forItem": "Alternativa para {name}",
+          "empty": "Sin alternativa definida",
+          "set": "Definir",
+          "replace": "Reemplazar",
+          "setAndSave": "Definir y guardar en catálogo",
+          "setType": {
+            "ECONOMY": "Definir económica",
+            "PREMIUM": "Definir premium"
+          },
+          "replaceType": {
+            "ECONOMY": "Cambiar económica",
+            "PREMIUM": "Cambiar premium"
+          },
+          "setAndSaveType": {
+            "ECONOMY": "Definir económica y guardar",
+            "PREMIUM": "Definir premium y guardar"
+          },
           "include": "Incluir en la cotización",
           "remove": "No incluir",
           "pending": "Guardando…",
+          "picker": {
+            "ECONOMY": "Elegir alternativa económica",
+            "PREMIUM": "Elegir alternativa premium"
+          },
+          "catalogConfirmation": {
+            "title": "¿Guardar también en el catálogo?",
+            "description": "«{name}» va a reemplazar la {type} actual de este producto en el catálogo. Las próximas cotizaciones la van a usar como opción disponible.",
+            "confirm": "Guardar en catálogo",
+            "pending": "Guardando…"
+          },
           "toast": {
             "included": "La alternativa «{name}» se va a enviar al cliente.",
-            "removed": "La alternativa «{name}» no se va a enviar al cliente."
+            "removed": "La alternativa «{name}» no se va a enviar al cliente.",
+            "set": "Guardamos «{name}» como alternativa de esta cotización.",
+            "savedToCatalog": "Guardamos «{name}» en la cotización y como alternativa del catálogo."
           }
         },
         "searchProduct": "Buscar producto",
@@ -2340,6 +2368,44 @@
     },
     "reactivate": {
       "action": "Reactivar"
+    },
+    "recommendations": {
+      "action": "Alternativas comerciales",
+      "title": "Alternativas de {name}",
+      "description": "Definí una opción económica y una premium. Cada tipo conserva una sola alternativa.",
+      "type": {
+        "ECONOMY": "Alternativa económica",
+        "PREMIUM": "Alternativa premium"
+      },
+      "empty": "Todavía no hay una alternativa definida.",
+      "set": "Definir",
+      "close": "Cerrar",
+      "cancel": "Cancelar",
+      "saved": "Guardamos «{name}» como alternativa.",
+      "removed": "Quitamos «{name}» de las alternativas.",
+      "picker": {
+        "ECONOMY": "Elegir alternativa económica",
+        "PREMIUM": "Elegir alternativa premium",
+        "description": "Buscá el producto que puede ofrecerse en lugar del material base.",
+        "placeholder": "Código o nombre del producto…",
+        "clear": "Limpiar",
+        "hint": "Escribí para buscar productos del catálogo.",
+        "noResults": "No encontramos productos con esa búsqueda."
+      },
+      "replace": {
+        "action": "Reemplazar",
+        "title": "¿Reemplazar la alternativa?",
+        "description": "«{name}» va a quedar como {type}. Si ya había una alternativa de ese tipo, se reemplaza.",
+        "confirm": "Reemplazar alternativa",
+        "pending": "Reemplazando…"
+      },
+      "remove": {
+        "action": "Quitar",
+        "title": "¿Quitar la alternativa?",
+        "description": "«{name}» deja de aparecer como alternativa para este producto.",
+        "confirm": "Quitar alternativa",
+        "pending": "Quitando…"
+      }
     },
     "name": {
       "label": "Nombre",

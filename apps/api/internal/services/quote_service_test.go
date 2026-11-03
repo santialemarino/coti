@@ -199,6 +199,18 @@ func (f *fakeQuoteRepo) ListItems(
 	return items, nil
 }
 
+func (f *fakeQuoteRepo) GetItem(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, itemID uuid.UUID,
+) (*domain.QuoteItem, error) {
+	for _, item := range f.items {
+		if item.ID == itemID {
+			copy := item
+			return &copy, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
 func (f *fakeQuoteRepo) ListAlternativesByItemIDs(
 	_ context.Context, _ repository.Querier, _ uuid.UUID, itemIDs []uuid.UUID,
 ) (map[uuid.UUID][]domain.QuoteItemAlternative, error) {
@@ -241,6 +253,27 @@ func (f *fakeQuoteRepo) ApplyAlternativePricing(
 	_ []domain.QuoteItemAlternativePricing,
 ) error {
 	return nil
+}
+
+func (f *fakeQuoteRepo) SetRecommendationAlternative(
+	_ context.Context, _ repository.Querier, _, _, itemID, productID uuid.UUID,
+	recommendationType domain.ProductAlternativeType, priceSnapshot, minPriceSnapshot decimal.NullDecimal,
+) (*domain.QuoteItemAlternative, error) {
+	updated := domain.QuoteItemAlternative{
+		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
+		Type: domain.QuoteItemAlternativeTypeProduct, RecommendationType: &recommendationType,
+		Origin: domain.QuoteItemAlternativeOriginSeller, Rank: 1, PriceSnapshot: priceSnapshot,
+		MinPriceSnapshot: minPriceSnapshot,
+	}
+	kept := make([]domain.QuoteItemAlternative, 0, len(f.alternatives[itemID])+1)
+	for _, alternative := range f.alternatives[itemID] {
+		if alternative.RecommendationType != nil && *alternative.RecommendationType == recommendationType {
+			continue
+		}
+		kept = append(kept, alternative)
+	}
+	f.alternatives[itemID] = append(kept, updated)
+	return &updated, nil
 }
 
 func (f *fakeQuoteRepo) UpdateAlternativeApproval(
@@ -808,6 +841,57 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 	}
 	if got := len(f.quotes.alternativeReads[0]); got != 2 {
 		t.Errorf("asked for %d lines, want both of them", got)
+	}
+}
+
+func TestQuoteService_SetRecommendationAlternative_ReplacesTheQuoteSlot(t *testing.T) {
+	base, existing, selected := uuid.New(), uuid.New(), uuid.New()
+	item := pricedLine(base, "10")
+	economy := domain.ProductAlternativeEconomy
+	f := newQuoteFixture([]domain.QuoteItem{item}, map[uuid.UUID]domain.BranchPrice{
+		base:     branchPrice(base, "1200.00", nil),
+		selected: branchPrice(selected, "950.00", nil),
+	})
+	f.quotes.quote.CurrentStatus = domain.QuoteStatusQuoted
+	f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{
+		item.ID: {{
+			ID: existing, QuoteItemID: item.ID, ProductID: &existing,
+			Type:               domain.QuoteItemAlternativeTypeProduct,
+			RecommendationType: &economy,
+			Origin:             domain.QuoteItemAlternativeOriginAI,
+			Rank:               1,
+		}},
+	}
+
+	result, err := f.service.SetRecommendationAlternative(context.Background(), f.tenant, f.quoteID,
+		item.ID, selected, domain.ProductAlternativeEconomy, false)
+	if err != nil {
+		t.Fatalf("SetRecommendationAlternative() = %v, want no error", err)
+	}
+	if result.ProductID == nil || *result.ProductID != selected {
+		t.Errorf("selected product = %v, want %v", result.ProductID, selected)
+	}
+	if !result.PriceSnapshot.Valid || !result.PriceSnapshot.Decimal.Equal(decimal.RequireFromString("950.00")) {
+		t.Errorf("price snapshot = %v, want 950.00", result.PriceSnapshot)
+	}
+	offers := f.quotes.alternatives[item.ID]
+	if len(offers) != 1 || offers[0].ProductID == nil || *offers[0].ProductID != selected {
+		t.Errorf("offers = %+v, want only the new ECONOMY option", offers)
+	}
+}
+
+func TestQuoteService_SetRecommendationAlternative_RejectsAnUnpricedProduct(t *testing.T) {
+	base, selected := uuid.New(), uuid.New()
+	item := pricedLine(base, "10")
+	f := newQuoteFixture([]domain.QuoteItem{item}, map[uuid.UUID]domain.BranchPrice{
+		base: branchPrice(base, "1200.00", nil),
+	})
+	f.quotes.quote.CurrentStatus = domain.QuoteStatusQuoted
+
+	_, err := f.service.SetRecommendationAlternative(context.Background(), f.tenant, f.quoteID,
+		item.ID, selected, domain.ProductAlternativePremium, false)
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("SetRecommendationAlternative() = %v, want %v", err, domain.ErrInvalidInput)
 	}
 }
 
