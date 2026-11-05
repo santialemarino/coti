@@ -223,8 +223,10 @@ func (r *SellerReportRenderer) drawStatusAndTimeline(doc *gofpdf.Fpdf, report do
 	r.drawStatusPie(doc, report.QuotesByStatus, leftMargin+8, startY+17, width-16)
 	timelineX := leftMargin + width + reportSectionGap
 	timelineWidth := pageWidth - width - reportSectionGap
-	r.drawCard(doc, timelineX, startY, timelineWidth, height, "Actividad de cotizaciones", "")
-	r.drawTimeline(doc, report.Timeline, timelineX+6, startY+18, timelineWidth-12, 36)
+	r.drawCard(doc, timelineX, startY, timelineWidth, height, "Actividad de cotizaciones",
+		r.granularityLabel(report.Granularity))
+	r.drawTimeline(doc, report.Timeline, report.Granularity, timelineX+6, startY+18,
+		timelineWidth-12, 36)
 	doc.SetY(startY + height)
 }
 
@@ -300,7 +302,8 @@ func (r *SellerReportRenderer) drawStatusPie(
 }
 
 func (r *SellerReportRenderer) drawTimeline(
-	doc *gofpdf.Fpdf, points []domain.SellerReportTimelinePoint, x, y, width, height float64,
+	doc *gofpdf.Fpdf, points []domain.SellerReportTimelinePoint,
+	granularity domain.ReportGranularity, x, y, width, height float64,
 ) {
 	doc.SetFont("Go", "", 5.8)
 	if len(points) == 0 {
@@ -364,7 +367,7 @@ func (r *SellerReportRenderer) drawTimeline(
 		if index%labelStep != 0 && index != len(points)-1 {
 			continue
 		}
-		label := r.reportDayLabel(point.Date)
+		label := r.reportBucketLabel(point.Date, granularity)
 		doc.SetXY(pointX(index)-7, plotTop+plotHeight+2)
 		doc.CellFormat(14, 3.5, label, "", 0, "C", false, 0, "")
 	}
@@ -767,12 +770,29 @@ func (r *SellerReportRenderer) reportShortDate(value string) string {
 	return parsed.Format("02/01/2006")
 }
 
-func (r *SellerReportRenderer) reportDayLabel(value string) string {
+func (r *SellerReportRenderer) reportBucketLabel(value string, granularity domain.ReportGranularity) string {
 	parsed, err := time.Parse("2006-01-02", value)
 	if err != nil {
 		return value
 	}
+	if granularity == domain.ReportGranularityMonth {
+		return reportMonthNames[parsed.Month()-1] + " " + parsed.Format("06")
+	}
 	return parsed.Format("02/01")
+}
+
+var reportMonthNames = [12]string{
+	"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic",
+}
+
+func (r *SellerReportRenderer) granularityLabel(granularity domain.ReportGranularity) string {
+	switch granularity {
+	case domain.ReportGranularityWeek:
+		return "Por semana, desde el lunes."
+	case domain.ReportGranularityMonth:
+		return "Por mes."
+	}
+	return "Por día."
 }
 
 func (r *SellerReportRenderer) responseDetail(response domain.SellerReportResponseTime) string {

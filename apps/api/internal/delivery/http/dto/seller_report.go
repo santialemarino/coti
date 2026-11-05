@@ -4,19 +4,21 @@ import "github.com/google/uuid"
 
 // SellerReportFilterQuery is the optional narrowing of GET /v1/reports and its PDF.
 type SellerReportFilterQuery struct {
-	From      string   `form:"from"`
-	To        string   `form:"to"`
-	Statuses  []string `form:"status"`
-	Channel   string   `form:"channel"`
-	SellerID  string   `form:"seller_id"`
-	ClientID  string   `form:"client_id"`
-	BranchIDs []string `form:"branch_id"`
-	TagIDs    []string `form:"tag_id"`
+	From        string   `form:"from"`
+	To          string   `form:"to"`
+	Statuses    []string `form:"status"`
+	Channel     string   `form:"channel"`
+	SellerID    string   `form:"seller_id"`
+	ClientID    string   `form:"client_id"`
+	BranchIDs   []string `form:"branch_id"`
+	TagIDs      []string `form:"tag_id"`
+	Granularity string   `form:"granularity"`
 }
 
 // SellerReportResponse is the seller dashboard read for one period.
 type SellerReportResponse struct {
 	Range              SellerReportRangeResponse            `json:"range"`
+	Granularity        string                               `json:"granularity"`
 	Scope              SellerReportScopeResponse            `json:"scope"`
 	Filters            SellerReportFiltersResponse          `json:"filters"`
 	KPIs               SellerReportKPIsResponse             `json:"kpis"`
@@ -90,11 +92,14 @@ type SellerReportStatusResponse struct {
 	Count  int    `json:"count"`
 }
 
-// SellerReportTimelineResponse is one day's sent and accepted quote counts.
+// SellerReportTimelineResponse is one trend bucket, dated by its first day inside the period.
 type SellerReportTimelineResponse struct {
-	Date     string `json:"date"`
-	Sent     int    `json:"sent"`
-	Accepted int    `json:"accepted"`
+	Date           string  `json:"date"`
+	RFQs           int     `json:"rfqs"`
+	Sent           int     `json:"sent"`
+	Accepted       int     `json:"accepted"`
+	SentAccepted   int     `json:"sent_accepted"`
+	ConversionRate *string `json:"conversion_rate"`
 }
 
 // SellerReportProductResponse is one requested material ranked by quote lines.

@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,9 +18,17 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
     currency: (amount: string) => `$ ${amount}`,
     ratePct: (ratio: number) => `${Math.round(ratio * 100)}%`,
     date: (iso: string) => `fecha ${iso}`,
+    dateNumeric: (iso: string) => `num ${iso}`,
+    month: (iso: string) => `mes ${iso}`,
   })),
 }));
 vi.mock('@/lib/api/reports', () => ({ getSellerReport: vi.fn() }));
+const replace = vi.fn();
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/reports',
+  useRouter: () => ({ replace }),
+  useSearchParams: () => new URLSearchParams('from=2026-09-26&to=2026-10-25'),
+}));
 vi.mock('next/form', () => ({
   default: (props: ComponentProps<'form'>) => <form {...props} />,
 }));
@@ -43,6 +51,7 @@ const copy = messages.reports;
 function report(overrides: Partial<SellerReport> = {}): SellerReport {
   return {
     range: { from: '2026-09-26', to: '2026-10-25' },
+    granularity: 'week',
     scope: { multiBranch: false, branchId: 'branch-1' },
     filters: {
       statuses: [],
@@ -69,8 +78,9 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       { status: 'ACCEPTED', count: 2 },
     ],
     timeline: [
-      { date: '2026-09-26', sent: 1, accepted: 0 },
-      { date: '2026-09-27', sent: 2, accepted: 1 },
+      { date: '2026-09-26', rfqs: 3, sent: 1, accepted: 0, sentAccepted: 0, conversionRate: 0 },
+      { date: '2026-09-28', rfqs: 5, sent: 2, accepted: 1, sentAccepted: 1, conversionRate: 0.5 },
+      { date: '2026-10-05', rfqs: 0, sent: 0, accepted: 0, sentAccepted: 0, conversionRate: null },
     ],
     topProducts: [{ productId: 'product-1', name: 'Cemento', requests: 7 }],
     topRevenueProducts: [{ productId: 'product-1', name: 'Cemento', revenue: '1000.00' }],
@@ -363,6 +373,25 @@ describe('ReportsPage', () => {
     );
 
     expect(screen.getByText('0 aceptadas de 0 enviadas en el período')).toBeTruthy();
+  });
+
+  it('labels trend buckets by the granularity the server applied and switches it in the URL', async () => {
+    await renderReport(report());
+
+    expect(screen.getAllByText('Semana del num 2026-09-28').length).toBeGreaterThan(0);
+    expect(screen.getByText(copy.timeline.by.week)).toBeTruthy();
+    const month = screen.getByRole('radio', { name: copy.timeline.granularity.month });
+    fireEvent.click(month);
+    expect(replace).toHaveBeenCalledWith(
+      '/reports?from=2026-09-26&to=2026-10-25&granularity=month',
+      { scroll: false },
+    );
+  });
+
+  it('labels a monthly trend by month', async () => {
+    await renderReport(report({ granularity: 'month' }));
+
+    expect(screen.getAllByText('mes 2026-09-26').length).toBeGreaterThan(0);
   });
 
   it('names quote statuses as quotes and dates the timeline for a reader', async () => {

@@ -46,6 +46,7 @@ func NewSellerReportHandler(reports SellerReportService) *SellerReportHandler {
 //	@Param			client_id	query	string	false	"Client UUID"
 //	@Param			branch_id	query	[]string	false	"Branch UUIDs inside the caller's reach; repeat or comma-separate"
 //	@Param			tag_id		query	[]string	false	"Client tag UUIDs; an order matches when its client carries any of them"
+//	@Param			granularity	query	string	false	"Trend bucket: day, week or month; omitted picks one from the period's length"
 //	@Success		200			{object}	dto.SellerReportResponse
 //	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -86,6 +87,7 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 //	@Param			client_id	query	string	false	"Client UUID"
 //	@Param			branch_id	query	[]string	false	"Branch UUIDs inside the caller's reach; repeat or comma-separate"
 //	@Param			tag_id		query	[]string	false	"Client tag UUIDs; an order matches when its client carries any of them"
+//	@Param			granularity	query	string	false	"Trend bucket: day, week or month; omitted picks one from the period's length"
 //	@Success		200			{file}	binary
 //	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -124,12 +126,13 @@ func reportFilterQuery(c *gin.Context) (dto.SellerReportFilterQuery, bool) {
 
 func reportFilterInput(query dto.SellerReportFilterQuery) domain.SellerReportFilterInput {
 	return domain.SellerReportFilterInput{
-		Statuses:  query.Statuses,
-		Channel:   query.Channel,
-		SellerID:  query.SellerID,
-		ClientID:  query.ClientID,
-		BranchIDs: query.BranchIDs,
-		TagIDs:    query.TagIDs,
+		Statuses:    query.Statuses,
+		Channel:     query.Channel,
+		SellerID:    query.SellerID,
+		ClientID:    query.ClientID,
+		BranchIDs:   query.BranchIDs,
+		TagIDs:      query.TagIDs,
+		Granularity: query.Granularity,
 	}
 }
 
@@ -155,6 +158,7 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			From: report.Range.From,
 			To:   report.Range.To,
 		},
+		Granularity: string(report.Granularity),
 		Scope: dto.SellerReportScopeResponse{
 			MultiBranch: report.Scope.MultiBranch,
 			BranchID:    report.Scope.BranchID,
@@ -203,7 +207,9 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 	}
 	for _, point := range report.Timeline {
 		response.Timeline = append(response.Timeline, dto.SellerReportTimelineResponse{
-			Date: point.Date, Sent: point.Sent, Accepted: point.Accepted,
+			Date: point.Date, RFQs: point.RFQs, Sent: point.Sent, Accepted: point.Accepted,
+			SentAccepted:   point.SentAccepted,
+			ConversionRate: decimalString(point.ConversionRate, 4),
 		})
 	}
 	for _, product := range report.TopProducts {

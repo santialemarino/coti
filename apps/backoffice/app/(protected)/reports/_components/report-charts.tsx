@@ -190,45 +190,78 @@ export function RankingList({
   );
 }
 
-export interface TimelinePoint {
+export interface TrendPoint {
   date: string;
+  rfqs: number;
   sent: number;
   accepted: number;
+  conversionRate: number | null;
 }
 
-// Two thin bars per day: the tolerance is the gap, not a border, so the pair never touches.
-export function TimelineChart({
+interface TrendLabels {
+  rfqs: string;
+  sent: string;
+  accepted: string;
+  conversion: string;
+  bucket: string;
+}
+
+const TREND_SERIES = [
+  { key: 'rfqs', className: 'bg-status-draft' },
+  { key: 'sent', className: 'bg-status-sent' },
+  { key: 'accepted', className: 'bg-status-accepted' },
+] as const;
+
+// Every bucket's order, send and acceptance volume, with the cohort conversion under it as a line.
+export function TrendChart({
   points,
-  sentLabel,
-  acceptedLabel,
-  dateLabel,
+  labels,
   ariaLabel,
   scrollLabel,
-  formatDate,
+  formatBucket,
   formatValue,
+  formatShare,
 }: {
-  points: TimelinePoint[];
-  sentLabel: string;
-  acceptedLabel: string;
-  dateLabel: string;
+  points: TrendPoint[];
+  labels: TrendLabels;
   ariaLabel: string;
   // Names the scrollable region apart from the chart, so a screen reader does not hear it twice.
   scrollLabel: string;
-  formatDate: (date: string) => string;
+  formatBucket: (date: string) => string;
   formatValue: (value: number) => string;
+  formatShare: (ratio: number) => string;
 }) {
-  const max = Math.max(1, ...points.flatMap((point) => [point.sent, point.accepted]));
+  const max = Math.max(1, ...points.flatMap((point) => [point.rfqs, point.sent, point.accepted]));
+  const minWidth = Math.max(420, points.length * 14);
+  const axisIndexes = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
+  // Each point sits over its bucket's bar group, so the line and the bars read as one axis.
+  const linePoints = points.map((point, index) =>
+    point.conversionRate === null
+      ? null
+      : {
+          x: ((index + 0.5) / points.length) * 100,
+          y: 100 - point.conversionRate * 100,
+          title: `${formatBucket(point.date)}: ${formatShare(point.conversionRate)}`,
+        },
+  );
+  // Buckets that sent nothing break the line rather than drawing a fake zero.
+  const segments = linePoints.reduce<{ x: number; y: number; title: string }[][]>((runs, point) => {
+    if (point === null) return runs.at(-1)?.length === 0 ? runs : [...runs, []];
+    const last = runs.at(-1);
+    if (last) last.push(point);
+    else runs.push([point]);
+    return runs;
+  }, []);
+
   return (
     <div className="flex flex-col gap-y-4">
-      <div className="flex items-center gap-x-4 text-paragraph-xs text-foreground-muted">
-        <span className="inline-flex items-center gap-x-1.5">
-          <span className="size-2 rounded-full bg-status-sent" aria-hidden="true" />
-          {sentLabel}
-        </span>
-        <span className="inline-flex items-center gap-x-1.5">
-          <span className="size-2 rounded-full bg-status-accepted" aria-hidden="true" />
-          {acceptedLabel}
-        </span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-paragraph-xs text-foreground-muted">
+        {TREND_SERIES.map((series) => (
+          <span key={series.key} className="inline-flex items-center gap-x-1.5">
+            <span className={cn('size-2 rounded-full', series.className)} aria-hidden="true" />
+            {labels[series.key]}
+          </span>
+        ))}
       </div>
       {/* Focusable so a keyboard can scroll a long period; the ring is the only cue it scrolls. */}
       <div
@@ -240,43 +273,109 @@ export function TimelineChart({
         <div
           role="img"
           aria-label={ariaLabel}
-          style={{ minWidth: Math.max(420, points.length * 8) }}
-          className="flex h-40 items-end gap-x-1 border-b border-border pb-px"
+          style={{ minWidth }}
+          className="flex flex-col gap-y-2"
         >
-          {points.map((point) => (
-            <div
-              key={point.date}
-              className="flex h-full min-w-0 flex-1 items-end justify-center gap-x-0.5"
-            >
-              <span
-                title={`${formatDate(point.date)}: ${formatValue(point.sent)} ${sentLabel}`}
-                className="w-1/3 max-w-3 rounded-t-sm bg-status-sent"
-                style={{ height: point.sent === 0 ? 0 : `${(point.sent / max) * 100}%` }}
-              />
-              <span
-                title={`${formatDate(point.date)}: ${formatValue(point.accepted)} ${acceptedLabel}`}
-                className="w-1/3 max-w-3 rounded-t-sm bg-status-accepted"
-                style={{ height: point.accepted === 0 ? 0 : `${(point.accepted / max) * 100}%` }}
-              />
+          <div className="flex h-40 items-end gap-x-1 border-b border-border pb-px">
+            {points.map((point) => (
+              <div
+                key={point.date}
+                className="flex h-full min-w-0 flex-1 items-end justify-center gap-x-0.5"
+              >
+                {TREND_SERIES.map((series) => (
+                  <span
+                    key={series.key}
+                    title={`${formatBucket(point.date)}: ${formatValue(point[series.key])} ${labels[series.key]}`}
+                    className={cn('w-1/4 max-w-3 rounded-t-sm', series.className)}
+                    style={{ height: `${(point[series.key] / max) * 100}%` }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="relative h-4 text-paragraph-xs text-foreground-subtle">
+            {axisIndexes.map((index) => {
+              const point = points[index];
+              if (!point) return null;
+              const align =
+                index === 0
+                  ? 'left-0'
+                  : index === points.length - 1
+                    ? 'right-0'
+                    : 'left-1/2 -translate-x-1/2';
+              return (
+                <span key={point.date} className={cn('absolute whitespace-nowrap', align)}>
+                  {formatBucket(point.date)}
+                </span>
+              );
+            })}
+          </div>
+          <div className="flex flex-col gap-y-1">
+            <span className="text-paragraph-xs text-foreground-muted">{labels.conversion}</span>
+            <div className="relative h-16">
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                className="absolute inset-0 size-full overflow-visible"
+              >
+                <line
+                  x1="0"
+                  y1="100"
+                  x2="100"
+                  y2="100"
+                  stroke="var(--border)"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {segments.map((segment) =>
+                  segment.length > 1 ? (
+                    <polyline
+                      key={`${segment[0]?.x}-${segment.length}`}
+                      points={segment.map((point) => `${point.x},${point.y}`).join(' ')}
+                      fill="none"
+                      stroke="var(--status-accepted-base)"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ) : null,
+                )}
+              </svg>
+              {linePoints.map((point, index) =>
+                point ? (
+                  <span
+                    key={points[index]?.date}
+                    title={point.title}
+                    aria-hidden="true"
+                    className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-status-accepted"
+                    style={{ left: `${point.x}%`, top: `${point.y}%` }}
+                  />
+                ) : null,
+              )}
             </div>
-          ))}
+          </div>
         </div>
       </div>
       <table className="sr-only">
         <caption>{ariaLabel}</caption>
         <thead>
           <tr>
-            <th scope="col">{dateLabel}</th>
-            <th scope="col">{sentLabel}</th>
-            <th scope="col">{acceptedLabel}</th>
+            <th scope="col">{labels.bucket}</th>
+            <th scope="col">{labels.rfqs}</th>
+            <th scope="col">{labels.sent}</th>
+            <th scope="col">{labels.accepted}</th>
+            <th scope="col">{labels.conversion}</th>
           </tr>
         </thead>
         <tbody>
           {points.map((point) => (
             <tr key={point.date}>
-              <th scope="row">{formatDate(point.date)}</th>
+              <th scope="row">{formatBucket(point.date)}</th>
+              <td>{formatValue(point.rfqs)}</td>
               <td>{formatValue(point.sent)}</td>
               <td>{formatValue(point.accepted)}</td>
+              <td>{point.conversionRate === null ? '—' : formatShare(point.conversionRate)}</td>
             </tr>
           ))}
         </tbody>

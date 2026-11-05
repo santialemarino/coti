@@ -18,6 +18,8 @@ interface ReportSectionProps {
   empty?: string;
   // Lists and tables run edge to edge; charts sit inside the card's padding.
   flush?: boolean;
+  // A control beside the title that changes how the body reads, like the trend's granularity.
+  action?: ReactNode;
   className?: string;
   children?: ReactNode;
 }
@@ -28,9 +30,19 @@ export function ReportSection({
   description,
   empty,
   flush = false,
+  action,
   className,
   children,
 }: ReportSectionProps) {
+  const heading = (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-col gap-y-1.5">
+        <CardTitle>{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
+      </div>
+      {action}
+    </div>
+  );
   const emptyState = empty ? (
     <EmptyState icon={ChartColumnIcon} size="inline" title={empty} />
   ) : null;
@@ -38,10 +50,7 @@ export function ReportSection({
   if (flush) {
     return (
       <Card className={cn('gap-y-0 overflow-hidden py-0', className)}>
-        <CardHeader className="pb-4 pt-5">
-          <CardTitle>{title}</CardTitle>
-          {description ? <CardDescription>{description}</CardDescription> : null}
-        </CardHeader>
+        <CardHeader className="pb-4 pt-5">{heading}</CardHeader>
         {emptyState ? <CardContent className="pb-5">{emptyState}</CardContent> : children}
       </Card>
     );
@@ -49,10 +58,7 @@ export function ReportSection({
 
   return (
     <Card className={cn('gap-y-4 py-5', className)}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
-      </CardHeader>
+      <CardHeader>{heading}</CardHeader>
       <CardContent>{emptyState ?? children}</CardContent>
     </Card>
   );

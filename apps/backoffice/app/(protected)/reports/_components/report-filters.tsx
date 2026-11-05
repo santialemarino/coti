@@ -50,6 +50,8 @@ interface ReportFiltersProps {
   showSeller?: boolean;
   // Only a report that spans several branches can narrow by branch.
   showBranch?: boolean;
+  // A trend bucket chosen in the chart rides along with the filters; absent, the server picks one.
+  granularity?: string;
 }
 
 // A GET form through next/form: the URL carries the filters and navigation stays client-side.
@@ -68,6 +70,7 @@ export function ReportFilters({
   tags = [],
   showSeller = false,
   showBranch = false,
+  granularity,
 }: ReportFiltersProps) {
   const t = useTranslations('reports.filters');
   const tStatus = useTranslations('reports.statusLabels');
@@ -224,6 +227,7 @@ export function ReportFilters({
       {tagValues.map((tag) => (
         <input key={tag} type="hidden" name="tag_id" value={tag} />
       ))}
+      {granularity ? <input type="hidden" name="granularity" value={granularity} /> : null}
       {showBranch
         ? branchValues.map((branch) => (
             <input key={branch} type="hidden" name="branch_id" value={branch} />

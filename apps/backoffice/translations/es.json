@@ -2110,12 +2110,26 @@
       "REJECTED": "Rechazada"
     },
     "timeline": {
-      "title": "Envíos y aceptaciones",
+      "title": "Tendencia",
       "sent": "Enviadas",
       "accepted": "Aceptadas",
-      "date": "Fecha",
-      "aria": "Envíos y aceptaciones por día entre {from} y {to}",
-      "scroll": "Gráfico desplazable"
+      "aria": "Pedidos, envíos, aceptaciones y conversión entre {from} y {to}",
+      "scroll": "Gráfico desplazable",
+      "rfqs": "Pedidos",
+      "conversion": "Conversión de las enviadas en cada período",
+      "bucket": "Período",
+      "weekOf": "Semana del {date}",
+      "by": {
+        "day": "Por día.",
+        "week": "Por semana, desde el lunes.",
+        "month": "Por mes."
+      },
+      "granularity": {
+        "label": "Agrupar por",
+        "day": "Día",
+        "week": "Semana",
+        "month": "Mes"
+      }
     },
     "products": {
       "title": "Productos más solicitados",
