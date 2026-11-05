@@ -7,6 +7,24 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// ReportGranularity is the bucket size of a report's trend series.
+type ReportGranularity string
+
+const (
+	ReportGranularityDay   ReportGranularity = "day"
+	ReportGranularityWeek  ReportGranularity = "week"
+	ReportGranularityMonth ReportGranularity = "month"
+)
+
+// IsValidReportGranularity reports whether granularity is one of the trend bucket sizes.
+func IsValidReportGranularity(granularity ReportGranularity) bool {
+	switch granularity {
+	case ReportGranularityDay, ReportGranularityWeek, ReportGranularityMonth:
+		return true
+	}
+	return false
+}
+
 // SellerReportQuery is the resolved scope, period and filters one report read runs with.
 type SellerReportQuery struct {
 	AccountID    uuid.UUID
@@ -26,6 +44,7 @@ type SellerReportQuery struct {
 	FromDate          string
 	ToDate            string
 	TimeZone          string
+	Granularity       ReportGranularity
 	HighConfidence    decimal.Decimal
 }
 
@@ -37,6 +56,8 @@ type SellerReportFilterInput struct {
 	ClientID  string
 	BranchIDs []string
 	TagIDs    []string
+	// Granularity is the requested trend bucket; empty picks one from the period's length.
+	Granularity string
 }
 
 // SellerReportFilters is the applied narrowing, with the display names the response echoes.
@@ -65,6 +86,7 @@ type SellerReportPDFRenderer interface {
 // SellerReport is the seller dashboard's read model.
 type SellerReport struct {
 	Range              SellerReportRange
+	Granularity        ReportGranularity
 	Scope              SellerReportScope
 	Filters            SellerReportFilters
 	KPIs               SellerReportKPIs
@@ -123,11 +145,17 @@ type SellerReportStatusCount struct {
 	Count  int
 }
 
-// SellerReportTimelinePoint is one Argentine calendar day's sent and accepted quote counts.
+// SellerReportTimelinePoint is one trend bucket: a day, a week from Monday or a calendar month.
 type SellerReportTimelinePoint struct {
+	// Date is the bucket's first day inside the period, so a partial first bucket starts at the period.
 	Date     string
+	RFQs     int
 	Sent     int
 	Accepted int
+	// SentAccepted counts the bucket's first sends that were accepted since.
+	SentAccepted int
+	// ConversionRate is SentAccepted over Sent; nil when the bucket sent nothing.
+	ConversionRate *decimal.Decimal
 }
 
 // SellerReportProduct is one requested material, ranked by how many quote lines asked for it.

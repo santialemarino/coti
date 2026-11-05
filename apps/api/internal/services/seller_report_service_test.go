@@ -441,3 +441,37 @@ func TestSellerReportPropagatesStoreError(t *testing.T) {
 		t.Fatalf("Get() = %v, want %v", err, want)
 	}
 }
+
+func TestSellerReportPicksTheTrendGranularity(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), Role: domain.UserRoleAdmin}
+	cases := []struct {
+		from, to, requested string
+		want                domain.ReportGranularity
+	}{
+		{"2026-10-01", "2026-10-31", "", domain.ReportGranularityDay},
+		{"2026-10-01", "2026-11-01", "", domain.ReportGranularityWeek},
+		{"2026-07-01", "2026-10-28", "", domain.ReportGranularityWeek},
+		{"2026-07-01", "2026-10-29", "", domain.ReportGranularityMonth},
+		{"2026-07-01", "2026-10-29", " DAY ", domain.ReportGranularityDay},
+	}
+	for _, tc := range cases {
+		t.Run(tc.from+"_"+tc.to+"_"+tc.requested, func(t *testing.T) {
+			service, _, store := newSellerReportTestService(t, tenant)
+			report, err := service.Get(context.Background(), tenant, tc.from, tc.to,
+				domain.SellerReportFilterInput{Granularity: tc.requested})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if store.query.Granularity != tc.want || report.Granularity != tc.want {
+				t.Fatalf("granularity = %q / %q, want %q", store.query.Granularity,
+					report.Granularity, tc.want)
+			}
+		})
+	}
+
+	service, _, _ := newSellerReportTestService(t, tenant)
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{Granularity: "year"}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("Get() = %v, want invalid input for an unknown granularity", err)
+	}
+}

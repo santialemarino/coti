@@ -15,7 +15,10 @@ import (
 
 const (
 	reportDefaultDays = 30
-	reportDateLayout  = "2006-01-02"
+	// Periods up to these lengths default to daily, then weekly trend buckets; longer ones are monthly.
+	reportDailyMaxDays  = 31
+	reportWeeklyMaxDays = 120
+	reportDateLayout    = "2006-01-02"
 )
 
 type sellerReportStore interface {
@@ -58,6 +61,10 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 	if err != nil {
 		return nil, err
 	}
+	granularity, err := resolveGranularity(filterInput.Granularity, from, to)
+	if err != nil {
+		return nil, err
+	}
 	start := from.UTC()
 	end := to.AddDate(0, 0, 1).UTC()
 	sellerID := sellerParam(tenant)
@@ -83,6 +90,7 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		FromDate:          from.Format(reportDateLayout),
 		ToDate:            to.Format(reportDateLayout),
 		TimeZone:          domain.Argentina.String(),
+		Granularity:       granularity,
 		HighConfidence:    s.cfg.HighConfidence,
 	}
 
@@ -99,6 +107,7 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		From: query.FromDate,
 		To:   query.ToDate,
 	}
+	report.Granularity = granularity
 	report.Scope = domain.SellerReportScope{
 		MultiBranch: multiBranch,
 	}
@@ -296,6 +305,24 @@ func (s *SellerReportService) resolveRange(fromRaw, toRaw string) (time.Time, ti
 			"%w: the period must not exceed %d days", domain.ErrInvalidInput, s.cfg.MaxRangeDays)
 	}
 	return from, to, nil
+}
+
+func resolveGranularity(raw string, from, to time.Time) (domain.ReportGranularity, error) {
+	if trimmed := strings.ToLower(strings.TrimSpace(raw)); trimmed != "" {
+		granularity := domain.ReportGranularity(trimmed)
+		if !domain.IsValidReportGranularity(granularity) {
+			return "", fmt.Errorf("%w: unknown granularity %q", domain.ErrInvalidInput, raw)
+		}
+		return granularity, nil
+	}
+	days := int(to.Sub(from).Hours()/24) + 1
+	switch {
+	case days <= reportDailyMaxDays:
+		return domain.ReportGranularityDay, nil
+	case days <= reportWeeklyMaxDays:
+		return domain.ReportGranularityWeek, nil
+	}
+	return domain.ReportGranularityMonth, nil
 }
 
 func sellerParam(tenant domain.Tenant) *uuid.UUID {

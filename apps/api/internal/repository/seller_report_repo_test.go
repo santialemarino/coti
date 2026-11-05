@@ -22,6 +22,7 @@ func reportQuery(accountID uuid.UUID) domain.SellerReportQuery {
 		FromDate:       "2026-10-01",
 		ToDate:         "2026-10-02",
 		TimeZone:       domain.Argentina.String(),
+		Granularity:    domain.ReportGranularityDay,
 		HighConfidence: decimal.RequireFromString("0.8000"),
 	}
 }
@@ -806,6 +807,78 @@ func TestSellerReportRepositoryGroupsUnmatchedTextAndHidesIdleClosedBranches(t *
 	}
 	if len(report.Branches) != 1 {
 		t.Fatalf("branches = %+v, want only the active branch", report.Branches)
+	}
+}
+
+func TestSellerReportRepositoryBucketsTheTrendByWeekAndMonth(t *testing.T) {
+	db := testDB(t)
+	accountID := seedAccount(t, db, "Reportes tendencia")
+	branchID := reportBranch(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Arena")
+	// Buenos Aires midday, so no event sits near a day boundary.
+	at := func(month time.Month, day int) time.Time {
+		return time.Date(2026, month, day, 15, 0, 0, 0, time.UTC)
+	}
+	converted, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	open, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	for _, seed := range []struct {
+		quote    uuid.UUID
+		received time.Time
+		sent     time.Time
+		accepted *time.Time
+	}{
+		{converted, at(time.October, 2), at(time.October, 6), timePtr(at(time.October, 7))},
+		{open, at(time.September, 20), at(time.October, 13), nil},
+	} {
+		reportExec(t, db, "rfq", `UPDATE rfq SET received_at = $2
+		   WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`, seed.quote, seed.received)
+		reportExec(t, db, "sent", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'QUOTED', 'SENT', $3)`, accountID, seed.quote, seed.sent)
+		if seed.accepted != nil {
+			reportExec(t, db, "accepted", `INSERT INTO quote_status_change
+			   (account_id, quote_id, previous_status, new_status, changed_at)
+			   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`, accountID, seed.quote, *seed.accepted)
+		}
+	}
+	period := func(from, to string, granularity domain.ReportGranularity) domain.SellerReportQuery {
+		in := reportQuery(accountID)
+		start, _ := time.ParseInLocation("2006-01-02", from, domain.Argentina)
+		end, _ := time.ParseInLocation("2006-01-02", to, domain.Argentina)
+		in.StartAt, in.EndAt = start.UTC(), end.AddDate(0, 0, 1).UTC()
+		in.FromDate, in.ToDate, in.Granularity = from, to, granularity
+		return in
+	}
+
+	weekly := buildReport(t, db, domain.Tenant{AccountID: accountID},
+		period("2026-10-01", "2026-10-20", domain.ReportGranularityWeek)).Timeline
+	wantDates := []string{"2026-10-01", "2026-10-05", "2026-10-12", "2026-10-19"}
+	if len(weekly) != len(wantDates) {
+		t.Fatalf("weekly trend = %+v, want %d Monday buckets", weekly, len(wantDates))
+	}
+	for index, want := range wantDates {
+		if weekly[index].Date != want {
+			t.Fatalf("weekly trend = %+v, want buckets dated %v", weekly, wantDates)
+		}
+	}
+	if weekly[0].RFQs != 1 || weekly[1].Sent != 1 || weekly[1].Accepted != 1 ||
+		weekly[1].SentAccepted != 1 || weekly[2].Sent != 1 || weekly[2].SentAccepted != 0 {
+		t.Fatalf("weekly trend = %+v, want the order, sends and acceptance in their weeks", weekly)
+	}
+	if weekly[1].ConversionRate == nil || weekly[1].ConversionRate.StringFixed(2) != "1.00" ||
+		weekly[2].ConversionRate == nil || weekly[2].ConversionRate.StringFixed(2) != "0.00" ||
+		weekly[3].ConversionRate != nil {
+		t.Fatalf("weekly conversion = %+v, want 1, 0 and none for a week with no sends", weekly)
+	}
+
+	monthly := buildReport(t, db, domain.Tenant{AccountID: accountID},
+		period("2026-09-15", "2026-10-20", domain.ReportGranularityMonth)).Timeline
+	if len(monthly) != 2 || monthly[0].Date != "2026-09-15" || monthly[1].Date != "2026-10-01" {
+		t.Fatalf("monthly trend = %+v, want September from the 15th and October", monthly)
+	}
+	if monthly[0].RFQs != 1 || monthly[1].RFQs != 1 || monthly[1].Sent != 2 ||
+		monthly[1].SentAccepted != 1 {
+		t.Fatalf("monthly trend = %+v, want each order in its month and both sends in October", monthly)
 	}
 }
 

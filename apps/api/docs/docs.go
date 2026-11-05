@@ -8203,6 +8203,12 @@ const docTemplate = `{
                         "description": "Client tag UUIDs; an order matches when its client carries any of them",
                         "name": "tag_id",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trend bucket: day, week or month; omitted picks one from the period's length",
+                        "name": "granularity",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -8319,6 +8325,12 @@ const docTemplate = `{
                         "collectionFormat": "csv",
                         "description": "Client tag UUIDs; an order matches when its client carries any of them",
                         "name": "tag_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trend bucket: day, week or month; omitted picks one from the period's length",
+                        "name": "granularity",
                         "in": "query"
                     }
                 ],
@@ -14030,6 +14042,9 @@ const docTemplate = `{
                 "filters": {
                     "$ref": "#/definitions/dto.SellerReportFiltersResponse"
                 },
+                "granularity": {
+                    "type": "string"
+                },
                 "kpis": {
                     "$ref": "#/definitions/dto.SellerReportKPIsResponse"
                 },
@@ -14127,10 +14142,19 @@ const docTemplate = `{
                 "accepted": {
                     "type": "integer"
                 },
+                "conversion_rate": {
+                    "type": "string"
+                },
                 "date": {
                     "type": "string"
                 },
+                "rfqs": {
+                    "type": "integer"
+                },
                 "sent": {
+                    "type": "integer"
+                },
+                "sent_accepted": {
                     "type": "integer"
                 }
             }

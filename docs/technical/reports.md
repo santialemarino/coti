@@ -55,8 +55,12 @@ client, and each branch and tag, so the page and the PDF can say what they are s
 - `kpis.response_time`: first send minus RFQ arrival, for RFQs received in the period. Manual-entry
   channels are excluded because there was no inbound message to answer.
 - `quotes_by_status`: quotes created in the period, grouped by their current status.
-- `timeline`: one point per calendar day, with sent and accepted events. Days with no activity are
-  present with zeroes.
+- `timeline`: the trend, one point per bucket of `granularity` — `day`, `week` (from Monday) or
+  `month`. Each point carries the orders received, the first sends, the acceptances and the cohort
+  conversion of that bucket's sends (`sent_accepted`, `conversion_rate`, `null` when it sent nothing).
+  Buckets with no activity are present with zeroes; a partial first bucket is dated by the period's
+  first day. With no `granularity` requested, periods up to 31 days are daily, up to 120 weekly, and
+  longer ones monthly; the response echoes the one applied.
 - `top_products`: the five most requested products across each visible RFQ's current quote version,
   ranked by line occurrences. Every quote line counts once, regardless of its quantity. Matched
   products use the canonical catalog name; unmatched lines use the requested description, grouped

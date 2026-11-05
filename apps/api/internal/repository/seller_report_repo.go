@@ -329,9 +329,16 @@ func (r *SellerReportRepository) readTimeline(
 	ctx context.Context, q Querier, in domain.SellerReportQuery,
 	out *[]domain.SellerReportTimelinePoint,
 ) error {
+	// $14 is the bucket unit date_trunc and the series step share; weeks start on Monday.
 	rows, err := q.Query(ctx,
-		`WITH `+scopedRfqsCTE+`, days AS (
-		   SELECT generate_series($11::date, $12::date, interval '1 day')::date AS day
+		`WITH `+scopedRfqsCTE+`, buckets AS (
+		   SELECT generate_series(date_trunc($14, $11::date), $12::date,
+		                          ('1 ' || $14)::interval)::date AS bucket
+		 ), received AS (
+		   SELECT date_trunc($14, received_at AT TIME ZONE $13)::date AS bucket, count(*) AS total
+		   FROM scoped_rfqs
+		   WHERE received_at >= $4 AND received_at < $5
+		   GROUP BY 1
 		 ), first_sent AS (
 		   SELECT change.quote_id, min(change.changed_at) AS sent_at
 		   FROM quote_status_change change
@@ -340,7 +347,12 @@ func (r *SellerReportRepository) readTimeline(
 		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
 		   GROUP BY change.quote_id
 		 ), sent AS (
-		   SELECT (sent_at AT TIME ZONE $13)::date AS day, count(*) AS total
+		   SELECT date_trunc($14, sent_at AT TIME ZONE $13)::date AS bucket, count(*) AS total,
+		          count(*) FILTER (WHERE EXISTS (
+		            SELECT 1 FROM quote_status_change accepted
+		            WHERE accepted.account_id = $1 AND accepted.quote_id = first_sent.quote_id
+		              AND accepted.new_status = 'ACCEPTED'
+		              AND accepted.changed_at >= first_sent.sent_at)) AS converted
 		   FROM first_sent
 		   WHERE sent_at >= $4 AND sent_at < $5
 		   GROUP BY 1
@@ -352,18 +364,20 @@ func (r *SellerReportRepository) readTimeline(
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
 		     AND change.changed_at >= $4 AND change.changed_at < $5
 		   ORDER BY change.quote_id, change.changed_at DESC
-		 ), accepted_by_day AS (
-		   SELECT (changed_at AT TIME ZONE $13)::date AS day, count(*) AS total
+		 ), accepted_by_bucket AS (
+		   SELECT date_trunc($14, changed_at AT TIME ZONE $13)::date AS bucket, count(*) AS total
 		   FROM accepted
 		   GROUP BY 1
 		 )
-		 SELECT to_char(days.day, 'YYYY-MM-DD'),
-		        COALESCE(sent.total, 0), COALESCE(accepted_by_day.total, 0)
-		 FROM days
-		 LEFT JOIN sent ON sent.day = days.day
-		 LEFT JOIN accepted_by_day ON accepted_by_day.day = days.day
-		 ORDER BY days.day`,
-		append(reportArgs(in), in.FromDate, in.ToDate, in.TimeZone)...,
+		 SELECT to_char(GREATEST(buckets.bucket, $11::date), 'YYYY-MM-DD'),
+		        COALESCE(received.total, 0), COALESCE(sent.total, 0),
+		        COALESCE(accepted_by_bucket.total, 0), COALESCE(sent.converted, 0)
+		 FROM buckets
+		 LEFT JOIN received ON received.bucket = buckets.bucket
+		 LEFT JOIN sent ON sent.bucket = buckets.bucket
+		 LEFT JOIN accepted_by_bucket ON accepted_by_bucket.bucket = buckets.bucket
+		 ORDER BY buckets.bucket`,
+		append(reportArgs(in), in.FromDate, in.ToDate, in.TimeZone, string(in.Granularity))...,
 	)
 	if err != nil {
 		return err
@@ -371,8 +385,13 @@ func (r *SellerReportRepository) readTimeline(
 	defer rows.Close()
 	for rows.Next() {
 		var item domain.SellerReportTimelinePoint
-		if err := rows.Scan(&item.Date, &item.Sent, &item.Accepted); err != nil {
+		if err := rows.Scan(&item.Date, &item.RFQs, &item.Sent, &item.Accepted,
+			&item.SentAccepted); err != nil {
 			return err
+		}
+		if item.Sent > 0 {
+			rate := decimal.NewFromInt(int64(item.SentAccepted)).Div(decimal.NewFromInt(int64(item.Sent)))
+			item.ConversionRate = &rate
 		}
 		*out = append(*out, item)
 	}
