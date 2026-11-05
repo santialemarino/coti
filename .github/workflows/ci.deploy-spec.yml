@@ -49,6 +49,32 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: The spec matches the App Platform schema
         run: doctl apps spec validate --schema-only "$SPEC" > /dev/null
+      - name: Browser handlers and versioned API routes remain reachable
+        if: matrix.spec != '.do/portal.yaml'
+        run: |
+          export ROUTING="$(yq -o=json '.ingress.rules' "$SPEC")"
+          python3 - <<'PY'
+          import json
+          import os
+
+          rules = json.loads(os.environ["ROUTING"])
+
+          def destination(path):
+              matches = [r for r in rules if path.startswith(r["match"]["path"]["prefix"])]
+              rule = max(matches, key=lambda r: len(r["match"]["path"]["prefix"]))
+              prefix = rule["match"]["path"]["prefix"]
+              component = rule["component"]
+              rewrite = component.get("rewrite", "/")
+              forwarded = rewrite + path[len(prefix):].lstrip("/")
+              return component["name"], forwarded
+
+          for path in ["/api/channels", "/api/rfqs/file-drafts", "/api/products"]:
+              assert destination(path) == ("backoffice", path), path
+          for path, forwarded in [("/api/v1/channels", "/v1/channels"),
+                                  ("/api/v1/webhooks/whatsapp", "/v1/webhooks/whatsapp"),
+                                  ("/api/ready", "/ready"), ("/api/health", "/health")]:
+              assert destination(path) == ("api", forwarded), path
+          PY
       # This repository is public, so the spec carries names and shapes and never a value. A habit
       # is not a guarantee; this is.
       - name: No SECRET carries a value

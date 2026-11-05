@@ -10,9 +10,22 @@ ingress:
   rules:
     - match:
         path:
-          prefix: /api
+          prefix: /api/v1
       component:
         name: api
+        rewrite: /v1/
+    - match:
+        path:
+          prefix: /api/ready
+      component:
+        name: api
+        rewrite: /ready
+    - match:
+        path:
+          prefix: /api/health
+      component:
+        name: api
+        rewrite: /health
     - match:
         path:
           prefix: /q
