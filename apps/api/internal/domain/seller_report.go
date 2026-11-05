@@ -97,6 +97,7 @@ type SellerReport struct {
 	TopRevenueProducts []SellerReportRevenueProduct
 	TopClients         []SellerReportClient
 	AIMatch            SellerReportAIMatch
+	Assistant          SellerReportAssistant
 }
 
 // SellerReportRange is the inclusive Argentine calendar-day period the report covers.
@@ -122,10 +123,15 @@ type SellerReportKPIs struct {
 	ConversionRate *decimal.Decimal
 	// AcceptedAmount sums the commercial totals of the accepted versions found for the period.
 	AcceptedAmount decimal.Decimal
-	ResponseTime   SellerReportResponseTime
+	// ResponseTime is the first send after an order arrived, manual entries excluded.
+	ResponseTime SellerReportResponseTime
+	// TimeToAcceptance runs from a quote's first send to its acceptance, for acceptances in the period.
+	TimeToAcceptance SellerReportResponseTime
+	// FollowUpPending counts the quotes in scope flagged for follow-up now, whatever the period.
+	FollowUpPending int
 }
 
-// SellerReportResponseTime measures the first send after an order arrived, manual entries excluded.
+// SellerReportResponseTime summarizes one measured interval: its mean, its median and the sample size.
 type SellerReportResponseTime struct {
 	AverageSeconds *int64
 	MedianSeconds  *int64
@@ -185,6 +191,22 @@ type SellerReportAIMatch struct {
 	Total      int
 	Rate       *decimal.Decimal
 	Confidence SellerReportConfidence
+	// VersionLines and VersionUnmatched read the current versions, after the seller's review.
+	VersionLines     int
+	VersionUnmatched int
+}
+
+// SellerReportAssistant splits the conversation assistant's proposals by what the seller did.
+type SellerReportAssistant struct {
+	Proposals      int
+	ApprovedAsIs   int
+	Edited         int
+	Rejected       int
+	ManualOverride int
+	// Pending proposals are undecided and stay in the denominator: an ignored proposal is data.
+	Pending int
+	// ApprovalRate is ApprovedAsIs over Proposals; nil when the assistant proposed nothing.
+	ApprovalRate *decimal.Decimal
 }
 
 // SellerReportConfidence splits scored AI lines by how settled the catalog match read.

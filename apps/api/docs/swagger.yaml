@@ -2970,6 +2970,27 @@ definitions:
         type: string
       total:
         type: integer
+      version_lines:
+        type: integer
+      version_unmatched:
+        type: integer
+    type: object
+  dto.SellerReportAssistantResponse:
+    properties:
+      approval_rate:
+        type: string
+      approved_as_is:
+        type: integer
+      edited:
+        type: integer
+      manual_override:
+        type: integer
+      pending:
+        type: integer
+      proposals:
+        type: integer
+      rejected:
+        type: integer
     type: object
   dto.SellerReportBranchResponse:
     properties:
@@ -3029,6 +3050,8 @@ definitions:
         type: string
       conversion_rate:
         type: string
+      follow_up_pending:
+        type: integer
       quotes_accepted:
         type: integer
       quotes_sent:
@@ -3039,6 +3062,8 @@ definitions:
         type: integer
       sent_accepted:
         type: integer
+      time_to_acceptance:
+        $ref: '#/definitions/dto.SellerReportResponseTimeResponse'
     type: object
   dto.SellerReportOptionResponse:
     properties:
@@ -3067,6 +3092,8 @@ definitions:
     properties:
       ai_match:
         $ref: '#/definitions/dto.SellerReportAIMatchResponse'
+      assistant:
+        $ref: '#/definitions/dto.SellerReportAssistantResponse'
       branches:
         items:
           $ref: '#/definitions/dto.SellerReportBranchResponse'

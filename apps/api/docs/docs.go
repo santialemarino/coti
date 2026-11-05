@@ -13882,6 +13882,38 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
+                },
+                "version_lines": {
+                    "type": "integer"
+                },
+                "version_unmatched": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportAssistantResponse": {
+            "type": "object",
+            "properties": {
+                "approval_rate": {
+                    "type": "string"
+                },
+                "approved_as_is": {
+                    "type": "integer"
+                },
+                "edited": {
+                    "type": "integer"
+                },
+                "manual_override": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "proposals": {
+                    "type": "integer"
+                },
+                "rejected": {
+                    "type": "integer"
                 }
             }
         },
@@ -13974,6 +14006,9 @@ const docTemplate = `{
                 "conversion_rate": {
                     "type": "string"
                 },
+                "follow_up_pending": {
+                    "type": "integer"
+                },
                 "quotes_accepted": {
                     "type": "integer"
                 },
@@ -13988,6 +14023,9 @@ const docTemplate = `{
                 },
                 "sent_accepted": {
                     "type": "integer"
+                },
+                "time_to_acceptance": {
+                    "$ref": "#/definitions/dto.SellerReportResponseTimeResponse"
                 }
             }
         },
@@ -14032,6 +14070,9 @@ const docTemplate = `{
             "properties": {
                 "ai_match": {
                     "$ref": "#/definitions/dto.SellerReportAIMatchResponse"
+                },
+                "assistant": {
+                    "$ref": "#/definitions/dto.SellerReportAssistantResponse"
                 },
                 "branches": {
                     "type": "array",

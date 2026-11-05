@@ -29,6 +29,7 @@ type SellerReportResponse struct {
 	TopRevenueProducts []SellerReportRevenueProductResponse `json:"top_revenue_products"`
 	TopClients         []SellerReportClientResponse         `json:"top_clients"`
 	AIMatch            SellerReportAIMatchResponse          `json:"ai_match"`
+	Assistant          SellerReportAssistantResponse        `json:"assistant"`
 }
 
 // SellerReportRangeResponse is the inclusive period the report covers.
@@ -63,16 +64,18 @@ type SellerReportOptionResponse struct {
 
 // SellerReportKPIsResponse holds the period's headline numbers.
 type SellerReportKPIsResponse struct {
-	RFQsReceived   int                              `json:"rfqs_received"`
-	QuotesSent     int                              `json:"quotes_sent"`
-	QuotesAccepted int                              `json:"quotes_accepted"`
-	SentAccepted   int                              `json:"sent_accepted"`
-	ConversionRate *string                          `json:"conversion_rate"`
-	AcceptedAmount string                           `json:"accepted_amount"`
-	ResponseTime   SellerReportResponseTimeResponse `json:"response_time"`
+	RFQsReceived     int                              `json:"rfqs_received"`
+	QuotesSent       int                              `json:"quotes_sent"`
+	QuotesAccepted   int                              `json:"quotes_accepted"`
+	SentAccepted     int                              `json:"sent_accepted"`
+	ConversionRate   *string                          `json:"conversion_rate"`
+	AcceptedAmount   string                           `json:"accepted_amount"`
+	ResponseTime     SellerReportResponseTimeResponse `json:"response_time"`
+	TimeToAcceptance SellerReportResponseTimeResponse `json:"time_to_acceptance"`
+	FollowUpPending  int                              `json:"follow_up_pending"`
 }
 
-// SellerReportResponseTimeResponse measures the first send after an order arrived.
+// SellerReportResponseTimeResponse summarizes one measured interval in seconds.
 type SellerReportResponseTimeResponse struct {
 	AverageSeconds *int64 `json:"average_seconds"`
 	MedianSeconds  *int64 `json:"median_seconds"`
@@ -125,10 +128,23 @@ type SellerReportClientResponse struct {
 
 // SellerReportAIMatchResponse is the auto-match outcome of the latest AI generation per order.
 type SellerReportAIMatchResponse struct {
-	Matched    int                            `json:"matched"`
-	Total      int                            `json:"total"`
-	Rate       *string                        `json:"rate"`
-	Confidence SellerReportConfidenceResponse `json:"confidence"`
+	Matched          int                            `json:"matched"`
+	Total            int                            `json:"total"`
+	Rate             *string                        `json:"rate"`
+	Confidence       SellerReportConfidenceResponse `json:"confidence"`
+	VersionLines     int                            `json:"version_lines"`
+	VersionUnmatched int                            `json:"version_unmatched"`
+}
+
+// SellerReportAssistantResponse splits the conversation assistant's proposals by the seller's decision.
+type SellerReportAssistantResponse struct {
+	Proposals      int     `json:"proposals"`
+	ApprovedAsIs   int     `json:"approved_as_is"`
+	Edited         int     `json:"edited"`
+	Rejected       int     `json:"rejected"`
+	ManualOverride int     `json:"manual_override"`
+	Pending        int     `json:"pending"`
+	ApprovalRate   *string `json:"approval_rate"`
 }
 
 // SellerReportConfidenceResponse splits scored AI lines by how settled the match read.
