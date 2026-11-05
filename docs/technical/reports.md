@@ -99,7 +99,7 @@ matching the dashboard. Empty sections say so rather than printing fabricated ze
 threshold is the catalog setting, passed from the API composition root, so changing catalog
 calibration moves the report with the review screen.
 
-The report reads are backed by `00060_seller_reports.sql`: branch/time indexes for RFQs and quotes,
+The report reads are backed by `00072_seller_reports.sql`: branch/time indexes for RFQs and quotes,
 partial status and send indexes for the event reads, a partial client-action index for acceptance
 resolution, and a generation index for the AI summary. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.
