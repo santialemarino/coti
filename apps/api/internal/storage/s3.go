@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -61,10 +62,15 @@ func (s *S3Storage) Upload(ctx context.Context, key, contentType string, content
 	if err := validateKey(key); err != nil {
 		return err
 	}
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+	body, cleanup, err := seekableUpload(content)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
-		Body:        content,
+		Body:        body,
 		ContentType: aws.String(contentType),
 		ACL:         s.acl,
 	})
@@ -113,4 +119,28 @@ func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, expiresIn
 		return "", fmt.Errorf("presign object: %w", err)
 	}
 	return request.URL, nil
+}
+
+func seekableUpload(content io.Reader) (io.ReadSeeker, func(), error) {
+	if body, ok := content.(io.ReadSeeker); ok {
+		return body, func() {}, nil
+	}
+	// S3 needs a known length and a rewindable body for retries; spool streams off-heap.
+	file, err := os.CreateTemp("", "coti-upload-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("prepare upload: %w", err)
+	}
+	cleanup := func() {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+	}
+	if _, err := io.Copy(file, content); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("buffer upload: %w", err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("rewind upload: %w", err)
+	}
+	return file, cleanup, nil
 }

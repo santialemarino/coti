@@ -141,7 +141,8 @@ jobs:
     dockerfile_path: docker/api.Dockerfile
     source_dir: /
     instance_size_slug: apps-s-1vcpu-1gb
-    run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+    run_command: /bin/sh -c 'exec /api/bin/goose -dir /api/migrations postgres
+      "$DATABASE_ADMIN_URL" up'
     envs:
       - key: DATABASE_ADMIN_URL
         scope: RUN_TIME

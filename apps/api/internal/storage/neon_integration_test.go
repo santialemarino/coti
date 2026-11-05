@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"io"
@@ -34,7 +35,7 @@ func TestNeonStorage_PrivateBucketRoundTrip(t *testing.T) {
 	store := NewNeonStorage(settings)
 	key := "accounts/" + uuid.NewString() + "/storage-check/" + uuid.NewString() + ".txt"
 	want := []byte("Coti private storage integration check")
-	if err := store.Upload(ctx, key, "text/plain", bytes.NewReader(want)); err != nil {
+	if err := store.Upload(ctx, key, "text/plain", bufio.NewReader(bytes.NewReader(want))); err != nil {
 		t.Fatalf("upload: %v", err)
 	}
 	t.Cleanup(func() {
