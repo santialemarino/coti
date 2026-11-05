@@ -23,6 +23,10 @@ the same pass. A deployment needs remote storage as soon as it takes file orders
 sweep runs in its own container, which a `local` disk does not reach — see
 [deployment.md](deployment.md).
 
+The S3 adapter spools non-seekable upload streams to a private temporary file, then removes it
+after the request. This gives the SDK a content length and a rewindable body for retries without
+keeping another full copy in memory. Seekable inputs are uploaded directly.
+
 ## The content type travels with the object
 
 `Upload` takes the content type because `Download` has to give it back: a signed link serves the

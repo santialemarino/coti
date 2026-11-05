@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,39 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
+
+func TestS3Storage_StreamedUploadCanRetryWithoutChangingContent(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("TMP", os.Getenv("TMPDIR"))
+	content := "private streamed content"
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		body, err := io.ReadAll(r.Body)
+		if err != nil || string(body) != content || r.ContentLength != int64(len(content)) {
+			t.Errorf("attempt %d: body=%q length=%d error=%v", attempts, body, r.ContentLength, err)
+		}
+		if attempts == 1 {
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, "<Error><Code>SlowDown</Code></Error>")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	store := NewNeonStorage(config.S3Settings{Endpoint: server.URL, Region: "us-east-1", Bucket: "coti-files", AccessKey: "key", SecretKey: "secret"})
+	if err := store.Upload(t.Context(), "accounts/a/stream.txt", "text/plain", bufio.NewReader(strings.NewReader(content))); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	files, err := os.ReadDir(os.Getenv("TMPDIR"))
+	if err != nil || len(files) != 0 {
+		t.Fatalf("temporary uploads remain: files=%v error=%v", files, err)
+	}
+}
 
 func TestNeonStorage_SignedLinksUseTheBranchEndpointAndBucketPath(t *testing.T) {
 	t.Parallel()
