@@ -45,7 +45,7 @@ func NewSellerReportHandler(reports SellerReportService) *SellerReportHandler {
 //	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
 //	@Param			client_id	query	string	false	"Client UUID"
 //	@Success		200			{object}	dto.SellerReportResponse
-//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		500			{object}	dto.ErrorResponse
@@ -83,7 +83,7 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 //	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
 //	@Param			client_id	query	string	false	"Client UUID"
 //	@Success		200			{file}	binary
-//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
 //	@Failure		403			{object}	dto.ErrorResponse
 //	@Failure		500			{object}	dto.ErrorResponse

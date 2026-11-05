@@ -12,7 +12,7 @@ screens use, and the PDF is rendered from that same read model.
 `[start_at, end_at)`, so a day never leaks into the next one through a timezone conversion.
 
 Both dates omitted means the last 30 days, including today. Supplying only one, a malformed date,
-`from > to`, or a period wider than `REPORTS_MAX_RANGE_DAYS` returns `400`. The response echoes the
+`from > to`, or a period wider than `REPORTS_MAX_RANGE_DAYS` returns `422` with code `INVALID_INPUT`. The response echoes the
 resolved `range` so the page can seed its form from the server, including the default.
 
 The active branch comes from `X-Branch-Id`, never from a query parameter. It is validated against

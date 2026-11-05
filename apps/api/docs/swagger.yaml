@@ -8971,16 +8971,16 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.SellerReportResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "500":
@@ -9035,16 +9035,16 @@ paths:
           description: OK
           schema:
             type: file
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "500":
