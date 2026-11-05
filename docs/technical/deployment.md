@@ -1,8 +1,61 @@
 # Deployment
 
-Nothing is deployed yet. This is the map of what a deploy needs, written so the first one is a
-morning rather than a week. The target is **DigitalOcean**, chosen because the follow-up sweep
+## Neon with temporary hostnames
+
+Without a custom domain, deploy two App Platform apps so staff cookies and customer pages have
+separate origins. Neither template declares a paid DigitalOcean database or a Spaces bucket:
+
+| Spec                | App           | Components                                           |
+| ------------------- | ------------- | ---------------------------------------------------- |
+| `.do/app.neon.yaml` | `coti-core`   | API, backoffice, migrations and seven scheduled jobs |
+| `.do/portal.yaml`   | `coti-portal` | Customer webapp                                      |
+
+Both clone the public GitHub repository over HTTPS, using `main` as the source branch. This avoids
+requiring a repository-owner GitHub App installation. Redeploy explicitly after a release; this
+source mode does not enable automatic deploys on push. Publish the integration through the repository's
+review and release flow before creating the apps. App Platform cannot build uncommitted local files.
+For a validation deployment, use the review branch in a local copy of each spec and switch both
+apps to `main` after approval and release.
+
+Each web service uses a fixed 1 GiB instance. At the published price of USD 10 per service per month,
+the three services total USD 30 per month before scheduled jobs, usage-based services and taxes.
+Confirm current prices in the DigitalOcean summary before deployment.
+
+1. Authenticate the DigitalOcean CLI with `doctl auth init`.
+2. Create the portal from `.do/portal.yaml`; its default hostname becomes the customer portal URL.
+   The initial API URL is a placeholder and the portal cannot contact the API until step 5.
+3. Fill the core template's encrypted settings outside git. Use the existing restricted Neon URL
+   for `DATABASE_URL`, the direct owner URL for `DATABASE_ADMIN_URL`, and the storage settings from
+   [file-storage.md](file-storage.md#pointing-it-at-neon-object-storage). Each API/job component
+   receives its own settings; the web components do not receive database or storage credentials.
+4. Set `WEB_WEBAPP_URL` on the core API to the portal's HTTPS URL, then create the core app. Its
+   default hostname serves backoffice pages and `/api` routes to the API.
+5. Replace `NEXT_PUBLIC_API_URL` on both web components with the literal core HTTPS URL plus `/api`.
+   Keep `RUN_AND_BUILD_TIME` scope and rebuild both apps. Bindable runtime URLs do not replace
+   values already compiled into the frontend.
+6. Verify `/api/ready`, registration, login, private attachments and customer portal routing.
+   Register the intended supplier hostname through the application's channel configuration.
+
+The core template enables Anthropic, embeddings and transcription, so both AI provider keys are
+required. The extraction and conversation jobs carry those provider settings too. Mail remains
+`console` until an SMTP provider is configured; real mail delivery and externally authenticated
+channels must be configured and tested before treating the deployment as fully operational.
+
+The original `.do/app.yaml` remains the single-app, Managed PostgreSQL alternative described below.
+
+## Single-app deployment alternative
+
+This is the map of what an application deploy needs. The hosting target is **DigitalOcean**, chosen because the follow-up sweep
 needs a scheduled job the platform owns (see [scheduled-jobs.md](scheduled-jobs.md)).
+
+PostgreSQL can run externally on Neon. Follow [neon.md](neon.md) for that setup and omit the
+Managed Postgres component from the deployment copy of the spec. The Managed Postgres instructions
+below apply when choosing DigitalOcean as the database provider.
+
+For Neon file storage, follow [file-storage.md](file-storage.md#pointing-it-at-neon-object-storage)
+and set `STORAGE_PROVIDER=neon` with the same bucket credentials on `api` and
+`attachment-extraction`. The committed spec's `local` default is only suitable for bootstrapping;
+each application container has its own temporary disk.
 
 `.do/app.yaml` is the committed app spec. This repository is public, so it carries the shape —
 components, ports, and the settings that are neither credentials nor hostnames — while every

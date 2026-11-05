@@ -1,0 +1,503 @@
+# Neon-backed deployment. Supply SECRET values outside git and replace frontend API URLs.
+name: coti-core
+region: nyc
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /api
+      component:
+        name: api
+    - match:
+        path:
+          prefix: /
+      component:
+        name: backoffice
+services:
+  - name: api
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    http_port: 8000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb-fixed
+    health_check:
+      http_path: /ready
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: API_PORT
+        scope: RUN_TIME
+        value: '8000'
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: CHANNEL_CONFIG_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: GMAIL_OAUTH_REDIRECT_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: WHATSAPP_APP_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_SMTP_USERNAME
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_SMTP_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
+      - key: AI_LLM_PROVIDER
+        scope: RUN_TIME
+        value: anthropic
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_TRANSCRIPTION_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: MAIL_PROVIDER
+        scope: RUN_TIME
+        value: console
+      - key: MAIL_SMTP_HOST
+        scope: RUN_TIME
+        type: SECRET
+      - key: MAIL_FROM_ADDRESS
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: RATE_LIMIT_TRUSTED_PROXY_HOPS
+        scope: RUN_TIME
+        value: '0'
+      - key: RATE_LIMIT_TRUSTED_PROXY_CIDRS
+        scope: RUN_TIME
+        type: SECRET
+      - key: WEB_BACKOFFICE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      - key: WEB_WEBAPP_URL
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: backoffice
+    dockerfile_path: docker/backoffice.Dockerfile
+    source_dir: /
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb-fixed
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        scope: RUN_AND_BUILD_TIME
+        value: https://replace-with-core-host.invalid/api
+      - key: WEB_TRUSTED_PROXY_HOPS
+        scope: RUN_TIME
+        value: '0'
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+jobs:
+  - name: migrate
+    kind: PRE_DEPLOY
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+    envs:
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: quote-correction-learning
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-correction-learning
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: catalog-embedding
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job catalog-embedding
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: quote-quality-evaluation
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-quality-evaluation
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: attachment-extraction
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job attachment-extraction
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_LLM_PROVIDER
+        scope: RUN_TIME
+        value: anthropic
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_TRANSCRIPTION_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: quote-auto-archive
+    kind: SCHEDULED
+    schedule:
+      cron: 30 3 * * *
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-auto-archive
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: ARCA_ENVIRONMENT
+        scope: RUN_TIME
+        value: homologation
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: quote-followup
+    kind: SCHEDULED
+    schedule:
+      cron: 0 7 * * *
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-followup
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main
+  - name: conversation-batches
+    kind: SCHEDULED
+    schedule:
+      cron: '*/15 * * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job conversation-batches
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_PROVIDER
+        scope: RUN_TIME
+        value: neon
+      - key: STORAGE_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_REGION
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_BUCKET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_LLM_PROVIDER
+        scope: RUN_TIME
+        value: anthropic
+      - key: AI_EMBEDDINGS_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_TRANSCRIPTION_PROVIDER
+        scope: RUN_TIME
+        value: openai
+      - key: AI_ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main

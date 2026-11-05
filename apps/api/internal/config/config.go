@@ -55,6 +55,7 @@ type StorageProvider string
 
 const (
 	StorageProviderLocal  StorageProvider = "local"
+	StorageProviderNeon   StorageProvider = "neon"
 	StorageProviderSpaces StorageProvider = "spaces"
 )
 
@@ -720,9 +721,7 @@ func (r ReportsConfig) problems() []string {
 	return nil
 }
 
-// StorageConfig holds the object storage settings and file limits. The bucket coordinates are
-// read whichever provider is selected and demanded only under spaces, so a checkout with no
-// object store still boots.
+// StorageConfig holds the storage settings, credentials, and file limits.
 type StorageConfig struct {
 	Provider        StorageProvider
 	Dir             string
@@ -745,9 +744,8 @@ type LocalSettings struct {
 	SigningSecret string
 }
 
-// SpacesSettings is what the Spaces adapter is handed: one bucket's coordinates and nothing
-// else, so no other adapter's settings can reach a provider SDK.
-type SpacesSettings struct {
+// S3Settings holds one remote bucket's coordinates and credentials.
+type S3Settings struct {
 	Endpoint  string
 	Region    string
 	Bucket    string
@@ -760,9 +758,9 @@ func (s StorageConfig) Local() LocalSettings {
 	return LocalSettings{Dir: s.Dir, APIBaseURL: s.APIBaseURL, SigningSecret: s.SigningSecret}
 }
 
-// Spaces returns the settings the Spaces adapter needs.
-func (s StorageConfig) Spaces() SpacesSettings {
-	return SpacesSettings{
+// S3 returns only the settings a remote object storage adapter needs.
+func (s StorageConfig) S3() S3Settings {
+	return S3Settings{
 		Endpoint:  s.Endpoint,
 		Region:    s.Region,
 		Bucket:    s.Bucket,
@@ -800,7 +798,7 @@ func (s StorageConfig) problems() []string {
 			problems = append(problems, fmt.Sprintf("STORAGE_LOCAL_API_BASE_URL must be an "+
 				"absolute URL with a scheme and host, got %q", s.APIBaseURL))
 		}
-	case StorageProviderSpaces:
+	case StorageProviderNeon, StorageProviderSpaces:
 		required := []struct{ key, value string }{
 			{"STORAGE_ENDPOINT", s.Endpoint},
 			{"STORAGE_REGION", s.Region},
@@ -811,7 +809,7 @@ func (s StorageConfig) problems() []string {
 		for _, r := range required {
 			if r.value == "" {
 				problems = append(problems, r.key+" is required when STORAGE_PROVIDER is "+
-					string(StorageProviderSpaces))
+					string(s.Provider))
 			}
 		}
 		if s.Endpoint != "" {
@@ -821,8 +819,8 @@ func (s StorageConfig) problems() []string {
 			}
 		}
 	default:
-		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q or %q, got %q",
-			StorageProviderLocal, StorageProviderSpaces, s.Provider))
+		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q, %q or %q, got %q",
+			StorageProviderLocal, StorageProviderNeon, StorageProviderSpaces, s.Provider))
 	}
 	return problems
 }

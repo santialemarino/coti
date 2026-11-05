@@ -16,22 +16,31 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-var _ domain.ObjectStorage = (*SpacesStorage)(nil)
+var _ domain.ObjectStorage = (*S3Storage)(nil)
 
-// SpacesStorage stores objects in an S3-compatible bucket — DigitalOcean Spaces in this
-// deployment — and hands out presigned links the provider serves itself, so the API never
-// carries the bytes on the way out.
-type SpacesStorage struct {
+// S3Storage stores objects in a remote bucket and generates temporary download links.
+type S3Storage struct {
 	client    *s3.Client
 	presigner *s3.PresignClient
 	bucket    string
+	acl       types.ObjectCannedACL
 }
 
-// NewSpacesStorage builds a SpacesStorage against the configured bucket.
-func NewSpacesStorage(settings config.SpacesSettings) *SpacesStorage {
+// NewNeonStorage uses path-style addressing and the bucket's configured access policy.
+func NewNeonStorage(settings config.S3Settings) *S3Storage {
+	return newS3Storage(settings, true, "")
+}
+
+// NewSpacesStorage stores objects with a private ACL on DigitalOcean Spaces.
+func NewSpacesStorage(settings config.S3Settings) *S3Storage {
+	return newS3Storage(settings, false, types.ObjectCannedACLPrivate)
+}
+
+func newS3Storage(settings config.S3Settings, pathStyle bool, acl types.ObjectCannedACL) *S3Storage {
 	client := s3.New(s3.Options{
 		Region:       settings.Region,
 		BaseEndpoint: aws.String(settings.Endpoint),
+		UsePathStyle: pathStyle,
 		Credentials: credentials.NewStaticCredentialsProvider(
 			settings.AccessKey, settings.SecretKey, ""),
 		// Spaces rejects the aws-chunked body the SDK sends when it adds a checksum of its
@@ -39,15 +48,16 @@ func NewSpacesStorage(settings config.SpacesSettings) *SpacesStorage {
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
 	})
-	return &SpacesStorage{
+	return &S3Storage{
 		client:    client,
 		presigner: s3.NewPresignClient(client),
 		bucket:    settings.Bucket,
+		acl:       acl,
 	}
 }
 
-// Upload stores the object privately, tagged with the content type it must be served as.
-func (s *SpacesStorage) Upload(ctx context.Context, key, contentType string, content io.Reader) error {
+// Upload stores bytes with their content type and the configured access policy.
+func (s *S3Storage) Upload(ctx context.Context, key, contentType string, content io.Reader) error {
 	if err := validateKey(key); err != nil {
 		return err
 	}
@@ -56,7 +66,7 @@ func (s *SpacesStorage) Upload(ctx context.Context, key, contentType string, con
 		Key:         aws.String(key),
 		Body:        content,
 		ContentType: aws.String(contentType),
-		ACL:         types.ObjectCannedACLPrivate,
+		ACL:         s.acl,
 	})
 	if err != nil {
 		return fmt.Errorf("put object: %w", err)
@@ -65,7 +75,7 @@ func (s *SpacesStorage) Upload(ctx context.Context, key, contentType string, con
 }
 
 // Download opens the object and reports the content type it was stored with.
-func (s *SpacesStorage) Download(ctx context.Context, key string) (*domain.StoredObject, error) {
+func (s *S3Storage) Download(ctx context.Context, key string) (*domain.StoredObject, error) {
 	if err := validateKey(key); err != nil {
 		return nil, err
 	}
@@ -88,7 +98,7 @@ func (s *SpacesStorage) Download(ctx context.Context, key string) (*domain.Store
 }
 
 // GenerateSignedURL returns a presigned link the bucket serves until expiresIn has passed.
-func (s *SpacesStorage) GenerateSignedURL(ctx context.Context, key string, expiresIn time.Duration) (string, error) {
+func (s *S3Storage) GenerateSignedURL(ctx context.Context, key string, expiresIn time.Duration) (string, error) {
 	if err := validateKey(key); err != nil {
 		return "", err
 	}

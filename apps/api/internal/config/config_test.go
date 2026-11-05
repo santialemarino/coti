@@ -1488,6 +1488,40 @@ func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
 	}
 }
 
+func TestLoad_NeonProviderUsesRemoteSettingsWithoutALocalSigningSecret(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_PROVIDER"] = "neon"
+	env["STORAGE_ENDPOINT"] = "https://branch.storage.us-east-1.aws.neon.tech"
+	delete(env, "STORAGE_LOCAL_SIGNING_SECRET")
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Storage.Provider != StorageProviderNeon || cfg.Storage.S3().Endpoint != env["STORAGE_ENDPOINT"] {
+		t.Fatal("Neon provider did not load its bucket settings")
+	}
+}
+
+func TestLoad_NeonProviderReportsEveryMissingCredential(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_PROVIDER"] = "neon"
+	missing := []string{"STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"}
+	for _, key := range missing {
+		delete(env, key)
+	}
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() accepted missing Neon settings")
+	}
+	for _, key := range missing {
+		if !strings.Contains(err.Error(), key+" is required when STORAGE_PROVIDER is neon") {
+			t.Errorf("missing validation error for %s", key)
+		}
+	}
+}
+
 // The mirror of the local case: a bucket signs its own links, so the key that signs the API's
 // own must not be demanded from a deployment that never uses it.
 func TestLoad_SpacesProviderNeedsNoLinkSigningSecret(t *testing.T) {
@@ -1548,7 +1582,7 @@ func TestLoad_StorageRejectsUnusableSettings(t *testing.T) {
 			env := minimalEnv()
 			env["STORAGE_PROVIDER"] = "gcs"
 			return env
-		}, `STORAGE_PROVIDER must be "local" or "spaces", got "gcs"`},
+		}, `STORAGE_PROVIDER must be "local", "neon" or "spaces", got "gcs"`},
 		{"local base url with no host", func() map[string]string {
 			env := minimalEnv()
 			env["STORAGE_LOCAL_API_BASE_URL"] = "localhost:8000"
@@ -1608,12 +1642,12 @@ func TestStorageConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
 		t.Fatal("Local() carries the bucket credentials, which that adapter must not hold")
 	}
 
-	spaces := cfg.Spaces()
+	spaces := cfg.S3()
 	if spaces.Bucket != cfg.Bucket || spaces.Region != cfg.Region || spaces.SecretKey != cfg.SecretKey {
-		t.Fatalf("Spaces() = %+v, want the bucket settings", spaces)
+		t.Fatalf("S3() = %+v, want the bucket settings", spaces)
 	}
 	if strings.Contains(fmt.Sprintf("%+v", spaces), "storage-signing-secret") {
-		t.Fatal("Spaces() carries the link signing secret, which that adapter must not hold")
+		t.Fatal("S3() carries the link signing secret, which that adapter must not hold")
 	}
 }
 
