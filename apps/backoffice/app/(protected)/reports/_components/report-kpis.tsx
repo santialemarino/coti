@@ -1,6 +1,8 @@
 import {
+  BellRingIcon,
   ChartColumnIcon,
   ClockIcon,
+  HandshakeIcon,
   InboxIcon,
   SendIcon,
   TrendingUpIcon,
@@ -12,7 +14,7 @@ import { SummaryCard } from '@/app/(protected)/reports/_components/report-summar
 import type { SellerReport } from '@/lib/api/reports';
 import type { Formatters } from '@/lib/i18n/create-formatters';
 
-// The six headline figures of the period.
+// The headline figures of the period.
 export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: Formatters }) {
   const t = useTranslations('reports');
 
@@ -23,6 +25,14 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
     if (minutes < 60) return t('duration.minutes', { count: minutes });
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
+    // Past two days the minutes are noise and hours stop reading as a span; days carry it.
+    if (hours >= 48) {
+      const days = Math.floor(hours / 24);
+      const dayHours = hours % 24;
+      return dayHours === 0
+        ? t('duration.days', { count: days })
+        : t('duration.daysHours', { days, hours: dayHours });
+    }
     return rest === 0
       ? t('duration.hours', { count: hours })
       : t('duration.hoursMinutes', { hours, minutes: rest });
@@ -36,7 +46,7 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
       : t('noDataShort');
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryCard icon={InboxIcon} label={t('kpis.rfqs')} value={fmt.value(kpis.rfqsReceived)} />
       <SummaryCard icon={SendIcon} label={t('kpis.sent')} value={fmt.value(kpis.quotesSent)} />
       <SummaryCard
@@ -62,6 +72,25 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
         label={t('kpis.responseTime')}
         value={formatDuration(kpis.responseTime.averageSeconds)}
         detail={responseDetail}
+      />
+      <SummaryCard
+        icon={HandshakeIcon}
+        label={t('kpis.timeToAcceptance')}
+        value={formatDuration(kpis.timeToAcceptance.averageSeconds)}
+        detail={
+          kpis.timeToAcceptance.sample > 0 && kpis.timeToAcceptance.medianSeconds !== null
+            ? t('timeToAcceptanceDetail', {
+                median: formatDuration(kpis.timeToAcceptance.medianSeconds),
+                count: kpis.timeToAcceptance.sample,
+              })
+            : t('noDataShort')
+        }
+      />
+      <SummaryCard
+        icon={BellRingIcon}
+        label={t('kpis.followUpPending')}
+        value={fmt.value(kpis.followUpPending)}
+        detail={t('kpis.followUpPendingDetail')}
       />
     </div>
   );

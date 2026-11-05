@@ -39,6 +39,12 @@ export function ReportAIMatch({
           labels={{ low: t('ai.low'), medium: t('ai.medium'), high: t('ai.high') }}
           formatValue={fmt.value}
         />
+        <p className="text-paragraph-xs text-foreground-muted">
+          {t('ai.versionUnmatched', {
+            unmatched: aiMatch.versionUnmatched,
+            total: fmt.value(aiMatch.versionLines),
+          })}
+        </p>
       </div>
     </ReportSection>
   );

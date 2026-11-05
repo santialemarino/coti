@@ -71,6 +71,8 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       conversionRate: 0.5,
       acceptedAmount: '1250.50',
       responseTime: { averageSeconds: 900, medianSeconds: 600, sample: 3 },
+      timeToAcceptance: { averageSeconds: 7200, medianSeconds: 3600, sample: 2 },
+      followUpPending: 4,
     },
     branches: [],
     quotesByStatus: [
@@ -90,6 +92,17 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       total: 10,
       rate: 0.8,
       confidence: { low: 1, medium: 1, high: 8 },
+      versionLines: 12,
+      versionUnmatched: 2,
+    },
+    assistant: {
+      proposals: 6,
+      approvedAsIs: 3,
+      edited: 1,
+      rejected: 1,
+      manualOverride: 0,
+      pending: 1,
+      approvalRate: 0.5,
     },
     ...overrides,
   };
@@ -313,12 +326,30 @@ describe('ReportsPage', () => {
           conversionRate: null,
           acceptedAmount: '0',
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
+          timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
+          followUpPending: 0,
         },
         quotesByStatus: [],
         topProducts: [],
         topRevenueProducts: [],
         topClients: [],
-        aiMatch: { matched: 0, total: 0, rate: null, confidence: { low: 0, medium: 0, high: 0 } },
+        aiMatch: {
+          matched: 0,
+          total: 0,
+          rate: null,
+          confidence: { low: 0, medium: 0, high: 0 },
+          versionLines: 0,
+          versionUnmatched: 0,
+        },
+        assistant: {
+          proposals: 0,
+          approvedAsIs: 0,
+          edited: 0,
+          rejected: 0,
+          manualOverride: 0,
+          pending: 0,
+          approvalRate: null,
+        },
       }),
     );
 
@@ -394,6 +425,38 @@ describe('ReportsPage', () => {
     expect(screen.getAllByText('mes 2026-09-26').length).toBeGreaterThan(0);
   });
 
+  it('shows how sellers treated the assistant and what still awaits follow-up', async () => {
+    await renderReport(report());
+
+    expect(screen.getByText(copy.assistant.title)).toBeTruthy();
+    expect(screen.getByText('3 aprobadas sin cambios de 6')).toBeTruthy();
+    expect(screen.getByText(copy.assistant.outcomes.pending)).toBeTruthy();
+    const followUp = screen.getByText(copy.kpis.followUpPending).closest('[data-slot="card"]');
+    expect(followUp?.textContent).toContain('4');
+    expect(screen.getByText(/2 líneas quedan sin coincidencia/)).toBeTruthy();
+  });
+
+  it('reads a wait of several days in days', async () => {
+    const base = report();
+    await renderReport(
+      report({
+        kpis: {
+          ...base.kpis,
+          timeToAcceptance: { averageSeconds: 534 * 3600, medianSeconds: 48 * 3600, sample: 3 },
+        },
+      }),
+    );
+
+    expect(screen.getByText('22 d 6 h')).toBeTruthy();
+    expect(screen.getByText(/Mediana 2 días/)).toBeTruthy();
+  });
+
+  it('dates a clipped first week from its first day rather than as a whole week', async () => {
+    await renderReport(report());
+
+    expect(screen.getAllByText('Desde el num 2026-09-26').length).toBeGreaterThan(0);
+  });
+
   it('names quote statuses as quotes and dates the timeline for a reader', async () => {
     await renderReport(report());
 
@@ -419,12 +482,30 @@ describe('ReportsPage', () => {
           conversionRate: null,
           acceptedAmount: '0',
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
+          timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
+          followUpPending: 0,
         },
         quotesByStatus: [{ status: 'DRAFT', count: 1 }],
         topProducts: [],
         topRevenueProducts: [],
         topClients: [],
-        aiMatch: { matched: 0, total: 0, rate: null, confidence: { low: 0, medium: 0, high: 0 } },
+        aiMatch: {
+          matched: 0,
+          total: 0,
+          rate: null,
+          confidence: { low: 0, medium: 0, high: 0 },
+          versionLines: 0,
+          versionUnmatched: 0,
+        },
+        assistant: {
+          proposals: 0,
+          approvedAsIs: 0,
+          edited: 0,
+          rejected: 0,
+          manualOverride: 0,
+          pending: 0,
+          approvalRate: null,
+        },
       }),
     );
 

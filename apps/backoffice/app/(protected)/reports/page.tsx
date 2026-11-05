@@ -5,6 +5,7 @@ import { Card, CardContent, EmptyState } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ReportAIMatch } from '@/app/(protected)/reports/_components/report-ai-match';
+import { ReportAssistant } from '@/app/(protected)/reports/_components/report-assistant';
 import { ReportBranches } from '@/app/(protected)/reports/_components/report-branches';
 import {
   RankingList,
@@ -175,7 +176,8 @@ export default async function ReportsPage({
     report.topProducts.length === 0 &&
     report.topRevenueProducts.length === 0 &&
     report.topClients.length === 0 &&
-    report.aiMatch.total === 0;
+    report.aiMatch.total === 0 &&
+    report.assistant.proposals === 0;
 
   return (
     <PageShell>
@@ -287,7 +289,11 @@ export default async function ReportsPage({
                 formatBucket={(date) => {
                   if (report.granularity === 'month') return fmt.month(date);
                   if (report.granularity === 'week') {
-                    return t('timeline.weekOf', { date: fmt.dateNumeric(date) });
+                    // A period that starts mid-week clips its first bucket, which then starts that day.
+                    const monday = new Date(`${date}T00:00:00`).getDay() === 1;
+                    return t(monday ? 'timeline.weekOf' : 'timeline.weekFrom', {
+                      date: fmt.dateNumeric(date),
+                    });
                   }
                   return fmt.dateNumeric(date);
                 }}
@@ -335,6 +341,7 @@ export default async function ReportsPage({
 
             <ReportTopClients clients={report.topClients} fmt={fmt} className="xl:col-span-7" />
             <ReportAIMatch aiMatch={report.aiMatch} fmt={fmt} className="xl:col-span-5" />
+            <ReportAssistant assistant={report.assistant} fmt={fmt} className="xl:col-span-12" />
           </div>
 
           {report.scope.multiBranch ? (

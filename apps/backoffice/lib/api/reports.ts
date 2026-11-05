@@ -6,6 +6,12 @@ import { apiRequest } from '@/lib/api/client';
 
 export type ReportGranularity = 'day' | 'week' | 'month';
 
+interface DurationRaw {
+  average_seconds: number | null;
+  median_seconds: number | null;
+  sample: number;
+}
+
 interface SellerReportRaw {
   range: { from: string; to: string };
   granularity: ReportGranularity;
@@ -27,11 +33,9 @@ interface SellerReportRaw {
     sent_accepted: number;
     conversion_rate: string | null;
     accepted_amount: string;
-    response_time: {
-      average_seconds: number | null;
-      median_seconds: number | null;
-      sample: number;
-    };
+    response_time: DurationRaw;
+    time_to_acceptance: DurationRaw;
+    follow_up_pending: number;
   };
   branches?: {
     branch_id: string;
@@ -55,6 +59,17 @@ interface SellerReportRaw {
     total: number;
     rate: string | null;
     confidence: { low: number; medium: number; high: number };
+    version_lines: number;
+    version_unmatched: number;
+  };
+  assistant: {
+    proposals: number;
+    approved_as_is: number;
+    edited: number;
+    rejected: number;
+    manual_override: number;
+    pending: number;
+    approval_rate: string | null;
   };
 }
 
@@ -93,6 +108,12 @@ export interface SellerReportTrendPoint {
   conversionRate: number | null;
 }
 
+export interface SellerReportDuration {
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  sample: number;
+}
+
 export interface SellerReport {
   range: { from: string; to: string };
   granularity: ReportGranularity;
@@ -107,7 +128,11 @@ export interface SellerReport {
     // sentAccepted over quotesSent, read by the formatters; null when nothing was sent.
     conversionRate: number | null;
     acceptedAmount: string;
-    responseTime: { averageSeconds: number | null; medianSeconds: number | null; sample: number };
+    responseTime: SellerReportDuration;
+    // From a quote's first send to its acceptance, for the period's acceptances.
+    timeToAcceptance: SellerReportDuration;
+    // Quotes in scope awaiting follow-up now, whatever the period.
+    followUpPending: number;
   };
   branches: { branchId: string; branchName: string; rfqs: number }[];
   quotesByStatus: { status: string; count: number }[];
@@ -120,6 +145,19 @@ export interface SellerReport {
     total: number;
     rate: number | null;
     confidence: { low: number; medium: number; high: number };
+    // Lines left unmatched in the current versions, after the seller's review.
+    versionLines: number;
+    versionUnmatched: number;
+  };
+  assistant: {
+    proposals: number;
+    approvedAsIs: number;
+    edited: number;
+    rejected: number;
+    manualOverride: number;
+    // Undecided proposals stay in the denominator of the approval rate.
+    pending: number;
+    approvalRate: number | null;
   };
 }
 
@@ -127,6 +165,14 @@ export interface SellerReport {
 
 function rate(raw: string | null): number | null {
   return raw === null ? null : Number(raw);
+}
+
+function duration(raw: DurationRaw): SellerReportDuration {
+  return {
+    averageSeconds: raw.average_seconds,
+    medianSeconds: raw.median_seconds,
+    sample: raw.sample,
+  };
 }
 
 function mapSellerReport(raw: SellerReportRaw): SellerReport {
@@ -151,11 +197,9 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       sentAccepted: raw.kpis.sent_accepted,
       conversionRate: rate(raw.kpis.conversion_rate),
       acceptedAmount: raw.kpis.accepted_amount,
-      responseTime: {
-        averageSeconds: raw.kpis.response_time.average_seconds,
-        medianSeconds: raw.kpis.response_time.median_seconds,
-        sample: raw.kpis.response_time.sample,
-      },
+      responseTime: duration(raw.kpis.response_time),
+      timeToAcceptance: duration(raw.kpis.time_to_acceptance),
+      followUpPending: raw.kpis.follow_up_pending,
     },
     branches: (raw.branches ?? []).map((branch) => ({
       branchId: branch.branch_id,
@@ -194,6 +238,17 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       total: raw.ai_match.total,
       rate: rate(raw.ai_match.rate),
       confidence: raw.ai_match.confidence,
+      versionLines: raw.ai_match.version_lines,
+      versionUnmatched: raw.ai_match.version_unmatched,
+    },
+    assistant: {
+      proposals: raw.assistant.proposals,
+      approvedAsIs: raw.assistant.approved_as_is,
+      edited: raw.assistant.edited,
+      rejected: raw.assistant.rejected,
+      manualOverride: raw.assistant.manual_override,
+      pending: raw.assistant.pending,
+      approvalRate: rate(raw.assistant.approval_rate),
     },
   };
 }
