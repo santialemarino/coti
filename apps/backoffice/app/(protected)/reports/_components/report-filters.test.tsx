@@ -1,9 +1,15 @@
+import type { ComponentProps } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
 import messages from '@/translations/es.json';
+
+// next/form needs the app router; a plain form keeps the submit and its action observable.
+vi.mock('next/form', () => ({
+  default: (props: ComponentProps<'form'>) => <form {...props} />,
+}));
 
 const copy = messages.reports.filters;
 
@@ -67,5 +73,15 @@ describe('ReportFilters', () => {
       'client-1',
     );
     expect(screen.getByRole('combobox', { name: copy.seller })).toBeTruthy();
+  });
+
+  it('lets an ordered range through to the reports route', () => {
+    const form = renderFilters();
+    const submit = new Event('submit', { bubbles: true, cancelable: true });
+    form.dispatchEvent(submit);
+
+    expect(submit.defaultPrevented).toBe(false);
+    expect(form.getAttribute('action')).toBe('/reports');
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

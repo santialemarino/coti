@@ -1,31 +1,12 @@
-import {
-  ChartColumnIcon,
-  ClockIcon,
-  InboxIcon,
-  SendIcon,
-  TrendingUpIcon,
-  WalletIcon,
-} from 'lucide-react';
+import { ChartColumnIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  EmptyState,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@repo/ui/components';
+import { Card, CardContent, EmptyState } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
+import { ReportAIMatch } from '@/app/(protected)/reports/_components/report-ai-match';
+import { ReportBranches } from '@/app/(protected)/reports/_components/report-branches';
 import {
-  ConfidenceBar,
   RankingList,
   StatusPieChart,
   statusTone,
@@ -33,406 +14,269 @@ import {
 } from '@/app/(protected)/reports/_components/report-charts';
 import { ReportDownloadButton } from '@/app/(protected)/reports/_components/report-download-button';
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
-import { SummaryCard } from '@/app/(protected)/reports/_components/report-summary';
+import { ReportKpis } from '@/app/(protected)/reports/_components/report-kpis';
+import { ReportSection } from '@/app/(protected)/reports/_components/report-section';
+import { ReportTopClients } from '@/app/(protected)/reports/_components/report-top-clients';
 import { getClients } from '@/lib/api/clients';
 import { ApiError } from '@/lib/api/errors';
-import { getSellerReport, type SellerReport } from '@/lib/api/reports';
+import {
+  getSellerReport,
+  type SellerReport,
+  type SellerReportFilterSelection,
+} from '@/lib/api/reports';
 import { getSellers } from '@/lib/api/users';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
+type SearchParam = string | string[] | undefined;
+type ReportParam = 'from' | 'to' | 'status' | 'channel' | 'seller_id' | 'client_id';
+
+interface FilterOption {
+  id: string;
+  name: string;
+}
+
 export const generateMetadata = () => generatePageMetadata('reports');
 
-function single(value: string | string[] | undefined): string | undefined {
+function single(value: SearchParam): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function many(value: string | string[] | undefined): string[] {
+function many(value: SearchParam): string[] {
   if (Array.isArray(value)) return value;
   return value ? [value] : [];
+}
+
+// A filter list that fails to load leaves its control empty; the report itself still renders.
+async function clientOptions(): Promise<FilterOption[]> {
+  try {
+    return (await getClients())
+      .filter((client) => client.name)
+      .map((client) => ({ id: client.id, name: client.name as string }));
+  } catch {
+    return [];
+  }
+}
+
+async function sellerOptions(): Promise<FilterOption[]> {
+  try {
+    return await getSellers();
+  } catch {
+    return [];
+  }
+}
+
+// A rejected selection (a bad period or filter) comes back as null so the page can say so.
+async function reportFor(selection: SellerReportFilterSelection): Promise<SellerReport | null> {
+  try {
+    return await getSellerReport(selection);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'INVALID_INPUT') return null;
+    throw error;
+  }
 }
 
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    from?: string | string[];
-    to?: string | string[];
-    status?: string | string[];
-    channel?: string | string[];
-    seller_id?: string | string[];
-    client_id?: string | string[];
-  }>;
+  searchParams: Promise<Partial<Record<ReportParam, SearchParam>>>;
 }) {
   const params = await searchParams;
-  const from = single(params.from);
-  const to = single(params.to);
-  const statuses = many(params.status)
-    .flatMap((value) => value.split(','))
-    .map((value) => value.trim().toUpperCase())
-    .filter(Boolean);
-  const channel = single(params.channel);
-  const sellerId = single(params.seller_id);
-  const clientId = single(params.client_id);
-  const fmt = await getFormatters();
   const t = await getTranslations('reports');
-
+  const tStatus = await getTranslations('reports.statusLabels');
+  const fmt = await getFormatters();
   const session = await getSession();
   const isAdmin = session?.role === ADMIN_ROLE;
-  let clients: { id: string; name: string }[] = [];
-  let sellers: { id: string; name: string }[] = [];
-  try {
-    clients = (await getClients())
-      .filter((client) => client.name)
-      .map((client) => ({ id: client.id, name: client.name as string }));
-  } catch {
-    clients = [];
-  }
-  if (isAdmin) {
-    try {
-      sellers = await getSellers();
-    } catch {
-      sellers = [];
-    }
-  }
 
-  let report: SellerReport | null = null;
-  try {
-    report = await getSellerReport({
-      from,
-      to,
-      statuses,
-      channel,
-      sellerId: isAdmin ? sellerId : undefined,
-      clientId,
-    });
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 400) throw error;
-  }
-
-  if (!report) {
-    return (
-      <PageShell>
-        <PageHeader title={t('title')} description={t('description')} />
-        <Card className="gap-y-0 py-5">
-          <CardContent>
-            <ReportFilters
-              from={from ?? ''}
-              to={to ?? ''}
-              statuses={statuses}
-              channel={channel}
-              sellerId={isAdmin ? sellerId : undefined}
-              clientId={clientId}
-              sellers={sellers}
-              clients={clients}
-              showSeller={isAdmin}
-            />
-            <p role="alert" className="mt-3 text-paragraph-xs text-danger-foreground">
-              {t('filters.invalidPeriod')}
-            </p>
-          </CardContent>
-        </Card>
-      </PageShell>
-    );
-  }
-
-  const tStatus = await getTranslations('rfqs.status');
-
-  const formatDuration = (seconds: number | null) => {
-    if (seconds === null) return t('noDataShort');
-    if (seconds < 60) return t('duration.seconds', { count: Math.round(seconds) });
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return t('duration.minutes', { count: minutes });
-    const hours = Math.floor(minutes / 60);
-    const rest = minutes % 60;
-    return rest === 0
-      ? t('duration.hours', { count: hours })
-      : t('duration.hoursMinutes', { hours, minutes: rest });
+  const selection: SellerReportFilterSelection = {
+    from: single(params.from),
+    to: single(params.to),
+    statuses: many(params.status)
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean),
+    channel: single(params.channel),
+    sellerId: isAdmin ? single(params.seller_id) : undefined,
+    clientId: single(params.client_id),
   };
+  const [clients, sellers, report] = await Promise.all([
+    clientOptions(),
+    isAdmin ? sellerOptions() : Promise.resolve([]),
+    reportFor(selection),
+  ]);
 
-  const { kpis, aiMatch } = report;
-  const statusTotal = report.quotesByStatus.reduce((total, item) => total + item.count, 0);
+  // The server's echo wins over the URL, so a defaulted period seeds the form too.
+  const applied = report
+    ? {
+        from: report.range.from,
+        to: report.range.to,
+        statuses: report.filters.statuses,
+        channel: report.filters.channel ?? undefined,
+        sellerId: report.filters.sellerId ?? undefined,
+        clientId: report.filters.clientId ?? undefined,
+      }
+    : { ...selection, from: selection.from ?? '', to: selection.to ?? '' };
+  const filtersKey = [
+    applied.from,
+    applied.to,
+    applied.statuses?.join(','),
+    applied.channel,
+    applied.sellerId,
+    applied.clientId,
+  ].join('|');
+
   const noActivity =
-    kpis.rfqsReceived === 0 &&
-    kpis.quotesSent === 0 &&
-    kpis.quotesAccepted === 0 &&
+    report !== null &&
+    report.kpis.rfqsReceived === 0 &&
+    report.kpis.quotesSent === 0 &&
+    report.kpis.quotesAccepted === 0 &&
     report.quotesByStatus.length === 0 &&
     report.topProducts.length === 0 &&
     report.topRevenueProducts.length === 0 &&
     report.topClients.length === 0 &&
-    aiMatch.total === 0;
-  const responseDetail =
-    kpis.responseTime.sample > 0 && kpis.responseTime.medianSeconds !== null
-      ? t('responseDetail', {
-          median: formatDuration(kpis.responseTime.medianSeconds),
-          count: kpis.responseTime.sample,
-        })
-      : t('noDataShort');
+    report.aiMatch.total === 0;
 
   return (
     <PageShell>
       <PageHeader
         title={t('title')}
-        description={t(report.scope.multiBranch ? 'descriptionAll' : 'description')}
+        description={t(report?.scope.multiBranch ? 'descriptionAll' : 'description')}
         actions={
-          <ReportDownloadButton
-            from={report.range.from}
-            to={report.range.to}
-            statuses={report.filters.statuses}
-            channel={report.filters.channel}
-            sellerId={report.filters.sellerId}
-            clientId={report.filters.clientId}
-          />
+          report ? (
+            <ReportDownloadButton
+              from={report.range.from}
+              to={report.range.to}
+              statuses={report.filters.statuses}
+              channel={report.filters.channel}
+              sellerId={report.filters.sellerId}
+              clientId={report.filters.clientId}
+            />
+          ) : undefined
         }
       />
       <Card className="gap-y-0 py-5">
         <CardContent>
           <ReportFilters
-            key={`${report.range.from}-${report.range.to}-${report.filters.statuses.join(',')}-${report.filters.channel ?? ''}-${report.filters.sellerId ?? ''}-${report.filters.clientId ?? ''}`}
-            from={report.range.from}
-            to={report.range.to}
-            statuses={report.filters.statuses}
-            channel={report.filters.channel ?? undefined}
-            sellerId={report.filters.sellerId ?? undefined}
-            clientId={report.filters.clientId ?? undefined}
+            key={filtersKey}
+            from={applied.from ?? ''}
+            to={applied.to ?? ''}
+            statuses={applied.statuses}
+            channel={applied.channel}
+            sellerId={applied.sellerId}
+            clientId={applied.clientId}
             sellers={sellers}
             clients={clients}
             showSeller={isAdmin}
           />
+          {report ? null : (
+            <p role="alert" className="mt-3 text-paragraph-xs text-danger-foreground">
+              {t('filters.invalid')}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {noActivity ? (
+      {report && noActivity ? (
         <EmptyState
           icon={ChartColumnIcon}
           size="lg"
           title={t('empty.title')}
           description={t('empty.description')}
         />
-      ) : (
+      ) : null}
+
+      {report && !noActivity ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <SummaryCard
-              icon={InboxIcon}
-              label={t('kpis.rfqs')}
-              value={fmt.value(kpis.rfqsReceived)}
-            />
-            <SummaryCard
-              icon={SendIcon}
-              label={t('kpis.sent')}
-              value={fmt.value(kpis.quotesSent)}
-            />
-            <SummaryCard
-              icon={ChartColumnIcon}
-              label={t('kpis.accepted')}
-              value={fmt.value(kpis.quotesAccepted)}
-              detail={t('conversionDetail', {
-                accepted: kpis.quotesAccepted,
-                sent: kpis.quotesSent,
-              })}
-            />
-            <SummaryCard
-              icon={TrendingUpIcon}
-              label={t('kpis.conversion')}
-              value={
-                kpis.conversionRate === null ? t('noDataShort') : fmt.ratePct(kpis.conversionRate)
-              }
-            />
-            <SummaryCard
-              icon={WalletIcon}
-              label={t('kpis.acceptedAmount')}
-              value={fmt.currency(kpis.acceptedAmount)}
-              detail={t('kpis.acceptedAmountDetail')}
-            />
-            <SummaryCard
-              icon={ClockIcon}
-              label={t('kpis.responseTime')}
-              value={formatDuration(kpis.responseTime.averageSeconds)}
-              detail={responseDetail}
-            />
-          </div>
+          <ReportKpis kpis={report.kpis} fmt={fmt} />
 
           <div className="grid gap-5 xl:grid-cols-12">
-            <Card className="gap-y-4 py-5 xl:col-span-5">
-              <CardHeader>
-                <CardTitle>{t('status.title')}</CardTitle>
-                <CardDescription>{t('status.description')}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {report.quotesByStatus.length === 0 ? (
-                  <EmptyState icon={ChartColumnIcon} size="inline" title={t('status.empty')} />
-                ) : (
-                  <StatusPieChart
-                    items={report.quotesByStatus.map((item) => ({
-                      key: item.status,
-                      label: tStatus(item.status),
-                      value: item.count,
-                      tone: statusTone(item.status),
-                    }))}
-                    summary={t('status.total', { count: statusTotal })}
-                    ariaLabel={t('status.aria')}
-                    label={t('status.label')}
-                    valueLabel={t('status.count')}
-                  />
-                )}
-              </CardContent>
-            </Card>
+            <ReportSection
+              title={t('status.title')}
+              description={t('status.description')}
+              empty={report.quotesByStatus.length === 0 ? t('status.empty') : undefined}
+              className="xl:col-span-5"
+            >
+              <StatusPieChart
+                items={report.quotesByStatus.map((item) => ({
+                  key: item.status,
+                  label: tStatus(item.status),
+                  value: item.count,
+                  tone: statusTone(item.status),
+                }))}
+                summary={t('status.total', {
+                  count: report.quotesByStatus.reduce((total, item) => total + item.count, 0),
+                })}
+                ariaLabel={t('status.aria')}
+                label={t('status.label')}
+                valueLabel={t('status.count')}
+                formatValue={fmt.value}
+                formatShare={fmt.ratePct}
+              />
+            </ReportSection>
 
-            <Card className="gap-y-4 py-5 xl:col-span-7">
-              <CardHeader>
-                <CardTitle>{t('timeline.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TimelineChart
-                  points={report.timeline}
-                  sentLabel={t('timeline.sent')}
-                  acceptedLabel={t('timeline.accepted')}
-                  dateLabel={t('timeline.date')}
-                  ariaLabel={t('timeline.aria', {
-                    from: report.range.from,
-                    to: report.range.to,
-                  })}
-                />
-              </CardContent>
-            </Card>
+            <ReportSection title={t('timeline.title')} className="xl:col-span-7">
+              <TimelineChart
+                points={report.timeline}
+                sentLabel={t('timeline.sent')}
+                acceptedLabel={t('timeline.accepted')}
+                dateLabel={t('timeline.date')}
+                ariaLabel={t('timeline.aria', {
+                  from: fmt.date(report.range.from),
+                  to: fmt.date(report.range.to),
+                })}
+                formatDate={fmt.date}
+                formatValue={fmt.value}
+              />
+            </ReportSection>
 
-            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-6">
-              <CardHeader className="pb-4 pt-5">
-                <CardTitle>{t('products.title')}</CardTitle>
-                <CardDescription>{t('products.description')}</CardDescription>
-              </CardHeader>
-              {report.topProducts.length === 0 ? (
-                <CardContent className="pb-5">
-                  <EmptyState icon={ChartColumnIcon} size="inline" title={t('products.empty')} />
-                </CardContent>
-              ) : (
-                <RankingList
-                  items={report.topProducts.map((product, index) => ({
-                    key: `${product.productId ?? product.name}-${index}`,
-                    label: product.name || t('products.unnamed'),
-                    value: `${fmt.value(product.requests)} ${t('products.requests')}`,
-                    magnitude: product.requests,
-                  }))}
-                />
-              )}
-            </Card>
+            <ReportSection
+              flush
+              title={t('products.title')}
+              description={t('products.description')}
+              empty={report.topProducts.length === 0 ? t('products.empty') : undefined}
+              className="xl:col-span-6"
+            >
+              <RankingList
+                items={report.topProducts.map((product) => ({
+                  key: product.productId ?? `unmatched-${product.name}`,
+                  label: product.name || t('products.unnamed'),
+                  value: t('products.requests', { count: product.requests }),
+                  magnitude: product.requests,
+                }))}
+              />
+            </ReportSection>
 
-            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-6">
-              <CardHeader className="pb-4 pt-5">
-                <CardTitle>{t('revenueProducts.title')}</CardTitle>
-                <CardDescription>{t('revenueProducts.description')}</CardDescription>
-              </CardHeader>
-              {report.topRevenueProducts.length === 0 ? (
-                <CardContent className="pb-5">
-                  <EmptyState
-                    icon={ChartColumnIcon}
-                    size="inline"
-                    title={t('revenueProducts.empty')}
-                  />
-                </CardContent>
-              ) : (
-                <RankingList
-                  tone="accepted"
-                  items={report.topRevenueProducts.map((product) => ({
-                    key: product.productId,
-                    label: product.name || t('products.unnamed'),
-                    value: fmt.currency(product.revenue),
-                    magnitude: Number(product.revenue),
-                  }))}
-                />
-              )}
-            </Card>
+            <ReportSection
+              flush
+              title={t('revenueProducts.title')}
+              description={t('revenueProducts.description')}
+              empty={
+                report.topRevenueProducts.length === 0 ? t('revenueProducts.empty') : undefined
+              }
+              className="xl:col-span-6"
+            >
+              <RankingList
+                tone="accepted"
+                items={report.topRevenueProducts.map((product) => ({
+                  key: product.productId,
+                  label: product.name || t('products.unnamed'),
+                  value: fmt.currency(product.revenue),
+                  magnitude: Number(product.revenue),
+                }))}
+              />
+            </ReportSection>
 
-            <Card className="gap-y-0 overflow-hidden py-0 xl:col-span-7">
-              <CardHeader className="pb-4 pt-5">
-                <CardTitle>{t('clients.title')}</CardTitle>
-              </CardHeader>
-              {report.topClients.length === 0 ? (
-                <CardContent className="pb-5">
-                  <EmptyState icon={ChartColumnIcon} size="inline" title={t('clients.empty')} />
-                </CardContent>
-              ) : (
-                <Table figures="end">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead kind="text">{t('clients.name')}</TableHead>
-                      <TableHead kind="money">{t('clients.acceptedAmount')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.topClients.map((client, index) => (
-                      <TableRow key={`${client.clientId ?? client.name}-${index}`}>
-                        <TableCell>{client.name || t('clients.unnamed')}</TableCell>
-                        <TableCell>{fmt.currency(client.acceptedAmount)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </Card>
-
-            <Card className="gap-y-4 py-5 xl:col-span-5">
-              <CardHeader>
-                <CardTitle>{t('ai.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {aiMatch.total === 0 ? (
-                  <EmptyState icon={ChartColumnIcon} size="inline" title={t('ai.empty')} />
-                ) : (
-                  <div className="flex flex-col gap-y-4">
-                    <div className="flex items-end justify-between gap-x-4">
-                      <div>
-                        <p className="text-heading-4 tabular-nums text-foreground">
-                          {aiMatch.rate === null ? t('noDataShort') : fmt.ratePct(aiMatch.rate)}
-                        </p>
-                        <p className="text-paragraph-xs text-foreground-muted">
-                          {t('ai.matched', { matched: aiMatch.matched, total: aiMatch.total })}
-                        </p>
-                      </div>
-                    </div>
-                    <ConfidenceBar
-                      low={aiMatch.confidence.low}
-                      medium={aiMatch.confidence.medium}
-                      high={aiMatch.confidence.high}
-                      labels={{
-                        low: t('ai.low'),
-                        medium: t('ai.medium'),
-                        high: t('ai.high'),
-                      }}
-                    />
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <ReportTopClients clients={report.topClients} fmt={fmt} className="xl:col-span-7" />
+            <ReportAIMatch aiMatch={report.aiMatch} fmt={fmt} className="xl:col-span-5" />
           </div>
 
           {report.scope.multiBranch ? (
-            <Card className="gap-y-0 overflow-hidden py-0">
-              <CardHeader className="pb-4 pt-5">
-                <CardTitle>{t('branches.title')}</CardTitle>
-              </CardHeader>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead kind="text">{t('branches.name')}</TableHead>
-                    <TableHead kind="count">{t('branches.rfqs')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.branches.map((branch) => (
-                    <TableRow key={branch.branchId}>
-                      <TableCell>{branch.branchName}</TableCell>
-                      <TableCell>{fmt.value(branch.rfqs)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+            <ReportBranches branches={report.branches} fmt={fmt} />
           ) : null}
         </>
-      )}
+      ) : null}
     </PageShell>
   );
 }

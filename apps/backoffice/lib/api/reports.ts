@@ -19,6 +19,7 @@ interface SellerReportRaw {
     rfqs_received: number;
     quotes_sent: number;
     quotes_accepted: number;
+    sent_accepted: number;
     conversion_rate: string | null;
     accepted_amount: string;
     response_time: {
@@ -73,7 +74,9 @@ export interface SellerReport {
     rfqsReceived: number;
     quotesSent: number;
     quotesAccepted: number;
-    // Ratio read by the formatters, or null when nothing was sent.
+    // Quotes first sent in the period that were accepted since: the conversion cohort.
+    sentAccepted: number;
+    // sentAccepted over quotesSent, read by the formatters; null when nothing was sent.
     conversionRate: number | null;
     acceptedAmount: string;
     responseTime: { averageSeconds: number | null; medianSeconds: number | null; sample: number };
@@ -114,6 +117,7 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       rfqsReceived: raw.kpis.rfqs_received,
       quotesSent: raw.kpis.quotes_sent,
       quotesAccepted: raw.kpis.quotes_accepted,
+      sentAccepted: raw.kpis.sent_accepted,
       conversionRate: rate(raw.kpis.conversion_rate),
       acceptedAmount: raw.kpis.accepted_amount,
       responseTime: {

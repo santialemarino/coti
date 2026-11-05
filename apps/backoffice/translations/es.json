@@ -2061,22 +2061,23 @@
       "apply": "Aplicar",
       "reset": "Restablecer",
       "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
-      "invalidPeriod": "No pudimos generar el reporte con ese período. Revisá las fechas o probá con un rango más corto."
+      "invalid": "No pudimos generar el reporte con esa selección. Revisá las fechas, que el período no sea demasiado largo y los filtros elegidos."
     },
     "empty": {
       "title": "No hay actividad en el período",
-      "description": "Probá con otro rango de fechas."
+      "description": "Probá con otro período o con menos filtros."
     },
     "kpis": {
       "rfqs": "Pedidos recibidos",
       "sent": "Cotizaciones enviadas",
       "accepted": "Cotizaciones aceptadas",
+      "acceptedDetail": "Aceptaciones registradas en el período.",
       "conversion": "Tasa de conversión",
       "acceptedAmount": "Importe aceptado",
       "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
       "responseTime": "Tiempo de respuesta"
     },
-    "conversionDetail": "{accepted} aceptadas · {sent} enviadas",
+    "conversionDetail": "{accepted, plural, one {# aceptada} other {# aceptadas}} de {sent, plural, one {# enviada} other {# enviadas}} en el período",
     "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
     "duration": {
       "seconds": "{count, plural, one {# segundo} other {# segundos}}",
@@ -2094,6 +2095,14 @@
       "count": "Cotizaciones",
       "aria": "Cotizaciones creadas en el período agrupadas por estado"
     },
+    "statusLabels": {
+      "DRAFT": "Borrador",
+      "QUOTED": "Cotizada",
+      "SENT": "Enviada",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptada",
+      "REJECTED": "Rechazada"
+    },
     "timeline": {
       "title": "Envíos y aceptaciones",
       "sent": "Enviadas",
@@ -2105,8 +2114,7 @@
       "title": "Productos más solicitados",
       "description": "Ranking por cantidad de líneas, sin importar la cantidad pedida.",
       "empty": "Todavía no hay productos en el período.",
-      "name": "Producto",
-      "requests": "líneas",
+      "requests": "{count, plural, one {# línea} other {# líneas}}",
       "unnamed": "Sin nombre"
     },
     "revenueProducts": {
@@ -2124,7 +2132,7 @@
     "ai": {
       "title": "Coincidencias automáticas",
       "empty": "Todavía no hay generaciones de IA en el período.",
-      "matched": "{matched} de {total} líneas",
+      "matched": "{matched, plural, one {# línea} other {# líneas}} de {total}",
       "low": "Baja",
       "medium": "Media",
       "high": "Alta"

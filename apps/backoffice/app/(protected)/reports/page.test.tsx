@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,9 +17,13 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
     value: (value: number) => String(value),
     currency: (amount: string) => `$ ${amount}`,
     ratePct: (ratio: number) => `${Math.round(ratio * 100)}%`,
+    date: (iso: string) => `fecha ${iso}`,
   })),
 }));
 vi.mock('@/lib/api/reports', () => ({ getSellerReport: vi.fn() }));
+vi.mock('next/form', () => ({
+  default: (props: ComponentProps<'form'>) => <form {...props} />,
+}));
 vi.mock('@/lib/api/clients', () => ({ getClients: vi.fn() }));
 vi.mock('@/lib/api/users', () => ({ getSellers: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
@@ -46,7 +51,8 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
     kpis: {
       rfqsReceived: 12,
       quotesSent: 4,
-      quotesAccepted: 2,
+      quotesAccepted: 3,
+      sentAccepted: 2,
       conversionRate: 0.5,
       acceptedAmount: '1250.50',
       responseTime: { averageSeconds: 900, medianSeconds: 600, sample: 3 },
@@ -208,6 +214,7 @@ describe('ReportsPage', () => {
           rfqsReceived: 0,
           quotesSent: 0,
           quotesAccepted: 0,
+          sentAccepted: 0,
           conversionRate: null,
           acceptedAmount: '0',
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
@@ -249,11 +256,42 @@ describe('ReportsPage', () => {
     expect(screen.getByText('80%')).toBeTruthy();
   });
 
-  it('states accepted and sent events without dividing by zero', async () => {
-    const base = report();
-    await renderReport(report({ kpis: { ...base.kpis, quotesSent: 0, quotesAccepted: 2 } }));
+  it("reads conversion as the share of the period's sends accepted so far", async () => {
+    await renderReport(report());
 
-    expect(screen.getByText('2 aceptadas · 0 enviadas')).toBeTruthy();
+    expect(screen.getByText('2 aceptadas de 4 enviadas en el período')).toBeTruthy();
+    expect(screen.getByText(copy.kpis.acceptedDetail)).toBeTruthy();
+  });
+
+  it('shows no conversion rather than dividing by zero', async () => {
+    const base = report();
+    await renderReport(
+      report({
+        kpis: {
+          ...base.kpis,
+          quotesSent: 0,
+          sentAccepted: 0,
+          quotesAccepted: 2,
+          conversionRate: null,
+        },
+      }),
+    );
+
+    expect(screen.getByText('0 aceptadas de 0 enviadas en el período')).toBeTruthy();
+  });
+
+  it('names quote statuses as quotes and dates the timeline for a reader', async () => {
+    await renderReport(report());
+
+    expect(screen.getAllByText(copy.statusLabels.SENT).length).toBeGreaterThan(0);
+    expect(screen.queryByText(messages.rfqs.status.SENT)).toBeNull();
+    expect(
+      screen.getByRole('img', {
+        name: copy.timeline.aria
+          .replace('{from}', 'fecha 2026-09-26')
+          .replace('{to}', 'fecha 2026-10-25'),
+      }),
+    ).toBeTruthy();
   });
 
   it('shows the status section when quotes were created but no order arrived in the period', async () => {
@@ -263,6 +301,7 @@ describe('ReportsPage', () => {
           rfqsReceived: 0,
           quotesSent: 0,
           quotesAccepted: 0,
+          sentAccepted: 0,
           conversionRate: null,
           acceptedAmount: '0',
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
@@ -279,8 +318,14 @@ describe('ReportsPage', () => {
     expect(screen.queryByText(copy.empty.title)).toBeNull();
   });
 
-  it('shows the filter with an inline message when the API rejects the period', async () => {
-    vi.mocked(getSellerReport).mockRejectedValueOnce(new ApiError('INVALID_INPUT', 400));
+  it('still fails loudly when the report is unavailable for another reason', async () => {
+    vi.mocked(getSellerReport).mockRejectedValueOnce(new ApiError('FORBIDDEN', 403));
+
+    await expect(ReportsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow();
+  });
+
+  it('shows the filter with an inline message when the API rejects the selection', async () => {
+    vi.mocked(getSellerReport).mockRejectedValueOnce(new ApiError('INVALID_INPUT', 422));
 
     render(
       <NextIntlClientProvider locale="es" messages={messages}>
@@ -290,7 +335,8 @@ describe('ReportsPage', () => {
       </NextIntlClientProvider>,
     );
 
-    expect(screen.getByText(copy.filters.invalidPeriod)).toBeTruthy();
+    expect(screen.getByText(copy.filters.invalid)).toBeTruthy();
     expect((screen.getByLabelText(copy.filters.from) as HTMLInputElement).value).toBe('2025-01-01');
+    expect(screen.queryByRole('button', { name: copy.download.label })).toBeNull();
   });
 });

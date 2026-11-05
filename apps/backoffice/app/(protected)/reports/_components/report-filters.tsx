@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Form from 'next/form';
 import Link from 'next/link';
 import { Building2Icon, RadioIcon, TagIcon, UsersIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -38,7 +39,7 @@ interface ReportFiltersProps {
   showSeller?: boolean;
 }
 
-// Cross-field validation needs state; native `required` already covers one empty date.
+// A GET form through next/form: the URL carries the filters and navigation stays client-side.
 export function ReportFilters({
   from,
   to,
@@ -51,7 +52,7 @@ export function ReportFilters({
   showSeller = false,
 }: ReportFiltersProps) {
   const t = useTranslations('reports.filters');
-  const tStatus = useTranslations('rfqs.status');
+  const tStatus = useTranslations('reports.statusLabels');
   const tChannel = useTranslations('rfqs.channels');
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
@@ -62,9 +63,8 @@ export function ReportFilters({
   const [error, setError] = useState('');
 
   return (
-    <form
+    <Form
       action={ROUTES.reports}
-      method="get"
       className="flex flex-wrap items-end gap-4"
       onSubmit={(event) => {
         if (fromValue && toValue && fromValue > toValue) {
@@ -75,14 +75,14 @@ export function ReportFilters({
         setError('');
       }}
     >
-      <div className="flex flex-col gap-y-1.5">
+      <div className="flex w-full flex-col gap-y-1.5 sm:w-auto">
         <Label htmlFor="report-from">{t('from')}</Label>
         <Input
           id="report-from"
           name="from"
           type="date"
           required
-          containerClassName="w-44"
+          containerClassName="w-full sm:w-44"
           value={fromValue}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? 'report-range-error' : undefined}
@@ -92,14 +92,14 @@ export function ReportFilters({
           }}
         />
       </div>
-      <div className="flex flex-col gap-y-1.5">
+      <div className="flex w-full flex-col gap-y-1.5 sm:w-auto">
         <Label htmlFor="report-to">{t('to')}</Label>
         <Input
           id="report-to"
           name="to"
           type="date"
           required
-          containerClassName="w-44"
+          containerClassName="w-full sm:w-44"
           value={toValue}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? 'report-range-error' : undefined}
@@ -190,6 +190,6 @@ export function ReportFilters({
           {error}
         </p>
       ) : null}
-    </form>
+    </Form>
   );
 }

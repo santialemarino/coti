@@ -1,4 +1,4 @@
-﻿import { getTranslations } from 'next-intl/server';
+import { getTranslations } from 'next-intl/server';
 
 import { Card, Skeleton } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
@@ -8,12 +8,23 @@ export default async function ReportsLoading() {
   const t = await getTranslations('reports');
   return (
     <PageShell>
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader
+        title={t('title')}
+        description={t('description')}
+        actions={<Skeleton className="h-9 w-36" />}
+      />
       <Card className="gap-y-0 py-5">
-        <div className="flex flex-wrap gap-4 px-5">
-          <Skeleton className="h-9 w-44" />
-          <Skeleton className="h-9 w-44" />
-          <Skeleton className="h-9 w-24" />
+        <div className="flex flex-wrap items-end gap-4 px-5">
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="flex flex-col gap-y-1.5">
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-9 w-44" />
+            </div>
+          ))}
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-9 min-w-36 flex-1" />
+          ))}
+          <Skeleton className="h-9 w-40" />
         </div>
       </Card>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

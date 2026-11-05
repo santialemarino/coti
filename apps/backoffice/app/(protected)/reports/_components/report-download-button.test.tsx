@@ -101,10 +101,13 @@ describe('ReportDownloadButton', () => {
       vi.fn<typeof fetch>().mockResolvedValue(Response.json({ code: 'INTERNAL' }, { status: 500 })),
     );
     renderButton();
+    const button = screen.getByRole('button', { name: copy.label });
 
-    fireEvent.click(screen.getByRole('button', { name: copy.label }));
+    fireEvent.click(button);
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.error));
-    expect(screen.getByRole('button', { name: copy.label })).toBeTruthy();
+    await waitFor(() => expect(button.getAttribute('aria-busy')).toBe('false'));
+    expect(button).toHaveProperty('disabled', false);
+    expect(button.isConnected).toBe(true);
   });
 });

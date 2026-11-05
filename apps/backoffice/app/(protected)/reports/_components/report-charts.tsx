@@ -56,12 +56,16 @@ export function StatusPieChart({
   ariaLabel,
   label,
   valueLabel,
+  formatValue,
+  formatShare,
 }: {
   items: PieItem[];
   summary: string;
   ariaLabel: string;
   label: string;
   valueLabel: string;
+  formatValue: (value: number) => string;
+  formatShare: (ratio: number) => string;
 }) {
   const total = items.reduce((sum, item) => sum + item.value, 0);
   const visible = items.filter((item) => item.value > 0);
@@ -96,7 +100,7 @@ export function StatusPieChart({
         <p className="text-paragraph-xs text-foreground-subtle">{summary}</p>
         <ul className="flex flex-col gap-y-2.5">
           {items.map((item) => {
-            const percent = total === 0 ? 0 : Math.round((item.value / total) * 100);
+            const share = total === 0 ? 0 : item.value / total;
             return (
               <li
                 key={item.key}
@@ -110,8 +114,10 @@ export function StatusPieChart({
                   <span className="truncate text-foreground-muted">{item.label}</span>
                 </span>
                 <span className="shrink-0 tabular-nums text-foreground">
-                  <span className="font-semibold">{item.value}</span>
-                  <span className="ml-2 text-paragraph-xs text-foreground-subtle">{percent}%</span>
+                  <span className="text-paragraph-sm-semibold">{formatValue(item.value)}</span>
+                  <span className="ml-2 text-paragraph-xs text-foreground-subtle">
+                    {formatShare(share)}
+                  </span>
                 </span>
               </li>
             );
@@ -130,7 +136,7 @@ export function StatusPieChart({
           {items.map((item) => (
             <tr key={item.key}>
               <th scope="row">{item.label}</th>
-              <td>{item.value}</td>
+              <td>{formatValue(item.value)}</td>
             </tr>
           ))}
         </tbody>
@@ -159,7 +165,7 @@ export function RankingList({
       {items.map((item, index) => (
         <li key={item.key} className="flex flex-col gap-y-2 px-6 py-3.5">
           <div className="flex items-center gap-x-3">
-            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-paragraph-xs font-semibold tabular-nums text-accent-foreground">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-paragraph-xs-semibold tabular-nums text-accent-foreground">
               {index + 1}
             </span>
             <span className="min-w-0 flex-1 truncate text-paragraph-sm text-foreground">
@@ -197,12 +203,16 @@ export function TimelineChart({
   acceptedLabel,
   dateLabel,
   ariaLabel,
+  formatDate,
+  formatValue,
 }: {
   points: TimelinePoint[];
   sentLabel: string;
   acceptedLabel: string;
   dateLabel: string;
   ariaLabel: string;
+  formatDate: (date: string) => string;
+  formatValue: (value: number) => string;
 }) {
   const max = Math.max(1, ...points.flatMap((point) => [point.sent, point.accepted]));
   return (
@@ -217,7 +227,13 @@ export function TimelineChart({
           {acceptedLabel}
         </span>
       </div>
-      <div className="overflow-x-auto">
+      {/* Focusable so a keyboard can scroll a long period; the ring is the only cue it scrolls. */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label={ariaLabel}
+        className="overflow-x-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+      >
         <div
           role="img"
           aria-label={ariaLabel}
@@ -230,12 +246,12 @@ export function TimelineChart({
               className="flex h-full min-w-0 flex-1 items-end justify-center gap-x-0.5"
             >
               <span
-                title={`${point.date}: ${point.sent} ${sentLabel}`}
+                title={`${formatDate(point.date)}: ${formatValue(point.sent)} ${sentLabel}`}
                 className="w-1/3 max-w-3 rounded-t-sm bg-status-sent"
                 style={{ height: point.sent === 0 ? 0 : `${(point.sent / max) * 100}%` }}
               />
               <span
-                title={`${point.date}: ${point.accepted} ${acceptedLabel}`}
+                title={`${formatDate(point.date)}: ${formatValue(point.accepted)} ${acceptedLabel}`}
                 className="w-1/3 max-w-3 rounded-t-sm bg-status-accepted"
                 style={{ height: point.accepted === 0 ? 0 : `${(point.accepted / max) * 100}%` }}
               />
@@ -255,9 +271,9 @@ export function TimelineChart({
         <tbody>
           {points.map((point) => (
             <tr key={point.date}>
-              <th scope="row">{point.date}</th>
-              <td>{point.sent}</td>
-              <td>{point.accepted}</td>
+              <th scope="row">{formatDate(point.date)}</th>
+              <td>{formatValue(point.sent)}</td>
+              <td>{formatValue(point.accepted)}</td>
             </tr>
           ))}
         </tbody>
@@ -271,11 +287,13 @@ export function ConfidenceBar({
   medium,
   high,
   labels,
+  formatValue,
 }: {
   low: number;
   medium: number;
   high: number;
   labels: { low: string; medium: string; high: string };
+  formatValue: (value: number) => string;
 }) {
   const total = low + medium + high;
   const segments = [
@@ -304,7 +322,9 @@ export function ConfidenceBar({
           >
             <span className={cn('size-2 rounded-full', segment.className)} aria-hidden="true" />
             {segment.label}
-            <span className="font-semibold tabular-nums text-foreground">{segment.value}</span>
+            <span className="text-paragraph-xs-semibold tabular-nums text-foreground">
+              {formatValue(segment.value)}
+            </span>
           </li>
         ))}
       </ul>
