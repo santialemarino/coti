@@ -2067,7 +2067,7 @@
       "label": "Formato",
       "csv": "CSV",
       "xml": "XML",
-      "csvHint": "Una fila por ítem, que repite los datos del registro. Se abre con Excel o Google Sheets.",
+      "csvHint": "Una fila por ítem, sucursal o contacto, que repite los datos del registro. Se abre con Excel o Google Sheets.",
       "xmlHint": "Cada registro con sus ítems anidados, para importarlo en otro sistema."
     },
     "branch": {

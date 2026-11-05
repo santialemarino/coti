@@ -205,7 +205,7 @@ export function DataExportForm({ branches, offersInvoices }: DataExportFormProps
               </div>
               <p
                 id={`${fieldId}-period-hint`}
-                role={rangeError ? 'alert' : undefined}
+                aria-live="polite"
                 className={
                   rangeError
                     ? 'text-paragraph-sm text-danger-foreground'

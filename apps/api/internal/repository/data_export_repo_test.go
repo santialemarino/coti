@@ -36,6 +36,7 @@ func TestDataExportRepositoryListsQuotesWithTheirCurrentLines(t *testing.T) {
 	reportExec(t, db, "code", `UPDATE product SET code = 'CEM-1' WHERE id = $1`, productID)
 	inPeriod, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	before, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	after, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	north, _, _ := seedQuoteChain(t, db, accountID, northID, productID)
 	foreignProduct := seedProduct(t, db, otherAccount, "Cemento ajeno")
 	seedQuoteChain(t, db, otherAccount, branchOf(t, db, otherAccount), foreignProduct)
@@ -44,6 +45,8 @@ func TestDataExportRepositoryListsQuotesWithTheirCurrentLines(t *testing.T) {
 	  created_at = '2026-11-01T03:00:00Z' WHERE id = $1`, inPeriod, clientID)
 	// 23:59 on October 31 in Argentina, so outside a period that starts on November 1.
 	reportExec(t, db, "early quote", `UPDATE quote SET created_at = '2026-11-01T02:59:00Z' WHERE id = $1`, before)
+	// 00:00 on November 2 in Argentina, the first instant after a period that ends on November 1.
+	reportExec(t, db, "late quote", `UPDATE quote SET created_at = '2026-11-02T03:00:00Z' WHERE id = $1`, after)
 	reportExec(t, db, "north quote", `UPDATE quote SET created_at = '2026-11-01T15:00:00Z' WHERE id = $1`, north)
 	reportExec(t, db, "total", `UPDATE quote_version SET total = 900 WHERE id = $1`, versionID)
 	reportExec(t, db, "line", `UPDATE quote_item SET unit_price_snapshot = 100, subtotal = 1000
@@ -69,8 +72,8 @@ func TestDataExportRepositoryListsQuotesWithTheirCurrentLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(all) != 3 {
-		t.Fatalf("quotes = %d, want the account's three and not the other account's", len(all))
+	if len(all) != 4 {
+		t.Fatalf("quotes = %d, want the account's four and not the other account's", len(all))
 	}
 	if len(narrowed) != 1 || narrowed[0].ID != inPeriod {
 		t.Fatalf("narrowed = %+v, want only the in-period quote at the head office", narrowed)
@@ -199,12 +202,14 @@ func TestDataExportRepositoryListsInvoicesInThePeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	otherBranch := seedExportBranch(t, db, tenant.AccountID, "Norte")
 	repo := NewDataExportRepository()
+	branch := &tenant.BranchID
 	read := func(from, to string) []domain.DataExportInvoice {
 		t.Helper()
 		var invoices []domain.DataExportInvoice
 		filter := exportFilter(tenant.AccountID)
-		filter.FromDate, filter.ToDate = &from, &to
+		filter.FromDate, filter.ToDate, filter.BranchID = &from, &to, branch
 		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 			var err error
 			invoices, err = repo.ListInvoices(ctx, q, filter)
@@ -230,5 +235,9 @@ func TestDataExportRepositoryListsInvoicesInThePeriod(t *testing.T) {
 	}
 	if got := read("2026-10-01", "2026-10-04"); len(got) != 0 {
 		t.Fatalf("invoices before the issue date = %+v, want none", got)
+	}
+	branch = &otherBranch
+	if got := read("2026-10-05", "2026-10-05"); len(got) != 0 {
+		t.Fatalf("invoices at another branch = %+v, want none", got)
 	}
 }

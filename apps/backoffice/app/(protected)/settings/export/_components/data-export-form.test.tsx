@@ -77,7 +77,7 @@ describe('DataExportForm', () => {
     fireEvent.change(screen.getByLabelText(copy.period.to), { target: { value: '2026-11-01' } });
     fireEvent.click(screen.getByRole('button', { name: copy.download.label }));
 
-    expect(screen.getByRole('alert').textContent).toBe(copy.period.invalidRange);
+    expect(screen.getByText(copy.period.invalidRange).getAttribute('aria-live')).toBe('polite');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
