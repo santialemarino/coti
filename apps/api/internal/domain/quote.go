@@ -20,6 +20,16 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
+// IsValidQuoteStatus reports whether status is one of the quote lifecycle states.
+func IsValidQuoteStatus(status QuoteStatus) bool {
+	switch status {
+	case QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusSent,
+		QuoteStatusChangeRequested, QuoteStatusAccepted, QuoteStatusRejected:
+		return true
+	}
+	return false
+}
+
 // QuoteReactivationMode selects whether a closed quote reuses its frozen version or opens a new draft.
 type QuoteReactivationMode string
 

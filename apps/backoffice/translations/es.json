@@ -493,6 +493,10 @@
       "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
     },
+    "exportSettings": {
+      "title": "Exportación de datos",
+      "description": "Descarga de cotizaciones, catálogo, clientes y facturas en CSV o XML."
+    },
     "catalogSettings": {
       "title": "Catálogo",
       "description": "Carga inicial y actualización del catálogo de productos."
@@ -2037,9 +2041,202 @@
       "merged": "Unimos «{merged}» en «{kept}»."
     }
   },
+  "dataExport": {
+    "title": "Exportación de datos",
+    "description": "Descargá los datos de la cuenta para usarlos en otro sistema o migrarlos. Las columnas llevan nombres en español y los montos usan punto decimal.",
+    "entity": {
+      "label": "Qué exportar",
+      "quotes": {
+        "label": "Cotizaciones",
+        "hint": "Cada cotización con su estado, su total y los ítems de la versión vigente."
+      },
+      "catalog": {
+        "label": "Catálogo",
+        "hint": "Los productos con la disponibilidad, el stock y el precio vigente en cada sucursal."
+      },
+      "clients": {
+        "label": "Clientes",
+        "hint": "Los clientes con sus datos fiscales, etiquetas y contactos."
+      },
+      "invoices": {
+        "label": "Facturas",
+        "hint": "Las facturas y notas de crédito con su estado, su CAE y sus montos."
+      }
+    },
+    "format": {
+      "label": "Formato",
+      "csv": "CSV",
+      "xml": "XML",
+      "csvHint": "Una fila por ítem, sucursal o contacto, que repite los datos del registro. Se abre con Excel o Google Sheets.",
+      "xmlHint": "Cada registro con sus ítems anidados, para importarlo en otro sistema."
+    },
+    "branch": {
+      "label": "Sucursal",
+      "all": "Todas las sucursales",
+      "closed": "{name} (cerrada)"
+    },
+    "period": {
+      "from": "Desde",
+      "to": "Hasta",
+      "quotesHint": "Por fecha de creación. Sin fechas, se exporta todo el historial.",
+      "invoicesHint": "Por fecha de emisión. Sin fechas, se exporta todo el historial.",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta."
+    },
+    "download": {
+      "label": "Descargar",
+      "pending": "Preparando el archivo…",
+      "done": "Descargamos «{filename}».",
+      "error": "No pudimos generar el archivo. Probá de nuevo."
+    }
+  },
   "reports": {
-    "placeholderTitle": "Reportes",
-    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+    "title": "Reportes",
+    "description": "Actividad de pedidos y cotizaciones en el período.",
+    "descriptionAll": "Actividad de pedidos y cotizaciones de todas las sucursales en el período.",
+    "download": {
+      "label": "Descargar PDF",
+      "pending": "Generando PDF.",
+      "error": "No pudimos generar el PDF. Probá de nuevo."
+    },
+    "filters": {
+      "from": "Desde",
+      "to": "Hasta",
+      "status": "Estado",
+      "statusCount": "{count, plural, one {# estado} other {# estados}}",
+      "clearStatus": "Limpiar estados",
+      "channel": "Canal",
+      "seller": "Vendedor",
+      "client": "Cliente",
+      "tag": "Etiqueta",
+      "tagCount": "{count, plural, one {# etiqueta} other {# etiquetas}}",
+      "clearTag": "Limpiar etiquetas",
+      "branch": "Sucursal",
+      "branchCount": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "clearBranch": "Limpiar sucursales",
+      "allChannel": "Todos los canales",
+      "allSeller": "Todos los vendedores",
+      "allClient": "Todos los clientes",
+      "apply": "Aplicar",
+      "reset": "Restablecer",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
+      "invalid": "No pudimos generar el reporte con esa selección. Revisá las fechas, que el período no sea demasiado largo y los filtros elegidos."
+    },
+    "empty": {
+      "title": "No hay actividad en el período",
+      "description": "Probá con otro período o con menos filtros."
+    },
+    "kpis": {
+      "rfqs": "Pedidos recibidos",
+      "sent": "Cotizaciones enviadas",
+      "accepted": "Cotizaciones aceptadas",
+      "acceptedDetail": "Aceptaciones registradas en el período.",
+      "conversion": "Tasa de conversión",
+      "acceptedAmount": "Importe aceptado",
+      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "responseTime": "Tiempo de respuesta",
+      "timeToAcceptance": "Tiempo hasta la aceptación",
+      "followUpPending": "Seguimientos pendientes",
+      "followUpPendingDetail": "Cotizaciones que esperan un seguimiento hoy."
+    },
+    "conversionDetail": "{accepted, plural, one {# aceptada} other {# aceptadas}} de {sent, plural, one {# enviada} other {# enviadas}} en el período",
+    "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
+    "timeToAcceptanceDetail": "Mediana {median} · {count, plural, one {# aceptación} other {# aceptaciones}}",
+    "duration": {
+      "seconds": "{count, plural, one {# segundo} other {# segundos}}",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "daysHours": "{days} d {hours} h"
+    },
+    "noDataShort": "—",
+    "status": {
+      "title": "Cotizaciones por estado",
+      "description": "Distribución de las cotizaciones creadas en el período.",
+      "empty": "Todavía no hay cotizaciones en el período.",
+      "total": "{count, plural, one {# cotización} other {# cotizaciones}}",
+      "label": "Estado",
+      "count": "Cotizaciones",
+      "aria": "Cotizaciones creadas en el período agrupadas por estado"
+    },
+    "statusLabels": {
+      "DRAFT": "Borrador",
+      "QUOTED": "Cotizada",
+      "SENT": "Enviada",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptada",
+      "REJECTED": "Rechazada"
+    },
+    "timeline": {
+      "title": "Tendencia",
+      "sent": "Enviadas",
+      "accepted": "Aceptadas",
+      "aria": "Pedidos, envíos, aceptaciones y conversión entre {from} y {to}",
+      "scroll": "Gráfico desplazable",
+      "rfqs": "Pedidos",
+      "conversion": "Conversión de las enviadas en cada período",
+      "bucket": "Período",
+      "weekOf": "Semana del {date}",
+      "by": {
+        "day": "Por día.",
+        "week": "Por semana, desde el lunes.",
+        "month": "Por mes."
+      },
+      "granularity": {
+        "label": "Agrupar por",
+        "day": "Día",
+        "week": "Semana",
+        "month": "Mes"
+      },
+      "weekFrom": "Desde el {date}"
+    },
+    "products": {
+      "title": "Productos más solicitados",
+      "description": "Ranking por cantidad de líneas, sin importar la cantidad pedida.",
+      "empty": "Todavía no hay productos en el período.",
+      "requests": "{count, plural, one {# línea} other {# líneas}}",
+      "unnamed": "Sin nombre"
+    },
+    "revenueProducts": {
+      "title": "Productos con mayor ingreso",
+      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "empty": "Todavía no hay productos aceptados en el período."
+    },
+    "clients": {
+      "title": "Clientes por importe aceptado",
+      "empty": "Todavía no hay clientes aceptados en el período.",
+      "name": "Cliente",
+      "acceptedAmount": "Importe aceptado",
+      "unnamed": "Sin cliente"
+    },
+    "ai": {
+      "title": "Coincidencias automáticas",
+      "empty": "Todavía no hay generaciones de IA en el período.",
+      "matched": "{matched, plural, one {# línea} other {# líneas}} de {total}",
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "versionUnmatched": "{unmatched, plural, one {# línea queda} other {# líneas quedan}} sin coincidencia en la versión vigente, de {total}."
+    },
+    "branches": {
+      "title": "Pedidos por sucursal",
+      "name": "Sucursal",
+      "rfqs": "Pedidos",
+      "empty": "Todavía no hay pedidos en las sucursales del período."
+    },
+    "assistant": {
+      "title": "Asistente de conversación",
+      "description": "Propuestas del período, por lo que hizo el vendedor. Las que nadie decidió cuentan en el total.",
+      "empty": "Todavía no hay propuestas del asistente en el período.",
+      "rate": "{approved, plural, one {# aprobada} other {# aprobadas}} sin cambios de {total}",
+      "outcomes": {
+        "approvedAsIs": "Sin cambios",
+        "edited": "Editadas",
+        "rejected": "Rechazadas",
+        "manualOverride": "Resueltas a mano",
+        "pending": "Sin decidir"
+      }
+    }
   },
   "catalog": {
     "title": "Catálogo",
@@ -2058,7 +2255,8 @@
       "catalog": "Catálogo",
       "prices": "Precios",
       "onboarding": "Configuración inicial · {done}/{total}",
-      "invoicing": "Facturación"
+      "invoicing": "Facturación",
+      "export": "Exportación de datos"
     },
     "backToInvoicing": "Volver a Facturación"
   },

@@ -2,7 +2,9 @@
 
 Spreadsheet imports and exports use `internal/utils/spreadsheet` instead of implementing CSV,
 XLSX, ZIP, or worksheet XML handling inside a product feature. The package exposes two
-declarative contracts.
+declarative contracts. The account data export, which writes plain CSV and XML for another system
+rather than a workbook to edit and re-import, uses `internal/utils/dataexport` instead; see
+[data-export.md](data-export.md).
 
 ## Imports
 

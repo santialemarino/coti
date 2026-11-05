@@ -56,12 +56,14 @@ type Handlers struct {
 	AccountLogo    *handler.BrandLogoHandler
 	Prices         *handler.ProductPriceHandler
 	CatalogImport  *handler.CatalogImportHandler
+	DataExport     *handler.DataExportHandler
 	Onboarding     *handler.OnboardingHandler
 	WhatsApp       *handler.WhatsAppWebhookHandler
 	Gmail          *handler.GmailHandler
 	ARCASetup      *handler.ARCASetupHandler
 	Invoice        *handler.InvoiceHandler
 	Promotion      *handler.PromotionHandler
+	Report         *handler.SellerReportHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -279,6 +281,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		quotes.GET("/:quoteId/invoice", h.Invoice.Preview)
 		quotes.POST("/:quoteId/invoice", h.Invoice.Issue)
 	}
+	if h.Report != nil {
+		verified.GET("/reports", h.Report.Get)
+		verified.GET("/reports/pdf", h.Report.DownloadPDF)
+	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
 	if h.ClientContacts != nil {
@@ -348,6 +354,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	admin.GET("/exports/:entity", h.DataExport.Export)
 	admin.GET("/promotions", h.Promotion.List)
 	admin.GET("/promotions/:promotionId", h.Promotion.Get)
 	admin.POST("/promotions", h.Promotion.Create)

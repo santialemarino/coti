@@ -12,17 +12,20 @@ which one answered.
 | Provider | Behaviour                                                                        |
 | -------- | -------------------------------------------------------------------------------- |
 | `local`  | Keeps objects on the filesystem and serves them through the API's own link route |
+| `neon`   | Stores private objects on the linked Neon branch, using path-style S3 requests   |
 | `spaces` | Stores them in an S3-compatible bucket, which signs and serves its own links     |
 
-`local` is the default, and it genuinely works: a checkout with no bucket — which is every
-checkout until a Space is paid for — uploads, downloads and expires links exactly as the
-deployed one will. There is no stand-in that accepts a file and stores it nowhere. An in-memory
-adapter exists only inside `fake_test.go`, where no binary can reach it.
+`local` is the default for development without a bucket. It stores the actual bytes and serves
+expiring links. An in-memory adapter exists only inside `fake_test.go`.
 
-Selecting `spaces` with a credential missing fails at startup, every blank key named in the same
-pass rather than one restart per problem. A deployment needs `spaces` as soon as it takes file
-orders: the attachment sweep runs in its own container, which a `local` disk does not reach — see
+Selecting `neon` or `spaces` with a credential missing fails at startup, every blank key named in
+the same pass. A deployment needs remote storage as soon as it takes file orders: the attachment
+sweep runs in its own container, which a `local` disk does not reach — see
 [deployment.md](deployment.md).
+
+The S3 adapter spools non-seekable upload streams to a private temporary file, then removes it
+after the request. This gives the SDK a content length and a rewindable body for retries without
+keeping another full copy in memory. Seekable inputs are uploaded directly.
 
 ## The content type travels with the object
 
@@ -61,7 +64,7 @@ test pins it; it is there because `filepath.Join` is platform-dependent and the 
 
 ## What a signed link is, per adapter
 
-`spaces` returns a presigned GET URL. The bucket validates it and serves the object; the API
+`neon` and `spaces` return a presigned GET URL. The bucket validates it and serves the object; the API
 never carries the bytes on the way out.
 
 `local` returns a link at `/v1/files/<key>` carrying two query parameters:
@@ -158,17 +161,17 @@ In `apps/api/.env.example`, defaults in `internal/config`:
 
 | Key                                 | Meaning                                                             |
 | ----------------------------------- | ------------------------------------------------------------------- |
-| `STORAGE_PROVIDER`                  | `local` (default) or `spaces`                                       |
+| `STORAGE_PROVIDER`                  | `local` (default), `neon` or `spaces`                               |
 | `STORAGE_MAX_FILE_SIZE_BYTES`       | refused before any byte is stored; defaults to 10 MiB               |
 | `STORAGE_SIGNED_URL_EXPIRY_MINUTES` | how long a link serves; defaults to 15                              |
 | `STORAGE_LOCAL_DIR`                 | where objects live; required when the provider is `local`           |
 | `STORAGE_LOCAL_API_BASE_URL`        | where signed links point — this API's own address, not a frontend's |
 | `STORAGE_LOCAL_SIGNING_SECRET`      | signs local links; at least 32 characters, required under `local`   |
-| `STORAGE_ENDPOINT`                  | required when the provider is `spaces`; carries no bucket name      |
-| `STORAGE_REGION`                    | required when the provider is `spaces`                              |
-| `STORAGE_BUCKET`                    | required when the provider is `spaces`                              |
-| `STORAGE_ACCESS_KEY`                | required when the provider is `spaces`                              |
-| `STORAGE_SECRET_KEY`                | required when the provider is `spaces`                              |
+| `STORAGE_ENDPOINT`                  | required for `neon` and `spaces`; carries no bucket name            |
+| `STORAGE_REGION`                    | signing region; required for remote providers                       |
+| `STORAGE_BUCKET`                    | bucket name; required for remote providers                          |
+| `STORAGE_ACCESS_KEY`                | access key; required for remote providers                           |
+| `STORAGE_SECRET_KEY`                | secret key; required for remote providers                           |
 
 The signing secret is a credential, not a convenience: a link is only as private as that value,
 so a deployment sharing one shares every file it stores. It is demanded under `local` for the
@@ -176,9 +179,43 @@ same reason `AUTH_JWT_SECRET` is demanded at all, and to the same 32-character f
 HMAC construction needs the same key width.
 
 Each adapter is handed only its own settings. `StorageConfig.Local()` carries the directory, the
-link base and the signing secret; `StorageConfig.Spaces()` carries one bucket's coordinates.
+link base and the signing secret; `StorageConfig.S3()` carries one bucket's coordinates.
 Neither can reach the other's credential, so no `%+v` puts a bucket key in a filesystem adapter's
 log line.
+
+### Pointing it at Neon Object Storage
+
+Declare `coti-files` with `access: 'private'` in `neon.ts` and run `neon deploy --no-env-pull`.
+Pull only storage credentials into an ignored file to preserve Coti's restricted database URL:
+
+```bash
+neon env pull --service object-storage --file .artifacts/neon/storage.env
+```
+
+Map the result into `apps/api/.env` or the API and scheduled jobs' encrypted runtime settings:
+
+| Coti setting         | Neon value              |
+| -------------------- | ----------------------- |
+| `STORAGE_PROVIDER`   | `neon`                  |
+| `STORAGE_ENDPOINT`   | `AWS_ENDPOINT_URL_S3`   |
+| `STORAGE_REGION`     | `AWS_REGION`            |
+| `STORAGE_BUCKET`     | `coti-files`            |
+| `STORAGE_ACCESS_KEY` | `AWS_ACCESS_KEY_ID`     |
+| `STORAGE_SECRET_KEY` | `AWS_SECRET_ACCESS_KEY` |
+
+The adapter uses path-style addressing, with the bucket in the URL path. It omits object ACL
+headers because Neon controls access at the bucket. Keep the bucket private: the backend does not
+make a public bucket private. Credentials are supplied explicitly; ambient `AWS_*` settings do not
+override Coti's `STORAGE_*` configuration. Use the same branch's database, bucket and credentials.
+
+The `integration`-tagged `TestNeonStorage_PrivateBucketRoundTrip` uses `TEST_STORAGE_ENDPOINT`,
+`TEST_STORAGE_REGION`, `TEST_STORAGE_BUCKET`, `TEST_STORAGE_ACCESS_KEY` and `TEST_STORAGE_SECRET_KEY`.
+Run it against a temporary private test branch. It uploads a unique object, checks the downloaded
+bytes and metadata, verifies signed access and rejects unsigned or tampered links, then deletes
+the object. Missing test settings skip it; normal API tests never contact Neon storage.
+
+Switching providers does not copy existing objects. If the database references local files, copy
+those objects under the same keys before switching, or keep using the local provider.
 
 ### Pointing it at DigitalOcean Spaces
 

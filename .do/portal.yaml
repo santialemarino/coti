@@ -1,0 +1,27 @@
+# Neon-backed deployment. Supply SECRET values outside git and replace frontend API URLs.
+name: coti-portal
+region: nyc
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: webapp
+services:
+  - name: webapp
+    dockerfile_path: docker/webapp.Dockerfile
+    source_dir: /
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb-fixed
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        scope: RUN_AND_BUILD_TIME
+        value: https://replace-with-core-host.invalid/api
+      - key: WEB_TRUSTED_PROXY_HOPS
+        scope: RUN_TIME
+        value: '0'
+    git:
+      repo_clone_url: https://github.com/santialemarino/coti.git
+      branch: main

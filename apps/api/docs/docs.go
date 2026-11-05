@@ -3118,6 +3118,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/exports/{entity}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns quotes, catalog, clients or invoices across the account, with Spanish field names.",
+                "produces": [
+                    "text/csv",
+                    "application/xml"
+                ],
+                "tags": [
+                    "exports"
+                ],
+                "summary": "Export account data",
+                "parameters": [
+                    {
+                        "enum": [
+                            "quotes",
+                            "catalog",
+                            "clients",
+                            "invoices"
+                        ],
+                        "type": "string",
+                        "description": "What to export",
+                        "name": "entity",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "csv",
+                            "xml"
+                        ],
+                        "type": "string",
+                        "description": "File format",
+                        "name": "format",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Branch to narrow quotes, catalog prices and invoices to",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "First day of quotes or invoices, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last day of quotes or invoices, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/files/{key}": {
             "get": {
                 "description": "Serves a stored file to the holder of an unexpired signed link. No session: the signature is the authorization.",
@@ -8115,6 +8203,252 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/reports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns audited order and quote metrics for the caller's branch and seller reach.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Get seller report",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted reports on every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "First day, YYYY-MM-DD; defaults to 30 days ago",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last day, YYYY-MM-DD; defaults to today",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Quote statuses to include; repeat or comma-separate",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Intake channel type",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Seller UUID; administrators only",
+                        "name": "seller_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client UUID",
+                        "name": "client_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Branch UUIDs inside the caller's reach; repeat or comma-separate",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Client tag UUIDs; an order matches when its client carries any of them",
+                        "name": "tag_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trend bucket: day, week or month; omitted picks one from the period's length",
+                        "name": "granularity",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SellerReportResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/reports/pdf": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Renders the same scoped seller dashboard metrics as a printable PDF.",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Download seller report PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch; omitted reports on every branch the caller reaches",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "First day, YYYY-MM-DD; defaults to 30 days ago",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last day, YYYY-MM-DD; defaults to today",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Quote statuses to include; repeat or comma-separate",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Intake channel type",
+                        "name": "channel",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Seller UUID; administrators only",
+                        "name": "seller_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client UUID",
+                        "name": "client_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Branch UUIDs inside the caller's reach; repeat or comma-separate",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Client tag UUIDs; an order matches when its client carries any of them",
+                        "name": "tag_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Trend bucket: day, week or month; omitted picks one from the period's length",
+                        "name": "granularity",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -13619,6 +13953,338 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.SellerResponse"
                     }
+                }
+            }
+        },
+        "dto.SellerReportAIMatchResponse": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "$ref": "#/definitions/dto.SellerReportConfidenceResponse"
+                },
+                "matched": {
+                    "type": "integer"
+                },
+                "rate": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "version_lines": {
+                    "type": "integer"
+                },
+                "version_unmatched": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportAssistantResponse": {
+            "type": "object",
+            "properties": {
+                "approval_rate": {
+                    "type": "string"
+                },
+                "approved_as_is": {
+                    "type": "integer"
+                },
+                "edited": {
+                    "type": "integer"
+                },
+                "manual_override": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "proposals": {
+                    "type": "integer"
+                },
+                "rejected": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportBranchResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "branch_name": {
+                    "type": "string"
+                },
+                "rfqs": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportClientResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_amount": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportConfidenceResponse": {
+            "type": "object",
+            "properties": {
+                "high": {
+                    "type": "integer"
+                },
+                "low": {
+                    "type": "integer"
+                },
+                "medium": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportFiltersResponse": {
+            "type": "object",
+            "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportOptionResponse"
+                    }
+                },
+                "channel": {
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "seller_id": {
+                    "type": "string"
+                },
+                "seller_name": {
+                    "type": "string"
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportOptionResponse"
+                    }
+                }
+            }
+        },
+        "dto.SellerReportKPIsResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_amount": {
+                    "type": "string"
+                },
+                "conversion_rate": {
+                    "type": "string"
+                },
+                "follow_up_pending": {
+                    "type": "integer"
+                },
+                "quotes_accepted": {
+                    "type": "integer"
+                },
+                "quotes_sent": {
+                    "type": "integer"
+                },
+                "response_time": {
+                    "$ref": "#/definitions/dto.SellerReportResponseTimeResponse"
+                },
+                "rfqs_received": {
+                    "type": "integer"
+                },
+                "sent_accepted": {
+                    "type": "integer"
+                },
+                "time_to_acceptance": {
+                    "$ref": "#/definitions/dto.SellerReportResponseTimeResponse"
+                }
+            }
+        },
+        "dto.SellerReportOptionResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportProductResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "requests": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportRangeResponse": {
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportResponse": {
+            "type": "object",
+            "properties": {
+                "ai_match": {
+                    "$ref": "#/definitions/dto.SellerReportAIMatchResponse"
+                },
+                "assistant": {
+                    "$ref": "#/definitions/dto.SellerReportAssistantResponse"
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportBranchResponse"
+                    }
+                },
+                "filters": {
+                    "$ref": "#/definitions/dto.SellerReportFiltersResponse"
+                },
+                "granularity": {
+                    "type": "string"
+                },
+                "kpis": {
+                    "$ref": "#/definitions/dto.SellerReportKPIsResponse"
+                },
+                "quotes_by_status": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportStatusResponse"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/dto.SellerReportRangeResponse"
+                },
+                "scope": {
+                    "$ref": "#/definitions/dto.SellerReportScopeResponse"
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportTimelineResponse"
+                    }
+                },
+                "top_clients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportClientResponse"
+                    }
+                },
+                "top_products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportProductResponse"
+                    }
+                },
+                "top_revenue_products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportRevenueProductResponse"
+                    }
+                }
+            }
+        },
+        "dto.SellerReportResponseTimeResponse": {
+            "type": "object",
+            "properties": {
+                "average_seconds": {
+                    "type": "integer"
+                },
+                "median_seconds": {
+                    "type": "integer"
+                },
+                "sample": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportRevenueProductResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "revenue": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportScopeResponse": {
+            "type": "object",
+            "properties": {
+                "branch_id": {
+                    "type": "string"
+                },
+                "multi_branch": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.SellerReportStatusResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportTimelineResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "integer"
+                },
+                "conversion_rate": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "rfqs": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                },
+                "sent_accepted": {
+                    "type": "integer"
                 }
             }
         },

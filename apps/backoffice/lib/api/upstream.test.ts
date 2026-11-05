@@ -40,6 +40,27 @@ describe('forwardToApi fiscal documents', () => {
     expect(headers.get('Authorization')).toBe('Bearer session-token');
     expect(headers.get('X-Branch-Id')).toBe('branch-id');
   });
+  it('forwards an export with its own type instead of rewriting it as JSON', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('\uFEFFnumero\r\n1\r\n', {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="cotizaciones-2026-11-05.csv"',
+        },
+      }),
+    );
+    const response = await forwardToApi(null, {
+      path: '/v1/exports/quotes?format=csv',
+      method: 'GET',
+      fallbackToOnlyBranch: false,
+    });
+    expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+    expect(response.headers.get('Content-Disposition')).toContain('cotizaciones-2026-11-05.csv');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(new Uint8Array(await response.arrayBuffer()).slice(0, 3)).toEqual(
+      new Uint8Array([0xef, 0xbb, 0xbf]),
+    );
+  });
   it.each([204, 205, 304])('passes a %i through with no body', async (status) => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status }));
     const request = new Request('http://localhost/api/clients/id/merge', {

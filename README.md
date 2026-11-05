@@ -262,10 +262,10 @@ Customer login, Google sign-in, history, supplier hostname setup and the request
 One port in `apps/api/internal/domain` — upload, download, signed link — with adapters under
 `apps/api/internal/storage/`, bound in `apps/api/internal/storage/provider` and nowhere else.
 `STORAGE_PROVIDER` selects one: `local` keeps objects on the filesystem and serves them through
-the API's own signed-link route, `spaces` stores them in an S3-compatible bucket that signs and
-serves its own. `local` is the default and it genuinely works, so a checkout with no bucket
-still stores, signs, serves and expires a file; selecting `spaces` makes its five credentials
-required at startup. Object keys are canonical, relative paths and both adapters refuse anything
+the API's own signed-link route; `neon` and `spaces` use private remote buckets that serve signed
+downloads. `local` is the default for development without a bucket. Selecting a remote provider
+makes its endpoint, region, bucket and credentials required at startup. Object keys are canonical,
+relative paths and all adapters refuse anything
 else, so an object stored through one stays reachable through the other.
 
 See [docs/technical/file-storage.md](docs/technical/file-storage.md).
@@ -294,13 +294,17 @@ See [docs/technical/public-site.md](docs/technical/public-site.md).
 
 ## Deployment
 
-Nothing is deployed yet. The target is DigitalOcean App Platform — three Web Services from the
+The application hosting target is DigitalOcean App Platform — three Web Services from the
 three Dockerfiles, a `PRE_DEPLOY` job that applies the migration chain with goose, a `SCHEDULED`
 job for the sweeps, and Managed Postgres. `.do/app.yaml` is the committed app spec, carrying
 component shapes and env var names only: this repository is public, so every credential is a
 `type: SECRET` entry whose value is supplied at deploy time.
 
-See [docs/technical/deployment.md](docs/technical/deployment.md).
+Neon can provide PostgreSQL while DigitalOcean hosts the applications. See
+[Neon setup](docs/technical/neon.md) for connection roles and migration requirements, and
+[deployment](docs/technical/deployment.md) for the application hosting configuration.
+Without a custom domain, `.do/app.neon.yaml` and `.do/portal.yaml` deploy the core and customer
+portal onto separate temporary hostnames, using Neon for both PostgreSQL and private file storage.
 
 ## Branching & commits
 

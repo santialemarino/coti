@@ -41,7 +41,9 @@ func Bind(cfg config.StorageConfig, log *slog.Logger) (Set, error) {
 			slog.String("dir", settings.Dir))
 		return Set{Storage: local, Local: local}, nil
 	case config.StorageProviderSpaces:
-		return Set{Storage: storage.NewSpacesStorage(cfg.Spaces())}, nil
+		return Set{Storage: storage.NewSpacesStorage(cfg.S3())}, nil
+	case config.StorageProviderNeon:
+		return Set{Storage: storage.NewNeonStorage(cfg.S3())}, nil
 	default:
 		return Set{}, fmt.Errorf("no object storage adapter for provider %q", cfg.Provider)
 	}
