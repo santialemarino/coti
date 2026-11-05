@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     'client_id',
     'branch_id',
     'tag_id',
+    'granularity',
   ]) {
     for (const value of query.getAll(key)) {
       if (value) params.append(key, value);

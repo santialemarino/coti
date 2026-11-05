@@ -193,6 +193,7 @@ export default async function ReportsPage({
               clientId={report.filters.clientId}
               branchIds={report.filters.branches.map((branch) => branch.id)}
               tagIds={report.filters.tags.map((tag) => tag.id)}
+              granularity={report.granularity}
             />
           ) : undefined
         }

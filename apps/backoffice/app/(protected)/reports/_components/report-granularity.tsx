@@ -1,5 +1,6 @@
 'use client';
 
+import { useOptimistic, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
@@ -14,19 +15,26 @@ export function ReportGranularityToggle({ value }: { value: ReportGranularity })
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [pending, startTransition] = useTransition();
+  // The server re-renders the trend; until it lands, the switch already shows the choice.
+  const [shown, setShown] = useOptimistic(value);
 
   return (
     <ToggleGroup
       type="single"
       variant="segmented"
       size="sm"
-      value={value}
+      value={shown}
       aria-label={t('label')}
+      aria-busy={pending}
       onValueChange={(next) => {
-        if (!next || next === value) return;
+        if (!next || next === shown) return;
         const params = new URLSearchParams(searchParams.toString());
         params.set('granularity', next);
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        startTransition(() => {
+          setShown(next as ReportGranularity);
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        });
       }}
     >
       {GRANULARITIES.map((granularity) => (

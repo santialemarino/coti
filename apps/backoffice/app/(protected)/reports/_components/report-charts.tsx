@@ -234,14 +234,18 @@ export function TrendChart({
   const max = Math.max(1, ...points.flatMap((point) => [point.rfqs, point.sent, point.accepted]));
   const minWidth = Math.max(420, points.length * 14);
   const axisIndexes = [...new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])];
-  const step = points.length > 1 ? 100 / (points.length - 1) : 0;
+  // Each point sits over its bucket's bar group, so the line and the bars read as one axis.
   const linePoints = points.map((point, index) =>
     point.conversionRate === null
       ? null
-      : { x: points.length > 1 ? index * step : 50, y: 100 - point.conversionRate * 100 },
+      : {
+          x: ((index + 0.5) / points.length) * 100,
+          y: 100 - point.conversionRate * 100,
+          title: `${formatBucket(point.date)}: ${formatShare(point.conversionRate)}`,
+        },
   );
   // Buckets that sent nothing break the line rather than drawing a fake zero.
-  const segments = linePoints.reduce<{ x: number; y: number }[][]>((runs, point) => {
+  const segments = linePoints.reduce<{ x: number; y: number; title: string }[][]>((runs, point) => {
     if (point === null) return runs.at(-1)?.length === 0 ? runs : [...runs, []];
     const last = runs.at(-1);
     if (last) last.push(point);
@@ -308,35 +312,48 @@ export function TrendChart({
           </div>
           <div className="flex flex-col gap-y-1">
             <span className="text-paragraph-xs text-foreground-muted">{labels.conversion}</span>
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              className="h-16 w-full overflow-visible"
-            >
-              <line
-                x1="0"
-                y1="100"
-                x2="100"
-                y2="100"
-                stroke="var(--border)"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-              />
-              {segments.map((segment) =>
-                segment.length > 1 ? (
-                  <polyline
-                    key={`${segment[0]?.x}-${segment.length}`}
-                    points={segment.map((point) => `${point.x},${point.y}`).join(' ')}
-                    fill="none"
-                    stroke="var(--status-accepted-base)"
-                    strokeWidth="2"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
+            <div className="relative h-16">
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                className="absolute inset-0 size-full overflow-visible"
+              >
+                <line
+                  x1="0"
+                  y1="100"
+                  x2="100"
+                  y2="100"
+                  stroke="var(--border)"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {segments.map((segment) =>
+                  segment.length > 1 ? (
+                    <polyline
+                      key={`${segment[0]?.x}-${segment.length}`}
+                      points={segment.map((point) => `${point.x},${point.y}`).join(' ')}
+                      fill="none"
+                      stroke="var(--status-accepted-base)"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ) : null,
+                )}
+              </svg>
+              {linePoints.map((point, index) =>
+                point ? (
+                  <span
+                    key={points[index]?.date}
+                    title={point.title}
+                    aria-hidden="true"
+                    className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-status-accepted"
+                    style={{ left: `${point.x}%`, top: `${point.y}%` }}
                   />
                 ) : null,
               )}
-            </svg>
+            </div>
           </div>
         </div>
       </div>
