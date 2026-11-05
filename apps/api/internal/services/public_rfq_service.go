@@ -45,12 +45,14 @@ type publicRFQProcessor interface {
 }
 
 type publicRFQEnvelope struct {
+	CustomerID  uuid.UUID               `json:"customer_id,omitempty"`
 	Contact     domain.PublicRFQContact `json:"contact"`
 	Fingerprint string                  `json:"fingerprint"`
 }
 
 // PublicRFQService retains customer requests through an active branch WEBAPP channel.
 type PublicRFQService struct {
+	contacts     customerContactRecorder
 	db           publicRFQDB
 	destinations publicRFQDestinations
 	messages     whatsAppInboundMessageStore
@@ -89,6 +91,11 @@ func (s *PublicRFQService) GetDestination(ctx context.Context, channelID uuid.UU
 
 // Create retains customer declarations and acknowledges only a durably stored request.
 func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput) error {
+	return s.create(ctx, channelID, in, nil)
+}
+
+// create stores the request and, when messageID is given, reports the inbound message that carries it.
+func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput, messageID *uuid.UUID) error {
 	destination, err := s.GetDestination(ctx, channelID)
 	if err != nil {
 		return err
@@ -141,6 +148,9 @@ func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in d
 		if err != nil {
 			return err
 		}
+		if messageID != nil {
+			*messageID = reserved.ID
+		}
 		var original, current publicRFQEnvelope
 		if err := json.Unmarshal(reserved.Payload, &original); err != nil {
 			return err
@@ -148,7 +158,7 @@ func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in d
 		if err := json.Unmarshal(payload, &current); err != nil {
 			return err
 		}
-		if original.Fingerprint != current.Fingerprint {
+		if original.Fingerprint != current.Fingerprint || original.CustomerID != current.CustomerID {
 			return domain.ErrConflict
 		}
 		if reserved.RFQID == nil {
@@ -223,7 +233,7 @@ func publicRFQPayload(in domain.PublicRFQInput, data []byte) ([]byte, error) {
 	digest := sha256.New()
 	_, _ = digest.Write(metadata)
 	_, _ = digest.Write(data)
-	return json.Marshal(publicRFQEnvelope{Contact: in.Contact, Fingerprint: hex.EncodeToString(digest.Sum(nil))})
+	return json.Marshal(publicRFQEnvelope{CustomerID: in.CustomerID, Contact: in.Contact, Fingerprint: hex.EncodeToString(digest.Sum(nil))})
 }
 
 func publicFileContentType(file *domain.AttachmentUpload) string {
@@ -245,6 +255,21 @@ func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.Custo
 	if domain.NormalizeTaxID(in.Contact.TaxID) != p.TaxID {
 		return domain.ErrForbidden
 	}
+	if p.CustomerID == uuid.Nil {
+		return domain.ErrUnauthenticated
+	}
+	in.CustomerID = p.CustomerID
 	in.Contact.TaxID = p.TaxID
-	return s.Create(ctx, channelID, in)
+	in.Contact, err = in.Contact.Normalize()
+	if err != nil {
+		return err
+	}
+	var messageID uuid.UUID
+	if err := s.create(ctx, channelID, in, &messageID); err != nil {
+		return err
+	}
+	if s.contacts != nil {
+		return s.contacts.RecordCustomer(ctx, p, destination.Route, messageID, in.Contact)
+	}
+	return nil
 }

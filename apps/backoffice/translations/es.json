@@ -373,6 +373,7 @@
     "BRANCH_MAILBOX_REQUIRED": "La sucursal envía sus correos desde esa casilla, así que no se puede dejar vacía.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_SENT": "La cotización no está esperando una respuesta del cliente.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
@@ -408,7 +409,12 @@
     "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
-    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
+    "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
+    "CLIENT_REGISTERED": "Esta ficha tiene CUIT: sus datos los administra el cliente desde su cuenta.",
+    "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
+    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
   },
   "meta": {
     "home": {
@@ -1452,7 +1458,22 @@
           "customer": "El cliente no respondió desde el {date}. Escribile para retomar la cotización.",
           "customerUndated": "El cliente todavía no respondió. Escribile para retomar la cotización.",
           "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
-          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente."
+          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente.",
+          "draft": {
+            "action": "Redactar mensaje",
+            "again": "Redactar otro",
+            "pending": "Redactando…",
+            "label": "Mensaje de seguimiento para el cliente",
+            "copy": "Copiar mensaje",
+            "copied": "Mensaje copiado",
+            "copyFailed": "No pudimos copiar el mensaje. Seleccionalo y copialo a mano.",
+            "hint": "Revisalo y mandalo vos por WhatsApp o correo: Coti no lo envía.",
+            "errors": {
+              "AI_UNAVAILABLE": "No pudimos redactar el mensaje ahora. Probá de nuevo en unos minutos.",
+              "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente.",
+              "QUOTE_ARCHIVED": "La cotización está archivada."
+            }
+          }
         }
       },
       "items": {
@@ -1611,8 +1632,8 @@
         "clientNew": "Crear cliente",
         "clientChoose": "Seleccioná un cliente",
         "clientTax": "CUIT/CUIL",
-        "clientName": "Nombre o razón social",
-        "clientEmail": "Email (opcional)",
+        "clientName": "Nombre y apellido",
+        "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No se pudieron cargar los clientes. Cerrá el diálogo e intentá nuevamente.",
@@ -1620,9 +1641,10 @@
         "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
         "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
         "clientNameRequired": "Ingresá el nombre o razón social.",
-        "clientEmailInvalid": "Ingresá un email válido.",
+        "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
-        "clientTags": "Etiquetas"
+        "clientTags": "Etiquetas",
+        "clientContactRequired": "Ingresá al menos un teléfono o un correo."
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1760,7 +1782,7 @@
         "title": "Datos del solicitante",
         "taxId": "CUIT",
         "name": "Nombre o razón social",
-        "email": "Email",
+        "email": "Correo",
         "phone": "Teléfono",
         "original": "Pedido original",
         "file": "Ver archivo del pedido"
@@ -1961,6 +1983,58 @@
         "INVALID_TAX_ID": "Revisá el DNI del cliente.",
         "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
       }
+    },
+    "contactSuggestions": "Coincidencias pendientes",
+    "registration": {
+      "title": "Solicitar que complete sus datos",
+      "confirm": "Se enviará a {contact} un enlace para crear su cuenta o ingresar y completar sus datos.",
+      "send": "Enviar enlace",
+      "sending": "Enviando…",
+      "cancel": "Cancelar",
+      "whatsapp": "Solicitar datos por WhatsApp",
+      "email": "Solicitar datos por correo",
+      "selectBranch": "Elegí una sucursal para enviar el enlace",
+      "sent": "Enviamos el enlace al cliente.",
+      "errors": {
+        "NOT_CONFIGURED": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "DELIVERY_UNAVAILABLE": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "INTERNAL": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+      }
+    },
+    "rename": {
+      "label": "Nombre",
+      "formLabel": "Corregir el nombre del cliente",
+      "placeholder": "Ingresá el nombre y apellido del cliente",
+      "required": "Ingresá el nombre del cliente.",
+      "edit": "Corregir nombre",
+      "unnamed": "Sin nombre",
+      "registered": "Lo administra el cliente desde su cuenta.",
+      "submit": "Guardar",
+      "submitting": "Guardando…",
+      "cancel": "Cancelar",
+      "saved": "Guardamos el nombre «{name}»."
+    },
+    "merge": {
+      "open": "Unir con otra ficha",
+      "title": "Unir con otra ficha",
+      "description": "Juntá en una sola ficha los pedidos y contactos de {name} y otra ficha del mismo cliente.",
+      "other": {
+        "label": "Otra ficha",
+        "placeholder": "Seleccioná una ficha",
+        "search": "Buscá por nombre o contacto",
+        "empty": "No hay fichas con ese nombre o contacto",
+        "none": "No hay otras fichas sin CUIT de tus sucursales para unir."
+      },
+      "survivor": {
+        "label": "Ficha que queda",
+        "hint": "Los pedidos y contactos de {merged} pasan a esta ficha. No se puede deshacer."
+      },
+      "loadError": "No pudimos cargar las fichas.",
+      "retry": "Reintentar",
+      "submit": "Unir fichas",
+      "submitting": "Uniendo…",
+      "cancel": "Cancelar",
+      "merged": "Unimos «{merged}» en «{kept}»."
     }
   },
   "reports": {
@@ -3076,5 +3150,31 @@
       "actions": "Acciones"
     },
     "testBadge": "Prueba"
+  },
+  "clientContactSuggestions": {
+    "title": "Coincidencias de clientes",
+    "pending": "{count, plural, =0 {Sin coincidencias pendientes} one {# coincidencia pendiente} other {# coincidencias pendientes}}",
+    "empty": "No hay coincidencias pendientes",
+    "unknown": "Cliente sin nombre",
+    "review": "Revisar",
+    "reviewTitle": "Revisar coincidencia",
+    "reviewDescription": "Dos fichas comparten el contacto {value}. Si son el mismo cliente, unilas; si no, descartá la coincidencia.",
+    "taxId": "CUIT/CUIL declarado",
+    "incoming": "Contacto compartido",
+    "candidate": "Ficha que tiene el contacto",
+    "source": "Otra ficha",
+    "absent": "Sin datos",
+    "original": "Mensaje original",
+    "keep": "Ficha que queda",
+    "keepHint": "Los pedidos y contactos de la otra ficha pasan a esta. No se puede deshacer.",
+    "registered": "Una de las fichas tiene CUIT: solo el cliente puede unirla, desde su cuenta. Podés descartar la coincidencia.",
+    "merge": "Unir fichas",
+    "merging": "Uniendo…",
+    "separate": "Descartar",
+    "separating": "Descartando…",
+    "merged": "Unimos las fichas en «{name}».",
+    "separated": "Descartamos la coincidencia de {value}.",
+    "retry": "Reintentar",
+    "loadError": "No pudimos cargar las coincidencias."
   }
 }

@@ -26,13 +26,19 @@ type customerAuthStore interface {
 	RevokeSession(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) error
 }
 
+type customerProfileRegistrar interface {
+	RegisterProfile(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ClientContactUpdate) error
+}
+
 // CustomerAuthService authenticates supplier-scoped customers separately from staff and client profiles.
 type CustomerAuthService struct {
 	db          tenantScoper
 	store       customerAuthStore
 	credentials customerCredentialStore
+	profiles    customerProfileRegistrar
 	google      domain.CustomerGoogleProvider
-	mail        mailSender
+	prover      customerContactProver
+	recovery    customerContactRecovery
 	cfg         config.CustomerAuthConfig
 	now         func() time.Time
 	newSecret   func() (string, error)
@@ -44,6 +50,12 @@ func NewCustomerAuthService(db tenantScoper, store customerAuthStore, cfg config
 		now = time.Now
 	}
 	return &CustomerAuthService{db: db, store: store, cfg: cfg, now: now, newSecret: newTokenSecret}
+}
+
+// WithClientProfiles persists the mandatory commercial profile in the registration transaction.
+func (s *CustomerAuthService) WithClientProfiles(profiles customerProfileRegistrar) *CustomerAuthService {
+	s.profiles = profiles
+	return s
 }
 
 // Authenticate checks the opaque session against its supplier, expiration and revocation state.
@@ -66,11 +78,15 @@ func (s *CustomerAuthService) Authenticate(ctx context.Context, hostname, raw st
 
 // Register creates supplier-scoped credentials and their first session.
 func (s *CustomerAuthService) Register(ctx context.Context, hostname string, in domain.CustomerRegistration) (*domain.CustomerLogin, error) {
-	in.TaxID = domain.NormalizeTaxID(in.TaxID)
-	in.RecoveryEmail = domain.NormalizeEmail(in.RecoveryEmail)
-	if in.RecoveryEmail != "" && !validCustomerEmail(in.RecoveryEmail) {
+	if s.profiles == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	contacts, err := domain.NormalizeClientContacts(in.Contacts)
+	if err != nil || in.Name == "" || len(contacts) == 0 {
 		return nil, domain.ErrInvalidInput
 	}
+	in.TaxID = domain.NormalizeTaxID(in.TaxID)
 	if !domain.ValidCUIT(in.TaxID) {
 		return nil, domain.ErrInvalidInput
 	}
@@ -90,21 +106,17 @@ func (s *CustomerAuthService) Register(ctx context.Context, hostname string, in 
 		return nil, err
 	}
 	var login *domain.CustomerLogin
-	var recovery *string
-	if in.RecoveryEmail != "" {
-		recovery = &in.RecoveryEmail
-	}
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		identity, err := s.store.CreateIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: in.TaxID, PasswordHash: hash, RecoveryEmail: recovery})
+		identity, err := s.store.CreateIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: in.TaxID, Name: &in.Name, PasswordHash: hash})
 		if err != nil {
+			return err
+		}
+		if err := s.profiles.RegisterProfile(ctx, q, domain.CustomerPrincipal{CustomerID: identity.ID, AccountID: site.AccountID, TaxID: in.TaxID}, domain.ClientContactUpdate{Name: in.Name, Contacts: contacts}); err != nil {
 			return err
 		}
 		login, err = s.createSession(ctx, q, *identity, secret)
 		return err
 	})
-	if err == nil && recovery != nil && s.credentials != nil && s.mail != nil {
-		_ = s.sendCustomerChallenge(ctx, *site, domain.CustomerIdentity{ID: login.Principal.CustomerID, AccountID: site.AccountID}, "VERIFY_EMAIL", *recovery)
-	}
 	return login, err
 }
 

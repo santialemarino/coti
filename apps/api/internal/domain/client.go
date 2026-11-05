@@ -77,12 +77,13 @@ type ClientProfile struct {
 	Sales  []ClientSale
 }
 
-// ClientContactHints are the latest destinations used to deliver a quote.
+// ClientContactHints retains contact declarations and provider display metadata.
 type ClientContactHints struct {
-	TaxID *string
-	Name  *string
-	Phone *string
-	Email *string
+	DisplayName *string
+	TaxID       *string
+	Name        *string
+	Phone       *string
+	Email       *string
 }
 
 // ClientMatch is a manually reviewable client candidate with its current tags.

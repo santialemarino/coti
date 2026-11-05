@@ -9,8 +9,8 @@ import { API_URL } from '@/lib/config';
 interface CustomerAuthPageProps {
   mode: CustomerAuthMode;
   next: string;
-  token?: string;
   taxId?: string;
+  googleEmail?: string;
   initialError?: string;
 }
 

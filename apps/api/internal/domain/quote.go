@@ -136,6 +136,23 @@ type ArchivedQuote struct {
 	LastActivityAt time.Time
 }
 
+// FollowupSellerStatuses are the stalls waiting on the seller, flagged when nobody moves the quote.
+var FollowupSellerStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted}
+
+// FollowupCustomerStatuses are the stalls waiting on the client, flagged when the client does not
+// answer; an offer that lapsed unanswered is still worth chasing.
+var FollowupCustomerStatuses = []QuoteStatus{QuoteStatusSent}
+
+// FlaggedQuote is one quote the follow-up sweep flagged, with the activity it went quiet after.
+type FlaggedQuote struct {
+	AccountID      uuid.UUID
+	BranchID       uuid.UUID
+	QuoteID        uuid.UUID
+	Number         int64
+	Status         QuoteStatus
+	LastActivityAt time.Time
+}
+
 // NewQuote is the input for creating a quote shell.
 type NewQuote struct {
 	BranchID      uuid.UUID

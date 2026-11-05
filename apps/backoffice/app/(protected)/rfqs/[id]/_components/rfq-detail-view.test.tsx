@@ -685,8 +685,21 @@ describe('RfqDetailView follow-up', () => {
     expect(view.getByText(withDate(callouts.customer))).toBeTruthy();
   });
 
+  // The sweep flags a quote days after it went quiet; the sentence dates the silence, not the flag.
+  it('dates the stall from the last change to the quote, not from when it was flagged', () => {
+    const detail = flagged('QUOTED', '2026-11-02T15:00:00Z');
+    detail.quote = { ...detail.quote!, updated_at: '2026-10-01T15:00:00Z' };
+    const view = renderView(detail);
+    const sentence = view.getByText(withDate(callouts.seller)).textContent ?? '';
+
+    expect(sentence).toMatch(/\b1\b.*oct/i);
+    expect(sentence).not.toMatch(/nov/i);
+  });
+
   it('says the quote stalled on the seller while it has not been sent', () => {
-    const view = renderView(flagged('QUOTED', null));
+    const detail = flagged('QUOTED', null);
+    detail.quote = null;
+    const view = renderView(detail);
 
     expect(view.getByText(callouts.sellerUndated)).toBeTruthy();
     expect(view.queryByText(callouts.customerUndated)).toBeNull();
@@ -698,7 +711,7 @@ describe('RfqDetailView follow-up', () => {
     expect(view.queryByText(callouts.title)).toBeNull();
   });
 
-  // Nothing clears the flag once the client answers, so the status decides whether it still applies.
+  // The client's answer clears the flag on the server; the status keeps a stale copy from showing it.
   it('stays quiet once the client has answered', () => {
     const view = renderView(flagged('ACCEPTED'));
 

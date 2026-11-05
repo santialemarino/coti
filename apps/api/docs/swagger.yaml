@@ -420,6 +420,44 @@ definitions:
       tax_id:
         type: string
     type: object
+  dto.ClientContactInput:
+    properties:
+      kind:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        type: string
+      primary:
+        type: boolean
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
+  dto.ClientContactResponse:
+    properties:
+      kind:
+        enum:
+        - WHATSAPP
+        - EMAIL
+        type: string
+      main:
+        description: Main marks the contact account recovery preselects; it is always
+          a verified one.
+        type: boolean
+      primary:
+        type: boolean
+      value:
+        maxLength: 255
+        type: string
+      verified:
+        type: boolean
+    required:
+    - kind
+    - value
+    type: object
   dto.ClientFiscalResponse:
     properties:
       address:
@@ -452,6 +490,13 @@ definitions:
       tags:
         items:
           $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
+    type: object
+  dto.ClientMergeCandidatesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientResponse'
         type: array
     type: object
   dto.ClientMessageResponse:
@@ -607,6 +652,79 @@ definitions:
     properties:
       imported_rows:
         type: integer
+    type: object
+  dto.ContactRegistrationLinkRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+    required:
+    - kind
+    type: object
+  dto.ContactSuggestionResponse:
+    properties:
+      candidate_client_id:
+        type: string
+      candidate_name:
+        type: string
+      candidate_registered:
+        type: boolean
+      created_at:
+        type: string
+      declared_name:
+        type: string
+      id:
+        type: string
+      kind:
+        type: string
+      original_text:
+        type: string
+      source_client_id:
+        type: string
+      source_name:
+        type: string
+      source_registered:
+        description: SourceRegistered and CandidateRegistered mark a profile with
+          a CUIT, which no seller merges.
+        type: boolean
+      tax_id:
+        type: string
+      value:
+        type: string
+    type: object
+  dto.ContactVerificationConfirmation:
+    properties:
+      id:
+        type: string
+      token:
+        maxLength: 128
+        type: string
+    required:
+    - id
+    - token
+    type: object
+  dto.ContactVerificationRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
+  dto.ContactVerificationResponse:
+    properties:
+      expires_at:
+        type: string
+      id:
+        type: string
     type: object
   dto.ConversationBatchResponse:
     properties:
@@ -965,9 +1083,6 @@ definitions:
       password:
         maxLength: 72
         type: string
-      recovery_email:
-        maxLength: 255
-        type: string
       tax_id:
         maxLength: 20
         type: string
@@ -982,11 +1097,22 @@ definitions:
     type: object
   dto.CustomerGoogleCompleteRequest:
     properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactInput'
+        type: array
+      name:
+        maxLength: 255
+        type: string
       tax_id:
         maxLength: 20
         type: string
       token:
         type: string
+      use_google_email:
+        description: UseGoogleEmail adds the Google address as a verified contact;
+          a new registration needs it or a contact.
+        type: boolean
     required:
     - tax_id
     - token
@@ -1011,6 +1137,14 @@ definitions:
     properties:
       session:
         $ref: '#/definitions/dto.CustomerSessionResponse'
+      signup_email:
+        description: SignupEmail is the Google address the customer may choose as
+          a contact, sent only when Google verified it.
+        type: string
+      signup_email_proven:
+        description: SignupEmailProven is true when choosing SignupEmail verifies
+          it; otherwise it needs a code.
+        type: boolean
       signup_token:
         type: string
     type: object
@@ -1038,6 +1172,20 @@ definitions:
       tax_id:
         type: string
     type: object
+  dto.CustomerMainContactRequest:
+    properties:
+      kind:
+        enum:
+        - EMAIL
+        - WHATSAPP
+        type: string
+      value:
+        maxLength: 255
+        type: string
+    required:
+    - kind
+    - value
+    type: object
   dto.CustomerOrderResponse:
     properties:
       branch_name:
@@ -1053,27 +1201,114 @@ definitions:
       status:
         type: string
     type: object
-  dto.CustomerPasswordResetRequest:
+  dto.CustomerProfileResponse:
     properties:
-      password:
-        maxLength: 72
+      client_id:
         type: string
-      token:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactResponse'
+        type: array
+      fiscal_address:
         type: string
-    required:
-    - password
-    - token
+      iva_condition:
+        type: string
+      legal_name:
+        type: string
+      name:
+        type: string
+      ownership_unproved:
+        description: |-
+          OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer
+          verifies a contact it already had; only what the customer entered is returned.
+        type: boolean
+      tax_id:
+        type: string
     type: object
-  dto.CustomerRecoveryRequest:
+  dto.CustomerRecoveryCodeRequest:
     properties:
-      email:
-        maxLength: 255
+      contact_id:
         type: string
       tax_id:
         maxLength: 20
         type: string
     required:
-    - email
+    - contact_id
+    - tax_id
+    type: object
+  dto.CustomerRecoveryCodeResponse:
+    properties:
+      expires_at:
+        type: string
+      id:
+        type: string
+    type: object
+  dto.CustomerRecoveryContactResponse:
+    properties:
+      available:
+        description: Available is false while no code can reach the contact's channel.
+        type: boolean
+      id:
+        type: string
+      kind:
+        type: string
+      main:
+        type: boolean
+      masked:
+        type: string
+      preselected:
+        type: boolean
+    type: object
+  dto.CustomerRecoveryOptionsRequest:
+    properties:
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - tax_id
+    type: object
+  dto.CustomerRecoveryOptionsResponse:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.CustomerRecoveryContactResponse'
+        type: array
+    type: object
+  dto.CustomerRecoveryResetRequest:
+    properties:
+      code:
+        maxLength: 16
+        type: string
+      id:
+        type: string
+      password:
+        maxLength: 72
+        type: string
+    required:
+    - code
+    - id
+    - password
+    type: object
+  dto.CustomerRegistrationRequest:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactInput'
+        minItems: 1
+        type: array
+      name:
+        maxLength: 255
+        type: string
+      password:
+        maxLength: 72
+        type: string
+      tax_id:
+        maxLength: 20
+        type: string
+    required:
+    - contacts
+    - name
+    - password
     - tax_id
     type: object
   dto.CustomerSessionResponse:
@@ -1082,13 +1317,6 @@ definitions:
         $ref: '#/definitions/dto.CustomerIdentityResponse'
       session_token:
         type: string
-    type: object
-  dto.CustomerTokenRequest:
-    properties:
-      token:
-        type: string
-    required:
-    - token
     type: object
   dto.DiffDiscountResponse:
     properties:
@@ -1517,6 +1745,13 @@ definitions:
         type: string
       role:
         type: string
+    type: object
+  dto.MergeClientRequest:
+    properties:
+      source_client_id:
+        type: string
+    required:
+    - source_client_id
     type: object
   dto.OnboardingChecklistItemResponse:
     properties:
@@ -2029,6 +2264,11 @@ definitions:
     required:
     - address
     type: object
+  dto.QuoteFollowupDraftResponse:
+    properties:
+      message:
+        type: string
+    type: object
   dto.QuoteItemAlternativeResponse:
     properties:
       approved_by_seller:
@@ -2454,6 +2694,14 @@ definitions:
     required:
     - refresh_token
     type: object
+  dto.RenameClientRequest:
+    properties:
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - name
+    type: object
   dto.ReplaceClientTagsRequest:
     properties:
       tag_ids:
@@ -2480,6 +2728,18 @@ definitions:
     required:
     - new_password
     - token
+    type: object
+  dto.ResolveContactSuggestionRequest:
+    properties:
+      action:
+        enum:
+        - SEPARATE
+        - MERGE
+        type: string
+      keep_client_id:
+        type: string
+    required:
+    - action
     type: object
   dto.RfqDetailResponse:
     properties:
@@ -2924,6 +3184,32 @@ definitions:
       legal_name:
         maxLength: 255
         type: string
+    type: object
+  dto.UpdateCustomerProfileRequest:
+    properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientContactInput'
+        type: array
+      fiscal_address:
+        maxLength: 255
+        type: string
+      iva_condition:
+        enum:
+        - REGISTERED
+        - MONOTRIBUTO
+        - EXEMPT
+        - FINAL_CONSUMER
+        type: string
+      legal_name:
+        maxLength: 255
+        type: string
+      name:
+        maxLength: 255
+        type: string
+    required:
+    - contacts
+    - name
     type: object
   dto.UpdateDiscountRequest:
     properties:
@@ -3854,6 +4140,87 @@ paths:
       summary: Authorize a branch Gmail mailbox
       tags:
       - channels
+  /v1/client-contact-suggestions:
+    get:
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ContactSuggestionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List client contact suggestions
+      tags:
+      - clients
+  /v1/client-contact-suggestions/{suggestionId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Suggestion ID
+        in: path
+        name: suggestionId
+        required: true
+        type: string
+      - description: Seller decision
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResolveContactSuggestionRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resolve a client contact suggestion
+      tags:
+      - clients
   /v1/clients:
     get:
       description: Returns account-level client profiles. Tags are account-wide; accepted
@@ -4004,6 +4371,199 @@ paths:
       summary: Update a client's fiscal data
       tags:
       - clients
+  /v1/clients/{clientId}/merge:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Surviving client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Profile merged into the surviving one
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.MergeClientRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Merge two client profiles without a CUIT
+      tags:
+      - clients
+  /v1/clients/{clientId}/merge-candidates:
+    get:
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMergeCandidatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List profiles a seller can merge with a client
+      tags:
+      - clients
+  /v1/clients/{clientId}/name:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch filter
+        in: header
+        name: X-Branch-Id
+        type: string
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: New name
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RenameClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rename a client profile without a CUIT
+      tags:
+      - clients
+  /v1/clients/{clientId}/registration-link:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Selected branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Contact channel
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactRegistrationLinkRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Send customer registration or profile link
+      tags:
+      - clients
   /v1/clients/{clientId}/tags:
     put:
       consumes:
@@ -4048,28 +4608,6 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
-  /v1/customer/sites/{hostname}/auth/forgot-password:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: CUIT/CUIL and recovery email
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerRecoveryRequest'
-      responses:
-        "204":
-          description: Recovery request received
-      summary: Request customer password recovery
-      tags:
-      - customer-auth
   /v1/customer/sites/{hostname}/auth/google/complete:
     post:
       consumes:
@@ -4080,7 +4618,7 @@ paths:
         name: hostname
         required: true
         type: string
-      - description: Verified Google signup token and CUIT/CUIL
+      - description: Verified Google signup token, CUIT/CUIL and contacts
         in: body
         name: body
         required: true
@@ -4264,6 +4802,138 @@ paths:
       summary: Log out as a customer
       tags:
       - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery/code:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL and the chosen contact
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryCodeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerRecoveryCodeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a cooldown, destination cap or lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Send an account recovery code
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery/options:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: CUIT/CUIL of the account
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryOptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerRecoveryOptionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      summary: List account recovery contacts
+      tags:
+      - customer-auth
+  /v1/customer/sites/{hostname}/auth/recovery/reset:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Code and new password
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerRecoveryResetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CustomerSessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a destination lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      summary: Reset a customer password with a recovery code
+      tags:
+      - customer-auth
   /v1/customer/sites/{hostname}/auth/register:
     post:
       consumes:
@@ -4274,12 +4944,12 @@ paths:
         name: hostname
         required: true
         type: string
-      - description: CUIT/CUIL and password
+      - description: CUIT/CUIL, credentials, full name and contacts
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/dto.CustomerCredentialsRequest'
+          $ref: '#/definitions/dto.CustomerRegistrationRequest'
       produces:
       - application/json
       responses:
@@ -4304,50 +4974,6 @@ paths:
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       summary: Register a customer
-      tags:
-      - customer-auth
-  /v1/customer/sites/{hostname}/auth/reset-password:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: Recovery token and new password
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerPasswordResetRequest'
-      responses:
-        "204":
-          description: Password reset
-      summary: Reset a customer password
-      tags:
-      - customer-auth
-  /v1/customer/sites/{hostname}/auth/verify-email:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Registered supplier hostname
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: Verification token
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CustomerTokenRequest'
-      responses:
-        "204":
-          description: Email verified
-      summary: Verify a customer recovery email
       tags:
       - customer-auth
   /v1/customer/sites/{hostname}/me:
@@ -4437,6 +5063,219 @@ paths:
       summary: Get a customer request
       tags:
       - customer-orders
+  /v1/customer/sites/{hostname}/profile:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerProfileResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get customer commercial profile
+      tags:
+      - customer-profile
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Commercial profile
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateCustomerProfileRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: Rate limit spent; retry_after_seconds says when
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      security:
+      - BearerAuth: []
+      summary: Update customer commercial profile
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Saved contact destination
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactVerificationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a cooldown, destination cap or lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Request customer contact verification
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification/confirm:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Challenge and received proof
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContactVerificationConfirmation'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "429":
+          description: RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for
+            a destination lockout
+          schema:
+            $ref: '#/definitions/dto.RateLimitResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm customer contact verification
+      tags:
+      - customer-profile
+  /v1/customer/sites/{hostname}/profile/main-contact:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: A verified contact of the profile
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CustomerMainContactRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Choose the customer's main contact
+      tags:
+      - customer-profile
   /v1/customer/sites/{hostname}/quote-sends/{token}:
     get:
       parameters:
@@ -7027,6 +7866,54 @@ paths:
       summary: Update a discount
       tags:
       - rfqs
+  /v1/quotes/{quoteId}/followup-draft:
+    post:
+      description: Drafts, from the quote as it stands, a message the seller can edit
+        and send to a client who has not answered. It contains no prices and is never
+        sent by Coti.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteFollowupDraftResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ARCHIVED or QUOTE_NOT_SENT
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: AI_UNAVAILABLE
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Draft a follow-up message
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/invoice:
     get:
       description: Returns the invoice type, buyer and amounts the quote would be

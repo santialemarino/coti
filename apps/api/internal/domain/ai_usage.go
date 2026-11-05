@@ -20,6 +20,7 @@ const (
 	AIOperationCatalogEmbedding      AIOperation = "CATALOG_EMBEDDING"
 	AIOperationCorrectionLearning    AIOperation = "CORRECTION_LEARNING"
 	AIOperationChangeRequestHandling AIOperation = "CHANGE_REQUEST_HANDLING"
+	AIOperationFollowupDraft         AIOperation = "FOLLOWUP_DRAFT"
 )
 
 // AIUsageScope is whom an AI call is spent for and on what. It travels in the context, from the

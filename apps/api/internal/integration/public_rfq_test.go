@@ -25,7 +25,6 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 		(id, account_id, branch_id, type) VALUES ($1, $2, $3, 'WEBAPP')`, channelID, accountID, branchID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM inbound_channel_message WHERE account_id = $1`, accountID) })
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for key, value := range map[string]string{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public file customer", "email": "customer@example.com"} {
@@ -46,7 +45,7 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
+	hostname, token := e.registerCustomer(t, accountID, "20123456786")
 	for range 2 {
 		req := httptest.NewRequest(http.MethodPost, "/v1/customer/sites/"+hostname+"/rfq-channels/"+channelID.String()+"/requests", bytes.NewReader(body.Bytes()))
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -70,6 +69,23 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	}
 	if attachments != 1 || quotes != 0 || status != "PENDING" {
 		t.Fatalf("files=%d quotes=%d status=%s", attachments, quotes, status)
+	}
+
+	var profileName, ownerID, customerID string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT cl.name,m.payload->>'customer_id',i.id::text FROM client cl JOIN customer_identity i ON i.account_id=cl.account_id AND i.tax_id=cl.tax_id JOIN inbound_channel_message m ON m.account_id=cl.account_id AND m.rfq_id=$2 WHERE cl.account_id=$1`, accountID, rfqID).Scan(&profileName, &ownerID, &customerID); err != nil {
+		t.Fatal(err)
+	}
+	if profileName != "Juan Perez" || ownerID != customerID {
+		t.Fatalf("request changed profile name or author: name=%q owner=%s customer=%s", profileName, ownerID, customerID)
+	}
+	own := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: token})
+	if own.Code != http.StatusOK {
+		t.Fatalf("own request unavailable before proof: %d %s", own.Code, own.Body)
+	}
+	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671")
+	foreign := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: otherCustomer})
+	if foreign.Code != http.StatusNotFound {
+		t.Fatalf("another customer read own request: %d", foreign.Code)
 	}
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
 	detail := e.do(t, request{method: http.MethodGet, path: "/v1/rfqs/" + rfqID.String(), token: e.tokenFor(t, admin), branch: branchID.String()})
@@ -98,15 +114,14 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 		(id, account_id, branch_id, type) VALUES ($1, $2, $3, 'WEBAPP')`, channelID, accountID, branchID); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { e.mustCleanup(t, `DELETE FROM inbound_channel_message WHERE account_id = $1`, accountID) })
 	path := "/v1/public/rfq-channels/" + channelID.String()
 	contextResponse := e.do(t, request{method: http.MethodGet, path: path})
 	if contextResponse.Code != http.StatusOK {
 		t.Fatalf("public destination: %d %s", contextResponse.Code, contextResponse.Body.String())
 	}
-	hostname, token := e.registerCustomer(t, accountID, "20123456786", "")
+	hostname, token := e.registerCustomer(t, accountID, "20123456786")
 	body := map[string]any{"request_id": uuid.NewString(), "tax_id": "20123456786", "name": "Public customer", "email": "customer@example.com", "text": "10 bolsas de cemento",
-		"account_id": otherAccountID, "branch_id": otherBranchID, "client_id": uuid.New()}
+		"account_id": otherAccountID, "branch_id": otherBranchID, "client_id": uuid.New(), "customer_id": uuid.New()}
 	for range 2 {
 		response := e.do(t, request{method: http.MethodPost, path: "/v1/customer/sites/" + hostname + "/rfq-channels/" + channelID.String() + "/requests", token: token, body: body})
 		if response.Code != http.StatusCreated || response.Body.String() != `{"received":true}` {
@@ -131,8 +146,24 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 		(SELECT count(*) FROM client WHERE account_id = $1)`, accountID).Scan(&rfqCount, &quoteCount, &clientCount); err != nil {
 		t.Fatal(err)
 	}
-	if rfqCount != 1 || quoteCount != 1 || clientCount != 0 {
+	if rfqCount != 1 || quoteCount != 1 || clientCount != 1 {
 		t.Fatalf("RFQs=%d quotes=%d clients=%d", rfqCount, quoteCount, clientCount)
+	}
+	var profileName, ownerID, customerID string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT cl.name,m.payload->>'customer_id',i.id::text FROM client cl JOIN customer_identity i ON i.account_id=cl.account_id AND i.tax_id=cl.tax_id JOIN inbound_channel_message m ON m.account_id=cl.account_id AND m.rfq_id=$2 WHERE cl.account_id=$1`, accountID, rfqID).Scan(&profileName, &ownerID, &customerID); err != nil {
+		t.Fatal(err)
+	}
+	if profileName != "Juan Perez" || ownerID != customerID {
+		t.Fatalf("request changed profile name or author: name=%q owner=%s customer=%s", profileName, ownerID, customerID)
+	}
+	own := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: token})
+	if own.Code != http.StatusOK {
+		t.Fatalf("own request unavailable before proof: %d %s", own.Code, own.Body)
+	}
+	_, otherCustomer := e.registerCustomer(t, accountID, "30712345671")
+	foreign := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + hostname + "/orders/" + rfqID.String(), token: otherCustomer})
+	if foreign.Code != http.StatusNotFound {
+		t.Fatalf("another customer read own request: %d", foreign.Code)
 	}
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
 	detail := e.do(t, request{method: http.MethodGet, path: "/v1/rfqs/" + rfqID.String(), token: e.tokenFor(t, admin), branch: branchID.String()})

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { schemaText } from '@repo/vitest-config/schema-text';
 import {
   clientFiscalSchema,
+  clientNameSchema,
   type ClientFiscalValues,
 } from '@/app/(protected)/clients/[id]/form-schema';
 
@@ -29,5 +30,16 @@ describe('clientFiscalSchema DNI', () => {
 
   it('settles a DNI to its digits', () => {
     expect(clientFiscalSchema().parse({ ...VALUES, dni: '12.345.678' }).dni).toBe('12345678');
+  });
+});
+
+describe('clientNameSchema', () => {
+  it('trims the name and refuses a blank or overlong one', () => {
+    const schema = clientNameSchema(schemaText(true));
+    expect(schema.parse({ name: '  Juan Pérez ' }).name).toBe('Juan Pérez');
+    expect(schema.safeParse({ name: '   ' }).error?.issues.map((i) => i.message)).toEqual([
+      'field:required',
+    ]);
+    expect(schema.safeParse({ name: 'x'.repeat(256) }).success).toBe(false);
   });
 });

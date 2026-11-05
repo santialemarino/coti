@@ -1,10 +1,13 @@
 import {
   clientMatchFromSummary,
+  mapClient,
   mapClientSummary,
   mapClientTag,
   mapQuoteClientAssociation,
+  type Client,
   type ClientListRaw,
   type ClientMatch,
+  type ClientRaw,
   type ClientTag,
   type ClientTagListRaw,
   type ClientTagRaw,
@@ -90,4 +93,35 @@ export async function updateClientFiscal(
   });
   if (!response.ok) await throwApiError(response);
   return mapClientFiscal((await response.json()) as ClientFiscalRaw);
+}
+
+export async function renameClient(clientId: string, name: string): Promise<Client> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/name`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapClient((await response.json()) as ClientRaw);
+}
+
+export async function getMergeCandidates(clientId: string): Promise<Client[]> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/merge-candidates`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const raw = (await response.json()) as { items: ClientRaw[] };
+  return raw.items.map(mapClient);
+}
+
+// Merges sourceId into clientId, which survives with both profiles' orders and contacts.
+export async function mergeClient(clientId: string, sourceId: string): Promise<void> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_client_id: sourceId }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
 }

@@ -189,7 +189,7 @@ own account, so `branch_id` scoping stays in the application. RLS is the second 
 replacement for the `WHERE`: the explicit predicates still go in every query so the plan uses
 the indexes.
 
-Three known traps:
+Four known traps:
 
 - **Works in psql, empty in the app.** psql as owner bypasses RLS; the app does not. To
   reproduce what the app sees, connect as `coti_app` and set the GUC.
@@ -201,6 +201,12 @@ Three known traps:
 - **The GRANT, by contrast, is already covered:** `ALTER DEFAULT PRIVILEGES` reaches the
   tables the owner creates, and migrations run as that role. It is written explicitly anyway,
   so nothing depends on the migrating role always being the same.
+- **A data migration under row level security updates nothing and still succeeds.** The owner
+  bypasses RLS only on tables that do not `FORCE` it (`arca_setup` and `invoice`
+  do), and a non-owner without `BYPASSRLS` never bypasses it. So a migration that
+  reads or rewrites rows starts with `SELECT assert_migration_sees_all_rows('<table>', …)`
+  naming every table it touches: it raises when the migrating role would see a filtered view,
+  instead of letting the statement match zero rows.
 
 ## Invariants in the database
 
@@ -224,6 +230,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
 | `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
 | `uq_promotion_condition_item_target`     | one condition row per promotion and target         |
+| `uq_client_contact_main`                 | one chosen main contact per client profile         |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:

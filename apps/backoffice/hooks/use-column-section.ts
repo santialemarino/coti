@@ -4,7 +4,7 @@ import type { SettingsNavItem } from '@/app/(protected)/_components/settings-nav
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { isSettingsPath, queueSelection, ROUTES } from '@/config/routes';
 
-export type ColumnSection = 'queue' | 'settings';
+export type ColumnSection = 'queue' | 'settings' | 'clients';
 
 /*
  * The section the path opens the left column on — none closes it — and the order it has open.
@@ -20,7 +20,9 @@ export function useColumnSection(settingsNav: SettingsNavItem[]) {
       ? 'queue'
       : settingsNav.length > 0 && isSettingsPath(pathname)
         ? 'settings'
-        : null;
+        : pathname === ROUTES.clients || pathname.startsWith(ROUTES.clients + '/')
+          ? 'clients'
+          : null;
   const atRoot =
     (section === 'queue' && pathname === ROUTES.home) ||
     (section === 'settings' && pathname === ROUTES.settings);

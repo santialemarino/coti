@@ -25,7 +25,7 @@ of its own that downloads every file it reads — never sees. The spec still shi
 switch both to `spaces` together once the bucket's five keys are in. The Spaces adapter has never
 run against a real bucket. See [file-storage.md](file-storage.md).
 
-## Ten components, one app
+## Twelve components, one app
 
 | Component                   | Type                    | Dockerfile                     | Port |
 | --------------------------- | ----------------------- | ------------------------------ | ---- |
@@ -38,6 +38,8 @@ run against a real bucket. See [file-storage.md](file-storage.md).
 | `attachment-extraction`     | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `catalog-embedding`         | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | `quote-auto-archive`        | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `conversation-batches`      | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
+| `quote-followup`            | Job, `kind: SCHEDULED`  | `docker/api.Dockerfile`        | —    |
 | the database                | Managed Postgres        | —                              | —    |
 
 **Every component takes `source_dir: /`.** All three Dockerfiles build with the repository root as
@@ -47,7 +49,7 @@ is the most likely first failure and it is the cheapest one to avoid.
 
 The api image carries **four** binaries and the migration chain: `/api/bin/api`,
 `/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
-why one Dockerfile serves seven components.
+why one Dockerfile serves nine components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
 been load-tested; it is the smallest size worth starting a Next.js server on, and the number the
@@ -274,6 +276,9 @@ backoffice is one of those proxies — its calls are server-side, so until a hop
 user in the product shares one rate-limit allowance, which is the one switch worth flipping early.
 `WEB_TRUSTED_PROXY_HOPS` on the backoffice moves with it, and what each is worth depends on how many
 proxies the platform actually puts in front; the spec leaves both at the `.env.example` default.
+The customer webapp is the same case: its `WEB_TRUSTED_PROXY_HOPS` decides whether it forwards the
+visitor's address, and until the API trusts it every portal customer shares one bucket on the
+per-address limits — customer login and the contact verification and profile routes alike.
 
 The full list of keys, with defaults and what each bounds, is in the four `.env.example` files.
 

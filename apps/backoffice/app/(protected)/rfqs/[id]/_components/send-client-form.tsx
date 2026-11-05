@@ -20,11 +20,9 @@ import {
   Input,
   Label,
   Spinner,
-  TaxIdInput,
   ToggleGroup,
   ToggleGroupItem,
 } from '@repo/ui/components';
-import { isValidCuit } from '@repo/ui/lib';
 import { PhoneInput } from '@/components/phone-input';
 import type { ClientMatch, QuoteClientAssociation } from '@/lib/api/client-profiles';
 import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients-client';
@@ -56,18 +54,15 @@ export function SendClientForm({
         .object({
           mode: z.enum(['existing', 'new']),
           clientId: z.string(),
-          taxId: z
-            .string()
-            .refine(
-              (value) => isValidCuit(value) && value !== '00000000000',
-              t('clientTaxInvalid'),
-            ),
+          taxId: z.string(),
           name: z.string().max(255),
           email: z.string().trim(),
           phone: z.string(),
           tagIds: z.array(z.string()),
         })
         .superRefine((values, ctx) => {
+          if (values.mode === 'new' && !values.email && !values.phone)
+            ctx.addIssue({ code: 'custom', path: ['email'], message: t('clientContactRequired') });
           if (values.mode === 'new' && !values.name.trim())
             ctx.addIssue({ code: 'custom', path: ['name'], message: t('clientNameRequired') });
           if (
@@ -99,13 +94,11 @@ export function SendClientForm({
   const values = useWatch({ control: form.control });
   const selected = directory.find((item) => item.client.id === values.clientId);
   const fixedClient = locked && context?.currentClient != null;
-  const mismatch =
-    values.mode === 'existing' && selected?.client.taxId && selected.client.taxId !== values.taxId;
   const checked = schema.safeParse(values);
   const selection: SendClientSelection | null =
-    context && checked.success && !mismatch
+    context && checked.success
       ? {
-          taxId: checked.data.taxId,
+          taxId: checked.data.mode === 'existing' ? selected?.client.taxId || '' : '',
           ...(checked.data.mode === 'existing'
             ? { clientId: checked.data.clientId }
             : {
@@ -134,8 +127,7 @@ export function SendClientForm({
           ...clients,
         ];
         const unique = [...new Map(candidates.map((item) => [item.client.id, item])).values()];
-        const taxId =
-          association.currentClient?.client.taxId || association.contactHints.taxId || '';
+        const taxId = association.currentClient?.client.taxId || '';
         const matches = unique.filter((item) => taxId && item.client.taxId === taxId);
         const initial =
           association.currentClient || (matches.length === 1 ? matches[0] : undefined);
@@ -164,16 +156,6 @@ export function SendClientForm({
     form.setValue('clientId', id, { shouldValidate: true });
     form.setValue('tagIds', match?.tags.map((tag) => tag.id) || []);
     if (match?.client.taxId) form.setValue('taxId', match.client.taxId, { shouldValidate: true });
-  }
-
-  function enterTaxId(value: string) {
-    form.setValue('taxId', value, { shouldValidate: true });
-    const matches = directory.filter((item) => item.client.taxId === value);
-    if (!context?.currentClient && isValidCuit(value) && matches.length > 0) {
-      form.setValue('mode', 'existing');
-      form.setValue('clientId', matches.length === 1 ? matches[0]!.client.id : '');
-      form.setValue('tagIds', matches.length === 1 ? matches[0]!.tags.map((tag) => tag.id) : []);
-    }
   }
 
   if (failed) return <Callout tone="danger">{t('clientLoadFailed')}</Callout>;
@@ -240,26 +222,6 @@ export function SendClientForm({
             )}
           />
         ) : null}
-        <FormField
-          control={form.control}
-          name="taxId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel required>{t('clientTax')}</FormLabel>
-              <FormControl>
-                <TaxIdInput
-                  {...field}
-                  onChange={enterTaxId}
-                  kind="cuit"
-                  disabled={disabled}
-                  readOnly={fixedClient && !!selected?.client.taxId}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        {mismatch ? <Callout tone="danger">{t('clientTaxMismatch')}</Callout> : null}
         {values.mode === 'new' ? (
           <>
             <FormField
