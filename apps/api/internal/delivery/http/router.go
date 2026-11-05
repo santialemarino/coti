@@ -56,6 +56,7 @@ type Handlers struct {
 	AccountLogo    *handler.BrandLogoHandler
 	Prices         *handler.ProductPriceHandler
 	CatalogImport  *handler.CatalogImportHandler
+	DataExport     *handler.DataExportHandler
 	Onboarding     *handler.OnboardingHandler
 	WhatsApp       *handler.WhatsAppWebhookHandler
 	Gmail          *handler.GmailHandler
@@ -353,6 +354,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.POST("/products/import/preview", h.CatalogImport.Preview)
 	admin.POST("/products/import/confirm", h.CatalogImport.Confirm)
 	admin.GET("/product-taxonomy", h.CatalogImport.Taxonomy)
+	admin.GET("/exports/:entity", h.DataExport.Export)
 	admin.GET("/promotions", h.Promotion.List)
 	admin.GET("/promotions/:promotionId", h.Promotion.Get)
 	admin.POST("/promotions", h.Promotion.Create)

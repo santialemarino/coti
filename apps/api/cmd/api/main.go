@@ -85,6 +85,7 @@ func run() error {
 	branchProductRepo := repository.NewBranchProductRepository()
 	productPriceRepo := repository.NewProductPriceRepository()
 	catalogImportRepo := repository.NewCatalogImportRepository()
+	dataExportRepo := repository.NewDataExportRepository()
 	rfqRepo := repository.NewRFQRepository()
 	rfqAttachmentRepo := repository.NewRFQAttachmentRepository()
 	quoteRepo := repository.NewQuoteRepository()
@@ -173,6 +174,7 @@ func run() error {
 		productPriceRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
+	dataExportService := services.NewDataExportService(db, dataExportRepo)
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
 	arcaCipher, err := secrets.NewAESGCM(cfg.ARCA.EncryptionKey)
 	if err != nil {
@@ -333,6 +335,7 @@ func run() error {
 			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			Prices:         handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
 			CatalogImport:  handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
+			DataExport:     handler.NewDataExportHandler(dataExportService),
 			Account:        handler.NewAccountHandler(accountService),
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),

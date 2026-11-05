@@ -5668,6 +5668,66 @@ paths:
       summary: Simulate an inbound WhatsApp message
       tags:
       - development
+  /v1/exports/{entity}:
+    get:
+      description: Returns quotes, catalog, clients or invoices across the account,
+        with Spanish field names.
+      parameters:
+      - description: What to export
+        enum:
+        - quotes
+        - catalog
+        - clients
+        - invoices
+        in: path
+        name: entity
+        required: true
+        type: string
+      - description: File format
+        enum:
+        - csv
+        - xml
+        in: query
+        name: format
+        required: true
+        type: string
+      - description: Branch to narrow quotes, catalog prices and invoices to
+        in: query
+        name: branch_id
+        type: string
+      - description: First day of quotes or invoices, YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: Last day of quotes or invoices, YYYY-MM-DD
+        in: query
+        name: to
+        type: string
+      produces:
+      - text/csv
+      - application/xml
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Export account data
+      tags:
+      - exports
   /v1/files/{key}:
     get:
       description: 'Serves a stored file to the holder of an unexpired signed link.
