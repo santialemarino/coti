@@ -160,6 +160,24 @@ jobs:
         run: |
           node scripts/goose.mjs up
           psql -h 127.0.0.1 -U coti -d coti -c "ALTER ROLE coti_app PASSWORD 'coti_app'"
+      - name: Migration commands expand credentials inside the container
+        env:
+          DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
+        run: |
+          for spec in .do/app.yaml .do/app.neon.yaml; do
+            export MIGRATE_COMMAND="$(yq -r '.jobs[] | select(.name == "migrate") | .run_command' "$spec")"
+            python3 - <<'PY'
+          import os
+          import shlex
+          import subprocess
+
+          subprocess.run([
+              "docker", "run", "--rm", "--network", "host",
+              "--env", "DATABASE_ADMIN_URL", "coti-api:ci",
+              *shlex.split(os.environ["MIGRATE_COMMAND"]),
+          ], check=True)
+          PY
+          done
       - name: The API starts on the spec's own settings
         run: |
           DB=127.0.0.1:5432/coti?sslmode=disable

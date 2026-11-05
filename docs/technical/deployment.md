@@ -244,12 +244,15 @@ failed SASL auth: FATAL: password authentication failed for user \"coti_app\" (S
 ## Migrations run from a PRE_DEPLOY job
 
 ```
-run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+run_command: /bin/sh -c 'exec /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up'
 ```
 
 **Not on API startup.** Startup migration races across instances, and a bad migration takes the app
 down instead of failing the deploy. A `PRE_DEPLOY` job runs before the new containers take traffic,
 once, and a failure stops the rollout with the old version still serving.
+
+App Platform parses the run command into arguments without expanding environment variables.
+The explicit shell expands the owner URL inside the container; `exec` preserves exit and signal handling.
 
 The job needs `DATABASE_ADMIN_URL` and nothing else. goose is pinned as a tool dependency in
 `apps/api/go.mod`, so the image's copy and the one `pnpm db:migrate` uses locally are the same
