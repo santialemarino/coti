@@ -524,8 +524,18 @@ func (r *SellerReportRenderer) clientsHeight(report domain.SellerReport) float64
 func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
 	height := 54.0
 	r.drawCard(doc, leftMargin, y, pageWidth, height, "Lectura automática del catálogo", "Resultado de la última generación de IA por pedido.")
+	versionLine := fmt.Sprintf("Sin coincidencia en la versión vigente: %s de %s líneas.",
+		reportCount(report.AIMatch.VersionUnmatched), reportCount(report.AIMatch.VersionLines))
 	if report.AIMatch.Total == 0 {
-		r.drawEmpty(doc, leftMargin+6, y+18, pageWidth-12, "Sin datos en el período.")
+		if report.AIMatch.VersionLines == 0 {
+			r.drawEmpty(doc, leftMargin+6, y+18, pageWidth-12, "Sin datos en el período.")
+			return y + height
+		}
+		// Orders built by hand have no AI reading but can still carry unmatched lines.
+		doc.SetFont("Go", "", 6.5)
+		doc.SetTextColor(reportMuted[0], reportMuted[1], reportMuted[2])
+		doc.SetXY(leftMargin+8, y+20)
+		doc.CellFormat(pageWidth-16, 4, versionLine, "", 0, "L", false, 0, "")
 		return y + height
 	}
 
@@ -538,8 +548,7 @@ func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.Selle
 	doc.SetXY(leftMargin+8, y+27)
 	doc.CellFormat(55, 4, fmt.Sprintf("Tasa de coincidencia · %s de %s líneas", reportCount(report.AIMatch.Matched), reportCount(report.AIMatch.Total)), "", 0, "L", false, 0, "")
 	doc.SetXY(leftMargin+8, y+44)
-	doc.CellFormat(pageWidth-16, 4, fmt.Sprintf("Sin coincidencia en la versión vigente: %s de %s líneas.",
-		reportCount(report.AIMatch.VersionUnmatched), reportCount(report.AIMatch.VersionLines)), "", 0, "L", false, 0, "")
+	doc.CellFormat(pageWidth-16, 4, versionLine, "", 0, "L", false, 0, "")
 
 	barX := leftMargin + 68
 	barY := y + 22

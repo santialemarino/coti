@@ -194,7 +194,12 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	})
 	otherSeller := seedUser(t, db, accountID, "SELLER")
 	sellerID := seedUser(t, db, accountID, "SELLER")
-	quoteID, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM handler_decision WHERE quote_version_id = $1`,
+			versionID)
+	})
+	inPeriod := time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC)
 	for _, seed := range []struct {
 		what string
 		sql  string
@@ -205,6 +210,21 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 			[]any{quoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}},
 		{"other seller", `UPDATE quote SET seller_id = $2 WHERE id = $1`,
 			[]any{quoteID, otherSeller}},
+		// Flag-only, apart: the quote trigger clears the flag on any other write.
+		{"follow-up", `UPDATE quote SET needs_followup = TRUE, followup_flagged_at = $2 WHERE id = $1`,
+			[]any{quoteID, inPeriod}},
+		{"unmatched line", `UPDATE quote_item SET match_status = 'NO_MATCH', product_id = NULL
+		   WHERE version_id = $1`, []any{versionID}},
+		{"decision", `INSERT INTO handler_decision
+		   (account_id, quote_version_id, seller_decision, created_at)
+		   VALUES ($1, $2, 'APPROVED_AS_IS', $3)`, []any{accountID, versionID, inPeriod}},
+		{"sent", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'QUOTED', 'SENT', $3)`,
+			[]any{accountID, quoteID, inPeriod.Add(-time.Hour)}},
+		{"accepted", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`, []any{accountID, quoteID, inPeriod}},
 	} {
 		if _, err := db.CrossAccount().Exec(ctx, seed.sql, seed.args...); err != nil {
 			t.Fatalf("seed %s: %v", seed.what, err)
@@ -218,6 +238,20 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	}, in)
 	if report.KPIs.RFQsReceived != 0 {
 		t.Fatalf("a seller saw another seller's order: %+v", report.KPIs)
+	}
+	if report.Assistant.Proposals != 0 || report.KPIs.FollowUpPending != 0 ||
+		report.KPIs.TimeToAcceptance.Sample != 0 || report.AIMatch.VersionLines != 0 {
+		t.Fatalf("a seller saw another seller's metrics: assistant %+v, follow-up %d, wait %+v, lines %d",
+			report.Assistant, report.KPIs.FollowUpPending, report.KPIs.TimeToAcceptance,
+			report.AIMatch.VersionLines)
+	}
+
+	admin := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
+	if admin.Assistant.Proposals != 1 || admin.KPIs.FollowUpPending != 1 ||
+		admin.KPIs.TimeToAcceptance.Sample != 1 || admin.AIMatch.VersionUnmatched != 1 {
+		t.Fatalf("the administrator's report = assistant %+v, follow-up %d, wait %+v, unmatched %d; "+
+			"want the hidden quote's figures counted", admin.Assistant, admin.KPIs.FollowUpPending,
+			admin.KPIs.TimeToAcceptance, admin.AIMatch.VersionUnmatched)
 	}
 }
 
@@ -931,6 +965,18 @@ func TestSellerReportRepositoryMeasuresTheAssistantAndFollowUp(t *testing.T) {
 	reportExec(t, db, "accepted", `INSERT INTO quote_status_change
 	   (account_id, quote_id, previous_status, new_status, changed_at)
 	   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`, accountID, quoteID, inPeriod)
+	// A send after the acceptance is not where the wait started.
+	reportExec(t, db, "later send", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'CHANGE_REQUESTED', 'SENT', $3)`, accountID, quoteID, inPeriod.Add(time.Hour))
+	// An acceptance never sent before it measures no wait at all.
+	unsent, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	reportExec(t, db, "unsent acceptance", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'QUOTED', 'ACCEPTED', $3)`, accountID, unsent, inPeriod)
+	reportExec(t, db, "send after it", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'ACCEPTED', 'SENT', $3)`, accountID, unsent, inPeriod.Add(time.Hour))
 
 	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
 	assistant := report.Assistant

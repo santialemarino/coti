@@ -177,7 +177,8 @@ export default async function ReportsPage({
     report.topRevenueProducts.length === 0 &&
     report.topClients.length === 0 &&
     report.aiMatch.total === 0 &&
-    report.assistant.proposals === 0;
+    report.assistant.proposals === 0 &&
+    report.kpis.followUpPending === 0;
 
   return (
     <PageShell>

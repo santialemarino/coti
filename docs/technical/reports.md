@@ -148,5 +148,6 @@ calibration moves the report with the review screen.
 The report reads are backed by `00072_seller_reports.sql`: a branch/time index for RFQs, an account/time
 index for quotes,
 partial status and send indexes for the event reads, a partial client-action index for acceptance
-resolution, and a generation index for the AI summary. They are in the consolidated reference
+resolution, and a generation index for the AI summary; `00073_handler_decision_report_index.sql`
+adds the account/time index the assistant metrics read. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.

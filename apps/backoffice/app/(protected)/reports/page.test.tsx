@@ -436,6 +436,48 @@ describe('ReportsPage', () => {
     expect(screen.getByText(/2 líneas quedan sin coincidencia/)).toBeTruthy();
   });
 
+  it('keeps pending follow-ups and hand-built unmatched lines in view', async () => {
+    const base = report();
+    await renderReport(
+      report({
+        kpis: {
+          ...base.kpis,
+          rfqsReceived: 0,
+          quotesSent: 0,
+          quotesAccepted: 0,
+          sentAccepted: 0,
+          conversionRate: null,
+          followUpPending: 2,
+        },
+        quotesByStatus: [],
+        topProducts: [],
+        topRevenueProducts: [],
+        topClients: [],
+        aiMatch: {
+          ...base.aiMatch,
+          matched: 0,
+          total: 0,
+          rate: null,
+          versionLines: 4,
+          versionUnmatched: 1,
+        },
+        assistant: {
+          ...base.assistant,
+          proposals: 0,
+          approvedAsIs: 0,
+          edited: 0,
+          rejected: 0,
+          pending: 0,
+          approvalRate: null,
+        },
+      }),
+    );
+
+    expect(screen.queryByText(copy.empty.title)).toBeNull();
+    expect(screen.getByText(copy.kpis.followUpPending)).toBeTruthy();
+    expect(screen.getByText(/1 línea queda sin coincidencia/)).toBeTruthy();
+  });
+
   it('reads a wait of several days in days', async () => {
     const base = report();
     await renderReport(
