@@ -29,6 +29,7 @@ import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
 import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
 import { BrandColorField } from '@/components/brand-color-field';
+import { CustomerPortalEditor } from '@/components/customer-portal/customer-portal-editor';
 import { LogoDropzone } from '@/components/logo-dropzone';
 import { TaxIdInput } from '@/components/tax-id-input';
 import { ROUTES } from '@/config/routes';
@@ -180,6 +181,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
                 </FormItem>
               )}
             />
+            <CustomerPortalEditor />
           </section>
 
           <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">

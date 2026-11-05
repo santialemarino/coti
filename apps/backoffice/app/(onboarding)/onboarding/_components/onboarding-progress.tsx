@@ -17,7 +17,7 @@ export function OnboardingProgress({ current, resolved }: OnboardingProgressProp
 
   return (
     <div aria-label={t('label')}>
-      <ol className="grid grid-cols-7 gap-x-2">
+      <ol className="grid grid-flow-col auto-cols-fr gap-x-2">
         {ONBOARDING_STEPS.map((step, index) => {
           const active = index === visibleIndex;
           const state = active ? 'current' : index < visibleIndex ? 'completed' : 'pending';

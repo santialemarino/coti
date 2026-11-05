@@ -232,6 +232,129 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/account/portal": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Get customer portal settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerPortalResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Update customer subdomain",
+                "parameters": [
+                    {
+                        "description": "Portal configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateCustomerPortalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerPortalResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/account/portal/availability": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Check customer subdomain availability",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Subdomain label",
+                        "name": "subdomain",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerPortalAvailabilityResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/arca/setup": {
             "get": {
                 "security": [
@@ -11378,6 +11501,34 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CustomerPortalAvailabilityResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.CustomerPortalResponse": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "type": "string"
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "legacy": {
+                    "type": "boolean"
+                },
+                "subdomain": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.CustomerProfileResponse": {
             "type": "object",
             "properties": {
@@ -12179,6 +12330,7 @@ const docTemplate = `{
                     "type": "string",
                     "enum": [
                         "BRAND",
+                        "PORTAL",
                         "CATALOG_UPLOAD",
                         "TEAM"
                     ]
@@ -13917,6 +14069,7 @@ const docTemplate = `{
                     "enum": [
                         "WELCOME",
                         "BRAND",
+                        "PORTAL",
                         "FIRST_BRANCH",
                         "CATALOG_UPLOAD",
                         "CATALOG_REVIEW",
@@ -13929,6 +14082,7 @@ const docTemplate = `{
                     "enum": [
                         "WELCOME",
                         "BRAND",
+                        "PORTAL",
                         "FIRST_BRANCH",
                         "CATALOG_UPLOAD",
                         "CATALOG_REVIEW",
@@ -14599,6 +14753,25 @@ const docTemplate = `{
                     ]
                 },
                 "legal_name": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateCustomerPortalRequest": {
+            "type": "object",
+            "required": [
+                "subdomain"
+            ],
+            "properties": {
+                "confirm_change": {
+                    "type": "boolean"
+                },
+                "expected_hostname": {
+                    "type": "string",
+                    "maxLength": 253
+                },
+                "subdomain": {
                     "type": "string",
                     "maxLength": 255
                 }

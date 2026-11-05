@@ -79,6 +79,7 @@ type Config struct {
 	Database        DatabaseConfig
 	Auth            AuthConfig
 	CustomerAuth    CustomerAuthConfig
+	CustomerPortal  CustomerPortalConfig
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -855,7 +856,8 @@ func Load() (*Config, error) {
 			MaxConnIdleTime: getDuration("DB_MAX_CONN_IDLE_MINUTES", 30*time.Minute, &problems),
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
-		CustomerAuth: loadCustomerAuth(&problems),
+		CustomerAuth:   loadCustomerAuth(&problems),
+		CustomerPortal: loadCustomerPortal(env, &problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
@@ -1442,6 +1444,9 @@ func Load() (*Config, error) {
 
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	if local, err := url.Parse(cfg.CustomerPortal.BaseURL); err == nil && local.Hostname() == "localhost" {
+		cfg.CustomerAuth.PortalLocalOrigin = cfg.CustomerPortal.BaseURL
 	}
 	return cfg, nil
 }

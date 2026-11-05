@@ -49,3 +49,8 @@ function readInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? '', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
+
+export const PORTAL_AVAILABILITY_DELAY_SECONDS = readInt(
+  process.env.NEXT_PUBLIC_PORTAL_AVAILABILITY_DELAY_SECONDS,
+  1,
+);

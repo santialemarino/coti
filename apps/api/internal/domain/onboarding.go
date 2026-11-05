@@ -29,6 +29,7 @@ type OnboardingStepKey string
 const (
 	OnboardingStepWelcome       OnboardingStepKey = "WELCOME"
 	OnboardingStepBrand         OnboardingStepKey = "BRAND"
+	OnboardingStepPortal        OnboardingStepKey = "PORTAL"
 	OnboardingStepFirstBranch   OnboardingStepKey = "FIRST_BRANCH"
 	OnboardingStepCatalogUpload OnboardingStepKey = "CATALOG_UPLOAD"
 	OnboardingStepCatalogReview OnboardingStepKey = "CATALOG_REVIEW"
@@ -38,7 +39,7 @@ const (
 
 // OnboardingChecklistSteps are the setup steps the checklist tracks, in the order it lists them.
 var OnboardingChecklistSteps = []OnboardingStepKey{
-	OnboardingStepBrand, OnboardingStepCatalogUpload, OnboardingStepTeam,
+	OnboardingStepBrand, OnboardingStepPortal, OnboardingStepCatalogUpload, OnboardingStepTeam,
 }
 
 // Onboarding is the versioned setup state for one account.

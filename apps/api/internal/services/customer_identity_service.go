@@ -212,7 +212,7 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname strin
 }
 
 func (s *CustomerAuthService) customerOrigin(site domain.CustomerSite) string {
-	return customerSiteOrigin(site.Hostname, s.cfg.GoogleLocalOrigin)
+	return customerSiteOrigin(site.Hostname, s.cfg.LinkLocalOrigin())
 }
 
 func validCustomerEmail(value string) bool {

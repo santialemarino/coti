@@ -183,7 +183,7 @@ func run() error {
 	// The env var spells the deployment in lowercase; records store the native enum.
 	arcaEnvironment := domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment))
 	invoiceService := services.NewInvoiceService(db, invoicingRepo, quoteRepo, quoteDiscountRepo, arcainvoice.NewIssuer(arcainvoice.Settings{Timeout: cfg.ARCA.Timeout, Log: log}, arcainvoice.NewMemoryTicketCache()), arcaCipher, services.InvoiceSettings{Enabled: arcaCipher.Enabled(), Environment: arcaEnvironment, IssueTimeout: cfg.ARCA.IssueTimeout, ReconcileAfter: cfg.ARCA.ReconcileAfter, UnidentifiedMax: cfg.ARCA.ReceiverIDThreshold, LogoMaxBytes: cfg.QuoteLogo.MaxSizeBytes, LogoMaxPixels: cfg.QuoteLogo.MaxPixels}, nil, accountService, quotePDF.NewInvoiceRenderer()).
-		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin())
 	arcaSetupService := services.NewARCASetupService(db, arcaSetupRepo, accountRepo, invoicingRepo, arcaCipher,
 		arca.NewSetupConnector(), arcaEnvironment)
 	catalogSearchService := services.NewCatalogSearchService(db, productRepo, providers.Embedder,
@@ -208,13 +208,14 @@ func run() error {
 		WithConversation(messageBatchRepo, quoteMessageRepo, handlerDecisionRepo).
 		WithClientMessages(quoteMessageRepo).
 		WithWebAppURL(cfg.Web.WebAppURL).
+		WithCustomerPortal(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin()).
 		WithInvoicingEnvironment(arcaEnvironment).
 		WithFileIntake(rfqAttachmentService, providers.Transcriber, cfg.Storage.MaxFileSize)
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuthService.WithClientProfiles(contactService)
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
-	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.GoogleLocalOrigin).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
+	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.LinkLocalOrigin()).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	customerAuthService.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
@@ -298,7 +299,7 @@ func run() error {
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer).
-		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.GoogleLocalOrigin)
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment)
 	quoteDeliveryService.WithClientAssociations(clientService)
@@ -337,6 +338,7 @@ func run() error {
 			CatalogImport:  handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			DataExport:     handler.NewDataExportHandler(dataExportService),
 			Account:        handler.NewAccountHandler(accountService),
+			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,

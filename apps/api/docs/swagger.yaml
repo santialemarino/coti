@@ -1201,6 +1201,24 @@ definitions:
       status:
         type: string
     type: object
+  dto.CustomerPortalAvailabilityResponse:
+    properties:
+      available:
+        type: boolean
+    type: object
+  dto.CustomerPortalResponse:
+    properties:
+      base_url:
+        type: string
+      hostname:
+        type: string
+      legacy:
+        type: boolean
+      subdomain:
+        type: string
+      url:
+        type: string
+    type: object
   dto.CustomerProfileResponse:
     properties:
       client_id:
@@ -1760,6 +1778,7 @@ definitions:
       step:
         enum:
         - BRAND
+        - PORTAL
         - CATALOG_UPLOAD
         - TEAM
         type: string
@@ -2927,6 +2946,7 @@ definitions:
         enum:
         - WELCOME
         - BRAND
+        - PORTAL
         - FIRST_BRANCH
         - CATALOG_UPLOAD
         - CATALOG_REVIEW
@@ -2937,6 +2957,7 @@ definitions:
         enum:
         - WELCOME
         - BRAND
+        - PORTAL
         - FIRST_BRANCH
         - CATALOG_UPLOAD
         - CATALOG_REVIEW
@@ -3401,6 +3422,19 @@ definitions:
         maxLength: 255
         type: string
     type: object
+  dto.UpdateCustomerPortalRequest:
+    properties:
+      confirm_change:
+        type: boolean
+      expected_hostname:
+        maxLength: 253
+        type: string
+      subdomain:
+        maxLength: 255
+        type: string
+    required:
+    - subdomain
+    type: object
   dto.UpdateCustomerProfileRequest:
     properties:
       contacts:
@@ -3787,6 +3821,82 @@ paths:
       security:
       - BearerAuth: []
       summary: Upload an account logo
+      tags:
+      - accounts
+  /v1/account/portal:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerPortalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get customer portal settings
+      tags:
+      - accounts
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Portal configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateCustomerPortalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerPortalResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update customer subdomain
+      tags:
+      - accounts
+  /v1/account/portal/availability:
+    get:
+      parameters:
+      - description: Subdomain label
+        in: query
+        name: subdomain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CustomerPortalAvailabilityResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Check customer subdomain availability
       tags:
       - accounts
   /v1/arca/setup:

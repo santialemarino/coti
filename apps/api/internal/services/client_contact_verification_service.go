@@ -120,7 +120,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 	if err != nil {
 		return nil, err
 	}
-	origin := customerSiteOrigin(hostname, s.cfg.GoogleLocalOrigin)
+	origin := customerSiteOrigin(hostname, s.cfg.LinkLocalOrigin())
 	body := contactVerificationLink(origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret))
 	code := ""
 	if kind == domain.ChannelTypeWhatsApp {
