@@ -3118,6 +3118,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/exports/{entity}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns quotes, catalog, clients or invoices across the account, with Spanish field names.",
+                "produces": [
+                    "text/csv",
+                    "application/xml"
+                ],
+                "tags": [
+                    "exports"
+                ],
+                "summary": "Export account data",
+                "parameters": [
+                    {
+                        "enum": [
+                            "quotes",
+                            "catalog",
+                            "clients",
+                            "invoices"
+                        ],
+                        "type": "string",
+                        "description": "What to export",
+                        "name": "entity",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "csv",
+                            "xml"
+                        ],
+                        "type": "string",
+                        "description": "File format",
+                        "name": "format",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Branch to narrow quotes, catalog prices and invoices to",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "First day of quotes or invoices, YYYY-MM-DD",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Last day of quotes or invoices, YYYY-MM-DD",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/files/{key}": {
             "get": {
                 "description": "Serves a stored file to the holder of an unexpired signed link. No session: the signature is the authorization.",
