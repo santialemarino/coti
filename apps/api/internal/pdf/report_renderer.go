@@ -660,11 +660,7 @@ func (r *SellerReportRenderer) drawMethodology(
 	doc.SetFont("Go", "", 6.2)
 	doc.SetTextColor(reportSubtle[0], reportSubtle[1], reportSubtle[2])
 	doc.SetXY(leftMargin+8, y+57)
-	scope := "sucursal activa"
-	if report.Scope.MultiBranch {
-		scope = "todas las sucursales disponibles"
-	}
-	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+scope+".", "", 0, "L", false, 0, "")
+	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+r.scopeName(report)+".", "", 0, "L", false, 0, "")
 }
 
 func (r *SellerReportRenderer) drawCard(
@@ -719,10 +715,17 @@ func (r *SellerReportRenderer) reportPeriodLabel(report domain.SellerReport) str
 }
 
 func (r *SellerReportRenderer) reportScopeLabel(report domain.SellerReport) string {
-	if report.Scope.MultiBranch {
-		return "Alcance: todas las sucursales disponibles para el usuario."
+	return "Alcance: " + r.scopeName(report) + "."
+}
+
+func (r *SellerReportRenderer) scopeName(report domain.SellerReport) string {
+	switch {
+	case len(report.Filters.Branches) > 0:
+		return "sucursales elegidas en los filtros"
+	case report.Scope.MultiBranch:
+		return "todas las sucursales disponibles para el usuario"
 	}
-	return "Alcance: sucursal activa."
+	return "sucursal activa"
 }
 
 func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) string {

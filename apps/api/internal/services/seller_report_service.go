@@ -197,7 +197,11 @@ func resolveReportFilters(tenant domain.Tenant, in domain.SellerReportFilterInpu
 	if err != nil {
 		return domain.SellerReportFilters{}, err
 	}
-	filters.Branches = filterOptions(branchIDs)
+	// An active branch already fixes the reach, so a branch filter left over from the all-branches view
+	// is dropped rather than intersected into an empty report.
+	if !tenant.HasBranch() {
+		filters.Branches = filterOptions(branchIDs)
+	}
 	filters.Tags = filterOptions(tagIDs)
 	return filters, nil
 }
