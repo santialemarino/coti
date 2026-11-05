@@ -58,12 +58,18 @@ export async function forwardToApi(
     cache: 'no-store',
   });
 
-  if (upstream.ok && upstream.headers.get('Content-Type')?.startsWith('application/pdf')) {
+  // A file — a PDF, an export — passes through as bytes with its own type, never as JSON.
+  const disposition = upstream.headers.get('Content-Disposition');
+  const contentType = upstream.headers.get('Content-Type');
+  if (
+    upstream.ok &&
+    (contentType?.startsWith('application/pdf') || disposition?.startsWith('attachment'))
+  ) {
     return new NextResponse(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': upstream.headers.get('Content-Disposition') ?? 'attachment',
+        'Content-Type': contentType ?? 'application/octet-stream',
+        'Content-Disposition': disposition ?? 'attachment',
         'Cache-Control': 'private, no-store',
       },
     });

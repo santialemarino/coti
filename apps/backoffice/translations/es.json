@@ -493,6 +493,10 @@
       "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
     },
+    "exportSettings": {
+      "title": "Exportación de datos",
+      "description": "Descarga de cotizaciones, catálogo, clientes y facturas en CSV o XML."
+    },
     "catalogSettings": {
       "title": "Catálogo",
       "description": "Carga inicial y actualización del catálogo de productos."
@@ -2037,6 +2041,54 @@
       "merged": "Unimos «{merged}» en «{kept}»."
     }
   },
+  "dataExport": {
+    "title": "Exportación de datos",
+    "description": "Descargá los datos de la cuenta para usarlos en otro sistema o migrarlos. Las columnas llevan nombres en español y los montos usan punto decimal.",
+    "entity": {
+      "label": "Qué exportar",
+      "quotes": {
+        "label": "Cotizaciones",
+        "hint": "Cada cotización con su estado, su total y los ítems de la versión vigente."
+      },
+      "catalog": {
+        "label": "Catálogo",
+        "hint": "Los productos con la disponibilidad, el stock y el precio vigente en cada sucursal."
+      },
+      "clients": {
+        "label": "Clientes",
+        "hint": "Los clientes con sus datos fiscales, etiquetas y contactos."
+      },
+      "invoices": {
+        "label": "Facturas",
+        "hint": "Las facturas y notas de crédito con su estado, su CAE y sus montos."
+      }
+    },
+    "format": {
+      "label": "Formato",
+      "csv": "CSV",
+      "xml": "XML",
+      "csvHint": "Una fila por ítem, que repite los datos del registro. Se abre con Excel o Google Sheets.",
+      "xmlHint": "Cada registro con sus ítems anidados, para importarlo en otro sistema."
+    },
+    "branch": {
+      "label": "Sucursal",
+      "all": "Todas las sucursales",
+      "closed": "{name} (cerrada)"
+    },
+    "period": {
+      "from": "Desde",
+      "to": "Hasta",
+      "quotesHint": "Por fecha de creación. Sin fechas, se exporta todo el historial.",
+      "invoicesHint": "Por fecha de emisión. Sin fechas, se exporta todo el historial.",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta."
+    },
+    "download": {
+      "label": "Descargar",
+      "pending": "Preparando el archivo…",
+      "done": "Descargamos «{filename}».",
+      "error": "No pudimos generar el archivo. Probá de nuevo."
+    }
+  },
   "reports": {
     "title": "Reportes",
     "description": "Actividad de pedidos y cotizaciones en el período.",
@@ -2203,7 +2255,8 @@
       "catalog": "Catálogo",
       "prices": "Precios",
       "onboarding": "Configuración inicial · {done}/{total}",
-      "invoicing": "Facturación"
+      "invoicing": "Facturación",
+      "export": "Exportación de datos"
     },
     "backToInvoicing": "Volver a Facturación"
   },
