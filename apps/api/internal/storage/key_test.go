@@ -59,7 +59,7 @@ func TestSpacesStorage_RefusesTheSameKeysAsTheLocalAdapter(t *testing.T) {
 	t.Parallel()
 	// An endpoint nothing listens on: the key check runs before any request, so a guard that
 	// stopped refusing would fail this on a dead connection instead of reaching a real bucket.
-	spaces := NewSpacesStorage(config.SpacesSettings{
+	spaces := NewSpacesStorage(config.S3Settings{
 		Endpoint:  "http://127.0.0.1:1",
 		Region:    "us-east-1",
 		Bucket:    "coti-attachments",
