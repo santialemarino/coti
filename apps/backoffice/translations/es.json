@@ -2038,8 +2038,110 @@
     }
   },
   "reports": {
-    "placeholderTitle": "Reportes",
-    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+    "title": "Reportes",
+    "description": "Actividad de pedidos y cotizaciones en el período.",
+    "descriptionAll": "Actividad de pedidos y cotizaciones de todas las sucursales en el período.",
+    "download": {
+      "label": "Descargar PDF",
+      "pending": "Generando PDF.",
+      "error": "No pudimos generar el PDF. Probá de nuevo."
+    },
+    "filters": {
+      "from": "Desde",
+      "to": "Hasta",
+      "status": "Estado",
+      "statusCount": "{count} estados",
+      "clearStatus": "Limpiar estados",
+      "channel": "Canal",
+      "seller": "Vendedor",
+      "client": "Cliente",
+      "allChannel": "Todos los canales",
+      "allSeller": "Todos los vendedores",
+      "allClient": "Todos los clientes",
+      "apply": "Aplicar",
+      "reset": "Restablecer",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
+      "invalid": "No pudimos generar el reporte con esa selección. Revisá las fechas, que el período no sea demasiado largo y los filtros elegidos."
+    },
+    "empty": {
+      "title": "No hay actividad en el período",
+      "description": "Probá con otro período o con menos filtros."
+    },
+    "kpis": {
+      "rfqs": "Pedidos recibidos",
+      "sent": "Cotizaciones enviadas",
+      "accepted": "Cotizaciones aceptadas",
+      "acceptedDetail": "Aceptaciones registradas en el período.",
+      "conversion": "Tasa de conversión",
+      "acceptedAmount": "Importe aceptado",
+      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "responseTime": "Tiempo de respuesta"
+    },
+    "conversionDetail": "{accepted, plural, one {# aceptada} other {# aceptadas}} de {sent, plural, one {# enviada} other {# enviadas}} en el período",
+    "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
+    "duration": {
+      "seconds": "{count, plural, one {# segundo} other {# segundos}}",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "hoursMinutes": "{hours} h {minutes} min"
+    },
+    "noDataShort": "—",
+    "status": {
+      "title": "Cotizaciones por estado",
+      "description": "Distribución de las cotizaciones creadas en el período.",
+      "empty": "Todavía no hay cotizaciones en el período.",
+      "total": "{count, plural, one {# cotización} other {# cotizaciones}}",
+      "label": "Estado",
+      "count": "Cotizaciones",
+      "aria": "Cotizaciones creadas en el período agrupadas por estado"
+    },
+    "statusLabels": {
+      "DRAFT": "Borrador",
+      "QUOTED": "Cotizada",
+      "SENT": "Enviada",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptada",
+      "REJECTED": "Rechazada"
+    },
+    "timeline": {
+      "title": "Envíos y aceptaciones",
+      "sent": "Enviadas",
+      "accepted": "Aceptadas",
+      "date": "Fecha",
+      "aria": "Envíos y aceptaciones por día entre {from} y {to}"
+    },
+    "products": {
+      "title": "Productos más solicitados",
+      "description": "Ranking por cantidad de líneas, sin importar la cantidad pedida.",
+      "empty": "Todavía no hay productos en el período.",
+      "requests": "{count, plural, one {# línea} other {# líneas}}",
+      "unnamed": "Sin nombre"
+    },
+    "revenueProducts": {
+      "title": "Productos con mayor ingreso",
+      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "empty": "Todavía no hay productos aceptados en el período."
+    },
+    "clients": {
+      "title": "Clientes por importe aceptado",
+      "empty": "Todavía no hay clientes aceptados en el período.",
+      "name": "Cliente",
+      "acceptedAmount": "Importe aceptado",
+      "unnamed": "Sin cliente"
+    },
+    "ai": {
+      "title": "Coincidencias automáticas",
+      "empty": "Todavía no hay generaciones de IA en el período.",
+      "matched": "{matched, plural, one {# línea} other {# líneas}} de {total}",
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta"
+    },
+    "branches": {
+      "title": "Pedidos por sucursal",
+      "name": "Sucursal",
+      "rfqs": "Pedidos"
+    }
   },
   "catalog": {
     "title": "Catálogo",

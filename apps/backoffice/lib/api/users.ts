@@ -23,6 +23,10 @@ interface UserRaw {
   updated_at: string;
 }
 
+interface SellerListRaw {
+  items: { id: string; name: string }[];
+}
+
 // --- Frontend types (camelCase) ---
 
 export interface AccountUser {
@@ -36,6 +40,11 @@ export interface AccountUser {
   inviteStatus: 'PENDING' | 'EXPIRED' | null;
   // Null until they log in for the first time, so a screen can tell "never" from "long ago".
   lastLoginAt: string | null;
+}
+
+export interface AccountSeller {
+  id: string;
+  name: string;
 }
 
 // --- Mappers ---
@@ -62,4 +71,10 @@ function mapUser(raw: UserRaw): AccountUser {
 export const getUsers = cache(async (): Promise<AccountUser[]> => {
   const { items } = await apiRequest<UserListRaw>({ path: '/v1/users' });
   return items.map(mapUser);
+});
+
+// Active sellers narrowed to the active branch; unlike getUsers, every signed-in user may call it.
+export const getSellers = cache(async (): Promise<AccountSeller[]> => {
+  const { items } = await apiRequest<SellerListRaw>({ path: '/v1/sellers' });
+  return items.map((item) => ({ id: item.id, name: item.name }));
 });
