@@ -4,8 +4,11 @@ import { apiRequest } from '@/lib/api/client';
 
 // --- Raw types (API JSON shape, snake_case) ---
 
+export type ReportGranularity = 'day' | 'week' | 'month';
+
 interface SellerReportRaw {
   range: { from: string; to: string };
+  granularity: ReportGranularity;
   scope: { multi_branch: boolean; branch_id: string | null };
   filters: {
     statuses: string[];
@@ -36,7 +39,14 @@ interface SellerReportRaw {
     rfqs: number;
   }[];
   quotes_by_status: { status: string; count: number }[];
-  timeline: { date: string; sent: number; accepted: number }[];
+  timeline: {
+    date: string;
+    rfqs: number;
+    sent: number;
+    accepted: number;
+    sent_accepted: number;
+    conversion_rate: string | null;
+  }[];
   top_products: { product_id: string | null; name: string; requests: number }[];
   top_revenue_products: { product_id: string; name: string; revenue: string }[];
   top_clients: { client_id: string | null; name: string; accepted_amount: string }[];
@@ -70,10 +80,22 @@ export interface SellerReportFilterSelection {
   clientId?: string;
   branchIds?: string[];
   tagIds?: string[];
+  granularity?: string;
+}
+
+export interface SellerReportTrendPoint {
+  // The bucket's first day inside the period: a day, a week from Monday or a month.
+  date: string;
+  rfqs: number;
+  sent: number;
+  accepted: number;
+  sentAccepted: number;
+  conversionRate: number | null;
 }
 
 export interface SellerReport {
   range: { from: string; to: string };
+  granularity: ReportGranularity;
   scope: { multiBranch: boolean; branchId: string | null };
   filters: SellerReportFilters;
   kpis: {
@@ -89,7 +111,7 @@ export interface SellerReport {
   };
   branches: { branchId: string; branchName: string; rfqs: number }[];
   quotesByStatus: { status: string; count: number }[];
-  timeline: { date: string; sent: number; accepted: number }[];
+  timeline: SellerReportTrendPoint[];
   topProducts: { productId: string | null; name: string; requests: number }[];
   topRevenueProducts: { productId: string; name: string; revenue: string }[];
   topClients: { clientId: string | null; name: string; acceptedAmount: string }[];
@@ -110,6 +132,7 @@ function rate(raw: string | null): number | null {
 function mapSellerReport(raw: SellerReportRaw): SellerReport {
   return {
     range: { from: raw.range.from, to: raw.range.to },
+    granularity: raw.granularity,
     scope: { multiBranch: raw.scope.multi_branch, branchId: raw.scope.branch_id },
     filters: {
       statuses: raw.filters.statuses,
@@ -145,8 +168,11 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
     })),
     timeline: raw.timeline.map((item) => ({
       date: item.date,
+      rfqs: item.rfqs,
       sent: item.sent,
       accepted: item.accepted,
+      sentAccepted: item.sent_accepted,
+      conversionRate: rate(item.conversion_rate),
     })),
     topProducts: raw.top_products.map((item) => ({
       productId: item.product_id,
@@ -189,6 +215,7 @@ export async function getSellerReport(
       client_id: filters.clientId,
       branch_id: filters.branchIds?.length ? filters.branchIds.join(',') : undefined,
       tag_id: filters.tagIds?.length ? filters.tagIds.join(',') : undefined,
+      granularity: filters.granularity,
     },
   });
   return mapSellerReport(raw);

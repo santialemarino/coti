@@ -10,10 +10,11 @@ import {
   RankingList,
   StatusPieChart,
   statusTone,
-  TimelineChart,
+  TrendChart,
 } from '@/app/(protected)/reports/_components/report-charts';
 import { ReportDownloadButton } from '@/app/(protected)/reports/_components/report-download-button';
 import { ReportFilters } from '@/app/(protected)/reports/_components/report-filters';
+import { ReportGranularityToggle } from '@/app/(protected)/reports/_components/report-granularity';
 import { ReportKpis } from '@/app/(protected)/reports/_components/report-kpis';
 import { ReportSection } from '@/app/(protected)/reports/_components/report-section';
 import { ReportTopClients } from '@/app/(protected)/reports/_components/report-top-clients';
@@ -41,7 +42,8 @@ type ReportParam =
   | 'seller_id'
   | 'client_id'
   | 'branch_id'
-  | 'tag_id';
+  | 'tag_id'
+  | 'granularity';
 
 interface FilterOption {
   id: string;
@@ -128,6 +130,7 @@ export default async function ReportsPage({
     clientId: single(params.client_id),
     branchIds: many(params.branch_id),
     tagIds: many(params.tag_id),
+    granularity: single(params.granularity),
   };
   const [clients, sellers, tags, branches, activeBranchId, report] = await Promise.all([
     clientOptions(),
@@ -212,6 +215,7 @@ export default async function ReportsPage({
             tags={tags}
             showSeller={isAdmin}
             showBranch={showBranch}
+            granularity={selection.granularity}
           />
           {report ? null : (
             <p role="alert" className="mt-3 text-paragraph-xs text-danger-foreground">
@@ -259,19 +263,35 @@ export default async function ReportsPage({
               />
             </ReportSection>
 
-            <ReportSection title={t('timeline.title')} className="xl:col-span-7">
-              <TimelineChart
+            <ReportSection
+              title={t('timeline.title')}
+              description={t(`timeline.by.${report.granularity}`)}
+              action={<ReportGranularityToggle value={report.granularity} />}
+              className="xl:col-span-7"
+            >
+              <TrendChart
                 points={report.timeline}
-                sentLabel={t('timeline.sent')}
-                acceptedLabel={t('timeline.accepted')}
-                dateLabel={t('timeline.date')}
+                labels={{
+                  rfqs: t('timeline.rfqs'),
+                  sent: t('timeline.sent'),
+                  accepted: t('timeline.accepted'),
+                  conversion: t('timeline.conversion'),
+                  bucket: t('timeline.bucket'),
+                }}
                 ariaLabel={t('timeline.aria', {
                   from: fmt.date(report.range.from),
                   to: fmt.date(report.range.to),
                 })}
                 scrollLabel={t('timeline.scroll')}
-                formatDate={fmt.date}
+                formatBucket={(date) => {
+                  if (report.granularity === 'month') return fmt.month(date);
+                  if (report.granularity === 'week') {
+                    return t('timeline.weekOf', { date: fmt.dateNumeric(date) });
+                  }
+                  return fmt.dateNumeric(date);
+                }}
                 formatValue={fmt.value}
+                formatShare={fmt.ratePct}
               />
             </ReportSection>
 

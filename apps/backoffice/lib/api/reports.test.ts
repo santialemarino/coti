@@ -8,6 +8,7 @@ vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
 function rawReport(overrides: Record<string, unknown> = {}) {
   return {
     range: { from: '2026-10-01', to: '2026-10-02' },
+    granularity: 'day',
     scope: { multi_branch: false, branch_id: 'branch-1' },
     filters: {
       statuses: [] as string[],
@@ -23,6 +24,7 @@ function rawReport(overrides: Record<string, unknown> = {}) {
       rfqs_received: 0,
       quotes_sent: 0,
       quotes_accepted: 0,
+      sent_accepted: 0,
       conversion_rate: null,
       accepted_amount: '0.00',
       response_time: { average_seconds: null, median_seconds: null, sample: 0 },
@@ -71,6 +73,7 @@ describe('getSellerReport', () => {
       clientId: 'client-1',
       branchIds: ['branch-1', 'branch-2'],
       tagIds: ['tag-1'],
+      granularity: 'week',
     });
 
     expect(report.filters).toEqual({
@@ -94,6 +97,7 @@ describe('getSellerReport', () => {
         client_id: 'client-1',
         branch_id: 'branch-1,branch-2',
         tag_id: 'tag-1',
+        granularity: 'week',
       },
     });
   });
@@ -124,7 +128,42 @@ describe('getSellerReport', () => {
         client_id: undefined,
         branch_id: undefined,
         tag_id: undefined,
+        granularity: undefined,
       },
     });
+  });
+
+  it('maps every trend bucket with its cohort conversion', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(
+      rawReport({
+        granularity: 'week',
+        timeline: [
+          {
+            date: '2026-10-01',
+            rfqs: 2,
+            sent: 2,
+            accepted: 1,
+            sent_accepted: 1,
+            conversion_rate: '0.5000',
+          },
+          {
+            date: '2026-10-05',
+            rfqs: 0,
+            sent: 0,
+            accepted: 0,
+            sent_accepted: 0,
+            conversion_rate: null,
+          },
+        ],
+      }) as never,
+    );
+
+    const report = await getSellerReport({ from: '2026-10-01', to: '2026-10-10' });
+
+    expect(report.granularity).toBe('week');
+    expect(report.timeline).toEqual([
+      { date: '2026-10-01', rfqs: 2, sent: 2, accepted: 1, sentAccepted: 1, conversionRate: 0.5 },
+      { date: '2026-10-05', rfqs: 0, sent: 0, accepted: 0, sentAccepted: 0, conversionRate: null },
+    ]);
   });
 });
