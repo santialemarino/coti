@@ -23,6 +23,7 @@ export type OnboardingStepStatus = 'COMPLETED' | 'SKIPPED';
 export type OnboardingStepKey =
   | 'WELCOME'
   | 'BRAND'
+  | 'PORTAL'
   | 'FIRST_BRANCH'
   | 'CATALOG_UPLOAD'
   | 'CATALOG_REVIEW'
@@ -30,7 +31,7 @@ export type OnboardingStepKey =
   | 'COMPLETE';
 export type OnboardingChecklistStep = Extract<
   OnboardingStepKey,
-  'BRAND' | 'CATALOG_UPLOAD' | 'TEAM'
+  'BRAND' | 'PORTAL' | 'CATALOG_UPLOAD' | 'TEAM'
 >;
 
 export interface OnboardingChecklistItem {

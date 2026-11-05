@@ -7,6 +7,7 @@ describe('onboarding step registry', () => {
     expect(ONBOARDING_STEPS).toEqual([
       'WELCOME',
       'BRAND',
+      'PORTAL',
       'FIRST_BRANCH',
       'CATALOG_UPLOAD',
       'CATALOG_REVIEW',

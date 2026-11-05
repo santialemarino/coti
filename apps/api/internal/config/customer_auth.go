@@ -12,6 +12,7 @@ type CustomerAuthConfig struct {
 	GoogleClientID              string
 	GoogleClientSecret          string
 	GoogleLocalOrigin           string
+	PortalLocalOrigin           string
 	GoogleTimeout               time.Duration
 	SignupTTL                   time.Duration
 	RecoveryTTL                 time.Duration
@@ -111,4 +112,12 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 		*problems = append(*problems, fmt.Sprintf("CUSTOMER_PASSWORD_MIN_LENGTH must be at least 8, got %d", cfg.PasswordMinLength))
 	}
 	return cfg
+}
+
+// LinkLocalOrigin supplies the local portal origin independently of Google credentials.
+func (c CustomerAuthConfig) LinkLocalOrigin() string {
+	if c.PortalLocalOrigin != "" {
+		return c.PortalLocalOrigin
+	}
+	return c.GoogleLocalOrigin
 }

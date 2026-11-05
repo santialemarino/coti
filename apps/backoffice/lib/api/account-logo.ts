@@ -18,7 +18,8 @@ export async function uploadAccountLogo(file: File): Promise<string> {
       formData,
       branchScoped: false,
     });
-    return new URL(uploaded.path, API_URL).toString();
+    const base = API_URL.replace(/\/+$/, '');
+    return new URL(uploaded.path.replace(/^\/+/, ''), base + '/').toString();
   } catch (error) {
     // This route resolves no entity, so 404 means the API deployment does not expose it.
     if (error instanceof ApiError && error.code === 'NOT_FOUND') {

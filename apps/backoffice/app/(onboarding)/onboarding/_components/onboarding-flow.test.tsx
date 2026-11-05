@@ -90,6 +90,7 @@ describe('OnboardingFlow completion', () => {
         currentStep: 'COMPLETE',
         steps: {
           BRAND: 'COMPLETED',
+          PORTAL: 'COMPLETED',
           FIRST_BRANCH: 'COMPLETED',
           CATALOG_UPLOAD: 'SKIPPED',
           TEAM: 'SKIPPED',
@@ -112,6 +113,7 @@ describe('OnboardingFlow completion', () => {
         currentStep: 'COMPLETE',
         steps: {
           BRAND: 'COMPLETED',
+          PORTAL: 'COMPLETED',
           FIRST_BRANCH: 'COMPLETED',
           CATALOG_UPLOAD: 'COMPLETED',
           TEAM: 'COMPLETED',

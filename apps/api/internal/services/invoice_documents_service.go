@@ -180,7 +180,7 @@ func (s *InvoiceService) loadInvoiceLogo(ctx context.Context, accountID uuid.UUI
 	if err != nil {
 		return nil
 	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(parsed.Path, "/api/"), "/"), "/")
 	if len(parts) != 5 || parts[0] != "v1" || parts[1] != "public" || parts[2] != "account-logos" || parts[3] != accountID.String() {
 		return nil
 	}

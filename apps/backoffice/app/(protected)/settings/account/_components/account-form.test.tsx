@@ -9,6 +9,9 @@ import { BRAND_COLOR_PRESETS } from '@/lib/constants/brand';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/settings/account/actions', () => ({ updateAccount: vi.fn() }));
+vi.mock('@/components/customer-portal/customer-portal-editor', () => ({
+  CustomerPortalEditor: () => null,
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const { updateAccount } = await import('@/app/(protected)/settings/account/actions');

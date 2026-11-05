@@ -748,7 +748,7 @@ func TestInvoiceService_PreviewOffersNoSignupLinkWithoutACustomerSite(t *testing
 		name, localOrigin, want string
 	}{
 		{"no hostname", "", ""},
-		{"a local stack", "http://localhost:3001/", "http://localhost:3001/signup"},
+		{"a local stack", "http://localhost:3001/", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

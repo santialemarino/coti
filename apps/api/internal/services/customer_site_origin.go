@@ -21,5 +21,5 @@ func customerSiteOrigin(hostname, localOrigin string) string {
 			return local.String()
 		}
 	}
-	return origin
+	return "https://" + hostname
 }

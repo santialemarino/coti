@@ -53,6 +53,7 @@ type Handlers struct {
 	QuoteFollowup  *handler.QuoteFollowupHandler
 	Client         *handler.ClientHandler
 	Account        *handler.AccountHandler
+	CustomerPortal *handler.CustomerPortalHandler
 	AccountLogo    *handler.BrandLogoHandler
 	Prices         *handler.ProductPriceHandler
 	CatalogImport  *handler.CatalogImportHandler
@@ -312,6 +313,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	account := verified.Group("/account")
 	account.GET("", h.Account.Get)
+	if h.CustomerPortal != nil {
+		portal := account.Group("/portal", middleware.RequireAdmin())
+		portal.GET("", h.CustomerPortal.Get)
+		portal.GET("/availability", h.CustomerPortal.Available)
+		portal.PUT("", h.CustomerPortal.Update)
+	}
 	account.PUT("", middleware.RequireAdmin(), h.Account.Update)
 	if h.AccountLogo != nil {
 		account.POST("/logo", middleware.RequireAdmin(), h.AccountLogo.Upload)
