@@ -12,26 +12,31 @@ type SellerReportQuery struct {
 	AccountID    uuid.UUID
 	BranchFilter []uuid.UUID
 	// MultiBranch asks for the per-branch breakdown: no branch is selected and the reach spans several.
-	MultiBranch    bool
-	SellerID       *uuid.UUID
-	SellerFilter   *uuid.UUID
-	ClientFilter   *uuid.UUID
-	Statuses       []QuoteStatus
-	Channel        *ChannelType
-	StartAt        time.Time
-	EndAt          time.Time
-	FromDate       string
-	ToDate         string
-	TimeZone       string
-	HighConfidence decimal.Decimal
+	MultiBranch bool
+	// RequestedBranches are the branch filter's choices inside the caller's reach, echoed by name.
+	RequestedBranches []uuid.UUID
+	SellerID          *uuid.UUID
+	SellerFilter      *uuid.UUID
+	ClientFilter      *uuid.UUID
+	TagFilter         []uuid.UUID
+	Statuses          []QuoteStatus
+	Channel           *ChannelType
+	StartAt           time.Time
+	EndAt             time.Time
+	FromDate          string
+	ToDate            string
+	TimeZone          string
+	HighConfidence    decimal.Decimal
 }
 
 // SellerReportFilterInput carries the raw filter values of one report request.
 type SellerReportFilterInput struct {
-	Statuses []string
-	Channel  string
-	SellerID string
-	ClientID string
+	Statuses  []string
+	Channel   string
+	SellerID  string
+	ClientID  string
+	BranchIDs []string
+	TagIDs    []string
 }
 
 // SellerReportFilters is the applied narrowing, with the display names the response echoes.
@@ -42,6 +47,14 @@ type SellerReportFilters struct {
 	SellerName string
 	ClientID   *uuid.UUID
 	ClientName string
+	Branches   []SellerReportFilterOption
+	Tags       []SellerReportFilterOption
+}
+
+// SellerReportFilterOption is one selected branch or tag, with the name the response echoes.
+type SellerReportFilterOption struct {
+	ID   uuid.UUID
+	Name string
 }
 
 // SellerReportPDFRenderer renders the seller dashboard snapshot as a PDF.

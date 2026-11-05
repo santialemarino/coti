@@ -12,15 +12,33 @@ screens use, and the PDF is rendered from that same read model.
 `[start_at, end_at)`, so a day never leaks into the next one through a timezone conversion.
 
 Both dates omitted means the last 30 days, including today. Supplying only one, a malformed date,
-`from > to`, or a period wider than `REPORTS_MAX_RANGE_DAYS` returns `422` with code `INVALID_INPUT`. The response echoes the
-resolved `range` so the page can seed its form from the server, including the default.
+`from > to`, or a period wider than `REPORTS_MAX_RANGE_DAYS` returns `422` with code
+`INVALID_INPUT`. The response echoes the resolved `range` so the page can seed its form from the
+server, including the default.
 
-The active branch comes from `X-Branch-Id`, never from a query parameter. It is validated against
-the caller's authorized branches. A seller also sees only quotes assigned to them or still
-unassigned, and only within their branch reach. With no branch selected, a report that spans several
-branches — an admin's whole account, or a seller assigned to more than one — receives the `branches`
-breakdown, limited to the reachable branches; an inactive branch appears only if it had orders. The report never widens the read beyond the visibility the
-rest of the API enforces.
+The active branch comes from `X-Branch-Id`, validated against the caller's authorized branches. A
+seller also sees only quotes assigned to them or still unassigned, and only within their branch
+reach. With no branch selected, a report that spans several branches — an admin's whole account, or
+a seller assigned to more than one — receives the `branches` breakdown, limited to the reachable
+branches; an inactive branch appears only if it had orders. The report never widens the read beyond
+the visibility the rest of the API enforces.
+
+## Filters
+
+Every filter narrows every section, the branch breakdown and the PDF alike, and they combine with
+AND. Lists repeat the parameter or comma-separate it; any malformed value is `422 INVALID_INPUT`.
+
+- `status`: the quote's current status, any of the listed ones.
+- `channel`: the intake channel type of the order.
+- `seller_id`: administrators only; a seller's own reach already pins it, so the parameter is ignored.
+- `client_id`: the order's client.
+- `tag_id`: orders whose client carries any of the listed tags.
+- `branch_id`: narrows the reach to the listed branches. It is intersected with what the caller can
+  reach, so a branch outside it reads nothing rather than widening the report; picking one branch
+  makes the report single-branch, picking several keeps the breakdown to those.
+
+The response echoes the applied narrowing under `filters`, with display names for the seller, the
+client, and each branch and tag, so the page and the PDF can say what they are showing.
 
 ## What each section counts
 
@@ -85,12 +103,12 @@ is matched lines over the generation's total lines.
 ## PDF export
 
 The page's "Descargar PDF" action calls the backoffice proxy `GET /api/reports/pdf`, which forwards
-to `GET /v1/reports/pdf` with the same `from`, `to` and branch scope as the page read. The proxy
+to `GET /v1/reports/pdf` with the same period, filters and branch scope as the page read. The proxy
 deliberately does not fall back to an account's only branch: an admin viewing every branch must get
 an all-branch PDF, matching the report itself. The endpoint reuses `SellerReportService.Get`, so
 authorization, period validation, seller visibility and every metric are identical to the JSON
-response. The filename is `reporte-<from>-<to>.pdf`, or `reporte.pdf` when the period is defaulted;
-the response is `application/pdf` and is never stored by an intermediary.
+response. The filename is always `reporte-<from>-<to>.pdf`, with the defaulted period when none
+was asked; the response is `application/pdf` and is never stored by an intermediary.
 
 `SellerReportRenderer` renders the server-provided `domain.SellerReport`; it never queries the
 database and never recomputes a metric. The document includes the Coti mark, period, generation

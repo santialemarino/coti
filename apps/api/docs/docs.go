@@ -8183,6 +8183,26 @@ const docTemplate = `{
                         "description": "Client UUID",
                         "name": "client_id",
                         "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Branch UUIDs inside the caller's reach; repeat or comma-separate",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Client tag UUIDs; an order matches when its client carries any of them",
+                        "name": "tag_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -8279,6 +8299,26 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client UUID",
                         "name": "client_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Branch UUIDs inside the caller's reach; repeat or comma-separate",
+                        "name": "branch_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Client tag UUIDs; an order matches when its client carries any of them",
+                        "name": "tag_id",
                         "in": "query"
                     }
                 ],
@@ -13878,6 +13918,12 @@ const docTemplate = `{
         "dto.SellerReportFiltersResponse": {
             "type": "object",
             "properties": {
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportOptionResponse"
+                    }
+                },
                 "channel": {
                     "type": "string"
                 },
@@ -13897,6 +13943,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportOptionResponse"
                     }
                 }
             }
@@ -13924,6 +13976,17 @@ const docTemplate = `{
                 },
                 "sent_accepted": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.SellerReportOptionResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
                 }
             }
         },

@@ -44,6 +44,8 @@ func NewSellerReportHandler(reports SellerReportService) *SellerReportHandler {
 //	@Param			channel		query	string	false	"Intake channel type"
 //	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
 //	@Param			client_id	query	string	false	"Client UUID"
+//	@Param			branch_id	query	[]string	false	"Branch UUIDs inside the caller's reach; repeat or comma-separate"
+//	@Param			tag_id		query	[]string	false	"Client tag UUIDs; an order matches when its client carries any of them"
 //	@Success		200			{object}	dto.SellerReportResponse
 //	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -82,6 +84,8 @@ func (h *SellerReportHandler) Get(c *gin.Context) {
 //	@Param			channel		query	string	false	"Intake channel type"
 //	@Param			seller_id	query	string	false	"Seller UUID; administrators only"
 //	@Param			client_id	query	string	false	"Client UUID"
+//	@Param			branch_id	query	[]string	false	"Branch UUIDs inside the caller's reach; repeat or comma-separate"
+//	@Param			tag_id		query	[]string	false	"Client tag UUIDs; an order matches when its client carries any of them"
 //	@Success		200			{file}	binary
 //	@Failure		422			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -120,10 +124,12 @@ func reportFilterQuery(c *gin.Context) (dto.SellerReportFilterQuery, bool) {
 
 func reportFilterInput(query dto.SellerReportFilterQuery) domain.SellerReportFilterInput {
 	return domain.SellerReportFilterInput{
-		Statuses: query.Statuses,
-		Channel:  query.Channel,
-		SellerID: query.SellerID,
-		ClientID: query.ClientID,
+		Statuses:  query.Statuses,
+		Channel:   query.Channel,
+		SellerID:  query.SellerID,
+		ClientID:  query.ClientID,
+		BranchIDs: query.BranchIDs,
+		TagIDs:    query.TagIDs,
 	}
 }
 
@@ -138,6 +144,8 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 	for _, status := range report.Filters.Statuses {
 		filters.Statuses = append(filters.Statuses, string(status))
 	}
+	filters.Branches = reportOptions(report.Filters.Branches)
+	filters.Tags = reportOptions(report.Filters.Tags)
 	if report.Filters.Channel != nil {
 		channel := string(*report.Filters.Channel)
 		filters.Channel = &channel
@@ -226,4 +234,12 @@ func decimalString(value *decimal.Decimal, places int32) *string {
 	}
 	out := value.StringFixed(places)
 	return &out
+}
+
+func reportOptions(options []domain.SellerReportFilterOption) []dto.SellerReportOptionResponse {
+	out := make([]dto.SellerReportOptionResponse, 0, len(options))
+	for _, option := range options {
+		out = append(out, dto.SellerReportOptionResponse{ID: option.ID, Name: option.Name})
+	}
+	return out
 }

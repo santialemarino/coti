@@ -708,6 +708,107 @@ func TestSellerReportRepositoryBreaksDownASellersBranches(t *testing.T) {
 	}
 }
 
+func TestSellerReportRepositoryFiltersByTagAndBranch(t *testing.T) {
+	db := testDB(t)
+	accountID := seedAccount(t, db, "Reportes por etiqueta")
+	centro := reportBranch(t, db, accountID)
+	norte := uuid.New()
+	reportExec(t, db, "branch", `INSERT INTO branch (id, account_id, name) VALUES ($1, $2, 'Norte')`,
+		norte, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento")
+	tagged, otherTagged, tagID, otherTagID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	reportExec(t, db, "clients", `INSERT INTO client (id, account_id, name)
+	   VALUES ($1, $3, 'Constructora'), ($2, $3, 'Particular')`, tagged, otherTagged, accountID)
+	reportExec(t, db, "tags", `INSERT INTO tag (id, account_id, name)
+	   VALUES ($1, $3, 'Mayorista'), ($2, $3, 'Minorista')`, tagID, otherTagID, accountID)
+	// The other client carries a different tag, so "has any tag" cannot pass for "has this tag".
+	reportExec(t, db, "client tags", `INSERT INTO client_tag (account_id, client_id, tag_id)
+	   VALUES ($1, $2, $3), ($1, $4, $5)`, accountID, tagged, tagID, otherTagged, otherTagID)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM client_tag WHERE tag_id = ANY($1)`,
+			[]uuid.UUID{tagID, otherTagID})
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM tag WHERE id = ANY($1)`,
+			[]uuid.UUID{tagID, otherTagID})
+		mustCleanup(t, db.CrossAccount(), `UPDATE rfq SET client_id = NULL WHERE client_id = ANY($1)`,
+			[]uuid.UUID{tagged, otherTagged})
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM client WHERE id = ANY($1)`,
+			[]uuid.UUID{tagged, otherTagged})
+	})
+	for _, seed := range []struct {
+		branch, client uuid.UUID
+	}{{centro, tagged}, {norte, tagged}, {centro, otherTagged}} {
+		quoteID, _, _ := seedQuoteChain(t, db, accountID, seed.branch, productID)
+		reportExec(t, db, "rfq", `UPDATE rfq SET client_id = $2, received_at = $3
+		   WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`,
+			quoteID, seed.client, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+		reportExec(t, db, "sent", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'QUOTED', 'SENT', $3)`,
+			accountID, quoteID, time.Date(2026, 10, 1, 13, 0, 0, 0, time.UTC))
+	}
+
+	in := reportQuery(accountID)
+	in.TagFilter = []uuid.UUID{tagID}
+	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, in)
+	if report.KPIs.RFQsReceived != 2 || report.KPIs.QuotesSent != 2 {
+		t.Fatalf("KPIs = %+v, want only the tagged client's two orders", report.KPIs)
+	}
+	branchOrders := 0
+	for _, branch := range report.Branches {
+		branchOrders += branch.RFQs
+	}
+	if branchOrders != 2 {
+		t.Fatalf("branches = %+v, want the breakdown narrowed by the tag too", report.Branches)
+	}
+	if len(report.Filters.Tags) != 1 || report.Filters.Tags[0].Name != "Mayorista" {
+		t.Fatalf("tag echo = %+v, want the tag by name", report.Filters.Tags)
+	}
+
+	in = reportQuery(accountID)
+	in.BranchFilter = []uuid.UUID{norte}
+	in.RequestedBranches = in.BranchFilter
+	in.MultiBranch = false
+	report = buildReport(t, db, domain.Tenant{AccountID: accountID}, in)
+	if report.KPIs.RFQsReceived != 1 {
+		t.Fatalf("orders = %d, want the one in the chosen branch", report.KPIs.RFQsReceived)
+	}
+	if len(report.Filters.Branches) != 1 || report.Filters.Branches[0].Name != "Norte" {
+		t.Fatalf("branch echo = %+v, want the chosen branch by name", report.Filters.Branches)
+	}
+}
+
+func TestSellerReportRepositoryGroupsUnmatchedTextAndHidesIdleClosedBranches(t *testing.T) {
+	db := testDB(t)
+	accountID := seedAccount(t, db, "Reportes texto libre")
+	branchID := reportBranch(t, db, accountID)
+	closed := uuid.New()
+	reportExec(t, db, "closed branch", `INSERT INTO branch (id, account_id, name, is_active)
+	   VALUES ($1, $2, 'Cerrada', FALSE)`, closed, accountID)
+	productID := seedProduct(t, db, accountID, "Cemento")
+	for _, description := range []string{"Malla sima", " malla SIMA "} {
+		quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+		reportExec(t, db, "rfq", `UPDATE rfq SET received_at = $2
+		   WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`,
+			quoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC))
+		reportExec(t, db, "unmatched line", `UPDATE quote_item
+		   SET product_id = NULL, match_status = 'NO_MATCH', requested_description = $2
+		   WHERE version_id = $1`, versionID, description)
+	}
+
+	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
+	if len(report.TopProducts) != 1 || report.TopProducts[0].Requests != 2 {
+		t.Fatalf("products = %+v, want both spellings counted as one request text", report.TopProducts)
+	}
+	for _, branch := range report.Branches {
+		if branch.BranchID == closed {
+			t.Fatalf("branches = %+v, want the closed branch with no orders left out", report.Branches)
+		}
+	}
+	if len(report.Branches) != 1 {
+		t.Fatalf("branches = %+v, want only the active branch", report.Branches)
+	}
+}
+
 func reportBranch(t *testing.T, db *DB, accountID uuid.UUID) uuid.UUID {
 	t.Helper()
 	var branchID uuid.UUID

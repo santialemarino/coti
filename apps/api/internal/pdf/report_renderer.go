@@ -723,7 +723,7 @@ func (r *SellerReportRenderer) reportScopeLabel(report domain.SellerReport) stri
 }
 
 func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) string {
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0, 6)
 	if len(report.Filters.Statuses) > 0 {
 		labels := make([]string, 0, len(report.Filters.Statuses))
 		for _, status := range report.Filters.Statuses {
@@ -739,6 +739,12 @@ func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) st
 	}
 	if report.Filters.ClientID != nil {
 		parts = append(parts, "Cliente: "+reportFilterName(report.Filters.ClientName))
+	}
+	if len(report.Filters.Branches) > 0 {
+		parts = append(parts, "Sucursales: "+reportOptionNames(report.Filters.Branches))
+	}
+	if len(report.Filters.Tags) > 0 {
+		parts = append(parts, "Etiquetas: "+reportOptionNames(report.Filters.Tags))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -823,20 +829,28 @@ func reportFilterName(name string) string {
 	return name
 }
 
+func reportOptionNames(options []domain.SellerReportFilterOption) string {
+	names := make([]string, 0, len(options))
+	for _, option := range options {
+		names = append(names, reportFilterName(option.Name))
+	}
+	return strings.Join(names, ", ")
+}
+
 func (r *SellerReportRenderer) statusLabel(status domain.QuoteStatus) string {
 	switch status {
 	case domain.QuoteStatusDraft:
 		return "Borrador"
 	case domain.QuoteStatusQuoted:
-		return "Cotizado"
+		return "Cotizada"
 	case domain.QuoteStatusSent:
-		return "Enviado"
+		return "Enviada"
 	case domain.QuoteStatusChangeRequested:
 		return "Cambio solicitado"
 	case domain.QuoteStatusAccepted:
-		return "Aceptado"
+		return "Aceptada"
 	case domain.QuoteStatusRejected:
-		return "Rechazado"
+		return "Rechazada"
 	default:
 		return string(status)
 	}

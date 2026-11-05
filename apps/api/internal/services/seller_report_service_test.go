@@ -243,6 +243,104 @@ func TestSellerReportResolvesFiltersForAnAdministrator(t *testing.T) {
 	}
 }
 
+func TestSellerReportNarrowsBranchesToTheCallersReach(t *testing.T) {
+	reachable, other, unreachable := uuid.New(), uuid.New(), uuid.New()
+	cases := []struct {
+		name          string
+		tenant        domain.Tenant
+		requested     string
+		wantBranches  []uuid.UUID
+		wantMulti     bool
+		wantRequested int
+	}{
+		{
+			name:          "an admin picks two branches of the account",
+			tenant:        domain.Tenant{Role: domain.UserRoleAdmin},
+			requested:     reachable.String() + "," + other.String(),
+			wantBranches:  []uuid.UUID{reachable, other},
+			wantMulti:     true,
+			wantRequested: 2,
+		},
+		{
+			name:          "an admin picks one branch",
+			tenant:        domain.Tenant{Role: domain.UserRoleAdmin},
+			requested:     reachable.String(),
+			wantBranches:  []uuid.UUID{reachable},
+			wantRequested: 1,
+		},
+		{
+			name: "a seller cannot reach past their assignments",
+			tenant: domain.Tenant{Role: domain.UserRoleSeller,
+				AllowedBranchIDs: []uuid.UUID{reachable, other}},
+			requested:     reachable.String() + "," + unreachable.String(),
+			wantBranches:  []uuid.UUID{reachable},
+			wantRequested: 1,
+		},
+		{
+			name: "only unreachable branches read nothing",
+			tenant: domain.Tenant{Role: domain.UserRoleSeller,
+				AllowedBranchIDs: []uuid.UUID{reachable}},
+			requested:    unreachable.String(),
+			wantBranches: []uuid.UUID{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tenant := tc.tenant
+			tenant.AccountID, tenant.UserID = uuid.New(), uuid.New()
+			service, _, store := newSellerReportTestService(t, tenant)
+
+			if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+				domain.SellerReportFilterInput{BranchIDs: []string{tc.requested}}); err != nil {
+				t.Fatal(err)
+			}
+			got := store.query.BranchFilter
+			if got == nil || len(got) != len(tc.wantBranches) {
+				t.Fatalf("branch filter = %v, want %v", got, tc.wantBranches)
+			}
+			for index := range got {
+				if got[index] != tc.wantBranches[index] {
+					t.Fatalf("branch filter = %v, want %v", got, tc.wantBranches)
+				}
+			}
+			if store.query.MultiBranch != tc.wantMulti {
+				t.Fatalf("multi-branch = %v, want %v", store.query.MultiBranch, tc.wantMulti)
+			}
+			if len(store.query.RequestedBranches) != tc.wantRequested {
+				t.Fatalf("requested branches = %v, want %d", store.query.RequestedBranches,
+					tc.wantRequested)
+			}
+		})
+	}
+}
+
+func TestSellerReportParsesTagFilters(t *testing.T) {
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), Role: domain.UserRoleSeller}
+	first, second := uuid.New(), uuid.New()
+	service, _, store := newSellerReportTestService(t, tenant)
+
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{TagIDs: []string{
+			first.String() + ", " + second.String(), first.String(),
+		}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.query.TagFilter) != 2 || store.query.TagFilter[0] != first ||
+		store.query.TagFilter[1] != second {
+		t.Fatalf("tag filter = %v, want both tags once", store.query.TagFilter)
+	}
+
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{TagIDs: []string{"not-a-tag"}}); !errors.Is(
+		err, domain.ErrInvalidInput) {
+		t.Fatalf("Get() = %v, want invalid input for a malformed tag", err)
+	}
+	if _, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{}); err != nil || store.query.TagFilter != nil {
+		t.Fatalf("tag filter = %v (%v), want none when nothing is selected", store.query.TagFilter, err)
+	}
+}
+
 func TestSellerReportIgnoresTheSellerFilterForASeller(t *testing.T) {
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(),
 		Role: domain.UserRoleSeller}
