@@ -35,7 +35,8 @@ AND. Lists repeat the parameter or comma-separate it; any malformed value is `42
 - `tag_id`: orders whose client carries any of the listed tags.
 - `branch_id`: narrows the reach to the listed branches. It is intersected with what the caller can
   reach, so a branch outside it reads nothing rather than widening the report; picking one branch
-  makes the report single-branch, picking several keeps the breakdown to those.
+  makes the report single-branch, picking several keeps the breakdown to those. With an active
+  branch (`X-Branch-Id`) the parameter is ignored: the reach is already that one branch.
 
 The response echoes the applied narrowing under `filters`, with display names for the seller, the
 client, and each branch and tag, so the page and the PDF can say what they are showing.

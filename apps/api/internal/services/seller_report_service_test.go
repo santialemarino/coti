@@ -277,6 +277,12 @@ func TestSellerReportNarrowsBranchesToTheCallersReach(t *testing.T) {
 			wantRequested: 1,
 		},
 		{
+			name:         "an active branch drops a branch filter left over from the all-branches view",
+			tenant:       domain.Tenant{Role: domain.UserRoleAdmin, BranchID: reachable},
+			requested:    other.String(),
+			wantBranches: []uuid.UUID{reachable},
+		},
+		{
 			name: "only unreachable branches read nothing",
 			tenant: domain.Tenant{Role: domain.UserRoleSeller,
 				AllowedBranchIDs: []uuid.UUID{reachable}},
