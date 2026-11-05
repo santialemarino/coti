@@ -1,5 +1,17 @@
 # Deployment
 
+## Browser routes and the versioned API
+
+Reserve `/api/v1` for the Go API and rewrite that prefix to `/v1/`. Keep the trailing slash:
+App Platform concatenates the remaining path without inserting a separator. Route `/api/ready` and
+`/api/health` to the corresponding Go health endpoints. Other `/api/*` paths belong to the
+Next.js backoffice and must follow its catch-all rule. In particular, browser calls to
+`/api/channels` and `/api/rfqs/file-drafts` must reach their authenticated BFF handlers before
+those handlers forward requests to `/api/v1/*`. Sending every `/api/*` request directly to Go
+bypasses those handlers and makes file intake fail before any AI provider is called.
+
+The public API base remains `https://<core-host>/api`; server-side callers append `/v1`.
+
 ## Neon with temporary hostnames
 
 Without a custom domain, deploy two App Platform apps so staff cookies and customer pages have
@@ -29,7 +41,7 @@ Confirm current prices in the DigitalOcean summary before deployment.
    [file-storage.md](file-storage.md#pointing-it-at-neon-object-storage). Each API/job component
    receives its own settings; the web components do not receive database or storage credentials.
 4. Set `WEB_WEBAPP_URL` on the core API to the portal's HTTPS URL, then create the core app. Its
-   default hostname serves backoffice pages and `/api` routes to the API.
+   default hostname serves backoffice pages, browser BFF handlers, and the versioned API routes.
 5. Replace `NEXT_PUBLIC_API_URL` on both web components with the literal core HTTPS URL plus `/api`.
    Keep `RUN_AND_BUILD_TIME` scope and rebuild both apps. Bindable runtime URLs do not replace
    values already compiled into the frontend.
@@ -157,9 +169,26 @@ ingress:
         authority:
           exact: example.com
         path:
-          prefix: /api
+          prefix: /api/v1
       component:
         name: api
+        rewrite: /v1/
+    - match:
+        authority:
+          exact: example.com
+        path:
+          prefix: /api/ready
+      component:
+        name: api
+        rewrite: /ready
+    - match:
+        authority:
+          exact: example.com
+        path:
+          prefix: /api/health
+      component:
+        name: api
+        rewrite: /health
     - match:
         authority:
           exact: example.com
@@ -171,7 +200,7 @@ ingress:
 
 Every rule names the host it answers on, so **no rule order can route a `cotizacion.` request to
 the backoffice** — which is the point, because the App Platform reference defines no order. On the
-primary domain `/api` and `/` still overlap, the way they do in the committed spec. The default
+primary domain the versioned API and health prefixes overlap `/`, as in the committed spec. The default
 `*.ondigitalocean.app` URL matches no rule at all once this is applied.
 
 **`zone` is what makes DigitalOcean own the DNS**, and it needs the registrar's nameservers pointed
