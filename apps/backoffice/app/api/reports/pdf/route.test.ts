@@ -61,14 +61,14 @@ describe('the seller report PDF proxy', () => {
     await GET(
       new Request(
         'http://localhost/api/reports/pdf?from=2026-10-01&to=2026-10-02&status=SENT&status=ACCEPTED' +
-          '&channel=EMAIL&seller_id=seller-1&client_id=client-1&ignored=x',
+          '&channel=EMAIL&seller_id=seller-1&client_id=client-1&branch_id=b1&tag_id=t1&ignored=x',
       ),
     );
 
     const [url] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(
       'http://localhost:8000/v1/reports/pdf?from=2026-10-01&to=2026-10-02&status=SENT&status=ACCEPTED' +
-        '&channel=EMAIL&seller_id=seller-1&client_id=client-1',
+        '&channel=EMAIL&seller_id=seller-1&client_id=client-1&branch_id=b1&tag_id=t1',
     );
   });
 

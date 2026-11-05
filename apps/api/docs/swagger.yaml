@@ -3000,6 +3000,10 @@ definitions:
     type: object
   dto.SellerReportFiltersResponse:
     properties:
+      branches:
+        items:
+          $ref: '#/definitions/dto.SellerReportOptionResponse'
+        type: array
       channel:
         type: string
       client_id:
@@ -3013,6 +3017,10 @@ definitions:
       statuses:
         items:
           type: string
+        type: array
+      tags:
+        items:
+          $ref: '#/definitions/dto.SellerReportOptionResponse'
         type: array
     type: object
   dto.SellerReportKPIsResponse:
@@ -3031,6 +3039,13 @@ definitions:
         type: integer
       sent_accepted:
         type: integer
+    type: object
+  dto.SellerReportOptionResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
     type: object
   dto.SellerReportProductResponse:
     properties:
@@ -8964,6 +8979,21 @@ paths:
         in: query
         name: client_id
         type: string
+      - collectionFormat: csv
+        description: Branch UUIDs inside the caller's reach; repeat or comma-separate
+        in: query
+        items:
+          type: string
+        name: branch_id
+        type: array
+      - collectionFormat: csv
+        description: Client tag UUIDs; an order matches when its client carries any
+          of them
+        in: query
+        items:
+          type: string
+        name: tag_id
+        type: array
       produces:
       - application/json
       responses:
@@ -9028,6 +9058,21 @@ paths:
         in: query
         name: client_id
         type: string
+      - collectionFormat: csv
+        description: Branch UUIDs inside the caller's reach; repeat or comma-separate
+        in: query
+        items:
+          type: string
+        name: branch_id
+        type: array
+      - collectionFormat: csv
+        description: Client tag UUIDs; an order matches when its client carries any
+          of them
+        in: query
+        items:
+          type: string
+        name: tag_id
+        type: array
       produces:
       - application/pdf
       responses:

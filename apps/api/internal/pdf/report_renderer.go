@@ -657,11 +657,7 @@ func (r *SellerReportRenderer) drawMethodology(
 	doc.SetFont("Go", "", 6.2)
 	doc.SetTextColor(reportSubtle[0], reportSubtle[1], reportSubtle[2])
 	doc.SetXY(leftMargin+8, y+57)
-	scope := "sucursal activa"
-	if report.Scope.MultiBranch {
-		scope = "todas las sucursales disponibles"
-	}
-	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+scope+".", "", 0, "L", false, 0, "")
+	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+r.scopeName(report)+".", "", 0, "L", false, 0, "")
 }
 
 func (r *SellerReportRenderer) drawCard(
@@ -716,14 +712,21 @@ func (r *SellerReportRenderer) reportPeriodLabel(report domain.SellerReport) str
 }
 
 func (r *SellerReportRenderer) reportScopeLabel(report domain.SellerReport) string {
-	if report.Scope.MultiBranch {
-		return "Alcance: todas las sucursales disponibles para el usuario."
+	return "Alcance: " + r.scopeName(report) + "."
+}
+
+func (r *SellerReportRenderer) scopeName(report domain.SellerReport) string {
+	switch {
+	case len(report.Filters.Branches) > 0:
+		return "sucursales elegidas en los filtros"
+	case report.Scope.MultiBranch:
+		return "todas las sucursales disponibles para el usuario"
 	}
-	return "Alcance: sucursal activa."
+	return "sucursal activa"
 }
 
 func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) string {
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0, 6)
 	if len(report.Filters.Statuses) > 0 {
 		labels := make([]string, 0, len(report.Filters.Statuses))
 		for _, status := range report.Filters.Statuses {
@@ -739,6 +742,12 @@ func (r *SellerReportRenderer) reportFiltersLabel(report domain.SellerReport) st
 	}
 	if report.Filters.ClientID != nil {
 		parts = append(parts, "Cliente: "+reportFilterName(report.Filters.ClientName))
+	}
+	if len(report.Filters.Branches) > 0 {
+		parts = append(parts, "Sucursales: "+reportOptionNames(report.Filters.Branches))
+	}
+	if len(report.Filters.Tags) > 0 {
+		parts = append(parts, "Etiquetas: "+reportOptionNames(report.Filters.Tags))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -823,20 +832,28 @@ func reportFilterName(name string) string {
 	return name
 }
 
+func reportOptionNames(options []domain.SellerReportFilterOption) string {
+	names := make([]string, 0, len(options))
+	for _, option := range options {
+		names = append(names, reportFilterName(option.Name))
+	}
+	return strings.Join(names, ", ")
+}
+
 func (r *SellerReportRenderer) statusLabel(status domain.QuoteStatus) string {
 	switch status {
 	case domain.QuoteStatusDraft:
 		return "Borrador"
 	case domain.QuoteStatusQuoted:
-		return "Cotizado"
+		return "Cotizada"
 	case domain.QuoteStatusSent:
-		return "Enviado"
+		return "Enviada"
 	case domain.QuoteStatusChangeRequested:
 		return "Cambio solicitado"
 	case domain.QuoteStatusAccepted:
-		return "Aceptado"
+		return "Aceptada"
 	case domain.QuoteStatusRejected:
-		return "Rechazado"
+		return "Rechazada"
 	default:
 		return string(status)
 	}

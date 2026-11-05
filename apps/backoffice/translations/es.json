@@ -2050,11 +2050,17 @@
       "from": "Desde",
       "to": "Hasta",
       "status": "Estado",
-      "statusCount": "{count} estados",
+      "statusCount": "{count, plural, one {# estado} other {# estados}}",
       "clearStatus": "Limpiar estados",
       "channel": "Canal",
       "seller": "Vendedor",
       "client": "Cliente",
+      "tag": "Etiqueta",
+      "tagCount": "{count, plural, one {# etiqueta} other {# etiquetas}}",
+      "clearTag": "Limpiar etiquetas",
+      "branch": "Sucursal",
+      "branchCount": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "clearBranch": "Limpiar sucursales",
       "allChannel": "Todos los canales",
       "allSeller": "Todos los vendedores",
       "allClient": "Todos los clientes",
@@ -2108,7 +2114,8 @@
       "sent": "Enviadas",
       "accepted": "Aceptadas",
       "date": "Fecha",
-      "aria": "Envíos y aceptaciones por día entre {from} y {to}"
+      "aria": "Envíos y aceptaciones por día entre {from} y {to}",
+      "scroll": "Gráfico desplazable"
     },
     "products": {
       "title": "Productos más solicitados",
@@ -2140,7 +2147,8 @@
     "branches": {
       "title": "Pedidos por sucursal",
       "name": "Sucursal",
-      "rfqs": "Pedidos"
+      "rfqs": "Pedidos",
+      "empty": "Todavía no hay pedidos en las sucursales del período."
     }
   },
   "catalog": {

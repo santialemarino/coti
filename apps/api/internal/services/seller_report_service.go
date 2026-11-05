@@ -61,23 +61,29 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 	start := from.UTC()
 	end := to.AddDate(0, 0, 1).UTC()
 	sellerID := sellerParam(tenant)
-	branchFilter := tenant.BranchFilter()
+	branchFilter := narrowBranches(tenant.BranchFilter(), filters.Branches)
 	multiBranch := !tenant.HasBranch() && (branchFilter == nil || len(branchFilter) > 1)
+	var requestedBranches []uuid.UUID
+	if len(filters.Branches) > 0 {
+		requestedBranches = branchFilter
+	}
 	query := domain.SellerReportQuery{
-		AccountID:      tenant.AccountID,
-		BranchFilter:   branchFilter,
-		MultiBranch:    multiBranch,
-		SellerID:       sellerID,
-		SellerFilter:   filters.SellerID,
-		ClientFilter:   filters.ClientID,
-		Statuses:       filters.Statuses,
-		Channel:        filters.Channel,
-		StartAt:        start,
-		EndAt:          end,
-		FromDate:       from.Format(reportDateLayout),
-		ToDate:         to.Format(reportDateLayout),
-		TimeZone:       domain.Argentina.String(),
-		HighConfidence: s.cfg.HighConfidence,
+		AccountID:         tenant.AccountID,
+		BranchFilter:      branchFilter,
+		MultiBranch:       multiBranch,
+		RequestedBranches: requestedBranches,
+		SellerID:          sellerID,
+		SellerFilter:      filters.SellerID,
+		ClientFilter:      filters.ClientID,
+		TagFilter:         optionIDs(filters.Tags),
+		Statuses:          filters.Statuses,
+		Channel:           filters.Channel,
+		StartAt:           start,
+		EndAt:             end,
+		FromDate:          from.Format(reportDateLayout),
+		ToDate:            to.Format(reportDateLayout),
+		TimeZone:          domain.Argentina.String(),
+		HighConfidence:    s.cfg.HighConfidence,
 	}
 
 	var report *domain.SellerReport
@@ -107,6 +113,8 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		SellerName: report.Filters.SellerName,
 		ClientID:   filters.ClientID,
 		ClientName: report.Filters.ClientName,
+		Branches:   report.Filters.Branches,
+		Tags:       report.Filters.Tags,
 	}
 	return report, nil
 }
@@ -171,7 +179,84 @@ func resolveReportFilters(tenant domain.Tenant, in domain.SellerReportFilterInpu
 		return domain.SellerReportFilters{}, err
 	}
 	filters.ClientID = clientID
+
+	branchIDs, err := reportFilterIDs(in.BranchIDs, "branch_id")
+	if err != nil {
+		return domain.SellerReportFilters{}, err
+	}
+	tagIDs, err := reportFilterIDs(in.TagIDs, "tag_id")
+	if err != nil {
+		return domain.SellerReportFilters{}, err
+	}
+	// An active branch already fixes the reach, so a branch filter left over from the all-branches view
+	// is dropped rather than intersected into an empty report.
+	if !tenant.HasBranch() {
+		filters.Branches = filterOptions(branchIDs)
+	}
+	filters.Tags = filterOptions(tagIDs)
 	return filters, nil
+}
+
+// narrowBranches keeps the requested branches the caller reaches; nil reach is an admin's whole account.
+func narrowBranches(reach []uuid.UUID, requested []domain.SellerReportFilterOption) []uuid.UUID {
+	if len(requested) == 0 {
+		return reach
+	}
+	if reach == nil {
+		return optionIDs(requested)
+	}
+	allowed := make(map[uuid.UUID]struct{}, len(reach))
+	for _, id := range reach {
+		allowed[id] = struct{}{}
+	}
+	narrowed := []uuid.UUID{}
+	for _, option := range requested {
+		if _, ok := allowed[option.ID]; ok {
+			narrowed = append(narrowed, option.ID)
+		}
+	}
+	return narrowed
+}
+
+func reportFilterIDs(raw []string, field string) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	seen := make(map[uuid.UUID]struct{})
+	for _, value := range raw {
+		for _, part := range strings.Split(value, ",") {
+			id, err := reportFilterID(part, field)
+			if err != nil {
+				return nil, err
+			}
+			if id == nil {
+				continue
+			}
+			if _, ok := seen[*id]; ok {
+				continue
+			}
+			seen[*id] = struct{}{}
+			ids = append(ids, *id)
+		}
+	}
+	return ids, nil
+}
+
+func filterOptions(ids []uuid.UUID) []domain.SellerReportFilterOption {
+	options := make([]domain.SellerReportFilterOption, 0, len(ids))
+	for _, id := range ids {
+		options = append(options, domain.SellerReportFilterOption{ID: id})
+	}
+	return options
+}
+
+func optionIDs(options []domain.SellerReportFilterOption) []uuid.UUID {
+	if len(options) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(options))
+	for _, option := range options {
+		ids = append(ids, option.ID)
+	}
+	return ids
 }
 
 func reportFilterID(raw, field string) (*uuid.UUID, error) {

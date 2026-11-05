@@ -4,12 +4,14 @@ import "github.com/google/uuid"
 
 // SellerReportFilterQuery is the optional narrowing of GET /v1/reports and its PDF.
 type SellerReportFilterQuery struct {
-	From     string   `form:"from"`
-	To       string   `form:"to"`
-	Statuses []string `form:"status"`
-	Channel  string   `form:"channel"`
-	SellerID string   `form:"seller_id"`
-	ClientID string   `form:"client_id"`
+	From      string   `form:"from"`
+	To        string   `form:"to"`
+	Statuses  []string `form:"status"`
+	Channel   string   `form:"channel"`
+	SellerID  string   `form:"seller_id"`
+	ClientID  string   `form:"client_id"`
+	BranchIDs []string `form:"branch_id"`
+	TagIDs    []string `form:"tag_id"`
 }
 
 // SellerReportResponse is the seller dashboard read for one period.
@@ -41,12 +43,20 @@ type SellerReportScopeResponse struct {
 
 // SellerReportFiltersResponse is the applied narrowing echoed back with display names.
 type SellerReportFiltersResponse struct {
-	Statuses   []string   `json:"statuses"`
-	Channel    *string    `json:"channel"`
-	SellerID   *uuid.UUID `json:"seller_id"`
-	SellerName string     `json:"seller_name"`
-	ClientID   *uuid.UUID `json:"client_id"`
-	ClientName string     `json:"client_name"`
+	Statuses   []string                     `json:"statuses"`
+	Channel    *string                      `json:"channel"`
+	SellerID   *uuid.UUID                   `json:"seller_id"`
+	SellerName string                       `json:"seller_name"`
+	ClientID   *uuid.UUID                   `json:"client_id"`
+	ClientName string                       `json:"client_name"`
+	Branches   []SellerReportOptionResponse `json:"branches"`
+	Tags       []SellerReportOptionResponse `json:"tags"`
+}
+
+// SellerReportOptionResponse is one selected branch or tag of the applied narrowing.
+type SellerReportOptionResponse struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
 
 // SellerReportKPIsResponse holds the period's headline numbers.

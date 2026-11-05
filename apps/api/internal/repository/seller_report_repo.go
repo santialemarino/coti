@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -31,6 +32,10 @@ const scopedRfqsCTE = `scoped_rfqs AS (
 		     AND ($7::text IS NULL OR c.type::text = $7)
 		     AND ($8::uuid IS NULL OR r.client_id = $8)
 		     AND ($9::uuid IS NULL OR q.seller_id = $9)
+		     AND ($10::uuid[] IS NULL OR EXISTS (
+		       SELECT 1 FROM client_tag ct
+		       WHERE ct.account_id = r.account_id AND ct.client_id = r.client_id
+		         AND ct.tag_id = ANY($10::uuid[])))
 		 )`
 
 // acceptedVersionsCTE resolves which version each acceptance in the period charged.
@@ -96,6 +101,8 @@ func (r *SellerReportRepository) Build(
 			Channel:  in.Channel,
 			SellerID: in.SellerFilter,
 			ClientID: in.ClientFilter,
+			Branches: []domain.SellerReportFilterOption{},
+			Tags:     []domain.SellerReportFilterOption{},
 		},
 	}
 
@@ -103,6 +110,16 @@ func (r *SellerReportRepository) Build(
 		if err := r.readFilterNames(ctx, q, in, &report.Filters); err != nil {
 			return nil, err
 		}
+	}
+	if err := r.readFilterOptions(ctx, q, `SELECT id, name FROM branch
+		 WHERE account_id = $1 AND id = ANY($2::uuid[]) ORDER BY name, id`,
+		in.AccountID, in.RequestedBranches, &report.Filters.Branches); err != nil {
+		return nil, err
+	}
+	if err := r.readFilterOptions(ctx, q, `SELECT id, name FROM tag
+		 WHERE account_id = $1 AND id = ANY($2::uuid[]) ORDER BY name, id`,
+		in.AccountID, in.TagFilter, &report.Filters.Tags); err != nil {
+		return nil, err
 	}
 	if err := r.readKPIs(ctx, q, in, &report.KPIs); err != nil {
 		return nil, err
@@ -156,6 +173,29 @@ func (r *SellerReportRepository) readFilterNames(
 	).Scan(&out.SellerName, &out.ClientName)
 }
 
+// readFilterOptions echoes the selected branches or tags with their names; nothing selected reads nothing.
+func (r *SellerReportRepository) readFilterOptions(
+	ctx context.Context, q Querier, query string, accountID uuid.UUID, ids []uuid.UUID,
+	out *[]domain.SellerReportFilterOption,
+) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := q.Query(ctx, query, accountID, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var option domain.SellerReportFilterOption
+		if err := rows.Scan(&option.ID, &option.Name); err != nil {
+			return err
+		}
+		*out = append(*out, option)
+	}
+	return rows.Err()
+}
+
 func reportArgs(in domain.SellerReportQuery) []any {
 	var statuses []string
 	if len(in.Statuses) > 0 {
@@ -171,7 +211,7 @@ func reportArgs(in domain.SellerReportQuery) []any {
 	}
 	return []any{
 		in.AccountID, in.BranchFilter, in.SellerID, in.StartAt, in.EndAt,
-		statuses, channel, in.ClientFilter, in.SellerFilter,
+		statuses, channel, in.ClientFilter, in.SellerFilter, in.TagFilter,
 	}
 }
 
@@ -291,7 +331,7 @@ func (r *SellerReportRepository) readTimeline(
 ) error {
 	rows, err := q.Query(ctx,
 		`WITH `+scopedRfqsCTE+`, days AS (
-		   SELECT generate_series($10::date, $11::date, interval '1 day')::date AS day
+		   SELECT generate_series($11::date, $12::date, interval '1 day')::date AS day
 		 ), first_sent AS (
 		   SELECT change.quote_id, min(change.changed_at) AS sent_at
 		   FROM quote_status_change change
@@ -300,7 +340,7 @@ func (r *SellerReportRepository) readTimeline(
 		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
 		   GROUP BY change.quote_id
 		 ), sent AS (
-		   SELECT (sent_at AT TIME ZONE $12)::date AS day, count(*) AS total
+		   SELECT (sent_at AT TIME ZONE $13)::date AS day, count(*) AS total
 		   FROM first_sent
 		   WHERE sent_at >= $4 AND sent_at < $5
 		   GROUP BY 1
@@ -313,7 +353,7 @@ func (r *SellerReportRepository) readTimeline(
 		     AND change.changed_at >= $4 AND change.changed_at < $5
 		   ORDER BY change.quote_id, change.changed_at DESC
 		 ), accepted_by_day AS (
-		   SELECT (changed_at AT TIME ZONE $12)::date AS day, count(*) AS total
+		   SELECT (changed_at AT TIME ZONE $13)::date AS day, count(*) AS total
 		   FROM accepted
 		   GROUP BY 1
 		 )
@@ -473,9 +513,9 @@ func (r *SellerReportRepository) readAIMatch(
 		          AND item.match_status = 'NO_MATCH'),
 		        count(*) FILTER (WHERE item.confidence_score IS NOT NULL AND (
 		          item.match_status = 'AMBIGUOUS'
-		          OR (item.match_status = 'MATCHED' AND item.confidence_score < $10))),
+		          OR (item.match_status = 'MATCHED' AND item.confidence_score < $11))),
 		        count(*) FILTER (WHERE item.confidence_score IS NOT NULL
-		          AND item.match_status = 'MATCHED' AND item.confidence_score >= $10)
+		          AND item.match_status = 'MATCHED' AND item.confidence_score >= $11)
 		 FROM latest_generation
 		 JOIN quote_ai_generation_item item ON item.account_id = $1
 		   AND item.generation_id = latest_generation.id`,
@@ -514,6 +554,10 @@ func (r *SellerReportRepository) readBranches(
 		     AND ($7::text IS NULL OR c.type::text = $7)
 		     AND ($8::uuid IS NULL OR rfq.client_id = $8)
 		     AND ($9::uuid IS NULL OR q.seller_id = $9)
+		     AND ($10::uuid[] IS NULL OR EXISTS (
+		       SELECT 1 FROM client_tag ct
+		       WHERE ct.account_id = rfq.account_id AND ct.client_id = rfq.client_id
+		         AND ct.tag_id = ANY($10::uuid[])))
 		 ) scoped ON TRUE
 		 WHERE branch.account_id = $1
 		   AND ($2::uuid[] IS NULL OR branch.id = ANY($2::uuid[]))

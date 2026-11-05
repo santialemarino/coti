@@ -16,6 +16,8 @@ function rawReport(overrides: Record<string, unknown> = {}) {
       seller_name: '',
       client_id: null as string | null,
       client_name: '',
+      branches: [],
+      tags: [],
     },
     kpis: {
       rfqs_received: 0,
@@ -54,6 +56,8 @@ describe('getSellerReport', () => {
           seller_name: 'Ana',
           client_id: 'client-1',
           client_name: 'Obra Norte',
+          branches: [{ id: 'branch-1', name: 'Morón' }],
+          tags: [{ id: 'tag-1', name: 'Mayorista' }],
         },
       }) as never,
     );
@@ -65,6 +69,8 @@ describe('getSellerReport', () => {
       channel: 'EMAIL',
       sellerId: 'seller-1',
       clientId: 'client-1',
+      branchIds: ['branch-1', 'branch-2'],
+      tagIds: ['tag-1'],
     });
 
     expect(report.filters).toEqual({
@@ -74,6 +80,8 @@ describe('getSellerReport', () => {
       sellerName: 'Ana',
       clientId: 'client-1',
       clientName: 'Obra Norte',
+      branches: [{ id: 'branch-1', name: 'Morón' }],
+      tags: [{ id: 'tag-1', name: 'Mayorista' }],
     });
     expect(apiRequest).toHaveBeenCalledWith({
       path: '/v1/reports',
@@ -84,6 +92,8 @@ describe('getSellerReport', () => {
         channel: 'EMAIL',
         seller_id: 'seller-1',
         client_id: 'client-1',
+        branch_id: 'branch-1,branch-2',
+        tag_id: 'tag-1',
       },
     });
   });
@@ -100,6 +110,8 @@ describe('getSellerReport', () => {
       sellerName: '',
       clientId: null,
       clientName: '',
+      branches: [],
+      tags: [],
     });
     expect(apiRequest).toHaveBeenCalledWith({
       path: '/v1/reports',
@@ -110,6 +122,8 @@ describe('getSellerReport', () => {
         channel: undefined,
         seller_id: undefined,
         client_id: undefined,
+        branch_id: undefined,
+        tag_id: undefined,
       },
     });
   });

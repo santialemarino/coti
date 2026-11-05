@@ -20,6 +20,8 @@ interface ReportDownloadButtonProps {
   channel?: string | null;
   sellerId?: string | null;
   clientId?: string | null;
+  branchIds?: string[];
+  tagIds?: string[];
 }
 
 export function ReportDownloadButton({
@@ -29,6 +31,8 @@ export function ReportDownloadButton({
   channel,
   sellerId,
   clientId,
+  branchIds = [],
+  tagIds = [],
 }: ReportDownloadButtonProps) {
   const t = useTranslations('reports.download');
   const [pending, setPending] = React.useState(false);
@@ -41,6 +45,8 @@ export function ReportDownloadButton({
       if (channel) query.set('channel', channel);
       if (sellerId) query.set('seller_id', sellerId);
       if (clientId) query.set('client_id', clientId);
+      if (branchIds.length > 0) query.set('branch_id', branchIds.join(','));
+      if (tagIds.length > 0) query.set('tag_id', tagIds.join(','));
       const response = await fetch(`/api/reports/pdf?${query.toString()}`, { cache: 'no-store' });
       if (!response.ok) await throwApiError(response);
 
