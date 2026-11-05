@@ -55,6 +55,10 @@ client, and each branch and tag, so the page and the PDF can say what they are s
   See below.
 - `kpis.response_time`: first send minus RFQ arrival, for RFQs received in the period. Manual-entry
   channels are excluded because there was no inbound message to answer.
+- `kpis.time_to_acceptance`: for each quote accepted in the period, its latest acceptance minus its
+  first send, as average, median and sample.
+- `kpis.follow_up_pending`: quotes in scope flagged for follow-up right now. It reads the current
+  flag, not the period: the flag is cleared on the next activity, so there is no history to count.
 - `quotes_by_status`: quotes created in the period, grouped by their current status.
 - `timeline`: the trend, one point per bucket of `granularity` — `day`, `week` (from Monday) or
   `month`. Each point carries the orders received, the first sends, the acceptances and the cohort
@@ -97,6 +101,19 @@ Product revenue is gross line value and subtracts no discounts: the ranking deli
 rule. This means `top_revenue_products` does not sum to `kpis.accepted_amount` when the accepted
 version carries discounts, and it excludes unmatched lines.
 
+## Assistant decisions
+
+`assistant` reads the conversation assistant's decision log (`handler_decision`) for the proposals
+created in the period on the quotes in scope: how many the seller approved as is, edited, rejected,
+resolved by hand, or has not decided yet. The log is written in two phases — the row is inserted
+when the assistant proposes and completed when the seller decides — so an undecided proposal is a
+proposal the seller ignored, and it stays in the denominator. `approval_rate` is approved-as-is over
+every proposal, `null` when there were none.
+
+`ai_match.version_lines` and `ai_match.version_unmatched` count the lines of the current versions
+of the period's orders and those still `NO_MATCH`: what the seller is left with after reviewing the
+AI's reading, next to the reading itself.
+
 ## AI confidence
 
 The latest generation is taken per quote. Its items are split into the same levels the review
@@ -131,5 +148,6 @@ calibration moves the report with the review screen.
 The report reads are backed by `00072_seller_reports.sql`: a branch/time index for RFQs, an account/time
 index for quotes,
 partial status and send indexes for the event reads, a partial client-action index for acceptance
-resolution, and a generation index for the AI summary. They are in the consolidated reference
+resolution, and a generation index for the AI summary; `00073_handler_decision_report_index.sql`
+adds the account/time index the assistant metrics read. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.

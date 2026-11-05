@@ -138,3 +138,19 @@ func TestSellerReportRenderer_PaginatesManyBranches(t *testing.T) {
 func int64Pointer(value int64) *int64 {
 	return &value
 }
+
+func TestReportDurationReadsLongWaitsInDays(t *testing.T) {
+	for seconds, want := range map[int64]string{
+		45:                       "45 s",
+		90 * 60:                  "1 h 30 min",
+		47 * 3600:                "47 h",
+		48 * 3600:                "2 d",
+		(534*60 + 44) * 60:       "22 d 6 h",
+		(3*24*3600 + 30*60) + 10: "3 d",
+	} {
+		value := seconds
+		if got := reportDuration(&value); got != want {
+			t.Errorf("reportDuration(%d) = %q, want %q", seconds, got, want)
+		}
+	}
+}

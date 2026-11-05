@@ -135,6 +135,9 @@ func (r *SellerReportRepository) Build(
 	if err := r.readResponseTime(ctx, q, in, &report.KPIs.ResponseTime); err != nil {
 		return nil, err
 	}
+	if err := r.readTimeToAcceptance(ctx, q, in, &report.KPIs.TimeToAcceptance); err != nil {
+		return nil, err
+	}
 	if err := r.readQuotesByStatus(ctx, q, in, &report.QuotesByStatus); err != nil {
 		return nil, err
 	}
@@ -151,6 +154,12 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if err := r.readAIMatch(ctx, q, in, &report.AIMatch); err != nil {
+		return nil, err
+	}
+	if err := r.readVersionMatch(ctx, q, in, &report.AIMatch); err != nil {
+		return nil, err
+	}
+	if err := r.readAssistant(ctx, q, in, &report.Assistant); err != nil {
 		return nil, err
 	}
 	if in.MultiBranch {
@@ -236,9 +245,12 @@ func (r *SellerReportRepository) readKPIs(
 		                       WHERE accepted.account_id = $1
 		                         AND accepted.quote_id = first_sent.quote_id
 		                         AND accepted.new_status = 'ACCEPTED'
-		                         AND accepted.changed_at >= first_sent.sent_at))`,
+		                         AND accepted.changed_at >= first_sent.sent_at)),
+		        (SELECT count(*) FROM quote
+		         JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
+		         WHERE quote.account_id = $1 AND quote.needs_followup)`,
 		reportArgs(in)...,
-	).Scan(&out.RFQsReceived, &out.QuotesSent, &out.SentAccepted)
+	).Scan(&out.RFQsReceived, &out.QuotesSent, &out.SentAccepted, &out.FollowUpPending)
 }
 
 func (r *SellerReportRepository) readAccepted(
@@ -274,6 +286,42 @@ func (r *SellerReportRepository) readResponseTime(
 		        ), 0)::bigint
 		 FROM sent
 		 WHERE sent.sent_at >= sent.received_at`,
+		reportArgs(in)...,
+	).Scan(&out.Sample, &average, &median)
+	if err != nil {
+		return err
+	}
+	if out.Sample > 0 {
+		out.AverageSeconds = &average
+		out.MedianSeconds = &median
+	}
+	return nil
+}
+
+func (r *SellerReportRepository) readTimeToAcceptance(
+	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportResponseTime,
+) error {
+	var average, median int64
+	err := q.QueryRow(ctx,
+		`WITH `+scopedRfqsCTE+`, accepted AS (
+		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
+		   FROM quote_status_change change
+		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
+		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
+		     AND change.changed_at >= $4 AND change.changed_at < $5
+		   GROUP BY change.quote_id
+		 ), waits AS (
+		   SELECT extract(epoch FROM (accepted.accepted_at - min(sent.changed_at))) AS seconds
+		   FROM accepted
+		   JOIN quote_status_change sent ON sent.account_id = $1
+		     AND sent.quote_id = accepted.quote_id AND sent.new_status = 'SENT'
+		     AND sent.changed_at <= accepted.accepted_at
+		   GROUP BY accepted.quote_id, accepted.accepted_at
+		 )
+		 SELECT count(*), COALESCE(avg(seconds), 0)::bigint,
+		        COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY seconds), 0)::bigint
+		 FROM waits`,
 		reportArgs(in)...,
 	).Scan(&out.Sample, &average, &median)
 	if err != nil {
@@ -549,6 +597,54 @@ func (r *SellerReportRepository) readAIMatch(
 		rate := decimal.NewFromInt(int64(matched)).
 			Div(decimal.NewFromInt(int64(out.Total)))
 		out.Rate = &rate
+	}
+	return nil
+}
+
+// readVersionMatch counts the unmatched lines left in the current versions of the period's orders.
+func (r *SellerReportRepository) readVersionMatch(
+	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportAIMatch,
+) error {
+	return q.QueryRow(ctx,
+		`WITH `+scopedRfqsCTE+`
+		 SELECT count(item.id), count(item.id) FILTER (WHERE item.match_status = 'NO_MATCH')
+		 FROM scoped_rfqs scoped
+		 JOIN quote ON quote.account_id = $1 AND quote.rfq_id = scoped.id
+		 JOIN quote_item item ON item.account_id = $1 AND item.version_id = quote.current_version_id
+		 WHERE scoped.received_at >= $4 AND scoped.received_at < $5`,
+		reportArgs(in)...,
+	).Scan(&out.VersionLines, &out.VersionUnmatched)
+}
+
+// readAssistant splits the assistant's proposals in the period by the seller's decision. An
+// undecided proposal counts in the total: the two-phase log inserts it before anyone decides.
+func (r *SellerReportRepository) readAssistant(
+	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportAssistant,
+) error {
+	err := q.QueryRow(ctx,
+		`WITH `+scopedRfqsCTE+`
+		 SELECT count(*),
+		        count(*) FILTER (WHERE decision.seller_decision = 'APPROVED_AS_IS'),
+		        count(*) FILTER (WHERE decision.seller_decision = 'EDITED'),
+		        count(*) FILTER (WHERE decision.seller_decision = 'REJECTED'),
+		        count(*) FILTER (WHERE decision.seller_decision = 'MANUAL_OVERRIDE'),
+		        count(*) FILTER (WHERE decision.seller_decision IS NULL)
+		 FROM handler_decision decision
+		 JOIN quote_version version ON version.account_id = decision.account_id
+		   AND version.id = decision.quote_version_id
+		 JOIN quote ON quote.account_id = version.account_id AND quote.id = version.quote_id
+		 JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
+		 WHERE decision.account_id = $1
+		   AND decision.created_at >= $4 AND decision.created_at < $5`,
+		reportArgs(in)...,
+	).Scan(&out.Proposals, &out.ApprovedAsIs, &out.Edited, &out.Rejected, &out.ManualOverride,
+		&out.Pending)
+	if err != nil {
+		return err
+	}
+	if out.Proposals > 0 {
+		rate := decimal.NewFromInt(int64(out.ApprovedAsIs)).Div(decimal.NewFromInt(int64(out.Proposals)))
+		out.ApprovalRate = &rate
 	}
 	return nil
 }

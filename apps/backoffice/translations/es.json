@@ -2081,15 +2081,21 @@
       "conversion": "Tasa de conversión",
       "acceptedAmount": "Importe aceptado",
       "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
-      "responseTime": "Tiempo de respuesta"
+      "responseTime": "Tiempo de respuesta",
+      "timeToAcceptance": "Tiempo hasta la aceptación",
+      "followUpPending": "Seguimientos pendientes",
+      "followUpPendingDetail": "Cotizaciones que esperan un seguimiento hoy."
     },
     "conversionDetail": "{accepted, plural, one {# aceptada} other {# aceptadas}} de {sent, plural, one {# enviada} other {# enviadas}} en el período",
     "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
+    "timeToAcceptanceDetail": "Mediana {median} · {count, plural, one {# aceptación} other {# aceptaciones}}",
     "duration": {
       "seconds": "{count, plural, one {# segundo} other {# segundos}}",
       "minutes": "{count, plural, one {# minuto} other {# minutos}}",
       "hours": "{count, plural, one {# hora} other {# horas}}",
-      "hoursMinutes": "{hours} h {minutes} min"
+      "hoursMinutes": "{hours} h {minutes} min",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "daysHours": "{days} d {hours} h"
     },
     "noDataShort": "—",
     "status": {
@@ -2129,7 +2135,8 @@
         "day": "Día",
         "week": "Semana",
         "month": "Mes"
-      }
+      },
+      "weekFrom": "Desde el {date}"
     },
     "products": {
       "title": "Productos más solicitados",
@@ -2156,13 +2163,27 @@
       "matched": "{matched, plural, one {# línea} other {# líneas}} de {total}",
       "low": "Baja",
       "medium": "Media",
-      "high": "Alta"
+      "high": "Alta",
+      "versionUnmatched": "{unmatched, plural, one {# línea queda} other {# líneas quedan}} sin coincidencia en la versión vigente, de {total}."
     },
     "branches": {
       "title": "Pedidos por sucursal",
       "name": "Sucursal",
       "rfqs": "Pedidos",
       "empty": "Todavía no hay pedidos en las sucursales del período."
+    },
+    "assistant": {
+      "title": "Asistente de conversación",
+      "description": "Propuestas del período, por lo que hizo el vendedor. Las que nadie decidió cuentan en el total.",
+      "empty": "Todavía no hay propuestas del asistente en el período.",
+      "rate": "{approved, plural, one {# aprobada} other {# aprobadas}} sin cambios de {total}",
+      "outcomes": {
+        "approvedAsIs": "Sin cambios",
+        "edited": "Editadas",
+        "rejected": "Rechazadas",
+        "manualOverride": "Resueltas a mano",
+        "pending": "Sin decidir"
+      }
     }
   },
   "catalog": {

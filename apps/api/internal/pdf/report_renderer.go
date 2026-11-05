@@ -98,6 +98,11 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 		y = r.drawClients(doc, report, doc.GetY())
 	}
 	y = r.drawAIMatch(doc, report, y+reportSectionGap)
+	if y+reportSectionGap+reportAssistantHeight > reportContentBottom {
+		r.newContentPage(doc, report, generatedAt)
+		y = doc.GetY() - reportSectionGap
+	}
+	y = r.drawAssistant(doc, report, y+reportSectionGap)
 	if report.Scope.MultiBranch {
 		y = r.drawBranches(doc, report, generatedAt, y+reportSectionGap)
 	}
@@ -114,10 +119,11 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 }
 
 const (
-	reportPageTop       = 20.0
-	reportContentBottom = 270.0
-	reportKPIHeight     = 26.0
-	reportKPIWidth      = 57.33
+	reportAssistantHeight = 40.0
+	reportPageTop         = 20.0
+	reportContentBottom   = 270.0
+	reportKPIHeight       = 26.0
+	reportKPIWidth        = 57.33
 )
 
 func (r *SellerReportRenderer) newContentPage(doc *gofpdf.Fpdf, report domain.SellerReport, generatedAt time.Time) {
@@ -518,8 +524,18 @@ func (r *SellerReportRenderer) clientsHeight(report domain.SellerReport) float64
 func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
 	height := 54.0
 	r.drawCard(doc, leftMargin, y, pageWidth, height, "Lectura automática del catálogo", "Resultado de la última generación de IA por pedido.")
+	versionLine := fmt.Sprintf("Sin coincidencia en la versión vigente: %s de %s líneas.",
+		reportCount(report.AIMatch.VersionUnmatched), reportCount(report.AIMatch.VersionLines))
 	if report.AIMatch.Total == 0 {
-		r.drawEmpty(doc, leftMargin+6, y+18, pageWidth-12, "Sin datos en el período.")
+		if report.AIMatch.VersionLines == 0 {
+			r.drawEmpty(doc, leftMargin+6, y+18, pageWidth-12, "Sin datos en el período.")
+			return y + height
+		}
+		// Orders built by hand have no AI reading but can still carry unmatched lines.
+		doc.SetFont("Go", "", 6.5)
+		doc.SetTextColor(reportMuted[0], reportMuted[1], reportMuted[2])
+		doc.SetXY(leftMargin+8, y+20)
+		doc.CellFormat(pageWidth-16, 4, versionLine, "", 0, "L", false, 0, "")
 		return y + height
 	}
 
@@ -531,6 +547,8 @@ func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.Selle
 	doc.SetTextColor(reportMuted[0], reportMuted[1], reportMuted[2])
 	doc.SetXY(leftMargin+8, y+27)
 	doc.CellFormat(55, 4, fmt.Sprintf("Tasa de coincidencia · %s de %s líneas", reportCount(report.AIMatch.Matched), reportCount(report.AIMatch.Total)), "", 0, "L", false, 0, "")
+	doc.SetXY(leftMargin+8, y+44)
+	doc.CellFormat(pageWidth-16, 4, versionLine, "", 0, "L", false, 0, "")
 
 	barX := leftMargin + 68
 	barY := y + 22
@@ -569,6 +587,40 @@ func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.Selle
 		legendX += 37
 	}
 	return y + height
+}
+
+// drawAssistant shows how sellers treated the assistant's proposals, next to follow-up and closing time.
+func (r *SellerReportRenderer) drawAssistant(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
+	assistant := report.Assistant
+	r.drawCard(doc, leftMargin, y, pageWidth, reportAssistantHeight, "Asistente y seguimiento",
+		"Propuestas del asistente en el período, por lo que hizo el vendedor.")
+
+	doc.SetFont("Go", "B", 18)
+	doc.SetTextColor(reportInk[0], reportInk[1], reportInk[2])
+	doc.SetXY(leftMargin+8, y+17)
+	doc.CellFormat(55, 8, reportPercent(assistant.ApprovalRate), "", 0, "L", false, 0, "")
+	doc.SetFont("Go", "", 6.5)
+	doc.SetTextColor(reportMuted[0], reportMuted[1], reportMuted[2])
+	doc.SetXY(leftMargin+8, y+27)
+	doc.CellFormat(55, 4, fmt.Sprintf("Aprobadas sin cambios · %s de %s", reportCount(assistant.ApprovedAsIs),
+		reportCount(assistant.Proposals)), "", 0, "L", false, 0, "")
+
+	lines := []string{
+		fmt.Sprintf("Editadas: %s · Rechazadas: %s · Resueltas a mano: %s · Sin decidir: %s",
+			reportCount(assistant.Edited), reportCount(assistant.Rejected),
+			reportCount(assistant.ManualOverride), reportCount(assistant.Pending)),
+		fmt.Sprintf("Tiempo hasta la aceptación: %s (mediana %s, %s aceptaciones).",
+			reportDuration(report.KPIs.TimeToAcceptance.AverageSeconds),
+			reportDuration(report.KPIs.TimeToAcceptance.MedianSeconds),
+			reportCount(report.KPIs.TimeToAcceptance.Sample)),
+		fmt.Sprintf("Cotizaciones con seguimiento pendiente hoy: %s.",
+			reportCount(report.KPIs.FollowUpPending)),
+	}
+	for index, line := range lines {
+		doc.SetXY(leftMargin+68, y+18+float64(index)*6)
+		doc.CellFormat(pageWidth-76, 4, line, "", 0, "L", false, 0, "")
+	}
+	return y + reportAssistantHeight
 }
 
 func (r *SellerReportRenderer) drawBranches(
@@ -629,7 +681,7 @@ func (r *SellerReportRenderer) drawBranchHeader(doc *gofpdf.Fpdf, y float64) {
 func (r *SellerReportRenderer) drawMethodology(
 	doc *gofpdf.Fpdf, report domain.SellerReport, generatedAt time.Time, y float64,
 ) {
-	height := 66.0
+	height := 74.0
 	if y+height > reportContentBottom {
 		r.newContentPage(doc, report, generatedAt)
 		y = doc.GetY()
@@ -644,6 +696,7 @@ func (r *SellerReportRenderer) drawMethodology(
 		{"Importe aceptado", "suma de los totales comerciales de las versiones aceptadas, con descuentos aplicados. No representa utilidad."},
 		{"Ingreso por producto", "ingreso bruto de las líneas aceptadas, antes de descuentos; los ítems sin coincidencia no suman."},
 		{"Lectura automática", "resultado de la última generación de IA por pedido; la confianza agrupa las líneas puntuadas."},
+		{"Asistente", "propuestas del período sobre lo que hizo el vendedor; las que nadie decidió cuentan en el total."},
 	}
 	currentY := y + 16
 	for _, note := range notes {
@@ -659,7 +712,7 @@ func (r *SellerReportRenderer) drawMethodology(
 	}
 	doc.SetFont("Go", "", 6.2)
 	doc.SetTextColor(reportSubtle[0], reportSubtle[1], reportSubtle[2])
-	doc.SetXY(leftMargin+8, y+57)
+	doc.SetXY(leftMargin+8, y+65)
 	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+r.scopeName(report)+".", "", 0, "L", false, 0, "")
 }
 
@@ -788,7 +841,7 @@ var reportMonthNames = [12]string{
 func (r *SellerReportRenderer) granularityLabel(granularity domain.ReportGranularity) string {
 	switch granularity {
 	case domain.ReportGranularityWeek:
-		return "Por semana, desde el lunes."
+		return "Por semana."
 	case domain.ReportGranularityMonth:
 		return "Por mes."
 	}
@@ -945,6 +998,14 @@ func reportDuration(seconds *int64) string {
 	}
 	hours := minutes / 60
 	rest := minutes % 60
+	// Past two days the minutes are noise and hours stop reading as a span; days carry it.
+	if hours >= 48 {
+		days, dayHours := hours/24, hours%24
+		if dayHours == 0 {
+			return fmt.Sprintf("%d d", days)
+		}
+		return fmt.Sprintf("%d d %d h", days, dayHours)
+	}
 	if rest == 0 {
 		return fmt.Sprintf("%d h", hours)
 	}

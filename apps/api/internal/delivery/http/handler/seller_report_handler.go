@@ -176,6 +176,12 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 				MedianSeconds:  report.KPIs.ResponseTime.MedianSeconds,
 				Sample:         report.KPIs.ResponseTime.Sample,
 			},
+			TimeToAcceptance: dto.SellerReportResponseTimeResponse{
+				AverageSeconds: report.KPIs.TimeToAcceptance.AverageSeconds,
+				MedianSeconds:  report.KPIs.TimeToAcceptance.MedianSeconds,
+				Sample:         report.KPIs.TimeToAcceptance.Sample,
+			},
+			FollowUpPending: report.KPIs.FollowUpPending,
 		},
 		Branches:       make([]dto.SellerReportBranchResponse, 0, len(report.Branches)),
 		QuotesByStatus: make([]dto.SellerReportStatusResponse, 0, len(report.QuotesByStatus)),
@@ -193,6 +199,17 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 				Medium: report.AIMatch.Confidence.Medium,
 				High:   report.AIMatch.Confidence.High,
 			},
+			VersionLines:     report.AIMatch.VersionLines,
+			VersionUnmatched: report.AIMatch.VersionUnmatched,
+		},
+		Assistant: dto.SellerReportAssistantResponse{
+			Proposals:      report.Assistant.Proposals,
+			ApprovedAsIs:   report.Assistant.ApprovedAsIs,
+			Edited:         report.Assistant.Edited,
+			Rejected:       report.Assistant.Rejected,
+			ManualOverride: report.Assistant.ManualOverride,
+			Pending:        report.Assistant.Pending,
+			ApprovalRate:   decimalString(report.Assistant.ApprovalRate, 4),
 		},
 	}
 	for _, branch := range report.Branches {

@@ -28,6 +28,8 @@ function rawReport(overrides: Record<string, unknown> = {}) {
       conversion_rate: null,
       accepted_amount: '0.00',
       response_time: { average_seconds: null, median_seconds: null, sample: 0 },
+      time_to_acceptance: { average_seconds: 3600, median_seconds: 1800, sample: 2 },
+      follow_up_pending: 3,
     },
     branches: [],
     quotes_by_status: [],
@@ -40,6 +42,17 @@ function rawReport(overrides: Record<string, unknown> = {}) {
       total: 0,
       rate: null,
       confidence: { low: 0, medium: 0, high: 0 },
+      version_lines: 10,
+      version_unmatched: 1,
+    },
+    assistant: {
+      proposals: 4,
+      approved_as_is: 2,
+      edited: 0,
+      rejected: 1,
+      manual_override: 0,
+      pending: 1,
+      approval_rate: '0.5000',
     },
     ...overrides,
   };
@@ -165,5 +178,28 @@ describe('getSellerReport', () => {
       { date: '2026-10-01', rfqs: 2, sent: 2, accepted: 1, sentAccepted: 1, conversionRate: 0.5 },
       { date: '2026-10-05', rfqs: 0, sent: 0, accepted: 0, sentAccepted: 0, conversionRate: null },
     ]);
+  });
+
+  it('maps the assistant, follow-up and closing-time metrics', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(rawReport() as never);
+
+    const report = await getSellerReport({ from: '2026-10-01', to: '2026-10-02' });
+
+    expect(report.assistant).toEqual({
+      proposals: 4,
+      approvedAsIs: 2,
+      edited: 0,
+      rejected: 1,
+      manualOverride: 0,
+      pending: 1,
+      approvalRate: 0.5,
+    });
+    expect(report.kpis.timeToAcceptance).toEqual({
+      averageSeconds: 3600,
+      medianSeconds: 1800,
+      sample: 2,
+    });
+    expect(report.kpis.followUpPending).toBe(3);
+    expect(report.aiMatch.versionUnmatched).toBe(1);
   });
 });

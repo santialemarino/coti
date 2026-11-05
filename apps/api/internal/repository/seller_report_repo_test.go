@@ -194,7 +194,12 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	})
 	otherSeller := seedUser(t, db, accountID, "SELLER")
 	sellerID := seedUser(t, db, accountID, "SELLER")
-	quoteID, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM handler_decision WHERE quote_version_id = $1`,
+			versionID)
+	})
+	inPeriod := time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC)
 	for _, seed := range []struct {
 		what string
 		sql  string
@@ -205,6 +210,21 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 			[]any{quoteID, time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}},
 		{"other seller", `UPDATE quote SET seller_id = $2 WHERE id = $1`,
 			[]any{quoteID, otherSeller}},
+		// Flag-only, apart: the quote trigger clears the flag on any other write.
+		{"follow-up", `UPDATE quote SET needs_followup = TRUE, followup_flagged_at = $2 WHERE id = $1`,
+			[]any{quoteID, inPeriod}},
+		{"unmatched line", `UPDATE quote_item SET match_status = 'NO_MATCH', product_id = NULL
+		   WHERE version_id = $1`, []any{versionID}},
+		{"decision", `INSERT INTO handler_decision
+		   (account_id, quote_version_id, seller_decision, created_at)
+		   VALUES ($1, $2, 'APPROVED_AS_IS', $3)`, []any{accountID, versionID, inPeriod}},
+		{"sent", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'QUOTED', 'SENT', $3)`,
+			[]any{accountID, quoteID, inPeriod.Add(-time.Hour)}},
+		{"accepted", `INSERT INTO quote_status_change
+		   (account_id, quote_id, previous_status, new_status, changed_at)
+		   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`, []any{accountID, quoteID, inPeriod}},
 	} {
 		if _, err := db.CrossAccount().Exec(ctx, seed.sql, seed.args...); err != nil {
 			t.Fatalf("seed %s: %v", seed.what, err)
@@ -218,6 +238,20 @@ func TestSellerReportRepositoryHidesAnotherSellersOrders(t *testing.T) {
 	}, in)
 	if report.KPIs.RFQsReceived != 0 {
 		t.Fatalf("a seller saw another seller's order: %+v", report.KPIs)
+	}
+	if report.Assistant.Proposals != 0 || report.KPIs.FollowUpPending != 0 ||
+		report.KPIs.TimeToAcceptance.Sample != 0 || report.AIMatch.VersionLines != 0 {
+		t.Fatalf("a seller saw another seller's metrics: assistant %+v, follow-up %d, wait %+v, lines %d",
+			report.Assistant, report.KPIs.FollowUpPending, report.KPIs.TimeToAcceptance,
+			report.AIMatch.VersionLines)
+	}
+
+	admin := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
+	if admin.Assistant.Proposals != 1 || admin.KPIs.FollowUpPending != 1 ||
+		admin.KPIs.TimeToAcceptance.Sample != 1 || admin.AIMatch.VersionUnmatched != 1 {
+		t.Fatalf("the administrator's report = assistant %+v, follow-up %d, wait %+v, unmatched %d; "+
+			"want the hidden quote's figures counted", admin.Assistant, admin.KPIs.FollowUpPending,
+			admin.KPIs.TimeToAcceptance, admin.AIMatch.VersionUnmatched)
 	}
 }
 
@@ -821,6 +855,15 @@ func TestSellerReportRepositoryBucketsTheTrendByWeekAndMonth(t *testing.T) {
 	}
 	converted, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	open, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	lateNight, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	// 01:00 UTC on 1 October is still 30 September in Buenos Aires.
+	reportExec(t, db, "late-night order", `UPDATE rfq SET received_at = $2
+	   WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`,
+		lateNight, time.Date(2026, time.October, 1, 1, 0, 0, 0, time.UTC))
+	// An acceptance before the first send is not a conversion of that send.
+	reportExec(t, db, "early acceptance", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'QUOTED', 'ACCEPTED', $3)`, accountID, open, at(time.October, 12))
 	for _, seed := range []struct {
 		quote    uuid.UUID
 		received time.Time
@@ -876,9 +919,85 @@ func TestSellerReportRepositoryBucketsTheTrendByWeekAndMonth(t *testing.T) {
 	if len(monthly) != 2 || monthly[0].Date != "2026-09-15" || monthly[1].Date != "2026-10-01" {
 		t.Fatalf("monthly trend = %+v, want September from the 15th and October", monthly)
 	}
-	if monthly[0].RFQs != 1 || monthly[1].RFQs != 1 || monthly[1].Sent != 2 ||
+	if monthly[0].RFQs != 2 || monthly[1].RFQs != 1 || monthly[1].Sent != 2 ||
 		monthly[1].SentAccepted != 1 {
 		t.Fatalf("monthly trend = %+v, want each order in its month and both sends in October", monthly)
+	}
+}
+
+func TestSellerReportRepositoryMeasuresTheAssistantAndFollowUp(t *testing.T) {
+	db := testDB(t)
+	accountID := seedAccount(t, db, "Reportes asistente")
+	branchID := reportBranch(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Cal")
+	quoteID, versionID, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	inPeriod := time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM handler_decision WHERE quote_version_id = $1`,
+			versionID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM quote_item WHERE version_id = $1 AND
+		   requested_description = 'clavos'`, versionID)
+	})
+	reportExec(t, db, "rfq", `UPDATE rfq SET received_at = $2
+	   WHERE id = (SELECT rfq_id FROM quote WHERE id = $1)`, quoteID, inPeriod)
+	reportExec(t, db, "follow-up", `UPDATE quote SET needs_followup = TRUE, followup_flagged_at = $2
+	   WHERE id = $1`, quoteID, inPeriod)
+	reportExec(t, db, "unmatched line", `INSERT INTO quote_item
+	   (account_id, version_id, requested_description, quantity, match_status)
+	   VALUES ($1, $2, 'clavos', 3, 'NO_MATCH')`, accountID, versionID)
+	for _, seed := range []struct {
+		decision *string
+		at       time.Time
+	}{
+		{strPtr("APPROVED_AS_IS"), inPeriod},
+		{strPtr("APPROVED_AS_IS"), inPeriod},
+		{strPtr("REJECTED"), inPeriod},
+		{nil, inPeriod},
+		{strPtr("APPROVED_AS_IS"), time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)},
+	} {
+		reportExec(t, db, "decision", `INSERT INTO handler_decision
+		   (account_id, quote_version_id, seller_decision, created_at)
+		   VALUES ($1, $2, $3::handler_seller_decision, $4)`, accountID, versionID, seed.decision, seed.at)
+	}
+	reportExec(t, db, "sent", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'QUOTED', 'SENT', $3)`, accountID, quoteID, inPeriod.Add(-2*time.Hour))
+	reportExec(t, db, "accepted", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'SENT', 'ACCEPTED', $3)`, accountID, quoteID, inPeriod)
+	// A send after the acceptance is not where the wait started.
+	reportExec(t, db, "later send", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'CHANGE_REQUESTED', 'SENT', $3)`, accountID, quoteID, inPeriod.Add(time.Hour))
+	// An acceptance never sent before it measures no wait at all.
+	unsent, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	reportExec(t, db, "unsent acceptance", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'QUOTED', 'ACCEPTED', $3)`, accountID, unsent, inPeriod)
+	reportExec(t, db, "send after it", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'ACCEPTED', 'SENT', $3)`, accountID, unsent, inPeriod.Add(time.Hour))
+
+	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
+	assistant := report.Assistant
+	if assistant.Proposals != 4 || assistant.ApprovedAsIs != 2 || assistant.Rejected != 1 ||
+		assistant.Pending != 1 {
+		t.Fatalf("assistant = %+v, want four proposals in the period, one still undecided", assistant)
+	}
+	if assistant.ApprovalRate == nil || assistant.ApprovalRate.StringFixed(2) != "0.50" {
+		t.Fatalf("approval rate = %v, want 0.50 with the undecided one in the denominator",
+			assistant.ApprovalRate)
+	}
+	if report.KPIs.FollowUpPending != 1 {
+		t.Fatalf("follow-up pending = %d, want the flagged quote", report.KPIs.FollowUpPending)
+	}
+	wait := report.KPIs.TimeToAcceptance
+	if wait.Sample != 1 || wait.AverageSeconds == nil || *wait.AverageSeconds != 7200 {
+		t.Fatalf("time to acceptance = %+v, want two hours from the first send", wait)
+	}
+	if report.AIMatch.VersionLines != 2 || report.AIMatch.VersionUnmatched != 1 {
+		t.Fatalf("version match = %d of %d unmatched, want 1 of 2",
+			report.AIMatch.VersionUnmatched, report.AIMatch.VersionLines)
 	}
 }
 
