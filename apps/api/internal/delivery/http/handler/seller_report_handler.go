@@ -17,7 +17,7 @@ type SellerReportService interface {
 	Get(context.Context, domain.Tenant, string, string,
 		domain.SellerReportFilterInput) (*domain.SellerReport, error)
 	RenderPDF(context.Context, domain.Tenant, string, string,
-		domain.SellerReportFilterInput) ([]byte, error)
+		domain.SellerReportFilterInput) ([]byte, domain.SellerReportRange, error)
 }
 
 // SellerReportHandler serves the authenticated seller dashboard.
@@ -97,16 +97,13 @@ func (h *SellerReportHandler) DownloadPDF(c *gin.Context) {
 	if !ok {
 		return
 	}
-	content, err := h.reports.RenderPDF(c.Request.Context(), tenant, query.From, query.To,
+	content, period, err := h.reports.RenderPDF(c.Request.Context(), tenant, query.From, query.To,
 		reportFilterInput(query))
 	if err != nil {
 		Respond(c, err)
 		return
 	}
-	filename := "reporte.pdf"
-	if query.From != "" && query.To != "" {
-		filename = fmt.Sprintf("reporte-%s-%s.pdf", query.From, query.To)
-	}
+	filename := fmt.Sprintf("reporte-%s-%s.pdf", period.From, period.To)
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.Data(http.StatusOK, "application/pdf", content)
@@ -159,6 +156,7 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			RFQsReceived:   report.KPIs.RFQsReceived,
 			QuotesSent:     report.KPIs.QuotesSent,
 			QuotesAccepted: report.KPIs.QuotesAccepted,
+			SentAccepted:   report.KPIs.SentAccepted,
 			ConversionRate: decimalString(report.KPIs.ConversionRate, 4),
 			AcceptedAmount: report.KPIs.AcceptedAmount.StringFixed(2),
 			ResponseTime: dto.SellerReportResponseTimeResponse{

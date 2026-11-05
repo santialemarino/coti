@@ -13921,6 +13921,9 @@ const docTemplate = `{
                 },
                 "rfqs_received": {
                     "type": "integer"
+                },
+                "sent_accepted": {
+                    "type": "integer"
                 }
             }
         },

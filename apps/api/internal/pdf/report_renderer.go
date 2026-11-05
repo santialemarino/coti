@@ -99,9 +99,9 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 	}
 	y = r.drawAIMatch(doc, report, y+reportSectionGap)
 	if report.Scope.MultiBranch {
-		y = r.drawBranches(doc, report, y+reportSectionGap)
+		y = r.drawBranches(doc, report, generatedAt, y+reportSectionGap)
 	}
-	r.drawMethodology(doc, report, y+reportSectionGap)
+	r.drawMethodology(doc, report, generatedAt, y+reportSectionGap)
 
 	var output bytes.Buffer
 	if err := doc.Output(&output); err != nil {
@@ -172,6 +172,8 @@ func (r *SellerReportRenderer) drawReportHeader(doc *gofpdf.Fpdf, report domain.
 }
 
 func (r *SellerReportRenderer) drawKPIs(doc *gofpdf.Fpdf, kpis domain.SellerReportKPIs) {
+	conversionDetail := fmt.Sprintf("%s de %s enviadas.",
+		reportCount(kpis.SentAccepted), reportCount(kpis.QuotesSent))
 	values := []struct {
 		label  string
 		value  string
@@ -180,7 +182,7 @@ func (r *SellerReportRenderer) drawKPIs(doc *gofpdf.Fpdf, kpis domain.SellerRepo
 		{"Pedidos analizados", reportCount(kpis.RFQsReceived), "Órdenes recibidas en el período."},
 		{"Cotizaciones enviadas", reportCount(kpis.QuotesSent), "Envíos comerciales realizados."},
 		{"Cotizaciones aceptadas", reportCount(kpis.QuotesAccepted), "Aceptaciones registradas."},
-		{"Tasa de aceptación", reportPercent(kpis.ConversionRate), "Aceptadas sobre enviadas."},
+		{"Tasa de aceptación", reportPercent(kpis.ConversionRate), conversionDetail},
 		{"Importe aceptado", reportMoney(kpis.AcceptedAmount), "Sobre la versión aceptada."},
 		{"Tiempo de respuesta", reportDuration(kpis.ResponseTime.AverageSeconds), r.responseDetail(kpis.ResponseTime)},
 	}
@@ -566,10 +568,11 @@ func (r *SellerReportRenderer) drawAIMatch(doc *gofpdf.Fpdf, report domain.Selle
 	return y + height
 }
 
-func (r *SellerReportRenderer) drawBranches(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
+func (r *SellerReportRenderer) drawBranches(
+	doc *gofpdf.Fpdf, report domain.SellerReport, generatedAt time.Time, y float64,
+) float64 {
 	if y+16 > reportContentBottom {
-		doc.AddPage()
-		doc.SetY(reportPageTop)
+		r.newContentPage(doc, report, generatedAt)
 		y = doc.GetY()
 	}
 	doc.SetFont("Go", "B", 9)
@@ -588,8 +591,7 @@ func (r *SellerReportRenderer) drawBranches(doc *gofpdf.Fpdf, report domain.Sell
 	}
 	for index, branch := range report.Branches {
 		if y+8 > reportContentBottom {
-			doc.AddPage()
-			doc.SetY(reportPageTop)
+			r.newContentPage(doc, report, generatedAt)
 			r.drawBranchHeader(doc, doc.GetY())
 			y = doc.GetY() + 7
 		}
@@ -621,11 +623,12 @@ func (r *SellerReportRenderer) drawBranchHeader(doc *gofpdf.Fpdf, y float64) {
 	doc.CellFormat(48, 4, "PEDIDOS", "", 0, "R", false, 0, "")
 }
 
-func (r *SellerReportRenderer) drawMethodology(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) {
+func (r *SellerReportRenderer) drawMethodology(
+	doc *gofpdf.Fpdf, report domain.SellerReport, generatedAt time.Time, y float64,
+) {
 	height := 66.0
 	if y+height > reportContentBottom {
-		doc.AddPage()
-		doc.SetY(reportPageTop)
+		r.newContentPage(doc, report, generatedAt)
 		y = doc.GetY()
 	}
 	r.drawCard(doc, leftMargin, y, pageWidth, height, "Notas metodológicas", "")
@@ -633,7 +636,7 @@ func (r *SellerReportRenderer) drawMethodology(doc *gofpdf.Fpdf, report domain.S
 		label string
 		body  string
 	}{
-		{"Tasa de aceptación", "cotizaciones aceptadas sobre enviadas en el período; puede superar el 100% si hay aceptaciones de envíos anteriores."},
+		{"Tasa de aceptación", "de las cotizaciones enviadas por primera vez en el período, las que el cliente aceptó hasta hoy."},
 		{"Tiempo de respuesta", "primera cotización enviada después de recibir el pedido. Los pedidos manuales no entran en el cálculo."},
 		{"Importe aceptado", "suma de los totales comerciales de las versiones aceptadas, con descuentos aplicados. No representa utilidad."},
 		{"Ingreso por producto", "ingreso bruto de las líneas aceptadas, antes de descuentos; los ítems sin coincidencia no suman."},

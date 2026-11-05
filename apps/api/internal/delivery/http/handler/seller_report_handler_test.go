@@ -23,6 +23,7 @@ type sellerReportServiceStub struct {
 	filters domain.SellerReportFilterInput
 	report  *domain.SellerReport
 	content []byte
+	period  domain.SellerReportRange
 	err     error
 }
 
@@ -37,16 +38,18 @@ func (s *sellerReportServiceStub) Get(
 
 func (s *sellerReportServiceStub) RenderPDF(
 	_ context.Context, _ domain.Tenant, from, to string, filters domain.SellerReportFilterInput,
-) ([]byte, error) {
+) ([]byte, domain.SellerReportRange, error) {
 	s.from = from
 	s.to = to
 	s.filters = filters
-	return s.content, s.err
+	return s.content, s.period, s.err
 }
 
 func TestSellerReportHandlerDownloadPDFStreamsTheDocument(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	service := &sellerReportServiceStub{content: []byte("%PDF-1.4 report")}
+	service := &sellerReportServiceStub{content: []byte("%PDF-1.4 report"),
+		period: domain.SellerReportRange{From: "2026-10-01", To: "2026-10-02"},
+	}
 	handler := NewSellerReportHandler(service)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -80,9 +83,12 @@ func TestSellerReportHandlerDownloadPDFStreamsTheDocument(t *testing.T) {
 	}
 }
 
-func TestSellerReportHandlerDownloadPDFUsesTheDefaultFilename(t *testing.T) {
+func TestSellerReportHandlerDownloadPDFNamesTheDefaultedPeriod(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	service := &sellerReportServiceStub{content: []byte("%PDF-1.4 report")}
+	service := &sellerReportServiceStub{
+		content: []byte("%PDF-1.4 report"),
+		period:  domain.SellerReportRange{From: "2026-09-26", To: "2026-10-25"},
+	}
 	handler := NewSellerReportHandler(service)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -91,7 +97,8 @@ func TestSellerReportHandlerDownloadPDFUsesTheDefaultFilename(t *testing.T) {
 
 	handler.DownloadPDF(c)
 
-	if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="reporte.pdf"` {
+	if got := recorder.Header().Get("Content-Disposition"); got !=
+		`attachment; filename="reporte-2026-09-26-2026-10-25.pdf"` {
 		t.Fatalf("content disposition = %q", got)
 	}
 }

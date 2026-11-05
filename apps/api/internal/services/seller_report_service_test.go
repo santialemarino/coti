@@ -174,6 +174,38 @@ func TestSellerReportScopesToSelectedBranchAndSeller(t *testing.T) {
 	}
 }
 
+func TestSellerReportSpansASellersBranchesWhenNoneIsSelected(t *testing.T) {
+	branches := []uuid.UUID{uuid.New(), uuid.New()}
+	cases := []struct {
+		name    string
+		allowed []uuid.UUID
+		want    bool
+	}{
+		{"two branches", branches, true},
+		{"one branch", branches[:1], false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(),
+				Role: domain.UserRoleSeller, AllowedBranchIDs: tc.allowed}
+			service, _, store := newSellerReportTestService(t, tenant)
+
+			report, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02",
+				domain.SellerReportFilterInput{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if store.query.MultiBranch != tc.want || report.Scope.MultiBranch != tc.want {
+				t.Fatalf("query multi-branch = %v, scope = %+v, want %v",
+					store.query.MultiBranch, report.Scope, tc.want)
+			}
+			if report.Scope.BranchID != nil {
+				t.Fatalf("scope = %+v, want no selected branch", report.Scope)
+			}
+		})
+	}
+}
+
 func TestSellerReportResolvesFiltersForAnAdministrator(t *testing.T) {
 	sellerID, clientID := uuid.New(), uuid.New()
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(),
@@ -262,9 +294,13 @@ func TestSellerReportRenderPDFReusesTheReportScope(t *testing.T) {
 	}}
 	renderer := service.renderer.(*sellerReportTestRenderer)
 
-	content, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{})
+	content, period, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if period.From != "2026-10-01" || period.To != "2026-10-02" {
+		t.Fatalf("period = %+v, want the requested dates", period)
 	}
 	if string(content) != "%PDF-1.4 report" {
 		t.Fatalf("content = %q", content)
@@ -287,7 +323,8 @@ func TestSellerReportRenderPDFPropagatesRendererError(t *testing.T) {
 	want := errors.New("render failed")
 	service.renderer.(*sellerReportTestRenderer).err = want
 
-	if _, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{}); !errors.Is(
+	if _, _, err := service.RenderPDF(context.Background(), tenant, "2026-10-01", "2026-10-02",
+		domain.SellerReportFilterInput{}); !errors.Is(
 		err, want,
 	) {
 		t.Fatalf("RenderPDF() = %v, want %v", err, want)

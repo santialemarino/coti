@@ -112,21 +112,26 @@ func TestSellerReportRenderer_RendersAnEmptyPeriod(t *testing.T) {
 }
 
 func TestSellerReportRenderer_PaginatesManyBranches(t *testing.T) {
-	report := sellerReportFixture()
-	report.Branches = nil
-	for index := 0; index < 40; index++ {
-		report.Branches = append(report.Branches, domain.SellerReportBranch{
-			BranchID:   uuid.New(),
-			BranchName: "Sucursal con un nombre extenso para probar el corte de pagina",
-			RFQs:       index,
-		})
+	pagesWith := func(branches int) int {
+		t.Helper()
+		report := sellerReportFixture()
+		report.Branches = nil
+		for index := 0; index < branches; index++ {
+			report.Branches = append(report.Branches, domain.SellerReportBranch{
+				BranchID:   uuid.New(),
+				BranchName: "Sucursal con un nombre extenso para probar el corte de pagina",
+				RFQs:       index,
+			})
+		}
+		content, err := NewSellerReportRenderer().Render(report, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes.Count(content, []byte("/Type /Page\n"))
 	}
-	content, err := NewSellerReportRenderer().Render(report, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pages := bytes.Count(content, []byte("/Type /Page\n")); pages < 3 {
-		t.Fatalf("pages = %d, want branch pagination", pages)
+	// Forty 8 mm rows overflow a page on their own, so they need two pages more than one row does.
+	if one, many := pagesWith(1), pagesWith(40); many < one+2 {
+		t.Fatalf("pages = %d with one branch and %d with forty, want the rows paginated", one, many)
 	}
 }
 

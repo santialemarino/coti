@@ -1334,7 +1334,7 @@ CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHE
 CREATE INDEX idx_rfq_attachment_account_rfq ON rfq_attachment(account_id, rfq_id);
 
 CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
-CREATE INDEX idx_quote_account_branch_created ON quote(account_id, branch_id, created_at);
+CREATE INDEX idx_quote_account_created ON quote(account_id, created_at);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);

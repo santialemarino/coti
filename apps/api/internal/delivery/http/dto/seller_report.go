@@ -54,6 +54,7 @@ type SellerReportKPIsResponse struct {
 	RFQsReceived   int                              `json:"rfqs_received"`
 	QuotesSent     int                              `json:"quotes_sent"`
 	QuotesAccepted int                              `json:"quotes_accepted"`
+	SentAccepted   int                              `json:"sent_accepted"`
 	ConversionRate *string                          `json:"conversion_rate"`
 	AcceptedAmount string                           `json:"accepted_amount"`
 	ResponseTime   SellerReportResponseTimeResponse `json:"response_time"`

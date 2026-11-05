@@ -61,9 +61,12 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 	start := from.UTC()
 	end := to.AddDate(0, 0, 1).UTC()
 	sellerID := sellerParam(tenant)
+	branchFilter := tenant.BranchFilter()
+	multiBranch := !tenant.HasBranch() && (branchFilter == nil || len(branchFilter) > 1)
 	query := domain.SellerReportQuery{
 		AccountID:      tenant.AccountID,
-		BranchFilter:   tenant.BranchFilter(),
+		BranchFilter:   branchFilter,
+		MultiBranch:    multiBranch,
 		SellerID:       sellerID,
 		SellerFilter:   filters.SellerID,
 		ClientFilter:   filters.ClientID,
@@ -91,7 +94,7 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 		To:   query.ToDate,
 	}
 	report.Scope = domain.SellerReportScope{
-		MultiBranch: tenant.IsAdmin() && !tenant.HasBranch(),
+		MultiBranch: multiBranch,
 	}
 	if tenant.HasBranch() {
 		branchID := tenant.BranchID
@@ -108,15 +111,19 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 	return report, nil
 }
 
-// RenderPDF returns the report for the requested period as a PDF document.
+// RenderPDF returns the report as a PDF document, with the period it resolved to.
 func (s *SellerReportService) RenderPDF(ctx context.Context, tenant domain.Tenant, fromRaw,
 	toRaw string, filterInput domain.SellerReportFilterInput,
-) ([]byte, error) {
+) ([]byte, domain.SellerReportRange, error) {
 	report, err := s.Get(ctx, tenant, fromRaw, toRaw, filterInput)
 	if err != nil {
-		return nil, err
+		return nil, domain.SellerReportRange{}, err
 	}
-	return s.renderer.Render(*report, s.now().In(domain.Argentina))
+	content, err := s.renderer.Render(*report, s.now().In(domain.Argentina))
+	if err != nil {
+		return nil, domain.SellerReportRange{}, err
+	}
+	return content, report.Range, nil
 }
 
 func resolveReportFilters(tenant domain.Tenant, in domain.SellerReportFilterInput) (

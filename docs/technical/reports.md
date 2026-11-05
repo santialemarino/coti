@@ -17,8 +17,9 @@ resolved `range` so the page can seed its form from the server, including the de
 
 The active branch comes from `X-Branch-Id`, never from a query parameter. It is validated against
 the caller's authorized branches. A seller also sees only quotes assigned to them or still
-unassigned, and only within their branch reach; an admin with no branch selected sees every branch
-and receives the `branches` breakdown. The report never widens the read beyond the visibility the
+unassigned, and only within their branch reach. With no branch selected, a report that spans several
+branches — an admin's whole account, or a seller assigned to more than one — receives the `branches`
+breakdown, limited to the reachable branches; an inactive branch appears only if it had orders. The report never widens the read beyond the visibility the
 rest of the API enforces.
 
 ## What each section counts
@@ -26,9 +27,11 @@ rest of the API enforces.
 - `kpis.rfqs_received`: RFQs received in the period.
 - `kpis.quotes_sent`: first `SENT` event per quote inside the period.
 - `kpis.quotes_accepted`: latest distinct `ACCEPTED` event per quote inside the period.
-- `kpis.conversion_rate`: accepted over sent events in the period. Because the two are event counts,
-  a quote sent before the period and accepted inside it can make this ratio exceed `1`. The UI shows
-  it as an event ratio, not a cohort percentage.
+- `kpis.sent_accepted`: of the quotes first sent in the period, how many were accepted since, up to
+  the moment of the read.
+- `kpis.conversion_rate`: `sent_accepted` over `quotes_sent`, a cohort share between `0` and `1`.
+  An acceptance in the period of a quote sent before it counts in `quotes_accepted` but not here, so
+  the rate never exceeds `1`. It is `null` when nothing was sent.
 - `kpis.accepted_amount`: sum of the commercial totals of the versions that were actually accepted.
   See below.
 - `kpis.response_time`: first send minus RFQ arrival, for RFQs received in the period. Manual-entry
@@ -38,13 +41,16 @@ rest of the API enforces.
   present with zeroes.
 - `top_products`: the five most requested products across each visible RFQ's current quote version,
   ranked by line occurrences. Every quote line counts once, regardless of its quantity. Matched
-  products use the canonical catalog name; unmatched lines use the requested description.
+  products use the canonical catalog name; unmatched lines use the requested description, grouped
+  ignoring case and surrounding spaces. Every ranking breaks ties by name, then by id, so the same
+  data always yields the same order.
 - `top_revenue_products`: the five matched products with the largest accepted line revenue in the
   period. Revenue is `quantity × unit_price_snapshot` summed across the lines of the resolved
   accepted version, rounded to two decimals. Unmatched lines are excluded because they have no
   product identity.
-- `top_clients`: the five clients with the largest accepted amount in the period. Anonymous quotes
-  and zero-amount groups are omitted.
+- `top_clients`: the five clients with the largest accepted amount in the period, one row per client.
+  A client with no name is shown by its email, then its phone, then the order's label. Quotes with no
+  client group by the order's label; anonymous quotes and zero-amount groups are omitted.
 - `ai_match`: the latest AI generation per quote, its matched-line rate, and the confidence split of
   scored lines.
 
@@ -99,7 +105,8 @@ matching the dashboard. Empty sections say so rather than printing fabricated ze
 threshold is the catalog setting, passed from the API composition root, so changing catalog
 calibration moves the report with the review screen.
 
-The report reads are backed by `00072_seller_reports.sql`: branch/time indexes for RFQs and quotes,
+The report reads are backed by `00072_seller_reports.sql`: a branch/time index for RFQs, an account/time
+index for quotes,
 partial status and send indexes for the event reads, a partial client-action index for acceptance
 resolution, and a generation index for the AI summary. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.

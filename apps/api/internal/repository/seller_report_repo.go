@@ -111,7 +111,7 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if report.KPIs.QuotesSent > 0 {
-		rate := decimal.NewFromInt(int64(report.KPIs.QuotesAccepted)).
+		rate := decimal.NewFromInt(int64(report.KPIs.SentAccepted)).
 			Div(decimal.NewFromInt(int64(report.KPIs.QuotesSent)))
 		report.KPIs.ConversionRate = &rate
 	}
@@ -136,7 +136,7 @@ func (r *SellerReportRepository) Build(
 	if err := r.readAIMatch(ctx, q, in, &report.AIMatch); err != nil {
 		return nil, err
 	}
-	if in.BranchFilter == nil {
+	if in.MultiBranch {
 		if err := r.readBranches(ctx, q, in, &report.Branches); err != nil {
 			return nil, err
 		}
@@ -189,9 +189,16 @@ func (r *SellerReportRepository) readKPIs(
 		 )
 		 SELECT (SELECT count(*) FROM scoped_rfqs
 		         WHERE received_at >= $4 AND received_at < $5),
-		        (SELECT count(*) FROM first_sent WHERE sent_at >= $4 AND sent_at < $5)`,
+		        (SELECT count(*) FROM first_sent WHERE sent_at >= $4 AND sent_at < $5),
+		        (SELECT count(*) FROM first_sent
+		         WHERE sent_at >= $4 AND sent_at < $5
+		           AND EXISTS (SELECT 1 FROM quote_status_change accepted
+		                       WHERE accepted.account_id = $1
+		                         AND accepted.quote_id = first_sent.quote_id
+		                         AND accepted.new_status = 'ACCEPTED'
+		                         AND accepted.changed_at >= first_sent.sent_at))`,
 		reportArgs(in)...,
-	).Scan(&out.RFQsReceived, &out.QuotesSent)
+	).Scan(&out.RFQsReceived, &out.QuotesSent, &out.SentAccepted)
 }
 
 func (r *SellerReportRepository) readAccepted(
@@ -353,12 +360,12 @@ func (r *SellerReportRepository) readTopProducts(
 		   WHERE latest_quote.current_version_id IS NOT NULL
 		 )
 		 SELECT product_id,
-		        COALESCE(max(canonical_name), min(requested_description)),
+		        COALESCE(max(canonical_name), min(btrim(requested_description))),
 		        count(*)
 		 FROM items
 		 GROUP BY product_id,
-		          CASE WHEN product_id IS NULL THEN requested_description ELSE '' END
-		 ORDER BY count(*) DESC, 2
+		          CASE WHEN product_id IS NULL THEN lower(btrim(requested_description)) ELSE '' END
+		 ORDER BY count(*) DESC, 2, 1
 		 LIMIT 5`,
 		reportArgs(in)...,
 	)
@@ -391,7 +398,7 @@ func (r *SellerReportRepository) readTopRevenueProducts(
 		 WHERE item.product_id IS NOT NULL AND item.unit_price_snapshot IS NOT NULL
 		 GROUP BY item.product_id
 		 HAVING sum(round(item.quantity * item.unit_price_snapshot, 2)) > 0
-		 ORDER BY 3 DESC, 2
+		 ORDER BY 3 DESC, 2, 1
 		 LIMIT 5`,
 		reportArgs(in)...,
 	)
@@ -415,7 +422,8 @@ func (r *SellerReportRepository) readTopClients(
 ) error {
 	rows, err := q.Query(ctx, acceptedVersionsCTE+`
 		 SELECT quote.client_id,
-		        COALESCE(client.name, rfq.client_label, ''),
+		        COALESCE(max(client.name), max(client.email), max(client.phone),
+		                 max(rfq.client_label), ''),
 		        sum(COALESCE(version.total, 0))
 		 FROM resolved
 		 JOIN quote ON quote.account_id = $1 AND quote.id = resolved.quote_id
@@ -424,9 +432,9 @@ func (r *SellerReportRepository) readTopClients(
 		 LEFT JOIN quote_version version ON version.account_id = $1
 		   AND version.id = resolved.version_id
 		 WHERE quote.client_id IS NOT NULL OR COALESCE(rfq.client_label, '') <> ''
-		 GROUP BY quote.client_id, COALESCE(client.name, rfq.client_label, '')
+		 GROUP BY quote.client_id, CASE WHEN quote.client_id IS NULL THEN rfq.client_label END
 		 HAVING sum(COALESCE(version.total, 0)) > 0
-		 ORDER BY sum(COALESCE(version.total, 0)) DESC, 2
+		 ORDER BY sum(COALESCE(version.total, 0)) DESC, 2, 1
 		 LIMIT 5`,
 		reportArgs(in)...,
 	)
@@ -508,8 +516,10 @@ func (r *SellerReportRepository) readBranches(
 		     AND ($9::uuid IS NULL OR q.seller_id = $9)
 		 ) scoped ON TRUE
 		 WHERE branch.account_id = $1
+		   AND ($2::uuid[] IS NULL OR branch.id = ANY($2::uuid[]))
 		 GROUP BY branch.id, branch.name
-		 ORDER BY branch.name`,
+		 HAVING branch.is_active OR count(scoped.id) > 0
+		 ORDER BY branch.name, branch.id`,
 		reportArgs(in)...,
 	)
 	if err != nil {

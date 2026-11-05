@@ -9,8 +9,10 @@ import (
 
 // SellerReportQuery is the resolved scope, period and filters one report read runs with.
 type SellerReportQuery struct {
-	AccountID      uuid.UUID
-	BranchFilter   []uuid.UUID
+	AccountID    uuid.UUID
+	BranchFilter []uuid.UUID
+	// MultiBranch asks for the per-branch breakdown: no branch is selected and the reach spans several.
+	MultiBranch    bool
 	SellerID       *uuid.UUID
 	SellerFilter   *uuid.UUID
 	ClientFilter   *uuid.UUID
@@ -79,8 +81,9 @@ type SellerReportKPIs struct {
 	RFQsReceived   int
 	QuotesSent     int
 	QuotesAccepted int
-	// ConversionRate is accepted over sent events in the period, so it can exceed one; nil when
-	// nothing was sent.
+	// SentAccepted counts the quotes first sent in the period that were accepted since.
+	SentAccepted int
+	// ConversionRate is SentAccepted over QuotesSent, a cohort share in [0, 1]; nil when nothing was sent.
 	ConversionRate *decimal.Decimal
 	// AcceptedAmount sums the commercial totals of the accepted versions found for the period.
 	AcceptedAmount decimal.Decimal
