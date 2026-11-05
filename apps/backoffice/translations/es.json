@@ -227,7 +227,8 @@
         "saving": "Preparando logo…",
         "confirm": "Usar logo",
         "error": "No pudimos preparar esta imagen. Probá con otra."
-      }
+      },
+      "loadFailed": "No pudimos cargar el logo guardado. Podés reemplazarlo o quitarlo."
     },
     "fileUpload": {
       "title": "Arrastrá tu archivo hasta acá",
@@ -2768,7 +2769,8 @@
         "CATALOG_UPLOAD": "Carga",
         "CATALOG_REVIEW": "Revisión",
         "TEAM": "Usuarios",
-        "COMPLETE": "Cuenta lista"
+        "COMPLETE": "Cuenta lista",
+        "PORTAL": "Portal de clientes"
       },
       "statuses": {
         "COMPLETED": "Listo",
@@ -2870,13 +2872,15 @@
         "brand": "Marca revisada",
         "branch": "Sucursal configurada",
         "catalog": "Catálogo disponible",
-        "team": "Usuarios agregados"
+        "team": "Usuarios agregados",
+        "portal": "Portal de clientes configurado"
       },
       "pending": {
         "brand": "Marca pendiente: la completás en Cuenta",
         "branch": "Sucursal pendiente: la revisás en Sucursales",
         "catalog": "Catálogo pendiente: lo importás en Catálogo",
-        "team": "Usuarios pendientes: los sumás en Usuarios"
+        "team": "Usuarios pendientes: los sumás en Usuarios",
+        "portal": "Portal pendiente en Configuración → Cuenta"
       }
     },
     "errors": {
@@ -2905,6 +2909,10 @@
         "TEAM": {
           "title": "Equipo",
           "description": "Los vendedores que atienden los pedidos con vos."
+        },
+        "PORTAL": {
+          "title": "Portal de clientes",
+          "description": "Elegí la dirección donde tus clientes pueden registrarse y enviar pedidos."
         }
       },
       "resume": {
@@ -2924,6 +2932,11 @@
         "pending": "Mostrando…"
       },
       "settingsTitle": "Configuración inicial"
+    },
+    "portal": {
+      "title": "¿Cómo te encuentran tus clientes en internet?",
+      "description": "Elegí la dirección del portal de clientes de tu corralón. Podés configurarla más tarde desde Cuenta.",
+      "later": "Configurar más tarde"
     }
   },
   "priceImport": {
@@ -3374,5 +3387,26 @@
     "separated": "Descartamos la coincidencia de {value}.",
     "retry": "Reintentar",
     "loadError": "No pudimos cargar las coincidencias."
+  },
+  "customerPortal": {
+    "label": "Subdominio",
+    "hint": "Esta va a ser la dirección del portal donde tus clientes pueden registrarse, ingresar y enviar pedidos.",
+    "current": "Portal actual:",
+    "loading": "Cargando dirección…",
+    "invalid": "Usá hasta 63 letras sin tildes, números o guiones, sin guiones al principio o al final. Algunos nombres están reservados.",
+    "checking": "Comprobando disponibilidad…",
+    "available": "Subdominio disponible",
+    "taken": "Ese subdominio ya está ocupado. Probá con otro.",
+    "error": "No pudimos comprobar o guardar la dirección. Volvé a intentar.",
+    "conflict": "El subdominio está ocupado o la dirección cambió desde que abriste la pantalla. Recargá y volvé a intentar.",
+    "save": "Guardar dirección del portal",
+    "saving": "Guardando…",
+    "unavailable": "La configuración de subdominios todavía no está habilitada en este entorno.",
+    "legacy": "Esta dirección fue configurada de forma administrativa. Se conserva y no se puede reemplazar desde acá; requiere una migración coordinada de sus enlaces y accesos.",
+    "skipHint": "Podés configurar la dirección más tarde desde Configuración → Cuenta.",
+    "changeTitle": "¿Cambiar la dirección del portal?",
+    "changeWarning": "La dirección anterior dejará de abrir este portal. Los enlaces que ya compartiste dejarán de funcionar: compartí la nueva dirección y reenviá los enlaces de pedidos y cotizaciones. Tus clientes tendrán que volver a ingresar en la nueva dirección; sus cuentas y pedidos se conservan. Las sesiones anteriores no se trasladan entre dominios.",
+    "confirm": "Cambiar dirección",
+    "cancel": "Cancelar"
   }
 }

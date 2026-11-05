@@ -13,6 +13,7 @@ import (
 var onboardingSteps = map[domain.OnboardingStepKey]struct{}{
 	domain.OnboardingStepWelcome:       {},
 	domain.OnboardingStepBrand:         {},
+	domain.OnboardingStepPortal:        {},
 	domain.OnboardingStepFirstBranch:   {},
 	domain.OnboardingStepCatalogUpload: {},
 	domain.OnboardingStepCatalogReview: {},
@@ -81,6 +82,15 @@ func (s *OnboardingService) SaveProgress(
 		onboarding, err := s.onboarding.GetByAccountID(ctx, q, tenant.AccountID)
 		if err != nil {
 			return err
+		}
+		if progress.Step == domain.OnboardingStepPortal && progress.StepStatus == domain.OnboardingStepStatusCompleted {
+			evidence, err := s.onboarding.GetEvidence(ctx, q, tenant.AccountID)
+			if err != nil {
+				return err
+			}
+			if !evidence[domain.OnboardingStepPortal] {
+				return domain.ErrInvalidInput
+			}
 		}
 		if err := s.onboarding.UpsertStep(ctx, q, tenant.AccountID, onboarding.ID,
 			progress.Step, progress.StepStatus); err != nil {

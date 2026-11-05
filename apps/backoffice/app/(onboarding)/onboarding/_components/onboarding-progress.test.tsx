@@ -17,7 +17,7 @@ describe('OnboardingProgress', () => {
     expect(view.getByText(/Bienvenida: Listo/).classList.contains('sr-only')).toBe(true);
     expect(view.getByText(/Marca: En curso/).classList.contains('sr-only')).toBe(true);
     expect(view.queryByText(/Paso 2 de 7/)).toBeNull();
-    expect(view.container.querySelectorAll('ol > li > span:not(.sr-only)')).toHaveLength(7);
+    expect(view.container.querySelectorAll('ol > li > span:not(.sr-only)')).toHaveLength(8);
   });
 
   it('keeps completed, current, and pending bars contiguous after navigating backwards', () => {
@@ -41,6 +41,7 @@ describe('OnboardingProgress', () => {
     expect(states).toEqual([
       'completed',
       'current',
+      'pending',
       'pending',
       'pending',
       'pending',

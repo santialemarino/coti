@@ -126,7 +126,7 @@ read arrives with its `extracted_text` already set and closes at `DONE`.
 `POST /v1/account/logo` stores a logo for the authenticated administrator's account. The upload
 must be a PNG or JPEG, its declared content type must match the detected bytes, and its size is
 limited by `STORAGE_MAX_FILE_SIZE_BYTES`. The response contains a stable public API path; the
-backoffice resolves it against `API_URL` and stores the resulting URL in the account's existing
+backoffice appends it to `API_URL`, preserving any ingress prefix such as `/api`, and stores the resulting URL in the account's existing
 `brand_logo_url` field when the account form is saved.
 
 `GET /v1/public/account-logos/{accountId}/{logoId}` intentionally needs no session because the
@@ -244,3 +244,27 @@ shared-config loader is deliberately not a dependency, so no ambient `AWS_*` key
 `local` needs nothing. Objects land in `STORAGE_LOCAL_DIR` (`./.storage`, gitignored) and the
 API serves them itself. Under `pnpm dev:docker` the directory is a named volume, so files survive
 a rebuild instead of leaving the database pointing at objects that no longer exist.
+
+### Logo diagnostics and existing references
+
+Onboarding and Account share the upload and preview components. The persisted value is the stable
+public API resource URL, never a browser blob or presigned storage link. The API reads its configured
+storage adapter when serving that resource; replacing the logo creates a new object identifier and
+removing it clears the account reference. A failed preview offers a readable fallback with replace
+and remove still available.
+
+Resolving an upload path starting with /v1 through URL(path, base) discards a base path such as /api.
+That produced a persisted URL at the frontend origin's /v1 route in prefixed deployments, while
+local deployments without the prefix worked. The upload boundary now joins the API base as a
+directory. A regression test uses an HTTPS base ending in /api/. Invoice logo reads also accept the
+/api prefix when identifying the object resource.
+
+Existing incorrect references require a separate, reviewed repair. First inspect the account's
+brand_logo_url and the deployment's public API base without changing either. For a public logo route,
+verify that accounts/{account_id}/brand/{logo_id} exists in the configured provider. Confirm a GET to
+the public API base plus /v1/public/account-logos/{account_id}/{logo_id} returns the expected image.
+Then back up and update only the affected account reference to that verified stable URL in a
+transaction. Do not rewrite external logos, guessed object identifiers, expired signed URLs or
+missing objects blindly. If storage was switched from ephemeral local disk without copying the
+objects, URL repair cannot recover the bytes: restore the original object under the same key or
+have the administrator upload the logo again. This procedure was not executed against production.

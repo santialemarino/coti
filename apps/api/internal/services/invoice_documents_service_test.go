@@ -32,7 +32,7 @@ func TestInvoiceLogo_UsesFrozenAssetWithinItsAccount(t *testing.T) {
 	}
 	loader := &invoiceLogoStub{content: imageBytes.Bytes()}
 	s := &InvoiceService{logos: loader, settings: InvoiceSettings{LogoMaxBytes: 4096, LogoMaxPixels: 100000}}
-	address := "http://localhost:8000/v1/public/account-logos/" + account.String() + "/" + id.String()
+	address := "https://api.example.test/api/v1/public/account-logos/" + account.String() + "/" + id.String()
 	logo := s.loadInvoiceLogo(context.Background(), account, &address)
 	if logo == nil || logo.ContentType != "image/png" || loader.account != account || loader.id != id {
 		t.Fatal("frozen account logo was not loaded")

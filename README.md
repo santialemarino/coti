@@ -317,3 +317,6 @@ GitFlow (simplified): `main` (production) ← `dev` (integration) ← ephemeral
 ## License
 
 Proprietary — see [LICENSE](./LICENSE). All rights reserved.
+
+Customer portal addresses are configured in onboarding or Account settings. The API owns the
+base domain and validation; see [portal routing](docs/technical/public-rfq-intake.md#self-service-portal-addresses).

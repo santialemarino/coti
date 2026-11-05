@@ -34,6 +34,7 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Onboarding, OnboardingChecklistStep } from '@/lib/api/onboarding';
 
 const ITEMS: Record<OnboardingChecklistStep, { href: string; icon: LucideIcon }> = {
+  PORTAL: { href: ROUTES.accountSettings, icon: PaletteIcon },
   BRAND: { href: ROUTES.accountSettings, icon: PaletteIcon },
   CATALOG_UPLOAD: { href: ROUTES.catalogSettings, icon: FileSpreadsheetIcon },
   TEAM: { href: ROUTES.userSettings, icon: UsersIcon },

@@ -13,7 +13,7 @@ func TestCustomerSiteOriginKeepsLocalSuppliersSeparated(t *testing.T) {
 		{"otro.localhost", "http://localhost:3001", "http://otro.localhost:3001"},
 		{"otro.localhost", "http://127.0.0.1:3118", "http://otro.localhost:3118"},
 		{"supplier.example.com", "", "https://supplier.example.com"},
-		{"supplier.example.com", "http://localhost:3001/", "http://localhost:3001"},
+		{"supplier.example.com", "http://localhost:3001/", "https://supplier.example.com"},
 	} {
 		if got := customerSiteOrigin(tc.host, tc.local); got != tc.want {
 			t.Errorf("origin(%q,%q)=%q, want %q", tc.host, tc.local, got, tc.want)

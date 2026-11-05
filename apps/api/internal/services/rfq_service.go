@@ -183,7 +183,8 @@ type RFQService struct {
 	clientMessages clientMessageReader
 	// webappURL is the customer-facing app origin; the detail rebuilds each delivery's public_url
 	// from its token only when the surface is wired.
-	webappURL string
+	webappURL      string
+	customerPortal customerPortal
 	// invoicingEnv is where this server invoices; only an invoice issued there or in production
 	// closes a sale.
 	invoicingEnv domain.ARCAEnvironment
@@ -394,7 +395,19 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			if deliveryErr != nil {
 				return deliveryErr
 			}
-			s.decorateDeliveryURLs(deliveries)
+			if s.customerPortal.hostnames != nil {
+				base, err := s.customerPortal.base(ctx, q, tenant.AccountID)
+				if err != nil {
+					return err
+				}
+				for i := range deliveries {
+					if base != "" {
+						deliveries[i].PublicURL = customerQuoteURL(base, deliveries[i].PublicToken)
+					}
+				}
+			} else {
+				s.decorateDeliveryURLs(deliveries)
+			}
 			detail.Deliveries = deliveries
 		}
 

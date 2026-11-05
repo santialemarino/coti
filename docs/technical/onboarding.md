@@ -30,7 +30,7 @@ The admin-only API is:
 
 ## Current flow
 
-The current registry uses stable keys rather than numeric positions: welcome, brand, first branch,
+The current registry uses stable keys rather than numeric positions: welcome, brand, customer portal (`PORTAL`), first branch,
 catalog upload, catalog review, team, and completion. The progress bar is derived from the registry,
 so inserting another screen requires adding its stable key and copy instead of changing persisted
 positions. `flow_version` is available for future migrations when a new flow cannot safely share
@@ -60,12 +60,12 @@ without one to Sucursales, and bouncing it back from there would loop.
 ## Checklist
 
 Once the wizard is closed — dismissed, or finished with steps skipped — what is left of the setup
-is a checklist of three steps: brand, catalog (`CATALOG_UPLOAD`) and team. The first branch is not
+is a checklist of four steps: brand, customer portal (`PORTAL`), catalog (`CATALOG_UPLOAD`) and team. The first branch is not
 on it: registration creates that branch with its name and address, so the step only confirms data
 that always exists. A skipped step is pending; only real completion counts.
 
 Completion is read from the account's own data as well as from the wizard. `GET /v1/onboarding`
-checks a brand logo or colour, an active product, and a second active user, and records each proven
+checks a brand logo or colour, a registered public hostname, an active product, and a second active user, and records each proven
 step as `COMPLETED` before answering, so setup done from Configuración counts the same and stays
 done if the data later changes. A dismissed onboarding with nothing left pending becomes
 `COMPLETED`. The wizard's own `IN_PROGRESS` state is never changed by this.
@@ -79,3 +79,14 @@ is offered only for a dismissed wizard.
 
 User preferences are intentionally absent from version 1. They can be introduced as another stable
 step without coupling them to registration or rewriting existing progress.
+
+## Customer portal
+
+The optional portal step uses the same editor as Account settings, below the CUIT in the company
+section. It previews the server-configured base origin and checks availability without reserving a
+name. Continue saves the hostname, then records PORTAL as completed; Configure later records
+SKIPPED and does not write any hostname. Returning to the wizard reads the saved hostname. Existing
+accounts retain their lifecycle and access even when the new checklist item is pending.
+
+Portal configuration is saved separately from the company form, so saving the brand or CUIT cannot
+overwrite it. See [public-rfq-intake.md](public-rfq-intake.md#self-service-portal-addresses).

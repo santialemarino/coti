@@ -397,3 +397,25 @@ starts and looks like a valid spec until it is applied.
 So the image half of a deploy is continuously verified, and the spec is checked for the mistakes
 that are checkable offline. What remains unverified is the platform half — whether the app the spec
 describes actually comes up — and that cannot be checked without an app.
+
+## Enabling self-service customer subdomains
+
+Development needs only the local API, backoffice on port 3000, and shared webapp on port 3001.
+CUSTOMER_PORTAL_BASE_URL defaults to http://localhost:3001 in development and to an empty value
+(disabled) in production. The browser receives it from the authenticated API; it never supplies an
+arbitrary URL to save. NEXT_PUBLIC_PORTAL_AVAILABILITY_DELAY_SECONDS on the backoffice defaults to
+1 and controls only the advisory availability debounce. Set CUSTOMER_GOOGLE_LOCAL_ORIGIN to
+http://localhost:3001 for local supplier links and the development Google callback relay.
+
+Production activation is a separate release operation. Obtain a domain, configure wildcard DNS and
+HTTPS for its customer subdomains, preserve Host while routing all of them to the same shared
+webapp, and verify customer cookie isolation. Only then set CUSTOMER_PORTAL_BASE_URL to the HTTPS
+base origin (no path or port). Its presence asserts that wildcard infrastructure is ready; leave it
+empty while using temporary platform URLs. Configure Google callback URIs per supplier before
+enabling that sign-in method. No application or deployment is created per supplier.
+
+Existing temporary hostnames remain associated with their current account and keep working while
+self-service is disabled. The portal editor displays them as inherited, with no self-service
+replacement. Do not replace a temporary hostname as part of enabling the base domain: coordinate
+that migration with customers and link/callback owners first. Nothing in the development workflow
+changes DigitalOcean settings, main, DNS, deployed data or storage.

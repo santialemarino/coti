@@ -40,13 +40,16 @@ func (s *QuoteDeliveryService) customerQuoteBase(ctx context.Context, accountID 
 		base, err = portal.base(ctx, q, accountID)
 		return err
 	})
+	if err == nil && base == "" {
+		return "", domain.ErrNotConfigured
+	}
 	return base, err
 }
 
 // base is the portal's origin for the account, or the shared webapp when it has no site of its own.
 func (p customerPortal) base(ctx context.Context, q repository.Querier, accountID uuid.UUID) (string, error) {
 	origin, err := p.siteOrigin(ctx, q, accountID)
-	if err != nil || origin != "" {
+	if err != nil || origin != "" || p.hostnames != nil {
 		return origin, err
 	}
 	return strings.TrimRight(p.fallback, "/"), nil
@@ -60,7 +63,7 @@ func (p customerPortal) siteOrigin(ctx context.Context, q repository.Querier, ac
 	}
 	hostname, err := p.hostnames.GetCustomerHostname(ctx, q, accountID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return strings.TrimRight(p.localOrigin, "/"), nil
+		return "", nil
 	}
 	if err != nil {
 		return "", err
@@ -72,3 +75,9 @@ func customerQuoteURL(base, token string) string { return base + "/quotes/" + ur
 
 // customerSignupURL is the page where a customer creates the account that carries their CUIT.
 func customerSignupURL(base string) string { return base + "/signup" }
+
+// WithCustomerPortal routes RFQ delivery links through the account's registered hostname.
+func (s *RFQService) WithCustomerPortal(reader customerQuoteHostnameReader, localOrigin string) *RFQService {
+	s.customerPortal = customerPortal{hostnames: reader, localOrigin: localOrigin}
+	return s
+}

@@ -299,9 +299,10 @@ func newEnvWithRFQProviders(
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
-			Invoice:    handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
-			Onboarding: handler.NewOnboardingHandler(onboardingService),
-			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
+			Invoice:        handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
+			Onboarding:     handler.NewOnboardingHandler(onboardingService),
+			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),
+			Promotion:      handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuth},
 		rateLimit)

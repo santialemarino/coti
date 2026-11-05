@@ -43,6 +43,7 @@ import type { CatalogImportPreview } from '@/app/(protected)/_actions/catalog-im
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
 import type { UserValues } from '@/app/(protected)/settings/users/form-schema';
 import { CatalogReview, CatalogUpload } from '@/components/catalog-import';
+import { CustomerPortalEditor } from '@/components/customer-portal/customer-portal-editor';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Account } from '@/lib/api/account';
@@ -50,12 +51,14 @@ import type { Branch } from '@/lib/api/branches';
 import type { Onboarding, OnboardingStepKey, OnboardingStepStatus } from '@/lib/api/onboarding';
 import type { AccountUser } from '@/lib/api/users';
 
+const PORTAL_FORM_ID = 'onboarding-portal-form';
 const BRAND_FORM_ID = 'onboarding-brand-form';
 const BRANCH_FORM_ID = 'onboarding-branch-form';
 const CATALOG_UPLOAD_FORM_ID = 'onboarding-catalog-upload-form';
 
 // What the completion screen reports on, each read from the step that sets it up.
 const READY_ITEMS = [
+  { key: 'portal', step: 'PORTAL', icon: StoreIcon },
   { key: 'brand', step: 'BRAND', icon: PaletteIcon },
   { key: 'branch', step: 'FIRST_BRANCH', icon: StoreIcon },
   { key: 'catalog', step: 'CATALOG_UPLOAD', icon: FileSpreadsheetIcon },
@@ -95,6 +98,8 @@ export function OnboardingFlow({
   );
   const [resolved, setResolved] = useState(onboarding.steps);
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
   const [catalogBusy, setCatalogBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissOpen, setDismissOpen] = useState(false);
@@ -137,7 +142,7 @@ export function OnboardingFlow({
         setError(message(result.error));
         return;
       }
-      await resolveStep('BRAND', 'COMPLETED', 'FIRST_BRANCH');
+      await resolveStep('BRAND', 'COMPLETED', 'PORTAL');
     });
   }
 
@@ -356,6 +361,34 @@ export function OnboardingFlow({
             />
           </>
         );
+      case 'PORTAL':
+        return (
+          <>
+            <CustomerPortalEditor
+              formId={PORTAL_FORM_ID}
+              onReadyChange={setPortalReady}
+              onBusyChange={setPortalBusy}
+              onSaved={async () => {
+                await resolveStep('PORTAL', 'COMPLETED', 'FIRST_BRANCH');
+              }}
+            />
+            <Footer
+              form={PORTAL_FORM_ID}
+              pending={pending || portalBusy}
+              primary={t('continue')}
+              primaryDisabled={!portalReady}
+              pendingLabel={t('saving')}
+              secondary={t('portal.later')}
+              secondaryPendingLabel={t('saving')}
+              back={() => move('BRAND')}
+              onSecondary={() =>
+                run(async () => {
+                  await resolveStep('PORTAL', 'SKIPPED', 'FIRST_BRANCH');
+                })
+              }
+            />
+          </>
+        );
       case 'FIRST_BRANCH':
         return (
           <>
@@ -365,7 +398,7 @@ export function OnboardingFlow({
               pending={pending}
               primary={t('continue')}
               pendingLabel={t('saving')}
-              back={() => move('BRAND')}
+              back={() => move('PORTAL')}
             />
           </>
         );
@@ -480,6 +513,7 @@ interface FooterProps {
   disabled?: boolean;
   primary?: string;
   primaryPending?: boolean;
+  primaryDisabled?: boolean;
   pendingLabel?: string;
   primaryVariant?: 'default' | 'outline';
   back?: () => void;
@@ -496,6 +530,7 @@ function Footer({
   disabled = pending,
   primary,
   primaryPending = pending,
+  primaryDisabled = false,
   pendingLabel,
   primaryVariant = 'default',
   back,
@@ -541,7 +576,7 @@ function Footer({
             form={form}
             variant={primaryVariant}
             className="w-full sm:w-auto"
-            disabled={disabled}
+            disabled={disabled || primaryDisabled}
             pending={primaryPending}
             pendingLabel={pendingLabel}
             onClick={form ? undefined : onPrimary}
