@@ -17,7 +17,8 @@ import { ReportFilters } from '@/app/(protected)/reports/_components/report-filt
 import { ReportKpis } from '@/app/(protected)/reports/_components/report-kpis';
 import { ReportSection } from '@/app/(protected)/reports/_components/report-section';
 import { ReportTopClients } from '@/app/(protected)/reports/_components/report-top-clients';
-import { getClients } from '@/lib/api/clients';
+import { getBranches } from '@/lib/api/branches';
+import { getClients, getClientTags } from '@/lib/api/clients';
 import { ApiError } from '@/lib/api/errors';
 import {
   getSellerReport,
@@ -25,13 +26,22 @@ import {
   type SellerReportFilterSelection,
 } from '@/lib/api/reports';
 import { getSellers } from '@/lib/api/users';
+import { getActiveBranchId } from '@/lib/auth/branch';
 import { getSession } from '@/lib/auth/session';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 type SearchParam = string | string[] | undefined;
-type ReportParam = 'from' | 'to' | 'status' | 'channel' | 'seller_id' | 'client_id';
+type ReportParam =
+  | 'from'
+  | 'to'
+  | 'status'
+  | 'channel'
+  | 'seller_id'
+  | 'client_id'
+  | 'branch_id'
+  | 'tag_id';
 
 interface FilterOption {
   id: string;
@@ -45,8 +55,11 @@ function single(value: SearchParam): string | undefined {
 }
 
 function many(value: SearchParam): string[] {
-  if (Array.isArray(value)) return value;
-  return value ? [value] : [];
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
+    .flatMap((item) => item.split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 // A filter list that fails to load leaves its control empty; the report itself still renders.
@@ -63,6 +76,22 @@ async function clientOptions(): Promise<FilterOption[]> {
 async function sellerOptions(): Promise<FilterOption[]> {
   try {
     return await getSellers();
+  } catch {
+    return [];
+  }
+}
+
+async function tagOptions(): Promise<FilterOption[]> {
+  try {
+    return (await getClientTags()).map((tag) => ({ id: tag.id, name: tag.name }));
+  } catch {
+    return [];
+  }
+}
+
+async function branchOptions(): Promise<FilterOption[]> {
+  try {
+    return (await getBranches()).map((branch) => ({ id: branch.id, name: branch.name }));
   } catch {
     return [];
   }
@@ -93,19 +122,22 @@ export default async function ReportsPage({
   const selection: SellerReportFilterSelection = {
     from: single(params.from),
     to: single(params.to),
-    statuses: many(params.status)
-      .flatMap((value) => value.split(','))
-      .map((value) => value.trim().toUpperCase())
-      .filter(Boolean),
+    statuses: many(params.status).map((value) => value.toUpperCase()),
     channel: single(params.channel),
     sellerId: isAdmin ? single(params.seller_id) : undefined,
     clientId: single(params.client_id),
+    branchIds: many(params.branch_id),
+    tagIds: many(params.tag_id),
   };
-  const [clients, sellers, report] = await Promise.all([
+  const [clients, sellers, tags, branches, activeBranchId, report] = await Promise.all([
     clientOptions(),
     isAdmin ? sellerOptions() : Promise.resolve([]),
+    tagOptions(),
+    branchOptions(),
+    getActiveBranchId(),
     reportFor(selection),
   ]);
+  const showBranch = !activeBranchId && branches.length > 1;
 
   // The server's echo wins over the URL, so a defaulted period seeds the form too.
   const applied = report
@@ -116,6 +148,8 @@ export default async function ReportsPage({
         channel: report.filters.channel ?? undefined,
         sellerId: report.filters.sellerId ?? undefined,
         clientId: report.filters.clientId ?? undefined,
+        branchIds: report.filters.branches.map((branch) => branch.id),
+        tagIds: report.filters.tags.map((tag) => tag.id),
       }
     : { ...selection, from: selection.from ?? '', to: selection.to ?? '' };
   const filtersKey = [
@@ -125,6 +159,8 @@ export default async function ReportsPage({
     applied.channel,
     applied.sellerId,
     applied.clientId,
+    applied.branchIds?.join(','),
+    applied.tagIds?.join(','),
   ].join('|');
 
   const noActivity =
@@ -152,6 +188,8 @@ export default async function ReportsPage({
               channel={report.filters.channel}
               sellerId={report.filters.sellerId}
               clientId={report.filters.clientId}
+              branchIds={report.filters.branches.map((branch) => branch.id)}
+              tagIds={report.filters.tags.map((tag) => tag.id)}
             />
           ) : undefined
         }
@@ -166,9 +204,14 @@ export default async function ReportsPage({
             channel={applied.channel}
             sellerId={applied.sellerId}
             clientId={applied.clientId}
+            branchIds={applied.branchIds}
+            tagIds={applied.tagIds}
             sellers={sellers}
             clients={clients}
+            branches={branches}
+            tags={tags}
             showSeller={isAdmin}
+            showBranch={showBranch}
           />
           {report ? null : (
             <p role="alert" className="mt-3 text-paragraph-xs text-danger-foreground">
@@ -226,6 +269,7 @@ export default async function ReportsPage({
                   from: fmt.date(report.range.from),
                   to: fmt.date(report.range.to),
                 })}
+                scrollLabel={t('timeline.scroll')}
                 formatDate={fmt.date}
                 formatValue={fmt.value}
               />

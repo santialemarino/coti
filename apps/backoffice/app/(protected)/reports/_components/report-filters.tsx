@@ -3,7 +3,14 @@
 import { useState } from 'react';
 import Form from 'next/form';
 import Link from 'next/link';
-import { Building2Icon, RadioIcon, TagIcon, UsersIcon } from 'lucide-react';
+import {
+  Building2Icon,
+  CircleDotIcon,
+  RadioIcon,
+  StoreIcon,
+  TagIcon,
+  UsersIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button, Combobox, Input, Label, MultiCombobox } from '@repo/ui/components';
@@ -34,9 +41,15 @@ interface ReportFiltersProps {
   channel?: string;
   sellerId?: string;
   clientId?: string;
+  branchIds?: string[];
+  tagIds?: string[];
   sellers?: FilterOption[];
   clients?: FilterOption[];
+  branches?: FilterOption[];
+  tags?: FilterOption[];
   showSeller?: boolean;
+  // Only a report that spans several branches can narrow by branch.
+  showBranch?: boolean;
 }
 
 // A GET form through next/form: the URL carries the filters and navigation stays client-side.
@@ -47,9 +60,14 @@ export function ReportFilters({
   channel,
   sellerId,
   clientId,
+  branchIds = [],
+  tagIds = [],
   sellers = [],
   clients = [],
+  branches = [],
+  tags = [],
   showSeller = false,
+  showBranch = false,
 }: ReportFiltersProps) {
   const t = useTranslations('reports.filters');
   const tStatus = useTranslations('reports.statusLabels');
@@ -60,6 +78,8 @@ export function ReportFilters({
   const [channelValue, setChannelValue] = useState(channel ?? ALL);
   const [sellerValue, setSellerValue] = useState(sellerId ?? ALL);
   const [clientValue, setClientValue] = useState(clientId ?? ALL);
+  const [branchValues, setBranchValues] = useState(branchIds);
+  const [tagValues, setTagValues] = useState(tagIds);
   const [error, setError] = useState('');
 
   return (
@@ -119,7 +139,7 @@ export function ReportFilters({
         placeholder={t('status')}
         summaryLabel={(count) => t('statusCount', { count })}
         clearLabel={t('clearStatus')}
-        icon={<TagIcon aria-hidden="true" className="size-4" />}
+        icon={<CircleDotIcon aria-hidden="true" className="size-4" />}
         aria-label={t('status')}
         className="min-w-40 flex-1"
       />
@@ -167,6 +187,32 @@ export function ReportFilters({
         aria-label={t('client')}
         className="min-w-36 flex-1"
       />
+      {tags.length > 0 ? (
+        <MultiCombobox
+          options={tags.map((tag) => ({ value: tag.id, label: tag.name }))}
+          values={tagValues}
+          onValuesChange={setTagValues}
+          placeholder={t('tag')}
+          summaryLabel={(count) => t('tagCount', { count })}
+          clearLabel={t('clearTag')}
+          icon={<TagIcon aria-hidden="true" className="size-4" />}
+          aria-label={t('tag')}
+          className="min-w-36 flex-1"
+        />
+      ) : null}
+      {showBranch ? (
+        <MultiCombobox
+          options={branches.map((branch) => ({ value: branch.id, label: branch.name }))}
+          values={branchValues}
+          onValuesChange={setBranchValues}
+          placeholder={t('branch')}
+          summaryLabel={(count) => t('branchCount', { count })}
+          clearLabel={t('clearBranch')}
+          icon={<StoreIcon aria-hidden="true" className="size-4" />}
+          aria-label={t('branch')}
+          className="min-w-36 flex-1"
+        />
+      ) : null}
       {statusValues.map((status) => (
         <input key={status} type="hidden" name="status" value={status} />
       ))}
@@ -175,6 +221,14 @@ export function ReportFilters({
         <input type="hidden" name="seller_id" value={sellerValue} />
       ) : null}
       {clientValue !== ALL ? <input type="hidden" name="client_id" value={clientValue} /> : null}
+      {tagValues.map((tag) => (
+        <input key={tag} type="hidden" name="tag_id" value={tag} />
+      ))}
+      {showBranch
+        ? branchValues.map((branch) => (
+            <input key={branch} type="hidden" name="branch_id" value={branch} />
+          ))
+        : null}
       <div className="flex items-center gap-2">
         <Button type="submit">{t('apply')}</Button>
         <Button asChild variant="ghost">

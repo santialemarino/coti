@@ -16,7 +16,7 @@ export function ReportBranches({
   const t = useTranslations('reports.branches');
 
   return (
-    <ReportSection flush title={t('title')}>
+    <ReportSection flush title={t('title')} empty={branches.length === 0 ? t('empty') : undefined}>
       <Table>
         <TableHeader>
           <TableRow>

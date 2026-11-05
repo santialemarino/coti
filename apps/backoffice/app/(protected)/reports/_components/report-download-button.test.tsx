@@ -83,6 +83,8 @@ describe('ReportDownloadButton', () => {
           channel="EMAIL"
           sellerId="seller-1"
           clientId="client-1"
+          branchIds={['branch-1', 'branch-2']}
+          tagIds={['tag-1']}
         />
       </NextIntlClientProvider>,
     );
@@ -91,7 +93,7 @@ describe('ReportDownloadButton', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/reports/pdf?from=2026-10-01&to=2026-10-02&status=SENT%2CACCEPTED&channel=EMAIL&seller_id=seller-1&client_id=client-1',
+      '/api/reports/pdf?from=2026-10-01&to=2026-10-02&status=SENT%2CACCEPTED&channel=EMAIL&seller_id=seller-1&client_id=client-1&branch_id=branch-1%2Cbranch-2&tag_id=tag-1',
     );
   });
 

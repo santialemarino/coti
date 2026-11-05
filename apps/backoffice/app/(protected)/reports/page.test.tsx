@@ -24,12 +24,16 @@ vi.mock('@/lib/api/reports', () => ({ getSellerReport: vi.fn() }));
 vi.mock('next/form', () => ({
   default: (props: ComponentProps<'form'>) => <form {...props} />,
 }));
-vi.mock('@/lib/api/clients', () => ({ getClients: vi.fn() }));
+vi.mock('@/lib/api/clients', () => ({ getClients: vi.fn(), getClientTags: vi.fn() }));
+vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
+vi.mock('@/lib/auth/branch', () => ({ getActiveBranchId: vi.fn() }));
 vi.mock('@/lib/api/users', () => ({ getSellers: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ getSession: vi.fn() }));
 
 const { getSellerReport } = await import('@/lib/api/reports');
-const { getClients } = await import('@/lib/api/clients');
+const { getClients, getClientTags } = await import('@/lib/api/clients');
+const { getBranches } = await import('@/lib/api/branches');
+const { getActiveBranchId } = await import('@/lib/auth/branch');
 const { getSellers } = await import('@/lib/api/users');
 const { getSession } = await import('@/lib/auth/session');
 const { default: ReportsPage } = await import('@/app/(protected)/reports/page');
@@ -47,6 +51,8 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       sellerName: '',
       clientId: null,
       clientName: '',
+      branches: [],
+      tags: [],
     },
     kpis: {
       rfqsReceived: 12,
@@ -105,6 +111,9 @@ beforeEach(() => {
   });
   vi.mocked(getClients).mockResolvedValue([]);
   vi.mocked(getSellers).mockResolvedValue([]);
+  vi.mocked(getClientTags).mockResolvedValue([]);
+  vi.mocked(getBranches).mockResolvedValue([]);
+  vi.mocked(getActiveBranchId).mockResolvedValue('branch-1');
 });
 
 describe('ReportsPage', () => {
@@ -141,6 +150,8 @@ describe('ReportsPage', () => {
       channel: undefined,
       sellerId: undefined,
       clientId: undefined,
+      branchIds: [],
+      tagIds: [],
     });
     expect((screen.getByLabelText(copy.filters.from) as HTMLInputElement).value).toBe('2026-09-26');
     expect((screen.getByLabelText(copy.filters.to) as HTMLInputElement).value).toBe('2026-10-25');
@@ -158,6 +169,8 @@ describe('ReportsPage', () => {
           sellerName: 'Ana',
           clientId: 'client-1',
           clientName: 'Obra Norte',
+          branches: [],
+          tags: [],
         },
       }),
       {
@@ -175,6 +188,8 @@ describe('ReportsPage', () => {
       channel: 'EMAIL',
       sellerId: 'seller-1',
       clientId: 'client-1',
+      branchIds: [],
+      tagIds: [],
     });
     expect(
       [...container.querySelectorAll<HTMLInputElement>('input[name="status"]')].map(
@@ -188,6 +203,76 @@ describe('ReportsPage', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="client_id"]')?.value).toBe(
       'client-1',
     );
+  });
+
+  it('narrows by tag and, when no branch is selected, by branch', async () => {
+    vi.mocked(getActiveBranchId).mockResolvedValue(undefined);
+    vi.mocked(getClientTags).mockResolvedValue([
+      { id: 'tag-1', name: 'Mayorista', createdAt: '2026-10-01T00:00:00Z' },
+    ]);
+    vi.mocked(getBranches).mockResolvedValue([
+      {
+        id: 'moron',
+        name: 'Morón',
+        address: null,
+        email: null,
+        defaultExpiryDays: 7,
+        isActive: true,
+      },
+      {
+        id: 'bosch',
+        name: 'Villa Bosch',
+        address: null,
+        email: null,
+        defaultExpiryDays: 7,
+        isActive: true,
+      },
+    ]);
+    const { container } = await renderReport(
+      report({
+        scope: { multiBranch: true, branchId: null },
+        filters: {
+          ...report().filters,
+          branches: [{ id: 'moron', name: 'Morón' }],
+          tags: [{ id: 'tag-1', name: 'Mayorista' }],
+        },
+      }),
+      { branch_id: 'moron', tag_id: 'tag-1' },
+    );
+
+    expect(getSellerReport).toHaveBeenCalledWith(
+      expect.objectContaining({ branchIds: ['moron'], tagIds: ['tag-1'] }),
+    );
+    expect(screen.getByRole('combobox', { name: copy.filters.branch })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: copy.filters.tag })).toBeTruthy();
+    expect(container.querySelector<HTMLInputElement>('input[name="branch_id"]')?.value).toBe(
+      'moron',
+    );
+    expect(container.querySelector<HTMLInputElement>('input[name="tag_id"]')?.value).toBe('tag-1');
+  });
+
+  it('offers no branch filter once a branch is selected', async () => {
+    vi.mocked(getBranches).mockResolvedValue([
+      {
+        id: 'moron',
+        name: 'Morón',
+        address: null,
+        email: null,
+        defaultExpiryDays: 7,
+        isActive: true,
+      },
+      {
+        id: 'bosch',
+        name: 'Villa Bosch',
+        address: null,
+        email: null,
+        defaultExpiryDays: 7,
+        isActive: true,
+      },
+    ]);
+    await renderReport(report());
+
+    expect(screen.queryByRole('combobox', { name: copy.filters.branch })).toBeNull();
   });
 
   it('hides the seller filter from a non-administrator', async () => {

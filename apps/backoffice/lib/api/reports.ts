@@ -14,6 +14,8 @@ interface SellerReportRaw {
     seller_name: string;
     client_id: string | null;
     client_name: string;
+    branches: { id: string; name: string }[];
+    tags: { id: string; name: string }[];
   };
   kpis: {
     rfqs_received: number;
@@ -55,6 +57,8 @@ export interface SellerReportFilters {
   sellerName: string;
   clientId: string | null;
   clientName: string;
+  branches: { id: string; name: string }[];
+  tags: { id: string; name: string }[];
 }
 
 export interface SellerReportFilterSelection {
@@ -64,6 +68,8 @@ export interface SellerReportFilterSelection {
   channel?: string;
   sellerId?: string;
   clientId?: string;
+  branchIds?: string[];
+  tagIds?: string[];
 }
 
 export interface SellerReport {
@@ -112,6 +118,8 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       sellerName: raw.filters.seller_name,
       clientId: raw.filters.client_id,
       clientName: raw.filters.client_name,
+      branches: raw.filters.branches ?? [],
+      tags: raw.filters.tags ?? [],
     },
     kpis: {
       rfqsReceived: raw.kpis.rfqs_received,
@@ -179,6 +187,8 @@ export async function getSellerReport(
       channel: filters.channel,
       seller_id: filters.sellerId,
       client_id: filters.clientId,
+      branch_id: filters.branchIds?.length ? filters.branchIds.join(',') : undefined,
+      tag_id: filters.tagIds?.length ? filters.tagIds.join(',') : undefined,
     },
   });
   return mapSellerReport(raw);

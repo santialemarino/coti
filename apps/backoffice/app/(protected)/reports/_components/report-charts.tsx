@@ -203,6 +203,7 @@ export function TimelineChart({
   acceptedLabel,
   dateLabel,
   ariaLabel,
+  scrollLabel,
   formatDate,
   formatValue,
 }: {
@@ -211,6 +212,8 @@ export function TimelineChart({
   acceptedLabel: string;
   dateLabel: string;
   ariaLabel: string;
+  // Names the scrollable region apart from the chart, so a screen reader does not hear it twice.
+  scrollLabel: string;
   formatDate: (date: string) => string;
   formatValue: (value: number) => string;
 }) {
@@ -231,7 +234,7 @@ export function TimelineChart({
       <div
         tabIndex={0}
         role="group"
-        aria-label={ariaLabel}
+        aria-label={scrollLabel}
         className="overflow-x-auto rounded-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
       >
         <div
