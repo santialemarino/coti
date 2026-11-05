@@ -9,6 +9,7 @@ import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { cn } from '@repo/ui/lib';
 import { OnboardingChecklist } from '@/app/(protected)/_components/onboarding-checklist';
 import { SettingsNav, type SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
+import { ClientContactSuggestions } from '@/app/(protected)/clients/_components/client-contact-suggestions';
 import { RfqCreateButton } from '@/app/(protected)/rfqs/_components/rfq-create-button';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqSidebarList } from '@/app/(protected)/rfqs/_components/rfq-sidebar-list';
@@ -36,6 +37,7 @@ export function ContextColumn({ settingsNav, onboarding }: ContextColumnProps) {
   const pathname = usePathname();
   const t = useTranslations('rfqs');
   const tSettings = useTranslations('settings');
+  const tClients = useTranslations('clients');
   const { records, hasQueue, reload } = useRfqList();
   // Server renders assume a wide screen, the shape the column has there.
   const wide = useMediaQuery(WIDE, true);
@@ -86,6 +88,11 @@ export function ContextColumn({ settingsNav, onboarding }: ContextColumnProps) {
         role={isPage ? 'main' : undefined}
         className="flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:bg-transparent max-lg:border-r-0"
       >
+        {section === 'clients' ? (
+          <ColumnPanel hidden={false} title={tClients('title')} isPage={false}>
+            <ClientContactSuggestions compact />
+          </ColumnPanel>
+        ) : null}
         {/* Both stay mounted so the queue keeps its open stacks across a visit to settings; the one
             on show fades in each time it returns. */}
         {hasQueue ? (

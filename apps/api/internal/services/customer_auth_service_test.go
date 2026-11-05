@@ -95,13 +95,13 @@ func customerAuthFixture() (*CustomerAuthService, *customerAuthFake, *fakeDB) {
 	f := &customerAuthFake{site: domain.CustomerSite{AccountID: uuid.New(), Hostname: "supplier.coti.test"}}
 	db := &fakeDB{}
 	cfg := config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12}
-	svc := NewCustomerAuthService(db, f, cfg, func() time.Time { return fixedNow })
+	svc := NewCustomerAuthService(db, f, cfg, func() time.Time { return fixedNow }).WithClientProfiles(fakeCustomerProfileRegistrar{})
 	return svc, f, db
 }
 
 func registerCustomer(t *testing.T, svc *CustomerAuthService) *domain.CustomerLogin {
 	t.Helper()
-	login, err := svc.Register(context.Background(), "supplier.coti.test", domain.CustomerRegistration{TaxID: "20-12345678-6", Password: "Customer-pass123!"})
+	login, err := svc.Register(context.Background(), "supplier.coti.test", domain.CustomerRegistration{Name: "Juan Perez", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: "customer@example.test", Primary: true}}, TaxID: "20-12345678-6", Password: "Customer-pass123!"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,13 @@ func TestCustomerAuthRegistrationRejectsInvalidAndDuplicateCredentials(t *testin
 		}
 	}
 	registerCustomer(t, svc)
-	if _, err := svc.Register(context.Background(), store.site.Hostname, domain.CustomerRegistration{TaxID: store.identity.TaxID, Password: "Customer-pass123!"}); !errors.Is(err, domain.ErrConflict) {
+	if _, err := svc.Register(context.Background(), store.site.Hostname, domain.CustomerRegistration{Name: "Juan Perez", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: "customer@example.test", Primary: true}}, TaxID: store.identity.TaxID, Password: "Customer-pass123!"}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate registration: %v", err)
 	}
+}
+
+type fakeCustomerProfileRegistrar struct{}
+
+func (fakeCustomerProfileRegistrar) RegisterProfile(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ClientContactUpdate) error {
+	return nil
 }

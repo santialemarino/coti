@@ -41,6 +41,9 @@ type RateLimitOptions struct {
 	// Identify reads a stable caller identity from a bearer, when there is one. It is here
 	// only to have something to count by and never stands in for session validation.
 	Identify func(token string) (string, bool)
+	// PerCustomer counts by the customer RequireCustomer authenticated, so it only means something
+	// on a route mounted after it.
+	PerCustomer bool
 }
 
 // Allowance reports whether a caller may go on, and has already answered 429 when not. It is
@@ -71,25 +74,33 @@ func NewAllowance(limiter Limiter, opts RateLimitOptions) Allowance {
 		if allowed {
 			return true
 		}
-
-		retryAfter := int(math.Ceil(retryIn.Seconds()))
-		if retryAfter < 1 {
-			retryAfter = 1
-		}
-		c.Header("Retry-After", strconv.Itoa(retryAfter))
-		// Which limit was reached is deliberately absent: it would tell a caller probing the
-		// API how its buckets are laid out.
-		_ = c.Error(domain.ErrRateLimited)
-		c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
-			Error:             "too many requests",
-			Code:              string(domain.CodeRateLimited),
-			RetryAfterSeconds: retryAfter,
-		})
+		refuseRateLimited(c, retryIn)
 		return false
 	}
 }
 
+func refuseRateLimited(c *gin.Context, retryIn time.Duration) {
+	retryAfter := int(math.Ceil(retryIn.Seconds()))
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	c.Header("Retry-After", strconv.Itoa(retryAfter))
+	// Which limit was reached is deliberately absent: it would tell a caller probing the
+	// API how its buckets are laid out.
+	_ = c.Error(domain.ErrRateLimited)
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, dto.RateLimitResponse{
+		Error:             "too many requests",
+		Code:              string(domain.CodeRateLimited),
+		RetryAfterSeconds: retryAfter,
+	})
+}
+
 func callerKey(c *gin.Context, opts RateLimitOptions) string {
+	if opts.PerCustomer {
+		if p, ok := CustomerFrom(c); ok {
+			return "customer:" + p.AccountID.String() + ":" + p.CustomerID.String()
+		}
+	}
 	if opts.Identify != nil {
 		if raw := bearerToken(c); raw != "" {
 			if id, valid := opts.Identify(raw); valid {

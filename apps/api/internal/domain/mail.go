@@ -12,6 +12,10 @@ type EmailMessage struct {
 	// ReplyTo is where an answer goes when it should not go to the sender, blank otherwise.
 	ReplyTo     string
 	ReplyToName string
+	// FromName replaces the platform's display name; the sending address never changes.
+	FromName string
+	// InReplyTo is a validated Message-ID the message threads under, blank otherwise.
+	InReplyTo string
 }
 
 // Mailer delivers a rendered message. Adapters live in internal/mail and are bound in the

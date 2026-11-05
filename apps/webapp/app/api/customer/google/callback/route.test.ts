@@ -1,15 +1,18 @@
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { cookieJar } from '@repo/vitest-config/cookies';
 import { GET } from '@/app/api/customer/google/callback/route';
 import {
+  GOOGLE_EMAIL_COOKIE,
+  GOOGLE_EMAIL_PROVEN_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   GOOGLE_STATE_COOKIE,
   postCustomerAuth,
 } from '@/lib/auth/customer-flow';
 import { acceptCustomerSession } from '@/lib/auth/customer-session';
+import { localGoogleState } from '@/lib/auth/local-google-flow';
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('@/lib/auth/customer-flow', async (original) => ({
@@ -42,6 +45,34 @@ function callback(value = state) {
 }
 beforeEach(() => vi.clearAllMocks());
 
+it('keeps the supplier host after signup when Next normalizes the callback URL', async () => {
+  const localState = localGoogleState(state, 'http://sanmartin.localhost:3001');
+  const jar = flow();
+  jar.set(
+    GOOGLE_STATE_COOKIE,
+    JSON.stringify({
+      state: localState,
+      nonce: 'n'.repeat(43),
+      verifier: 'v'.repeat(43),
+      next: '/orders',
+      expiresAt: Date.now() + 60000,
+    }),
+  );
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ signup_token: 'p'.repeat(43) })),
+  );
+  const response = await GET(
+    new NextRequest(
+      'http://localhost:3001/api/customer/google/callback?code=provider-code&state=' + localState,
+      { headers: { host: 'sanmartin.localhost:3001' } },
+    ),
+  );
+  expect(response.headers.get('location')).toBe(
+    'http://sanmartin.localhost:3001/google-complete?next=%2Fnew-request',
+  );
+  expect(jar.set).toHaveBeenCalledWith(GOOGLE_SIGNUP_COOKIE, 'p'.repeat(43), expect.anything());
+});
+
 it('rejects a mismatched or expired browser state before exchanging any code', async () => {
   flow();
   const denied = await GET(callback('wrong-state'));
@@ -72,9 +103,59 @@ it('keeps a first-time Google identity in a short-lived HttpOnly cookie until CU
     'p'.repeat(43),
     expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
   );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    '',
+    expect.objectContaining({ expires: new Date(0), path: '/' }),
+  );
   expect(acceptCustomerSession).not.toHaveBeenCalled();
   await GET(callback());
   expect(postCustomerAuth).toHaveBeenCalledTimes(1);
+});
+
+it('keeps the Google-verified address to offer it as an optional contact', async () => {
+  const jar = flow();
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        signup_token: 'p'.repeat(43),
+        signup_email: 'juan@gmail.com',
+        signup_email_proven: true,
+      }),
+    ),
+  );
+  await GET(callback());
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    'juan@gmail.com',
+    expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+  );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_PROVEN_COOKIE,
+    '1',
+    expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }),
+  );
+});
+
+it('clears the proven mark for an address Google does not prove', async () => {
+  const jar = flow();
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(
+      JSON.stringify({ signup_token: 'p'.repeat(43), signup_email: 'juan@corralon.com.ar' }),
+    ),
+  );
+  await GET(callback());
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_COOKIE,
+    'juan@corralon.com.ar',
+    expect.objectContaining({ httpOnly: true }),
+  );
+  expect(jar.set).toHaveBeenCalledWith(
+    GOOGLE_EMAIL_PROVEN_COOKIE,
+    '',
+    expect.objectContaining({ expires: new Date(0), path: '/' }),
+  );
+  expect(jar.set).not.toHaveBeenCalledWith(GOOGLE_EMAIL_PROVEN_COOKIE, '1', expect.anything());
 });
 
 it('starts a known account session and refuses an external post-login destination', async () => {
@@ -92,4 +173,45 @@ it('starts a known account session and refuses an external post-login destinatio
   const response = await GET(callback());
   expect(acceptCustomerSession).toHaveBeenCalledWith(session);
   expect(response.headers.get('location')).toBe('https://supplier.test/orders');
+});
+
+afterEach(() => vi.unstubAllEnvs());
+it('relays the local provider code before consuming the supplier cookie and validates state there', async () => {
+  const localState = localGoogleState(state, 'http://sanmartin.localhost:3001');
+  const relay = await GET(
+    new NextRequest(
+      'http://localhost:3001/api/customer/google/callback?code=provider-code&state=' + localState,
+    ),
+  );
+  expect(relay.headers.get('location')).toBe(
+    'http://sanmartin.localhost:3001/api/customer/google/callback?code=provider-code&state=' +
+      localState,
+  );
+  expect(cookies).not.toHaveBeenCalled();
+  expect(postCustomerAuth).not.toHaveBeenCalled();
+  const jar = flow();
+  jar.set(
+    GOOGLE_STATE_COOKIE,
+    JSON.stringify({
+      state: localState,
+      nonce: 'n'.repeat(43),
+      verifier: 'v'.repeat(43),
+      next: '/orders',
+      expiresAt: Date.now() + 60000,
+    }),
+  );
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ session: { session_token: 'token' } })),
+  );
+  const completed = await GET(new NextRequest(relay.headers.get('location')!));
+  expect(completed.headers.get('location')).toBe('http://sanmartin.localhost:3001/orders');
+  expect(acceptCustomerSession).toHaveBeenCalledTimes(1);
+  const denied = await GET(
+    new NextRequest(
+      'http://otro.localhost:3001/api/customer/google/callback?code=provider-code&state=' +
+        localState,
+    ),
+  );
+  expect(denied.headers.get('location')).toContain('/login?error=googleFailed');
+  expect(acceptCustomerSession).toHaveBeenCalledTimes(1);
 });

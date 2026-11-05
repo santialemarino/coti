@@ -22,9 +22,10 @@ import type { PublicRfqSite } from '@/lib/api/public-rfqs';
 interface PublicRfqSiteFormProps {
   site: PublicRfqSite;
   taxId?: string;
+  contact?: { name: string; email: string; phone: string };
 }
 
-export function PublicRfqSiteForm({ site, taxId }: PublicRfqSiteFormProps) {
+export function PublicRfqSiteForm({ site, taxId, contact }: PublicRfqSiteFormProps) {
   const t = useTranslations('rfq');
   const reduced = useReducedMotion();
   const [channelId, setChannelId] = useState('');
@@ -48,6 +49,7 @@ export function PublicRfqSiteForm({ site, taxId }: PublicRfqSiteFormProps) {
             channelId={channelId}
             destination={branch.destination}
             taxId={taxId}
+            contact={contact}
           />
         ) : (
           <main className="flex flex-col min-h-dvh items-center px-4 py-8 gap-y-8 sm:px-6 sm:py-12">

@@ -107,7 +107,8 @@ CREATE TYPE ai_operation AS ENUM (
   'CATALOG_MATCH_REVIEW',
   'CATALOG_EMBEDDING',
   'CORRECTION_LEARNING',
-  'CHANGE_REQUEST_HANDLING'
+  'CHANGE_REQUEST_HANDLING',
+  'FOLLOWUP_DRAFT'
 );
 
 -- =============================================================================
@@ -121,12 +122,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Inactivity is quote.updated_at: raising the follow-up flag must not count as activity, and any other
+-- write to the quote is activity that settles the flag.
+CREATE OR REPLACE FUNCTION set_quote_updated_at() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.updated_at = OLD.updated_at
+     AND (NEW.needs_followup, NEW.followup_flagged_at) IS DISTINCT FROM (OLD.needs_followup, OLD.followup_flagged_at)
+     AND to_jsonb(NEW) - ARRAY['needs_followup', 'followup_flagged_at'] = to_jsonb(OLD) - ARRAY['needs_followup', 'followup_flagged_at'] THEN
+    RETURN NEW;
+  END IF;
+  NEW.updated_at = now();
+  NEW.needs_followup = FALSE;
+  NEW.followup_flagged_at = NULL;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Resolves the request's account from the per-transaction GUC. current_setting with its
 -- second argument true returns NULL when unset, so a session with no context matches no
 -- row: it fails closed.
 CREATE OR REPLACE FUNCTION app_current_account_id() RETURNS UUID
   LANGUAGE sql STABLE
   AS $$ SELECT NULLIF(current_setting('app.current_account_id', true), '')::uuid $$;
+
+-- Called by every data migration: under forced RLS, or as a non-owner, its statements would match
+-- zero rows.
+CREATE FUNCTION assert_migration_sees_all_rows(VARIADIC tables regclass[]) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+ target regclass;
+BEGIN
+ IF (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user) THEN
+  RETURN;
+ END IF;
+ FOREACH target IN ARRAY tables LOOP
+  IF EXISTS(SELECT 1 FROM pg_class WHERE oid=target AND relrowsecurity AND (relforcerowsecurity OR NOT pg_has_role(current_user,relowner,'USAGE'))) THEN
+   RAISE EXCEPTION 'Row level security filters % for role %; a data migration on it would silently touch zero rows', target, current_user
+    USING HINT='Run the migration as a superuser or a BYPASSRLS role.';
+  END IF;
+ END LOOP;
+END;
+$$;
 
 -- =============================================================================
 -- IDENTITY / TENANT
@@ -391,7 +426,7 @@ CREATE TABLE branch_combo (
 -- =============================================================================
 
 -- Contact details are nullable: a counter sale with none is allowed and enriched later.
--- Missing contact never blocks creation.
+-- Provisional clients have no fiscal identifier.
 -- uq_client_account exists so a child can reference the (account, client) pair rather than the id
 -- alone: the id alone would let another account's client be attached.
 CREATE TABLE client (
@@ -401,10 +436,13 @@ CREATE TABLE client (
   phone          VARCHAR(64),
   email          VARCHAR(255),
   origin_channel client_origin,
+  merged_into UUID,
   notes          VARCHAR(512),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_account UNIQUE (account_id, id),
+  CONSTRAINT fk_client_merge FOREIGN KEY (account_id,merged_into) REFERENCES client(account_id,id),
+  CONSTRAINT ck_client_merge CHECK(merged_into IS NULL OR merged_into<>id),
   legal_name VARCHAR(255),
   -- CUIT or CUIL, only from the customer's own account.
   tax_id VARCHAR(11) CONSTRAINT ck_client_tax_id CHECK (tax_id ~ '^[0-9]{11}$'),
@@ -449,7 +487,8 @@ CREATE TABLE channel (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   identifier VARCHAR(255),
-  CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier)
+  CONSTRAINT uq_channel_branch_type_identifier UNIQUE (branch_id, type, identifier),
+  CONSTRAINT uq_channel_account_branch UNIQUE(account_id,branch_id,id)
 );
 
 -- One provider event reserves either the RFQ it starts or the quote_message that continues a sent
@@ -501,6 +540,7 @@ CREATE TABLE gmail_authorization_state (
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
 -- not a third entity.
 CREATE TABLE rfq (
+ CONSTRAINT uq_rfq_account_id UNIQUE(account_id,id),
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
   branch_id   UUID NOT NULL,
@@ -1135,6 +1175,7 @@ ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_ac
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_channel FOREIGN KEY (channel_id) REFERENCES channel(id);
 ALTER TABLE inbound_channel_message ADD CONSTRAINT fk_inbound_channel_message_quote_message FOREIGN KEY (account_id, quote_message_id) REFERENCES quote_message(account_id, id);
+ALTER TABLE inbound_channel_message ADD CONSTRAINT uq_inbound_channel_message_account UNIQUE (account_id, id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_branch FOREIGN KEY (branch_id) REFERENCES branch(id);
 ALTER TABLE rfq ADD CONSTRAINT fk_rfq_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id);
@@ -1284,6 +1325,7 @@ CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active 
 
 CREATE INDEX idx_client_account ON client(account_id);
 CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_client_account_tax_id ON client(account_id, tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
@@ -1386,7 +1428,7 @@ CREATE TRIGGER trg_branch_combo_updated   BEFORE UPDATE ON branch_combo   FOR EA
 CREATE TRIGGER trg_client_updated         BEFORE UPDATE ON client         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_channel_updated        BEFORE UPDATE ON channel        FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_rfq_updated            BEFORE UPDATE ON rfq            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER trg_quote_updated          BEFORE UPDATE ON quote          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_quote_updated          BEFORE UPDATE ON quote          FOR EACH ROW EXECUTE FUNCTION set_quote_updated_at();
 CREATE TRIGGER trg_promotion_updated      BEFORE UPDATE ON promotion      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- =============================================================================
@@ -1613,8 +1655,6 @@ CREATE TABLE customer_identity (
   tax_id VARCHAR(11) NOT NULL CHECK (tax_id ~ '^[0-9]{11}$'),
   password_hash TEXT,
   google_subject VARCHAR(255),
-  recovery_email VARCHAR(255),
-  recovery_email_verified_at TIMESTAMPTZ,
   name VARCHAR(255),
   failed_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TIMESTAMPTZ,
@@ -1645,7 +1685,7 @@ ALTER TABLE customer_session ENABLE ROW LEVEL SECURITY;
 CREATE POLICY customer_session_account_isolation ON customer_session
   USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());
 CREATE UNIQUE INDEX uq_customer_google_subject ON customer_identity(account_id,google_subject) WHERE disabled_at IS NULL AND google_subject IS NOT NULL;
-CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP','VERIFY_EMAIL','RESET_PASSWORD');
+CREATE TYPE customer_auth_purpose AS ENUM ('GOOGLE_SIGNUP');
 CREATE TABLE customer_auth_challenge (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  account_id UUID NOT NULL REFERENCES account(id),
@@ -1661,3 +1701,225 @@ CREATE TABLE customer_auth_challenge (
 CREATE INDEX idx_customer_challenge_subject ON customer_auth_challenge(account_id,customer_id,purpose);
 ALTER TABLE customer_auth_challenge ENABLE ROW LEVEL SECURITY;
 CREATE POLICY customer_auth_challenge_account_isolation ON customer_auth_challenge USING (account_id=app_current_account_id()) WITH CHECK (account_id=app_current_account_id());
+
+CREATE TYPE client_contact_source AS ENUM ('LEGACY','CHANNEL','CUSTOMER','SELLER');
+CREATE TYPE client_contact_review_status AS ENUM ('PENDING','ASSOCIATED','SEPARATE','RECORDED','MERGED');
+
+CREATE TABLE client_contact (
+ CONSTRAINT uq_client_contact_account_id UNIQUE(account_id,id),
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ client_id UUID NOT NULL,
+ kind channel_type NOT NULL CHECK (kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+ -- The main contact the customer chose; without one it is the first WhatsApp proved, else the first contact.
+ is_main BOOLEAN NOT NULL DEFAULT FALSE,
+ source client_contact_source NOT NULL,
+ original_value VARCHAR(255),
+ verified_at TIMESTAMPTZ DEFAULT now(),
+ retired_at TIMESTAMPTZ,
+ declared_by UUID,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,client_id) REFERENCES client(account_id,id) ON DELETE CASCADE,
+ CONSTRAINT fk_client_contact_declared_by FOREIGN KEY (account_id,declared_by) REFERENCES customer_identity(account_id,id),
+ UNIQUE(account_id,client_id,kind,value),
+ CONSTRAINT ck_client_contact_main CHECK (NOT is_main OR (verified_at IS NOT NULL AND retired_at IS NULL))
+);
+CREATE UNIQUE INDEX uq_client_contact_primary ON client_contact(account_id,client_id,kind) WHERE is_primary;
+CREATE UNIQUE INDEX uq_client_contact_main ON client_contact(account_id,client_id) WHERE is_main;
+CREATE INDEX idx_client_contact_lookup ON client_contact(account_id,kind,value);
+
+
+CREATE UNIQUE INDEX uq_verified_client_contact ON client_contact(account_id,kind,value) WHERE verified_at IS NOT NULL AND retired_at IS NULL;
+
+CREATE TABLE client_contact_observation (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ branch_id UUID NOT NULL,
+ -- NULL when a migration, not an inbound message, raised the observation.
+ message_id UUID,
+ source_client_id UUID,
+ candidate_client_id UUID,
+ tax_id VARCHAR(11),
+ kind channel_type NOT NULL CHECK (kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ declared_name VARCHAR(255),
+ original_text TEXT NOT NULL,
+ status client_contact_review_status NOT NULL DEFAULT 'PENDING',
+ decided_by UUID,
+ decided_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,branch_id) REFERENCES branch(account_id,id),
+ FOREIGN KEY (account_id,source_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,candidate_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,decided_by) REFERENCES app_user(account_id,id),
+ CONSTRAINT fk_client_contact_observation_message FOREIGN KEY (account_id,message_id) REFERENCES inbound_channel_message(account_id,id),
+ UNIQUE(account_id,message_id,kind,value)
+);
+CREATE INDEX idx_contact_observation_pending ON client_contact_observation(account_id,branch_id,created_at) WHERE status='PENDING';
+ALTER TABLE client_contact ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_contact_account_isolation ON client_contact USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+ALTER TABLE client_contact_observation ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_contact_observation_account_isolation ON client_contact_observation USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+CREATE FUNCTION seed_client_contacts() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.phone IS NOT NULL AND btrim(NEW.phone)<>'' THEN
+  INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source) VALUES(NEW.account_id,NEW.id,'WHATSAPP',regexp_replace(NEW.phone,'[^0-9+]','','g'),TRUE,'SELLER');
+ END IF;
+ IF NEW.email IS NOT NULL AND btrim(NEW.email)<>'' THEN
+  INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source) VALUES(NEW.account_id,NEW.id,'EMAIL',lower(btrim(NEW.email)),TRUE,'SELLER');
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER seed_client_contacts AFTER INSERT ON client FOR EACH ROW EXECUTE FUNCTION seed_client_contacts();
+
+CREATE TYPE client_contact_challenge_purpose AS ENUM ('VERIFY','RECOVER');
+
+CREATE TABLE client_contact_challenge (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ customer_id UUID NOT NULL,
+ client_id UUID NOT NULL,
+ purpose client_contact_challenge_purpose NOT NULL,
+ kind channel_type NOT NULL CHECK(kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ token_hash VARCHAR(64) NOT NULL,
+ attempts INTEGER NOT NULL DEFAULT 0,
+ expires_at TIMESTAMPTZ NOT NULL,
+ consumed_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id),
+ FOREIGN KEY(account_id,client_id) REFERENCES client(account_id,id)
+);
+CREATE INDEX idx_contact_challenge_customer ON client_contact_challenge(account_id,customer_id,created_at);
+CREATE INDEX idx_contact_challenge_destination ON client_contact_challenge(kind,value,created_at);
+ALTER TABLE client_contact_challenge ENABLE ROW LEVEL SECURITY;
+CREATE POLICY contact_challenge_account_isolation ON client_contact_challenge USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+-- One row per wrong proof, so failed guesses against a destination are counted across every supplier.
+CREATE TABLE client_contact_challenge_failure (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ challenge_id UUID NOT NULL REFERENCES client_contact_challenge(id) ON DELETE CASCADE,
+ kind channel_type NOT NULL CHECK(kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_contact_challenge_failure_destination ON client_contact_challenge_failure(account_id,kind,value,created_at);
+ALTER TABLE client_contact_challenge_failure ENABLE ROW LEVEL SECURITY;
+CREATE POLICY contact_challenge_failure_account_isolation ON client_contact_challenge_failure USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+-- Runs as the table owner so the anti-spam cap sees every supplier's proofs; returns only counts, and
+-- only for the caller's own account.
+CREATE FUNCTION contact_destination_activity(p_account_id UUID, p_kind channel_type, p_value TEXT, p_challenges_since TIMESTAMPTZ, p_failures_since TIMESTAMPTZ, p_all_since TIMESTAMPTZ)
+ RETURNS TABLE(supplier_challenges INTEGER, supplier_failures INTEGER, all_challenges INTEGER)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+ IF p_account_id IS DISTINCT FROM app_current_account_id() THEN
+  RAISE EXCEPTION 'Destination activity is readable only for the current account' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT
+  (SELECT count(*)::int FROM client_contact_challenge c WHERE c.account_id=p_account_id AND c.kind=p_kind AND c.value=p_value AND c.created_at>p_challenges_since),
+  (SELECT count(*)::int FROM client_contact_challenge_failure f WHERE f.account_id=p_account_id AND f.kind=p_kind AND f.value=p_value AND f.created_at>p_failures_since),
+  (SELECT count(*)::int FROM client_contact_challenge c WHERE c.kind=p_kind AND c.value=p_value AND c.created_at>p_all_since);
+END;
+$$;
+REVOKE ALL ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION contact_destination_activity(UUID,channel_type,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ) TO coti_app;
+
+CREATE TYPE client_contact_outbox_purpose AS ENUM ('REQUEST_NAME');
+CREATE TYPE client_contact_outbox_status AS ENUM ('PENDING','SENDING','SENT','FAILED','COMPLETED');
+
+CREATE TABLE client_contact_outbox (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ branch_id UUID NOT NULL,
+ channel_id UUID NOT NULL,
+ kind channel_type NOT NULL CHECK(kind IN ('WHATSAPP','EMAIL')),
+ value VARCHAR(255) NOT NULL,
+ purpose client_contact_outbox_purpose NOT NULL,
+ status client_contact_outbox_status NOT NULL DEFAULT 'PENDING',
+ provider_reference TEXT,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ status_changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY(account_id,branch_id) REFERENCES branch(account_id,id),
+ FOREIGN KEY(account_id,branch_id,channel_id) REFERENCES channel(account_id,branch_id,id),
+ UNIQUE(account_id,kind,value,purpose)
+);
+ALTER TABLE client_contact_outbox ENABLE ROW LEVEL SECURITY;
+CREATE POLICY contact_outbox_account_isolation ON client_contact_outbox USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+
+CREATE FUNCTION protect_client_tax_id() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF OLD.tax_id IS NOT NULL AND NEW.tax_id IS DISTINCT FROM OLD.tax_id THEN
+  RAISE EXCEPTION 'Client fiscal identifiers are immutable' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER protect_client_tax_id BEFORE UPDATE OF tax_id ON client FOR EACH ROW EXECUTE FUNCTION protect_client_tax_id();
+
+-- A registered profile is its customer's; only the schema owner, which runs migrations and teardown,
+-- may delete one.
+CREATE FUNCTION protect_registered_client() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF OLD.tax_id IS NOT NULL AND NOT pg_has_role(current_user,(SELECT relowner FROM pg_class WHERE oid=TG_RELID),'USAGE') THEN
+  RAISE EXCEPTION 'A client with a CUIT cannot be deleted' USING ERRCODE='23514';
+ END IF;
+ RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER protect_registered_client BEFORE DELETE ON client FOR EACH ROW EXECUTE FUNCTION protect_registered_client();
+
+CREATE TABLE customer_contact_ownership (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ customer_id UUID NOT NULL,
+ contact_id UUID NOT NULL,
+ includes_profile_history BOOLEAN NOT NULL,
+ verified_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id) ON DELETE CASCADE,
+ FOREIGN KEY(account_id,contact_id) REFERENCES client_contact(account_id,id) ON DELETE CASCADE,
+ UNIQUE(account_id,customer_id,contact_id)
+);
+ALTER TABLE customer_contact_ownership ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_contact_ownership_account_isolation ON customer_contact_ownership
+ USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+CREATE TABLE customer_contact_history (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ customer_id UUID NOT NULL,
+ rfq_id UUID NOT NULL,
+ FOREIGN KEY(account_id,rfq_id) REFERENCES rfq(account_id,id) ON DELETE CASCADE,
+ kind channel_type NOT NULL CHECK(kind IN ('EMAIL','WHATSAPP')),
+ value VARCHAR(255) NOT NULL,
+ FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id) ON DELETE CASCADE,
+ UNIQUE(account_id,customer_id,rfq_id,kind,value)
+);
+ALTER TABLE customer_contact_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY customer_contact_history_account_isolation ON customer_contact_history
+ USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+CREATE TABLE client_merge_audit (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ account_id UUID NOT NULL REFERENCES account(id),
+ source_client_id UUID NOT NULL,
+ target_client_id UUID NOT NULL,
+ -- NULL when the customer's own contact proof merged the profiles.
+ merged_by UUID,
+ merged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ FOREIGN KEY (account_id,source_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,target_client_id) REFERENCES client(account_id,id),
+ FOREIGN KEY (account_id,merged_by) REFERENCES app_user(account_id,id)
+);
+CREATE INDEX idx_client_merge_audit_target ON client_merge_audit(account_id,target_client_id);
+ALTER TABLE client_merge_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_merge_audit_account_isolation ON client_merge_audit
+ USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());

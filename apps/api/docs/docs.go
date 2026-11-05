@@ -1089,6 +1089,134 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/client-contact-suggestions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List client contact suggestions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.ContactSuggestionResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/client-contact-suggestions/{suggestionId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Resolve a client contact suggestion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Suggestion ID",
+                        "name": "suggestionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Seller decision",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ResolveContactSuggestionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients": {
             "get": {
                 "security": [
@@ -1317,6 +1445,307 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/clients/{clientId}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Merge two client profiles without a CUIT",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Surviving client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Profile merged into the surviving one",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MergeClientRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/merge-candidates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List profiles a seller can merge with a client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientMergeCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Rename a client profile without a CUIT",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Branch filter",
+                        "name": "X-Branch-Id",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New name",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.RenameClientRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/registration-link": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Send customer registration or profile link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Selected branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Contact channel",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactRegistrationLinkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/tags": {
             "put": {
                 "security": [
@@ -1386,40 +1815,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/customer/sites/{hostname}/auth/forgot-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Request customer password recovery",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "CUIT/CUIL and recovery email",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerRecoveryRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Recovery request received"
-                    }
-                }
-            }
-        },
         "/v1/customer/sites/{hostname}/auth/google/complete": {
             "post": {
                 "consumes": [
@@ -1441,7 +1836,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Verified Google signup token and CUIT/CUIL",
+                        "description": "Verified Google signup token, CUIT/CUIL and contacts",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1721,6 +2116,204 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/customer/sites/{hostname}/auth/recovery/code": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Send an account recovery code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL and the chosen contact",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryCodeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryCodeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/recovery/options": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "List account recovery contacts",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CUIT/CUIL of the account",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryOptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryOptionsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/auth/recovery/reset": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-auth"
+                ],
+                "summary": "Reset a customer password with a recovery code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Code and new password",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerRecoveryResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerSessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/customer/sites/{hostname}/auth/register": {
             "post": {
                 "consumes": [
@@ -1742,12 +2335,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "CUIT/CUIL and password",
+                        "description": "CUIT/CUIL, credentials, full name and contacts",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.CustomerCredentialsRequest"
+                            "$ref": "#/definitions/dto.CustomerRegistrationRequest"
                         }
                     }
                 ],
@@ -1781,74 +2374,6 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
-                    }
-                }
-            }
-        },
-        "/v1/customer/sites/{hostname}/auth/reset-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Reset a customer password",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Recovery token and new password",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerPasswordResetRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Password reset"
-                    }
-                }
-            }
-        },
-        "/v1/customer/sites/{hostname}/auth/verify-email": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "tags": [
-                    "customer-auth"
-                ],
-                "summary": "Verify a customer recovery email",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Registered supplier hostname",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Verification token",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CustomerTokenRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Email verified"
                     }
                 }
             }
@@ -1985,6 +2510,337 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Get customer commercial profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerProfileResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Update customer commercial profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Commercial profile",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateCustomerProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit spent; retry_after_seconds says when",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/contacts/verification": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Request customer contact verification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Saved contact destination",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a cooldown, destination cap or lockout",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/contacts/verification/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Confirm customer contact verification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Challenge and received proof",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationConfirmation"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/main-contact": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Choose the customer's main contact",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "A verified contact of the profile",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CustomerMainContactRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -5981,6 +6837,77 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/followup-draft": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Drafts, from the quote as it stands, a message the seller can edit and send to a client who has not answered. It contains no prices and is never sent by Coti.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Draft a follow-up message",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteFollowupDraftResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ARCHIVED or QUOTE_NOT_SENT",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "AI_UNAVAILABLE",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/invoice": {
             "get": {
                 "security": [
@@ -9189,6 +10116,59 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientContactInput": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "WHATSAPP",
+                        "EMAIL"
+                    ]
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "dto.ClientContactResponse": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "WHATSAPP",
+                        "EMAIL"
+                    ]
+                },
+                "main": {
+                    "description": "Main marks the contact account recovery preselects; it is always a verified one.",
+                    "type": "boolean"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "verified": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.ClientFiscalResponse": {
             "type": "object",
             "properties": {
@@ -9237,6 +10217,17 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.ClientTagResponse"
+                    }
+                }
+            }
+        },
+        "dto.ClientMergeCandidatesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientResponse"
                     }
                 }
             }
@@ -9469,6 +10460,113 @@ const docTemplate = `{
             "properties": {
                 "imported_rows": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.ContactRegistrationLinkRequest": {
+            "type": "object",
+            "required": [
+                "kind"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "EMAIL",
+                        "WHATSAPP"
+                    ]
+                }
+            }
+        },
+        "dto.ContactSuggestionResponse": {
+            "type": "object",
+            "properties": {
+                "candidate_client_id": {
+                    "type": "string"
+                },
+                "candidate_name": {
+                    "type": "string"
+                },
+                "candidate_registered": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "declared_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "original_text": {
+                    "type": "string"
+                },
+                "source_client_id": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_registered": {
+                    "description": "SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.",
+                    "type": "boolean"
+                },
+                "tax_id": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ContactVerificationConfirmation": {
+            "type": "object",
+            "required": [
+                "id",
+                "token"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string",
+                    "maxLength": 128
+                }
+            }
+        },
+        "dto.ContactVerificationRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "EMAIL",
+                        "WHATSAPP"
+                    ]
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "dto.ContactVerificationResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
                 }
             }
         },
@@ -9975,10 +11073,6 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 72
                 },
-                "recovery_email": {
-                    "type": "string",
-                    "maxLength": 255
-                },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 20
@@ -10000,12 +11094,26 @@ const docTemplate = `{
                 "token"
             ],
             "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactInput"
+                    }
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "tax_id": {
                     "type": "string",
                     "maxLength": 20
                 },
                 "token": {
                     "type": "string"
+                },
+                "use_google_email": {
+                    "description": "UseGoogleEmail adds the Google address as a verified contact; a new registration needs it or a contact.",
+                    "type": "boolean"
                 }
             }
         },
@@ -10036,6 +11144,14 @@ const docTemplate = `{
             "properties": {
                 "session": {
                     "$ref": "#/definitions/dto.CustomerSessionResponse"
+                },
+                "signup_email": {
+                    "description": "SignupEmail is the Google address the customer may choose as a contact, sent only when Google verified it.",
+                    "type": "string"
+                },
+                "signup_email_proven": {
+                    "description": "SignupEmailProven is true when choosing SignupEmail verifies it; otherwise it needs a code.",
+                    "type": "boolean"
                 },
                 "signup_token": {
                     "type": "string"
@@ -10079,6 +11195,26 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CustomerMainContactRequest": {
+            "type": "object",
+            "required": [
+                "kind",
+                "value"
+            ],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "EMAIL",
+                        "WHATSAPP"
+                    ]
+                },
+                "value": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.CustomerOrderResponse": {
             "type": "object",
             "properties": {
@@ -10102,32 +11238,157 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.CustomerPasswordResetRequest": {
+        "dto.CustomerProfileResponse": {
             "type": "object",
-            "required": [
-                "password",
-                "token"
-            ],
             "properties": {
-                "password": {
-                    "type": "string",
-                    "maxLength": 72
+                "client_id": {
+                    "type": "string"
                 },
-                "token": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactResponse"
+                    }
+                },
+                "fiscal_address": {
+                    "type": "string"
+                },
+                "iva_condition": {
+                    "type": "string"
+                },
+                "legal_name": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "ownership_unproved": {
+                    "description": "OwnershipUnproved means an earlier profile with this CUIT stays hidden until the customer\nverifies a contact it already had; only what the customer entered is returned.",
+                    "type": "boolean"
+                },
+                "tax_id": {
                     "type": "string"
                 }
             }
         },
-        "dto.CustomerRecoveryRequest": {
+        "dto.CustomerRecoveryCodeRequest": {
             "type": "object",
             "required": [
-                "email",
+                "contact_id",
                 "tax_id"
             ],
             "properties": {
-                "email": {
+                "contact_id": {
+                    "type": "string"
+                },
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerRecoveryCodeResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CustomerRecoveryContactResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available is false while no code can reach the contact's channel.",
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "main": {
+                    "type": "boolean"
+                },
+                "masked": {
+                    "type": "string"
+                },
+                "preselected": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "dto.CustomerRecoveryOptionsRequest": {
+            "type": "object",
+            "required": [
+                "tax_id"
+            ],
+            "properties": {
+                "tax_id": {
+                    "type": "string",
+                    "maxLength": 20
+                }
+            }
+        },
+        "dto.CustomerRecoveryOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.CustomerRecoveryContactResponse"
+                    }
+                }
+            }
+        },
+        "dto.CustomerRecoveryResetRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "id",
+                "password"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "maxLength": 16
+                },
+                "id": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 72
+                }
+            }
+        },
+        "dto.CustomerRegistrationRequest": {
+            "type": "object",
+            "required": [
+                "contacts",
+                "name",
+                "password",
+                "tax_id"
+            ],
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactInput"
+                    }
+                },
+                "name": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 72
                 },
                 "tax_id": {
                     "type": "string",
@@ -10142,17 +11403,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/dto.CustomerIdentityResponse"
                 },
                 "session_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.CustomerTokenRequest": {
-            "type": "object",
-            "required": [
-                "token"
-            ],
-            "properties": {
-                "token": {
                     "type": "string"
                 }
             }
@@ -10764,6 +12014,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.MergeClientRequest": {
+            "type": "object",
+            "required": [
+                "source_client_id"
+            ],
+            "properties": {
+                "source_client_id": {
                     "type": "string"
                 }
             }
@@ -11537,6 +12798,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteFollowupDraftResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.QuoteItemAlternativeResponse": {
             "type": "object",
             "properties": {
@@ -12168,6 +13437,18 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RenameClientRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.ReplaceClientTagsRequest": {
             "type": "object",
             "properties": {
@@ -12204,6 +13485,24 @@ const docTemplate = `{
                     "minLength": 8
                 },
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ResolveContactSuggestionRequest": {
+            "type": "object",
+            "required": [
+                "action"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "SEPARATE",
+                        "MERGE"
+                    ]
+                },
+                "keep_client_id": {
                     "type": "string"
                 }
             }
@@ -13081,6 +14380,42 @@ const docTemplate = `{
                     ]
                 },
                 "legal_name": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateCustomerProfileRequest": {
+            "type": "object",
+            "required": [
+                "contacts",
+                "name"
+            ],
+            "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientContactInput"
+                    }
+                },
+                "fiscal_address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "iva_condition": {
+                    "type": "string",
+                    "enum": [
+                        "REGISTERED",
+                        "MONOTRIBUTO",
+                        "EXEMPT",
+                        "FINAL_CONSUMER"
+                    ]
+                },
+                "legal_name": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "name": {
                     "type": "string",
                     "maxLength": 255
                 }

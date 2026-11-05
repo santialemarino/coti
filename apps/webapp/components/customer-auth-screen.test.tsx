@@ -1,22 +1,31 @@
+import Link from 'next/link';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
 
-import { recoverCustomerPassword, signUpCustomer } from '@/app/login/actions';
+import { completeCustomerGoogle, signUpCustomer } from '@/app/login/actions';
 import type { CustomerAuthMode } from '@/components/customer-auth-schema';
 import { CustomerAuthScreen } from '@/components/customer-auth-screen';
 import messages from '@/translations/es.json';
+
+vi.mock('next/link', async (original) => {
+  const actual = await original<typeof import('next/link')>();
+  const { createElement } = await import('react');
+  return {
+    ...actual,
+    default: vi.fn((props: React.ComponentProps<typeof actual.default>) =>
+      createElement(actual.default, props),
+    ),
+  };
+});
 
 vi.mock('@/app/login/actions', () => ({
   signInCustomer: vi.fn(),
   signUpCustomer: vi.fn(),
   completeCustomerGoogle: vi.fn(),
-  recoverCustomerPassword: vi.fn(),
-  resetCustomerPassword: vi.fn(),
-  verifyCustomerEmail: vi.fn(),
 }));
 
-function screen(mode: CustomerAuthMode) {
+function screen(mode: CustomerAuthMode, googleEmail?: string) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -28,12 +37,25 @@ function screen(mode: CustomerAuthMode) {
         supplierName="Corralón Norte"
         next="/orders"
         minimum={12}
+        googleEmail={googleEmail}
         googleEnabled
       />
     </NextIntlClientProvider>,
   );
 }
 beforeEach(() => vi.clearAllMocks());
+
+it.each(['welcome'] as const)('starts Google with document navigation from %s', (mode) => {
+  const view = screen(mode);
+  expect(view.getByRole('link', { name: 'Continuar con Google' }).getAttribute('href')).toBe(
+    '/api/customer/google/start?next=%2Forders',
+  );
+  expect(
+    vi
+      .mocked(Link)
+      .mock.calls.some(([props]) => String(props.href).startsWith('/api/customer/google/start')),
+  ).toBe(false);
+});
 
 it('offers Google first with explicit local login and registration alternatives', () => {
   const view = screen('welcome');
@@ -45,9 +67,13 @@ it('offers Google first with explicit local login and registration alternatives'
   expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
 });
 
-it('creates password credentials without requiring a recovery email', async () => {
+it('creates password credentials with a single commercial contact', async () => {
   vi.mocked(signUpCustomer).mockResolvedValue({ error: 'unavailable' });
   const view = screen('signup');
+  fireEvent.change(view.getByLabelText('Nombre y apellido', { exact: false }), {
+    target: { value: 'Juan Perez' },
+  });
+  fireEvent.change(view.getByLabelText(/^WhatsApp/), { target: { value: '11 5555 0101' } });
   fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
     target: { value: '20123456786' },
   });
@@ -63,27 +89,78 @@ it('creates password credentials without requiring a recovery email', async () =
   );
 });
 
-it('asks for both CUIT/CUIL and email when requesting password recovery', async () => {
-  vi.mocked(recoverCustomerPassword).mockResolvedValue({ received: true });
-  const view = screen('forgot');
+it('asks for CUIT/CUIL and a contact, never a password, after Google has authenticated the user', () => {
+  const view = screen('google');
+  expect(view.getByLabelText('CUIT/CUIL', { exact: false })).toBeTruthy();
+  expect(view.getByLabelText('Email', { exact: true })).toBeTruthy();
+  expect(view.getByLabelText(/^WhatsApp/)).toBeTruthy();
+  expect(view.queryByRole('checkbox')).toBeNull();
+  expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
+});
+
+function fillGoogleIdentity(view: ReturnType<typeof screen>) {
+  fireEvent.change(view.getByLabelText('Nombre y apellido', { exact: false }), {
+    target: { value: 'Juan Perez' },
+  });
   fireEvent.change(view.getByLabelText('CUIT/CUIL', { exact: false }), {
     target: { value: '20123456786' },
   });
-  fireEvent.change(view.getByLabelText('Email', { exact: false }), {
-    target: { value: 'recovery@example.test' },
-  });
-  fireEvent.click(view.getByRole('button', { name: 'Enviar enlace' }));
-  await waitFor(() =>
-    expect(recoverCustomerPassword).toHaveBeenCalledWith(
-      expect.objectContaining({ taxId: '20123456786', email: 'recovery@example.test' }),
+}
+
+it('offers the Google address unchecked and refuses to continue without any contact', async () => {
+  const view = screen('google', 'juan@gmail.com');
+  const option = view.getByRole('checkbox', { name: 'Usar juan@gmail.com como contacto' });
+  expect(option.getAttribute('aria-checked')).toBe('false');
+  fillGoogleIdentity(view);
+  fireEvent.click(view.getByRole('button', { name: 'Continuar' }));
+  expect(
+    await view.findByText(
+      'Dejanos al menos un dato de contacto: tu email de Google, otro email o un WhatsApp.',
     ),
-  );
-  expect(await view.findByText('Revisá tu email')).toBeTruthy();
+  ).toBeTruthy();
+  expect(completeCustomerGoogle).not.toHaveBeenCalled();
 });
 
-it('asks only for CUIT/CUIL after Google has authenticated the user', () => {
-  const view = screen('google');
-  expect(view.getByLabelText('CUIT/CUIL', { exact: false })).toBeTruthy();
-  expect(view.queryByLabelText('Email', { exact: false })).toBeNull();
-  expect(view.queryByLabelText('Contraseña', { exact: false })).toBeNull();
+it('offers the selected Google address without verification instructions', () => {
+  const view = screen('google', 'juan@corralon.com.ar');
+  expect(
+    view.getByRole('checkbox', {
+      name: 'Usar juan@corralon.com.ar como contacto',
+    }),
+  ).toBeTruthy();
+});
+
+it('sends the Google address only when the customer chooses it', async () => {
+  vi.mocked(completeCustomerGoogle).mockResolvedValue({ error: 'unavailable' });
+  const view = screen('google', 'juan@gmail.com');
+  fillGoogleIdentity(view);
+  fireEvent.click(view.getByRole('checkbox', { name: 'Usar juan@gmail.com como contacto' }));
+  fireEvent.click(view.getByRole('button', { name: 'Continuar' }));
+  await waitFor(() =>
+    expect(completeCustomerGoogle).toHaveBeenCalledWith(
+      expect.objectContaining({ taxId: '20123456786', email: '', phone: '', useGoogleEmail: true }),
+    ),
+  );
+});
+
+it('fills and disables Email when Google is selected and restores the editable address when cleared', async () => {
+  vi.mocked(completeCustomerGoogle).mockResolvedValue({ error: 'unavailable' });
+  const view = screen('google', 'juan@gmail.com');
+  const email = view.getByLabelText('Email', { exact: true }) as HTMLInputElement;
+  const option = view.getByRole('checkbox', { name: 'Usar juan@gmail.com como contacto' });
+  expect(email.compareDocumentPosition(option) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(email, { target: { value: 'correo incompleto' } });
+  fireEvent.click(option);
+  expect(email.value).toBe('juan@gmail.com');
+  expect(email.disabled).toBe(true);
+  fillGoogleIdentity(view);
+  fireEvent.click(view.getByRole('button', { name: 'Continuar' }));
+  await waitFor(() =>
+    expect(completeCustomerGoogle).toHaveBeenCalledWith(
+      expect.objectContaining({ email: '', useGoogleEmail: true }),
+    ),
+  );
+  fireEvent.click(option);
+  expect(email.disabled).toBe(false);
+  expect(email.value).toBe('correo incompleto');
 });

@@ -1,0 +1,338 @@
+package services
+
+import (
+	"context"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
+)
+
+type contactProfiles interface {
+	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
+	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.Client, error)
+	GetSurvivor(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (uuid.UUID, error)
+	Create(context.Context, repository.Querier, uuid.UUID, domain.NewClient) (*domain.Client, error)
+}
+
+type contactStore interface {
+	ListForCustomer(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) ([]domain.ClientContact, error)
+	GetProfileAccess(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerProfileAccess, error)
+	SaveDeclared(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
+	Declare(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error
+	ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
+	SetMain(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
+	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
+	Merge(context.Context, repository.Querier, domain.Tenant, uuid.UUID, uuid.UUID) error
+	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error)
+	HasObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
+	FindProfiles(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) ([]domain.Client, error)
+	FindMergedRoute(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string) ([]domain.Client, error)
+	ListObservations(context.Context, repository.Querier, domain.Tenant) ([]domain.ContactObservation, error)
+	GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error)
+	CreateObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ContactObservation) error
+	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
+	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
+	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
+	ListMergeCandidates(context.Context, repository.Querier, domain.Tenant, uuid.UUID) ([]domain.Client, error)
+	LockMergeProfiles(context.Context, repository.Querier, domain.Tenant, []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error)
+	MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
+	CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
+	Lock(context.Context, repository.Querier, uuid.UUID, ...string) error
+	GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error)
+	SaveFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ClientContactUpdate) error
+}
+
+// ClientContactService manages customer-owned profiles and verified channel associations.
+type ClientContactService struct {
+	db          tenantTxRunner
+	profiles    contactProfiles
+	contacts    contactStore
+	messenger   domain.ContactMessenger
+	localOrigin string
+	maxContacts int
+	prompts     namePromptSettings
+}
+
+// NewClientContactService builds the commercial contact use cases.
+func NewClientContactService(db tenantTxRunner, profiles contactProfiles, contacts contactStore) *ClientContactService {
+	return &ClientContactService{db: db, profiles: profiles, contacts: contacts}
+}
+
+// WithContactLimit bounds how many contacts a customer can save on a profile.
+func (s *ClientContactService) WithContactLimit(max int) *ClientContactService {
+	s.maxContacts = max
+	return s
+}
+
+// ListSuggestions returns durable pending cases within the seller's branch reach.
+func (s *ClientContactService) ListSuggestions(ctx context.Context, tenant domain.Tenant) ([]domain.ContactObservation, error) {
+	var result []domain.ContactObservation
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		result, err = s.contacts.ListObservations(ctx, q, tenant)
+		return err
+	})
+	return result, err
+}
+
+// GetProfile reads only the authenticated supplier's unique CUIT/CUIL profile.
+func (s *ClientContactService) GetProfile(ctx context.Context, p domain.CustomerPrincipal) (*domain.ClientContactProfile, error) {
+	if p.CustomerID == uuid.Nil || !domain.ValidCUIT(p.TaxID) {
+		return nil, domain.ErrUnauthenticated
+	}
+	result := &domain.ClientContactProfile{TaxID: p.TaxID, Contacts: []domain.ClientContact{}}
+	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
+		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
+		if err != nil {
+			return err
+		}
+		if len(profiles) == 0 {
+			return nil
+		}
+		if len(profiles) != 1 {
+			return domain.ErrConflict
+		}
+		c := profiles[0]
+		result.ClientID = &c.ID
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, c.ID)
+		if err != nil {
+			return err
+		}
+		contacts, err := s.contacts.ListForCustomer(ctx, q, p, c.ID, access.Proved)
+		if err != nil {
+			return err
+		}
+		if contacts != nil {
+			result.Contacts = contacts
+		}
+		if !access.Proved {
+			result.OwnershipUnproved = true
+			if access.Name != nil {
+				result.Name = *access.Name
+			}
+			markDisplayedPrimary(result.Contacts)
+			return nil
+		}
+		fiscal, err := s.contacts.GetFiscal(ctx, q, p.AccountID, c.ID)
+		if err != nil {
+			return err
+		}
+		result.LegalName, result.IVACondition, result.Address = fiscal.LegalName, fiscal.IVACondition, fiscal.Address
+		if c.Name != nil {
+			result.Name = *c.Name
+		}
+		return nil
+	})
+	return result, err
+}
+
+// UpdateProfile saves authenticated declarations without changing recovery credentials.
+func (s *ClientContactService) UpdateProfile(ctx context.Context, p domain.CustomerPrincipal, in domain.ClientContactUpdate) error {
+	if p.CustomerID == uuid.Nil || !domain.ValidCUIT(p.TaxID) {
+		return domain.ErrUnauthenticated
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	if in.IVACondition != nil && !in.IVACondition.Valid() {
+		return domain.ErrInvalidInput
+	}
+	in.LegalName, in.Address = trimmedOrNil(in.LegalName), trimmedOrNil(in.Address)
+	if in.Name == "" || utf8.RuneCountInString(in.Name) > maxClientNameLength || strings.ContainsFunc(in.Name, unicode.IsControl) {
+		return domain.ErrInvalidInput
+	}
+	contacts, err := domain.NormalizeClientContacts(in.Contacts)
+	if err != nil {
+		return err
+	}
+	if len(contacts) == 0 {
+		return domain.ErrInvalidInput
+	}
+	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
+		if err := s.lockContactValues(ctx, q, p.AccountID, contacts); err != nil {
+			return err
+		}
+		if err := s.lockContactProfiles(ctx, q, p.AccountID, p.TaxID, nil); err != nil {
+			return err
+		}
+		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
+		if err != nil {
+			return err
+		}
+		var client *domain.Client
+		if len(profiles) == 0 {
+			client, err = s.profiles.Create(ctx, q, p.AccountID, domain.NewClient{TaxID: &p.TaxID})
+			if err != nil {
+				return err
+			}
+		} else if len(profiles) == 1 {
+			client = &profiles[0]
+		} else {
+			return domain.ErrConflict
+		}
+		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
+		if err != nil {
+			return err
+		}
+		stored, err := s.contacts.ListForCustomer(ctx, q, p, client.ID, access.Proved)
+		if err != nil {
+			return err
+		}
+		if err := s.checkContactLimit(contacts, len(stored)); err != nil {
+			return err
+		}
+		if !access.Proved {
+			if in.LegalName != nil || in.IVACondition != nil || in.Address != nil {
+				return domain.WithCode(domain.CodeProfileOwnershipUnproved, domain.ErrForbidden)
+			}
+			if err := s.contacts.UpdateCustomerName(ctx, q, p, in.Name); err != nil {
+				return err
+			}
+			return s.contacts.SaveDeclared(ctx, q, p, client.ID, contacts)
+		}
+		if err := s.contacts.UpdateName(ctx, q, p.AccountID, client.ID, in.Name); err != nil {
+			return err
+		}
+		if err := s.contacts.SaveFiscal(ctx, q, p.AccountID, client.ID, in); err != nil {
+			return err
+		}
+		if err := s.contacts.Save(ctx, q, p.AccountID, client.ID, contacts, "CUSTOMER"); err != nil {
+			return err
+		}
+		if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, client.ID); err != nil {
+			return err
+		}
+		return s.contacts.Declare(ctx, q, p, client.ID, contacts)
+	})
+}
+
+// SetMainContact makes one of the customer's verified contacts the profile's main one.
+func (s *ClientContactService) SetMainContact(ctx context.Context, p domain.CustomerPrincipal, kind domain.ChannelType, value string) error {
+	if p.CustomerID == uuid.Nil || !domain.ValidCUIT(p.TaxID) {
+		return domain.ErrUnauthenticated
+	}
+	value, err := domain.NormalizeClientContact(kind, value)
+	if err != nil {
+		return err
+	}
+	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
+		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
+		if err != nil {
+			return err
+		}
+		if len(profiles) != 1 {
+			return domain.ErrNotFound
+		}
+		return s.contacts.SetMain(ctx, q, p, profiles[0].ID, kind, value)
+	})
+}
+
+// checkContactLimit refuses a save that grows the profile past the cap, so a profile a merge already
+// took past it can still be saved as it is.
+func (s *ClientContactService) checkContactLimit(contacts []domain.ClientContact, stored int) error {
+	if s.maxContacts > 0 && len(contacts) > max(stored, s.maxContacts) {
+		return domain.WithCode(domain.CodeContactLimit, domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+// markDisplayedPrimary shows the first contact of each kind as primary, so a declared value that
+// matches the profile's real primary does not reveal it.
+func markDisplayedPrimary(contacts []domain.ClientContact) {
+	shown := make(map[domain.ChannelType]bool)
+	for i := range contacts {
+		contacts[i].Primary = !shown[contacts[i].Kind]
+		shown[contacts[i].Kind] = true
+	}
+}
+
+// RecordInbound identifies senders by verified contact without accepting a declared CUIT as identity.
+func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, messageID uuid.UUID, kind domain.ChannelType, value, original string, declared domain.ClientContactHints) error {
+	value, err := domain.NormalizeClientContact(kind, value)
+	if err != nil {
+		return nil
+	}
+	if err := s.lockContactValues(ctx, q, route.AccountID, []domain.ClientContact{{Kind: kind, Value: value}}); err != nil {
+		return err
+	}
+	seen, err := s.contacts.HasObservation(ctx, q, route.AccountID, messageID)
+	if err != nil || seen {
+		return err
+	}
+	profiles, err := s.findSender(ctx, q, route.AccountID, kind, value)
+	if err != nil {
+		return err
+	}
+	if err := s.lockContactProfiles(ctx, q, route.AccountID, "", profiles); err != nil {
+		return err
+	}
+	profiles, err = s.findSender(ctx, q, route.AccountID, kind, value)
+	if err != nil {
+		return err
+	}
+	observation := domain.ContactObservation{BranchID: route.BranchID, Kind: kind, Value: value, Original: original, TaxID: declared.TaxID, Status: domain.ContactReviewRecorded}
+	if declared.Name != nil {
+		name := strings.TrimSpace(*declared.Name)
+		if name != "" && utf8.RuneCountInString(name) <= maxClientNameLength && !strings.ContainsFunc(name, unicode.IsControl) {
+			observation.Name = &name
+		}
+	}
+	if len(profiles) > 1 {
+		return domain.ErrConflict
+	}
+	if len(profiles) == 1 {
+		observation.SourceClientID = &profiles[0].ID
+	} else {
+		name := value
+		if declared.DisplayName != nil {
+			label := strings.TrimSpace(*declared.DisplayName)
+			if label != "" && utf8.RuneCountInString(label) <= maxClientNameLength && !strings.ContainsFunc(label, unicode.IsControl) {
+				name = label
+			}
+		}
+		if observation.Name != nil {
+			name = *observation.Name
+		}
+		origin := domain.ClientOrigin(kind)
+		profile, err := s.profiles.Create(ctx, q, route.AccountID, domain.NewClient{Name: &name, OriginChannel: &origin})
+		if err != nil {
+			return err
+		}
+		if err := s.contacts.Save(ctx, q, route.AccountID, profile.ID, []domain.ClientContact{{Kind: kind, Value: value, Primary: true}}, "CHANNEL"); err != nil {
+			return err
+		}
+		if err := s.contacts.ProjectPrimaries(ctx, q, route.AccountID, profile.ID); err != nil {
+			return err
+		}
+		observation.SourceClientID = &profile.ID
+	}
+	if err := s.contacts.CreateObservation(ctx, q, route.AccountID, messageID, observation); err != nil {
+		return err
+	}
+	if store, ok := s.contacts.(contactOnboardingStore); ok {
+		if len(profiles) == 0 && observation.Name == nil {
+			if err := store.QueueNameRequest(ctx, q, route, kind, value); err != nil {
+				return err
+			}
+		}
+		if observation.Name != nil {
+			if err := store.CompleteNameRequest(ctx, q, route.AccountID, *observation.SourceClientID, kind, value, *observation.Name); err != nil {
+				return err
+			}
+		}
+		return store.AttachContactObservations(ctx, q, route.AccountID, *observation.SourceClientID, kind, value)
+	}
+	return nil
+}
+
+// findSender identifies a sender by its live verified contact, else by the merge that retired it.
+// A merge route never outranks a verified contact, so proving the contact elsewhere takes it over.
+func (s *ClientContactService) findSender(ctx context.Context, q repository.Querier, accountID uuid.UUID, kind domain.ChannelType, value string) ([]domain.Client, error) {
+	profiles, err := s.contacts.FindProfiles(ctx, q, accountID, "", kind, value)
+	if err != nil || len(profiles) > 0 {
+		return profiles, err
+	}
+	return s.contacts.FindMergedRoute(ctx, q, accountID, kind, value)
+}

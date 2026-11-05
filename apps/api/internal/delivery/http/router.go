@@ -8,12 +8,15 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	swaggerfiles "github.com/swaggo/files"
 	ginswagger "github.com/swaggo/gin-swagger"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/handler"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
 
 	// The generated spec registers itself on import. It is regenerated from the handler
@@ -29,6 +32,7 @@ const mailScope = "mail"
 
 // Handlers carries every handler the router mounts.
 type Handlers struct {
+	ClientContacts *handler.ClientContactHandler
 	Health         *handler.HealthHandler
 	Auth           *handler.AuthHandler
 	CustomerAuth   *handler.CustomerAuthHandler
@@ -46,6 +50,7 @@ type Handlers struct {
 	PublicRFQ      *handler.PublicRFQHandler
 	Quote          *handler.QuoteHandler
 	Conversation   *handler.ConversationHandler
+	QuoteFollowup  *handler.QuoteFollowupHandler
 	Client         *handler.ClientHandler
 	Account        *handler.AccountHandler
 	AccountLogo    *handler.BrandLogoHandler
@@ -98,6 +103,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	limit := func(scope string, max int) gin.HandlerFunc {
 		return middleware.RateLimit(rl.Limiter, rateLimitOptions(cfg, rl, scope, max))
 	}
+	// Counts each request twice, by customer and by address, so neither many accounts behind one
+	// address nor one account across many addresses gets past it.
+	customerLimit := func(scope string, max int) []gin.HandlerFunc {
+		perCustomer := rateLimitOptions(cfg, rl, scope, max)
+		perCustomer.PerCustomer = true
+		return []gin.HandlerFunc{limit(scope+"-ip", max), middleware.RateLimit(rl.Limiter, perCustomer)}
+	}
 
 	if h.CustomerAuth != nil && auth.Customer != nil {
 		customers := r.Group(apiPrefix+"/customer/sites/:hostname", limit("global", cfg.RateLimit.Global))
@@ -106,13 +118,32 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		customers.GET("/auth/google/options", h.CustomerAuth.GoogleOptions)
 		customers.POST("/auth/google/exchange", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.GoogleExchange)
 		customers.POST("/auth/google/complete", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.CompleteGoogle)
-		customers.POST("/auth/forgot-password", credentialBody, limit("customer-mail", cfg.RateLimit.Mail), h.CustomerAuth.Forgot)
-		customers.POST("/auth/verify-email", credentialBody, limit("customer-verify", cfg.RateLimit.Credentials), h.CustomerAuth.VerifyEmail)
-		customers.POST("/auth/reset-password", credentialBody, limit("customer-reset", cfg.RateLimit.Credentials), h.CustomerAuth.Reset)
+		// Recovery is counted per address and per account named, so neither side gets around it.
+		perAccount := func(scope string, max int, key func(*gin.Context) (string, bool)) gin.HandlerFunc {
+			return middleware.RateLimitBy(rl.Limiter, rateLimitOptions(cfg, rl, scope, max), key)
+		}
+		customers.POST("/auth/recovery/options", credentialBody, limit("customer-recovery", cfg.RateLimit.Credentials),
+			perAccount("customer-recovery-account", cfg.RateLimit.Credentials, middleware.JSONBodyKey(func(b dto.CustomerRecoveryOptionsRequest) (string, bool) { return recoveryTaxIDKey(b.TaxID) })),
+			h.CustomerAuth.RecoveryOptions)
+		customers.POST("/auth/recovery/code", credentialBody, limit("customer-recovery-code", cfg.RateLimit.Mail),
+			perAccount("customer-recovery-code-account", cfg.RateLimit.Mail, middleware.JSONBodyKey(func(b dto.CustomerRecoveryCodeRequest) (string, bool) { return recoveryTaxIDKey(b.TaxID) })),
+			h.CustomerAuth.RecoveryCode)
+		customers.POST("/auth/recovery/reset", credentialBody, limit("customer-recovery-reset", cfg.RateLimit.Credentials),
+			perAccount("customer-recovery-reset-code", cfg.RateLimit.Credentials, middleware.JSONBodyKey(func(b dto.CustomerRecoveryResetRequest) (string, bool) {
+				return "id:" + b.ID.String(), b.ID != uuid.Nil
+			})),
+			h.CustomerAuth.RecoveryReset)
 		customers.POST("/auth/register", credentialBody, limit("customer-signup", cfg.RateLimit.Signup), h.CustomerAuth.Register)
 		customers.POST("/auth/login", credentialBody, limit("customer-login", cfg.RateLimit.Credentials), h.CustomerAuth.Login)
 		customers.Use(middleware.RequireCustomer(auth.Customer))
 		customers.GET("/me", h.CustomerAuth.Me)
+		if h.ClientContacts != nil {
+			customers.GET("/profile", h.ClientContacts.GetProfile)
+			customers.PUT("/profile/main-contact", append(customerLimit("customer-profile", cfg.RateLimit.Profile), h.ClientContacts.SetMainContact)...)
+			customers.PUT("/profile", append(customerLimit("customer-profile", cfg.RateLimit.Profile), h.ClientContacts.UpdateProfile)...)
+			customers.POST("/profile/contacts/verification", append(customerLimit("contact-request", cfg.RateLimit.ContactVerification), h.ClientContacts.RequestVerification)...)
+			customers.POST("/profile/contacts/verification/confirm", append(customerLimit("contact-confirm", cfg.RateLimit.ContactVerification), h.ClientContacts.ConfirmVerification)...)
+		}
 		customers.POST("/auth/logout", h.CustomerAuth.Logout)
 		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)
 		if h.PublicRFQ != nil {
@@ -223,6 +254,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
+	quotes.POST("/:quoteId/followup-draft", ai, h.QuoteFollowup.Draft)
 	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
 	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
@@ -254,6 +286,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	}
 	clients := verified.Group("/clients")
 	clients.GET("", h.Client.List)
+	if h.ClientContacts != nil {
+		clients.POST("/:clientId/registration-link", h.ClientContacts.SendRegistrationLink)
+		verified.GET("/client-contact-suggestions", h.ClientContacts.ListSuggestions)
+		verified.PUT("/client-contact-suggestions/:suggestionId", h.ClientContacts.ResolveSuggestion)
+		clients.GET("/:clientId/merge-candidates", h.ClientContacts.ListMergeCandidates)
+		clients.PUT("/:clientId/name", h.ClientContacts.RenameClient)
+		clients.POST("/:clientId/merge", h.ClientContacts.MergeClients)
+	}
 	clients.GET("/:clientId", h.Client.Get)
 	if h.Invoice != nil {
 		clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
@@ -361,6 +401,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 // counting into the same bucket as the mail routes.
 func MailAllowance(cfg *config.Config, rl RateLimit) middleware.Allowance {
 	return middleware.NewAllowance(rl.Limiter, rateLimitOptions(cfg, rl, mailScope, cfg.RateLimit.Mail))
+}
+
+// recoveryTaxIDKey buckets every spelling of one CUIT/CUIL together and refuses anything that is not one.
+func recoveryTaxIDKey(raw string) (string, bool) {
+	taxID := domain.NormalizeTaxID(raw)
+	return "tax_id:" + taxID, domain.ValidCUIT(taxID)
 }
 
 func rateLimitOptions(cfg *config.Config, rl RateLimit, scope string, max int) middleware.RateLimitOptions {

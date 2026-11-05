@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"errors"
-	"net/url"
 	"testing"
 	"time"
 
@@ -22,12 +21,6 @@ type customerCredentialsFake struct {
 
 func (f *customerCredentialsFake) GetIdentityByGoogleSubject(_ context.Context, _ repository.Querier, accountID uuid.UUID, subject string) (*domain.CustomerIdentity, error) {
 	if f.identity == nil || f.identity.AccountID != accountID || f.identity.GoogleSubject == nil || *f.identity.GoogleSubject != subject {
-		return nil, domain.ErrNotFound
-	}
-	return f.identity, nil
-}
-func (f *customerCredentialsFake) GetVerifiedRecoveryIdentity(_ context.Context, _ repository.Querier, accountID uuid.UUID, taxID, email string) (*domain.CustomerIdentity, error) {
-	if f.identity == nil || f.identity.AccountID != accountID || f.identity.TaxID != taxID || f.identity.RecoveryEmail == nil || *f.identity.RecoveryEmail != email || f.identity.RecoveryEmailVerifiedAt == nil {
 		return nil, domain.ErrNotFound
 	}
 	return f.identity, nil
@@ -54,13 +47,6 @@ func (f *customerCredentialsFake) LinkGoogle(_ context.Context, _ repository.Que
 	f.identity.GoogleSubject = &subject
 	return nil
 }
-func (f *customerCredentialsFake) VerifyRecoveryEmail(_ context.Context, _ repository.Querier, _, _ uuid.UUID, email string, now time.Time) error {
-	if f.identity.RecoveryEmail == nil || *f.identity.RecoveryEmail != email {
-		return domain.ErrUnauthenticated
-	}
-	f.identity.RecoveryEmailVerifiedAt = &now
-	return nil
-}
 func (f *customerCredentialsFake) ResetCustomerPassword(_ context.Context, _ repository.Querier, _, _ uuid.UUID, hash string, _ time.Time) error {
 	f.identity.PasswordHash = hash
 	f.reset = true
@@ -68,29 +54,26 @@ func (f *customerCredentialsFake) ResetCustomerPassword(_ context.Context, _ rep
 	return nil
 }
 
-type customerGoogleFake struct{}
+type customerGoogleFake struct{ unverified bool }
 
 func (f *customerCredentialsFake) GetHostnameByDeliveryTokenCrossAccount(context.Context, repository.Querier, string) (string, error) {
 	return "", domain.ErrNotFound
 }
 
-func (customerGoogleFake) Exchange(context.Context, string, string, string, string) (*domain.CustomerGoogleIdentity, error) {
-	return &domain.CustomerGoogleIdentity{Subject: "stable-google-subject", Email: "customer@example.test", Name: "Customer"}, nil
+func (f customerGoogleFake) Exchange(context.Context, string, string, string, string) (*domain.CustomerGoogleIdentity, error) {
+	return &domain.CustomerGoogleIdentity{Subject: "stable-google-subject", Email: "customer@example.test", Name: "Customer", EmailVerified: !f.unverified}, nil
 }
 
-func customerIdentityFixture() (*CustomerAuthService, *customerCredentialsFake, *fakeMail) {
+func customerIdentityFixture() (*CustomerAuthService, *customerCredentialsFake) {
 	svc, base, _ := customerAuthFixture()
 	store := &customerCredentialsFake{customerAuthFake: base, tokens: map[string]domain.CustomerChallenge{}, used: map[string]bool{}}
-	mail := &fakeMail{}
 	svc.cfg.SignupTTL = 10 * time.Minute
-	svc.cfg.RecoveryTTL = time.Hour
-	svc.cfg.VerificationTTL = 24 * time.Hour
-	svc.WithIdentityProviders(store, customerGoogleFake{}, mail)
-	return svc, store, mail
+	svc.WithIdentityProviders(store, customerGoogleFake{})
+	return svc, store
 }
 
 func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *testing.T) {
-	svc, store, _ := customerIdentityFixture()
+	svc, store := customerIdentityFixture()
 	ctx := context.Background()
 	secret, err := newTokenSecret()
 	if err != nil {
@@ -100,11 +83,12 @@ func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *te
 	if err != nil || result.Login != nil || result.SignupToken == "" || store.identity != nil {
 		t.Fatalf("first Google sign-in: %+v %v", result, err)
 	}
-	login, err := svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil)
-	if err != nil || login.Principal.TaxID != "20123456786" || store.identity.GoogleSubject == nil || store.identity.RecoveryEmail != nil {
+	whatsapp := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: "+5491155550101", Primary: true}}
+	login, err := svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", Contacts: whatsapp}, nil)
+	if err != nil || login.Principal.TaxID != "20123456786" || store.identity.GoogleSubject == nil {
 		t.Fatalf("Google registration: %+v %v", login, err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, "20123456786", nil); !errors.Is(err, domain.ErrUnauthenticated) {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", Contacts: whatsapp}, nil); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("Google signup capability reused: %v", err)
 	}
 	known, err := svc.GoogleExchange(ctx, store.site.Hostname, "next-code", secret, secret)
@@ -114,7 +98,7 @@ func TestCustomerGoogleFirstRegistrationRequiresCUITAndDoesNotMergeByEmail(t *te
 }
 
 func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testing.T) {
-	svc, store, _ := customerIdentityFixture()
+	svc, store := customerIdentityFixture()
 	ctx := context.Background()
 	registered := registerCustomer(t, svc)
 	secret, err := newTokenSecret()
@@ -125,7 +109,8 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, nil); !errors.Is(err, domain.ErrConflict) || store.identity.GoogleSubject != nil {
+	whatsapp := []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: "+5491155550101", Primary: true}}
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID, Contacts: whatsapp}, nil); !errors.Is(err, domain.ErrConflict) || store.identity.GoogleSubject != nil {
 		t.Fatalf("unverified CUIT claimed existing credentials: %v", err)
 	}
 	result, err = svc.GoogleExchange(ctx, store.site.Hostname, "another-code", secret, secret)
@@ -134,56 +119,100 @@ func TestCustomerGoogleCannotClaimExistingCUITWithoutAuthenticatedLink(t *testin
 	}
 	wrong := registered.Principal
 	wrong.AccountID = uuid.New()
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, &wrong); !errors.Is(err, domain.ErrForbidden) {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID}, &wrong); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("cross-account Google link: %v", err)
 	}
-	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, result.SignupToken, registered.Principal.TaxID, &registered.Principal); err != nil || store.identity.GoogleSubject == nil {
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: registered.Principal.TaxID}, &registered.Principal); err != nil || store.identity.GoogleSubject == nil {
 		t.Fatalf("authenticated Google link: %v", err)
 	}
 }
 
-func TestCustomerRecoveryRequiresStoredVerifiedEmailAndSingleUseMatchingPurpose(t *testing.T) {
-	svc, store, mail := customerIdentityFixture()
+func TestCustomerGoogleRegistrationNeedsAContactAndOffersOnlyAVerifiedEmail(t *testing.T) {
 	ctx := context.Background()
-	_, err := svc.Register(ctx, store.site.Hostname, domain.CustomerRegistration{TaxID: "20123456786", Password: "Customer-pass123!", RecoveryEmail: "customer@example.test"})
+	secret, err := newTokenSecret()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(mail.sent) != 1 {
-		t.Fatal("missing verification mail")
+	svc, store := customerIdentityFixture()
+	result, err := svc.GoogleExchange(ctx, store.site.Hostname, "code", secret, secret)
+	if err != nil || result.SignupEmail != "customer@example.test" {
+		t.Fatalf("verified Google address not offered: %+v %v", result, err)
 	}
-	verificationURL, err := url.Parse(mail.sent[0].ActionURL)
-	if err != nil {
-		t.Fatal(err)
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786"}, nil); !errors.Is(err, domain.ErrInvalidInput) || store.identity != nil {
+		t.Fatalf("registration without any contact: %v", err)
 	}
-	verification := verificationURL.Query().Get("token")
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "customer@example.test"); err != nil || len(mail.sent) != 1 {
-		t.Fatal("unverified address used for recovery")
+
+	svc, store = customerIdentityFixture()
+	svc.WithIdentityProviders(store, customerGoogleFake{unverified: true})
+	result, err = svc.GoogleExchange(ctx, store.site.Hostname, "code", secret, secret)
+	if err != nil || result.SignupEmail != "" {
+		t.Fatalf("unverified Google address offered: %+v %v", result, err)
 	}
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, verification, "Replacement-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("verification capability reset password: %v", err)
+	if _, err = svc.CompleteGoogle(ctx, store.site.Hostname, domain.CustomerGoogleCompletion{Token: result.SignupToken, TaxID: "20123456786", UseGoogleEmail: true}, nil); !errors.Is(err, domain.ErrInvalidInput) || store.identity != nil {
+		t.Fatalf("unverified Google address accepted as a contact: %v", err)
 	}
-	if err = svc.VerifyCustomerEmail(ctx, store.site.Hostname, verification); err != nil {
-		t.Fatal(err)
+}
+
+func TestGoogleContactEmail_ProvesOnlyAMailboxGoogleControls(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, email, hosted string
+		verified            bool
+		ok, proven          bool
+	}{
+		{"gmail", "Juan@Gmail.com", "", true, true, true},
+		{"googlemail", "juan@googlemail.com", "", true, true, true},
+		{"workspace", "juan@corralon.com.ar", "corralon.com.ar", true, true, true},
+		{"other domain without hd", "juan@corralon.com.ar", "", true, true, false},
+		{"hd of another domain", "juan@corralon.com.ar", "otro.com.ar", true, true, false},
+		{"unverified gmail", "juan@gmail.com", "", false, false, false},
 	}
-	if err = svc.VerifyCustomerEmail(ctx, store.site.Hostname, verification); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("verification link reused: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, proven, ok := googleContactEmail(tc.email, tc.verified, tc.hosted)
+			if ok != tc.ok || proven != tc.proven {
+				t.Fatalf("googleContactEmail(%q, %v, %q) = proven %v ok %v, want proven %v ok %v", tc.email, tc.verified, tc.hosted, proven, ok, tc.proven, tc.ok)
+			}
+		})
 	}
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "attacker@example.test"); err != nil || len(mail.sent) != 1 {
-		t.Fatal("caller-selected recovery email received token")
+}
+
+// recoveryFake redeems one code for one customer and counts every attempt it was asked to judge.
+type recoveryFake struct {
+	customerID uuid.UUID
+	code       string
+	attempts   int
+}
+
+func (f *recoveryFake) ListRecoveryContacts(context.Context, repository.Querier, domain.CustomerPrincipal) ([]domain.RecoveryContact, error) {
+	return []domain.RecoveryContact{}, nil
+}
+func (f *recoveryFake) RequestRecovery(context.Context, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallenge, error) {
+	return &domain.ContactChallenge{ID: uuid.New()}, nil
+}
+func (f *recoveryFake) RedeemRecovery(_ context.Context, _ repository.Querier, _, _ uuid.UUID, code string) (uuid.UUID, bool, error) {
+	f.attempts++
+	if code != f.code {
+		return uuid.Nil, false, nil
 	}
-	if err = svc.ForgotCustomerPassword(ctx, store.site.Hostname, "20123456786", "customer@example.test"); err != nil || len(mail.sent) != 2 {
-		t.Fatalf("verified recovery: %v", err)
+	return f.customerID, true, nil
+}
+
+func TestCustomerResetWithRecoveryCodeChecksThePolicyFirstAndSignsIn(t *testing.T) {
+	svc, store := customerIdentityFixture()
+	ctx := context.Background()
+	registered := registerCustomer(t, svc)
+	recovery := &recoveryFake{customerID: registered.Principal.CustomerID, code: "123456"}
+	svc.WithContactRecovery(recovery)
+	if _, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "123456", "short"); err == nil || recovery.attempts != 0 {
+		t.Fatalf("weak password spent an attempt: %v, attempts %d", err, recovery.attempts)
 	}
-	u, err := url.Parse(mail.sent[1].ActionURL)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "654321", "Replacement-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) || store.reset {
+		t.Fatalf("wrong code reset the password: %v", err)
 	}
-	reset := u.Query().Get("token")
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, reset, "Replacement-pass123!"); err != nil || !store.reset || !store.revoked || bcrypt.CompareHashAndPassword([]byte(store.identity.PasswordHash), []byte("Replacement-pass123!")) != nil {
-		t.Fatalf("reset did not replace hash and revoke sessions: %v", err)
-	}
-	if err = svc.ResetCustomerPassword(ctx, store.site.Hostname, reset, "Another-pass123!"); !errors.Is(err, domain.ErrUnauthenticated) {
-		t.Fatalf("reset link reused: %v", err)
+	login, err := svc.ResetWithRecoveryCode(ctx, store.site.Hostname, uuid.New(), "123456", "Replacement-pass123!")
+	if err != nil || login.Principal.CustomerID != registered.Principal.CustomerID || !store.reset || !store.revoked || bcrypt.CompareHashAndPassword([]byte(store.identity.PasswordHash), []byte("Replacement-pass123!")) != nil {
+		t.Fatalf("recovery did not replace the hash, revoke sessions and sign in: %+v %v", login, err)
 	}
 }

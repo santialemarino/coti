@@ -9,6 +9,15 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+The customer portal includes authenticated request history and commercial profiles. Registration
+requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
+without CUIT. History requires the authenticated portal author or customer-specific contact proof;
+CUIT matching alone grants no access. Unknown channel senders get a provisional profile immediately.
+Customers verify new contacts before claiming their earlier requests, choose a main contact in
+**My data**, and recover their account with a one-use code sent to a verified contact. See
+[Client profiles](docs/technical/client-profiles.md) for identity rules, migrations, contact delivery
+configuration and account recovery.
+
 ## Stack
 
 | Layer            | Technology                                             |
@@ -71,11 +80,11 @@ pnpm db:init
 pnpm dev
 ```
 
-| App        | URL                   |
-| ---------- | --------------------- |
-| backoffice | http://localhost:3000 |
-| webapp     | http://localhost:3001 |
-| api        | http://localhost:8000 |
+| App        | URL                                                         |
+| ---------- | ----------------------------------------------------------- |
+| backoffice | http://localhost:3000                                       |
+| webapp     | http://sanmartin.localhost:3001 (registered local supplier) |
+| api        | http://localhost:8000                                       |
 
 Outbound mail goes to the log by default. To read a captured message — a password-reset or
 address-verification link — start the Mailpit sandbox, set these values in `apps/api/.env`,

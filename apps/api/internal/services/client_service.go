@@ -21,11 +21,12 @@ const (
 type clientProfileRepository interface {
 	GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error)
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
-	SetMissingTaxID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	ListSummaries(ctx context.Context, q repository.Querier,
 		tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID,
 		clientID uuid.UUID) (*domain.Client, error)
+	GetSurvivor(ctx context.Context, q repository.Querier, accountID,
+		clientID uuid.UUID) (uuid.UUID, error)
 	FindByContacts(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		phone, email *string) ([]domain.Client, error)
 	ListAcceptedSales(ctx context.Context, q repository.Querier, tenant domain.Tenant,
@@ -120,12 +121,18 @@ func (s *ClientService) ListClients(
 	return summaries, err
 }
 
-// GetClient returns one profile and the accepted sales visible to the caller.
+// GetClient returns one profile and the accepted sales visible to the caller. A merged profile's id
+// answers with the profile it was merged into, whose id tells the caller where it now lives.
 func (s *ClientService) GetClient(
 	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID,
 ) (*domain.ClientProfile, error) {
 	var profile *domain.ClientProfile
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		clientID, err = s.clients.GetSurvivor(ctx, q, tenant.AccountID, clientID)
+		if err != nil {
+			return err
+		}
 		client, err := s.clients.GetByID(ctx, q, tenant.AccountID, clientID)
 		if err != nil {
 			return err
@@ -304,8 +311,8 @@ func normalizeNewClient(client *domain.NewClient) error {
 	client.Name = normalizedOptional(client.Name)
 	client.Phone = normalizedOptional(client.Phone)
 	client.Email = normalizedOptional(client.Email)
-	if client.Name == nil && client.Phone == nil && client.Email == nil {
-		return fmt.Errorf("%w: a client needs a name, phone or email", domain.ErrInvalidInput)
+	if client.Name == nil || (client.Phone == nil && client.Email == nil) {
+		return fmt.Errorf("%w: a client needs a full name and at least one contact", domain.ErrInvalidInput)
 	}
 	if client.Name != nil && utf8.RuneCountInString(*client.Name) > maxClientNameLength {
 		return fmt.Errorf("%w: client name exceeds %d characters", domain.ErrInvalidInput,

@@ -12,6 +12,7 @@ vi.mock('@/lib/auth/customer-session', () => ({
   getCustomerToken: async () => 'customer-session',
   customerApiPath: async (path: string) => API_URL + '/v1/customer/sites/supplier.test' + path,
 }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 function rawSend(overrides: Record<string, unknown> = {}) {
   return {

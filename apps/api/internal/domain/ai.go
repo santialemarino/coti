@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/pgvector/pgvector-go"
 )
@@ -134,6 +135,27 @@ func (a Audio) Validate() error {
 // port knows which provider is behind it.
 type StructuredGenerator interface {
 	Generate(ctx context.Context, req GenerationRequest, out any) (*GenerationUsage, error)
+}
+
+// FollowupDraftInput is what a follow-up message is written from. It carries no price: the
+// message points the client back to the quote, it never restates an amount.
+type FollowupDraftInput struct {
+	SupplierName string
+	SellerName   string
+	ClientName   string
+	QuoteNumber  int64
+	// QuietSince is the quote's last change, which for a sent quote is when the client last heard.
+	QuietSince time.Time
+	// Lapsed reports an offer that expired unanswered, so the message offers to renew it.
+	Lapsed bool
+	// Items are the quote's lines as the client would read them, quantity first.
+	Items []string
+}
+
+// FollowupDrafter writes the message a seller may send to chase a quote the client has not
+// answered. It only drafts: the seller edits and sends it.
+type FollowupDrafter interface {
+	Draft(ctx context.Context, in FollowupDraftInput) (string, error)
 }
 
 // Embedder turns text into EmbeddingDimension-wide vectors for semantic catalog search. The

@@ -37,6 +37,41 @@ func TestParseMessage_PrefersPlainTextAndKeepsAllAttachments(t *testing.T) {
 	}
 }
 
+func TestParseMessage_ReadsThreadingAndAutomationHeaders(t *testing.T) {
+	for _, tc := range []struct {
+		name, headers, messageID string
+		automated                bool
+	}{
+		{name: "a person's reply", headers: "Message-ID: <CAB123@mail.gmail.com>", messageID: "<CAB123@mail.gmail.com>"},
+		{name: "an out-of-office", headers: "Auto-Submitted: auto-replied", automated: true},
+		{name: "an explicit human", headers: "Auto-Submitted: no"},
+		{name: "a newsletter", headers: "Precedence: bulk", automated: true},
+		{name: "a mailing list", headers: "List-Unsubscribe: <mailto:out@list.test>", automated: true},
+		{name: "a malformed id", headers: "Message-ID: <a b@x.test>"},
+		{name: "a bounce", headers: "Return-Path: <>", automated: true},
+		{name: "an autoreply mark", headers: "X-Autoreply: yes", automated: true},
+		{name: "an autorespond mark", headers: "X-Autorespond: Fuera de la oficina", automated: true},
+	} {
+		raw := strings.Join([]string{"From: cliente@example.com", tc.headers, "Content-Type: text/plain", "", "Juan Pérez", ""}, "\r\n")
+		message, err := ParseMessage([]byte(raw), 1024, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message.MessageID != tc.messageID || message.Automated != tc.automated {
+			t.Errorf("%s: id %q automated %v", tc.name, message.MessageID, message.Automated)
+		}
+	}
+}
+
+func TestParseMessage_TreatsADeliveryReportAsAutomated(t *testing.T) {
+	raw := strings.Join([]string{"From: MAILER-DAEMON@mx.test", `Content-Type: multipart/report; report-type=delivery-status; boundary="r"`, "",
+		"--r", "Content-Type: text/plain", "", "Delivery failed", "--r--", ""}, "\r\n")
+	message, err := ParseMessage([]byte(raw), 1024, 20)
+	if err != nil || !message.Automated {
+		t.Fatalf("delivery report: automated %v, %v", message.Automated, err)
+	}
+}
+
 func TestParseMessage_ReadsHTMLWhenPlainTextIsAbsent(t *testing.T) {
 	raw := "From: client@example.com\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
 		"<html><head><style>secret</style></head><body><p>Necesito &amp; cotizar</p><script>evil()</script></body></html>"

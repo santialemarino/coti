@@ -6,6 +6,9 @@ import { redirect } from 'next/navigation';
 import { ROUTES } from '@/config/routes';
 import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import {
+  clearCustomerCookie,
+  GOOGLE_EMAIL_COOKIE,
+  GOOGLE_EMAIL_PROVEN_COOKIE,
   GOOGLE_SIGNUP_COOKIE,
   pendingGoogleSignup,
   postCustomerAuth,
@@ -21,7 +24,6 @@ import {
 
 export interface CustomerAuthResult {
   error?: string;
-  received?: boolean;
 }
 
 function errorForStatus(status: number): string {
@@ -31,7 +33,7 @@ function errorForStatus(status: number): string {
       ? 'locked'
       : status === 401
         ? 'credentials'
-        : status === 400
+        : status === 400 || status === 422
           ? 'invalid'
           : 'unavailable';
 }
@@ -57,6 +59,8 @@ export async function signInCustomer(values: {
 }
 
 export async function signUpCustomer(values: {
+  name: string;
+  phone: string;
   taxId: string;
   password: string;
   email: string;
@@ -68,7 +72,7 @@ export async function signUpCustomer(values: {
       values.taxId,
       values.password,
       forwardedClientAddress(await headers()),
-      values.email,
+      { name: values.name, phone: values.phone, email: values.email },
     );
   } catch (error) {
     return {
@@ -79,65 +83,47 @@ export async function signUpCustomer(values: {
 }
 
 export async function completeCustomerGoogle(values: {
+  name?: string;
   taxId: string;
   next: string;
   link?: boolean;
+  phone?: string;
+  email?: string;
+  useGoogleEmail?: boolean;
 }): Promise<CustomerAuthResult> {
   const token = await pendingGoogleSignup();
   if (!token) return { error: 'expired' };
   try {
     const response = await postCustomerAuth(
       values.link ? '/auth/google/link' : '/auth/google/complete',
-      { token, tax_id: values.taxId },
+      {
+        token,
+        tax_id: values.taxId,
+        name: values.name,
+        contacts: [
+          ...(values.phone ? [{ kind: 'WHATSAPP', value: values.phone, primary: true }] : []),
+          ...(values.email ? [{ kind: 'EMAIL', value: values.email, primary: true }] : []),
+        ],
+        use_google_email: Boolean(values.useGoogleEmail),
+      },
       values.link,
     );
-    if (!response.ok) return { error: errorForStatus(response.status) };
+    if (!response.ok) {
+      const code =
+        response.status === 409 ? ((await response.json()) as { code?: string }).code : undefined;
+      return {
+        error: code === 'CONTACT_IN_USE' ? 'contactInUse' : errorForStatus(response.status),
+      };
+    }
     await acceptCustomerSession((await response.json()) as CustomerLoginRaw);
-    (await cookies()).delete(GOOGLE_SIGNUP_COOKIE);
+    const jar = await cookies();
+    clearCustomerCookie(jar, GOOGLE_SIGNUP_COOKIE);
+    clearCustomerCookie(jar, GOOGLE_EMAIL_COOKIE);
+    clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
   } catch {
     return { error: 'unavailable' };
   }
   redirect(safeCustomerDestination(values.next, ROUTES.newRequest));
-}
-
-export async function recoverCustomerPassword(values: {
-  taxId: string;
-  email: string;
-}): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/forgot-password', {
-      tax_id: values.taxId,
-      email: values.email,
-    });
-    return response.ok ? { received: true } : { error: errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
-}
-
-export async function resetCustomerPassword(values: {
-  token: string;
-  password: string;
-}): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/reset-password', values);
-    return response.ok
-      ? { received: true }
-      : { error: response.status === 401 ? 'expired' : errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
-}
-
-export async function verifyCustomerEmail(token: string): Promise<CustomerAuthResult> {
-  try {
-    const response = await postCustomerAuth('/auth/verify-email', { token });
-    return response.ok
-      ? { received: true }
-      : { error: response.status === 401 ? 'expired' : errorForStatus(response.status) };
-  } catch {
-    return { error: 'unavailable' };
-  }
 }
 
 export async function signOutCustomer(): Promise<void> {

@@ -1,3 +1,4 @@
+export * from './animated-height';
 export * from './avatar';
 export * from './badge';
 export * from './button';
@@ -10,6 +11,7 @@ export * from './color-picker';
 export * from './combobox';
 export * from './command';
 export * from './confirm-dialog';
+export * from './toaster';
 export * from './copy-button';
 export * from './dialog';
 export * from './dropdown-chevron';

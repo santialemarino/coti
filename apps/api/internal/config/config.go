@@ -87,6 +87,7 @@ type Config struct {
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
 	QuoteArchive    QuoteArchiveConfig
+	QuoteFollowup   QuoteFollowupConfig
 	Conversation    ConversationConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
@@ -251,6 +252,10 @@ type RateLimitConfig struct {
 	// AI bounds the routes billed per call by a provider, the way Mail bounds the ones whose
 	// effect is a message. The global allowance is far too wide for a route that costs money.
 	AI int
+	// ContactVerification bounds requesting and confirming a customer contact proof, per customer and per address.
+	ContactVerification int
+	// Profile bounds a customer's profile saves, per customer and per address.
+	Profile int
 	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
 	// mailbox receives however many callers ask for it.
 	MailPerAddress int
@@ -607,12 +612,21 @@ type QuoteQualityConfig struct {
 // QuoteArchiveConfig drives the sweep that archives quotes nobody has moved.
 type QuoteArchiveConfig struct {
 	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
-	// (US-41) flags on the same measure, so this belongs above its threshold.
+	// flags on the same measure, so this belongs above its thresholds.
 	InactiveAfter time.Duration
 	// ClosedAfter is how long a closed outcome — a complete sale or a rejected quote — stays in the
 	// queue without a change before it is archived.
 	ClosedAfter time.Duration
 	BatchSize   int
+}
+
+// QuoteFollowupConfig drives the sweep that flags the quotes a seller has to chase.
+type QuoteFollowupConfig struct {
+	// SellerIdleAfter is how long a DRAFT or QUOTED quote may go without a change before it is flagged.
+	SellerIdleAfter time.Duration
+	// CustomerSilentAfter is how long a SENT quote may go without a change before it is flagged.
+	CustomerSilentAfter time.Duration
+	BatchSize           int
 }
 
 // ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
@@ -941,16 +955,18 @@ func Load() (*Config, error) {
 			SignedURLExpiry: getDuration("STORAGE_SIGNED_URL_EXPIRY_MINUTES", 15*time.Minute, &problems),
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
-			Window:           getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
-			Global:           getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
-			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
-			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
-			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
-			AI:               getInt("RATE_LIMIT_AI_MAX", 10, &problems),
-			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
-			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
-			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
+			Enabled:             getBool("RATE_LIMIT_ENABLED", true, &problems),
+			Window:              getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
+			Global:              getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
+			Credentials:         getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
+			Signup:              getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
+			Mail:                getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			AI:                  getInt("RATE_LIMIT_AI_MAX", 10, &problems),
+			ContactVerification: getInt("RATE_LIMIT_CONTACT_VERIFICATION_MAX", 5, &problems),
+			Profile:             getInt("RATE_LIMIT_PROFILE_MAX", 10, &problems),
+			MailPerAddress:      getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
+			TrustedProxyHops:    getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
+			TrustedProxies:      getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		RFQ: RFQConfig{
 			MaxTextCharacters:  getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
@@ -981,6 +997,13 @@ func Load() (*Config, error) {
 			ClosedAfter: getDuration("QUOTE_AUTO_ARCHIVE_CLOSED_DAYS", 30*24*time.Hour,
 				&problems),
 			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
+		},
+		QuoteFollowup: QuoteFollowupConfig{
+			SellerIdleAfter: getDuration("QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", 3*24*time.Hour,
+				&problems),
+			CustomerSilentAfter: getDuration("QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS", 3*24*time.Hour,
+				&problems),
+			BatchSize: getInt("QUOTE_FOLLOWUP_BATCH_SIZE", 100, &problems),
 		},
 		Conversation: ConversationConfig{
 			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
@@ -1244,6 +1267,24 @@ func Load() (*Config, error) {
 	if cfg.QuoteArchive.BatchSize < 1 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
 	}
+	// A quote has to be flagged before the archive sweep can put it away.
+	if cfg.QuoteFollowup.SellerIdleAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.SellerIdleAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.CustomerSilentAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.CustomerSilentAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.BatchSize < 1 {
+		problems = append(problems, "QUOTE_FOLLOWUP_BATCH_SIZE must be greater than zero")
+	}
 	if cfg.Conversation.WindowReset <= 0 {
 		problems = append(problems, "CONVERSATION_WINDOW_RESET_SECONDS must be greater than zero")
 	}
@@ -1355,6 +1396,8 @@ func Load() (*Config, error) {
 			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
 			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
 			{"RATE_LIMIT_AI_MAX", cfg.RateLimit.AI},
+			{"RATE_LIMIT_CONTACT_VERIFICATION_MAX", cfg.RateLimit.ContactVerification},
+			{"RATE_LIMIT_PROFILE_MAX", cfg.RateLimit.Profile},
 		}
 		if cfg.RateLimit.Global < 1 {
 			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")

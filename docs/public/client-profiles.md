@@ -1,12 +1,32 @@
 # Client profiles
 
-The seller selects an existing client or creates a profile when sending a quotation. Coti suggests
-exact CUIT/CUIL matches and prefills new-profile data from the original web request. The seller
-confirms the selection with the same action that publishes and sends the quotation.
+Clients can request quotations before creating an account. A request from an unknown WhatsApp or
+email sender is processed right away, under a provisional profile named after the sender's WhatsApp
+or email display name. Coti then asks, once and in the supplier's name, for the full name. A short
+reply that starts with a common given name is saved on that profile instead of opening a new
+request. Anything else, including order changes and answers to a quote, is handled as a normal
+message and the question stays open. A seller creating a profile also supplies a full name and at least one contact, without CUIT.
 
-The quotation and its source request receive the same client association when the quotation becomes
-Sent. The customer can then see the quotation in their authenticated history before accepting it.
-Acceptance records the sale; it does not introduce another client-association step.
+Creating an account in the customer portal requires CUIT/CUIL, full name and at least one phone or
+email. Each supplier keeps one profile per CUIT, and that identifier cannot subsequently be edited
+or removed. Customers manage their name, multiple contacts and optional fiscal details in My data.
+They add phones and emails one field at a time and choose a primary destination for each kind.
 
-Profiles and reusable tags belong to the supplier. Accepted-sale history retains its existing branch
-and seller visibility rules. Suggestions do not merge profiles or overwrite existing contact fields.
+New contacts require ownership verification through an email link or WhatsApp code. After proof,
+previous provisional requests from that contact move to the registered profile. The registered name
+prevails, and Coti preserves the original information. A contact already belonging to another
+registered client cannot be claimed by another account.
+
+Receiving requests, preparing quotations and sending them work with a full name and one contact.
+Only invoicing requires registration and the necessary fiscal details. The seller can send a link
+that lets the customer register or access an existing account and complete My data. Email-only
+quotation delivery remains available.
+
+Each account has a main contact, chosen in **My data** among the verified ones; without a choice it
+is the first verified WhatsApp, else the first contact. A forgotten password is recovered with a
+one-use code sent to a verified contact. Sellers do not recover customer accounts. Customer messages
+arrive through contact channels, without device or browser push notifications.
+
+Profiles and tags belong to the supplier. Accepted-sale history retains its branch and seller
+visibility rules. Quotation publication associates the request and quote before acceptance;
+acceptance records the sale.
