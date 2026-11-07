@@ -313,6 +313,19 @@ export async function addQuoteItem(
   return response.json() as Promise<QuoteItemResponse>;
 }
 
+export async function deleteQuoteRecommendation(
+  quoteId: string,
+  itemId: string,
+  alternativeId: string,
+  branchId: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/quotes/${quoteId}/items/${itemId}/alternatives/${alternativeId}`,
+    { method: 'DELETE', headers: branchHeaders(branchId), cache: 'no-store' },
+  );
+  if (!response.ok) await throwApiError(response);
+}
+
 /*
  * Controls which price-qualified product alternatives are carried into the customer's frozen
  * offer. The API owns the immutable-version guard and validates the alternative's catalog identity.

@@ -120,6 +120,13 @@ approved for sending. The seller can save the same choice to the catalog in the 
 that intentionally replaces the catalog slot for later quotes. Missing catalog relations or branch
 prices are omitted from a quote without turning the quote into an error.
 
+Catalog slots do not encode branch prices. In a quote, an economy alternative's unit price must be
+strictly lower than the quoted line's unit price, and a premium alternative's must be strictly higher;
+equal prices qualify for neither slot. The comparison uses the two price snapshots in the quote's
+currency before discounts, without converting package sizes. The seller checks presentation and
+suitability. Discounts are recalculated for the selected combination, so a lower unit price does not
+guarantee a lower final total.
+
 ## The check the database does not do
 
 Before writing a synonym or an alternative, the service **reads the product inside the tenant

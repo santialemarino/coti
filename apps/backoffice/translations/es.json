@@ -377,6 +377,9 @@
     "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
     "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
+    "RECOMMENDATION_BASE_PRICE_MISSING": "El producto cotizado necesita un precio unitario para comparar alternativas.",
+    "RECOMMENDATION_ECONOMY_PRICE_INVALID": "La alternativa económica debe tener un precio unitario menor al del producto cotizado.",
+    "RECOMMENDATION_PREMIUM_PRICE_INVALID": "La alternativa premium debe tener un precio unitario mayor al del producto cotizado.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "QUOTE_ITEMS_UNRESOLVED": "Hay ítems sin producto confirmado o sin precio. Confirmalos o elegí el producto antes de enviar.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
@@ -1480,7 +1483,9 @@
         },
         "alternatives": {
           "title": "Opciones para el cliente",
-          "compatibilityNotice": "Al enviar, se excluyen las opciones cuya familia, subgrupo o unidad ya no coincidan con el producto cotizado.",
+          "compatibilityNotice": "La económica debe tener un precio unitario menor y la premium, mayor al cotizado. Al enviar, se excluyen las opciones que no cumplan esta regla o cuya familia, subgrupo o unidad ya no coincidan. Revisá también que la presentación sea adecuada.",
+          "priceUnavailable": "Precio no disponible",
+          "invalidPrice": "Esta alternativa no cumple la regla de precio y no se enviará. Podés reemplazarla o quitarla.",
           "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",
           "forItem": "Alternativas para {name}",
           "empty": "Todav\u00eda no hay alternativas definidas para este material.",
@@ -1494,11 +1499,18 @@
           "include": "Incluir en la cotizaci\u00f3n",
           "remove": "No incluir",
           "replace": "Reemplazar",
+          "delete": "Quitar alternativa",
+          "deleteConfirm": {
+            "title": "¿Quitar esta alternativa?",
+            "description": "«{name}» dejará de estar disponible en esta cotización. La alternativa del catálogo no se modifica.",
+            "confirm": "Quitar alternativa",
+            "pending": "Quitando…"
+          },
           "pending": "Guardando\u2026",
           "picker": {
             "ECONOMY": "Elegir alternativa econ\u00f3mica",
             "PREMIUM": "Elegir alternativa premium",
-            "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Revisá que sirvan para el mismo uso antes de elegir.",
+            "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Comprobá que tengan el mismo uso y una presentación equivalente: compartir unidad no garantiza el mismo peso o contenido.",
             "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
             "loadError": "No pudimos consultar el producto en el catálogo. Intentá de nuevo.",
             "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
@@ -1512,6 +1524,7 @@
             "pending": "Guardando\u2026"
           },
           "toast": {
+            "deleted": "Quitamos la alternativa de esta cotización.",
             "included": "La alternativa \u00ab{name}\u00bb se va a enviar al cliente.",
             "removed": "La alternativa \u00ab{name}\u00bb no se va a enviar al cliente.",
             "set": "Guardamos \u00ab{name}\u00bb como alternativa de esta cotizaci\u00f3n.",
@@ -1598,6 +1611,9 @@
           "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
           "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
           "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "RECOMMENDATION_ECONOMY_PRICE_INVALID": "La alternativa económica debe tener un precio unitario menor al del producto cotizado.",
+          "RECOMMENDATION_PREMIUM_PRICE_INVALID": "La alternativa premium debe tener un precio unitario mayor al del producto cotizado.",
+          "RECOMMENDATION_BASE_PRICE_MISSING": "El producto cotizado necesita un precio unitario para comparar alternativas.",
           "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica con los materiales actuales, así que no se puede restaurar.",
           "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
@@ -2386,7 +2402,7 @@
       "picker": {
         "ECONOMY": "Elegir alternativa económica",
         "PREMIUM": "Elegir alternativa premium",
-        "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Revisá que sirvan para el mismo uso antes de elegir.",
+        "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Comprobá que tengan el mismo uso y una presentación equivalente: compartir unidad no garantiza el mismo peso o contenido.",
         "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
         "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
         "searchError": "No pudimos buscar productos. Revisá la conexión e intentá de nuevo.",

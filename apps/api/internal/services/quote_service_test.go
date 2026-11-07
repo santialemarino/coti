@@ -236,6 +236,18 @@ func (f *fakeQuoteRepo) GetAlternative(
 	return nil, domain.ErrNotFound
 }
 
+func (f *fakeQuoteRepo) DeleteRecommendationAlternative(
+	_ context.Context, _ repository.Querier, _, _, itemID, alternativeID uuid.UUID,
+) error {
+	for i, alternative := range f.alternatives[itemID] {
+		if alternative.ID == alternativeID && alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
+			f.alternatives[itemID] = append(f.alternatives[itemID][:i], f.alternatives[itemID][i+1:]...)
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
 func (f *fakeQuoteRepo) ApplyPricing(
 	_ context.Context, _ repository.Querier, _, versionID uuid.UUID,
 	pricings []domain.QuoteItemPricing,
@@ -865,6 +877,7 @@ func TestQuoteService_AcceptMaterials_CarriesTheFlaggedLinesCandidates(t *testin
 func TestQuoteService_SetRecommendationAlternative_ReplacesTheQuoteSlot(t *testing.T) {
 	base, existing, selected := uuid.New(), uuid.New(), uuid.New()
 	item := pricedLine(base, "10")
+	item.UnitPriceSnapshot = decimal.NewNullDecimal(decimal.RequireFromString("1200.00"))
 	economy := domain.ProductAlternativeEconomy
 	f := newQuoteFixture([]domain.QuoteItem{item}, map[uuid.UUID]domain.BranchPrice{
 		base:     branchPrice(base, "1200.00", nil),

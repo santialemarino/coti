@@ -51,12 +51,14 @@ import {
   addQuoteItem,
   deleteDiscount,
   deleteQuoteItem,
+  deleteQuoteRecommendation,
   setQuoteItemRecommendation,
   updateDiscount,
   updateQuoteAlternativeApproval,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { recommendationPriceValid } from '@/lib/recommendation-price';
 import { shortUnit } from '@/lib/utils/units';
 import { DiscountDialog } from './discount-dialog';
 import { ProductSearchDialog, type ProductSuggestion } from './product-search-dialog';
@@ -197,6 +199,11 @@ export function RfqItemsTable({
   const [editingDiscount, setEditingDiscount] = useState<QuoteDiscountResponse | null>(null);
   const [editingProductItemId, setEditingProductItemId] = useState<string | null>(null);
   const [updatingAlternativeId, setUpdatingAlternativeId] = useState<string | null>(null);
+  const [pendingRecommendationDelete, setPendingRecommendationDelete] = useState<{
+    item: QuoteItemResponse;
+    id: string;
+    name: string;
+  } | null>(null);
   const [recommendationPicker, setRecommendationPicker] = useState<{
     item: QuoteItemResponse;
     type: Extract<RecommendationType, 'ECONOMY' | 'PREMIUM'>;
@@ -441,6 +448,33 @@ export function RfqItemsTable({
           { name: updated.canonical_name ?? item.requested_description },
         ),
       );
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setUpdatingAlternativeId(null);
+    }
+  }
+
+  async function handleDeleteRecommendation() {
+    const target = pendingRecommendationDelete;
+    if (!quoteId || !target || updatingAlternativeId) return;
+    setUpdatingAlternativeId(target.id);
+    try {
+      await deleteQuoteRecommendation(quoteId, target.item.id, target.id, branchId);
+      onItemsChange(
+        items.map((item) =>
+          item.id === target.item.id
+            ? {
+                ...item,
+                alternatives: item.alternatives.filter(
+                  (alternative) => alternative.id !== target.id,
+                ),
+              }
+            : item,
+        ),
+      );
+      setPendingRecommendationDelete(null);
+      toast.success(t('detail.items.alternatives.toast.deleted'));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -844,9 +878,7 @@ export function RfqItemsTable({
                 .filter((item) => item.product_id !== null)
                 .map((item) => {
                   const alternatives = item.alternatives.filter(
-                    (alternative) =>
-                      alternative.recommendation_type !== null &&
-                      alternative.price_snapshot !== null,
+                    (alternative) => alternative.recommendation_type !== null,
                   );
                   const missingTypes = CUSTOMER_RECOMMENDATION_TYPES.filter(
                     (type) =>
@@ -875,6 +907,15 @@ export function RfqItemsTable({
                             const approved = alternative.approved_by_seller;
                             const pending = updatingAlternativeId === alternative.id;
                             const isPremium = alternative.recommendation_type === 'PREMIUM';
+                            const isCommercial =
+                              alternative.recommendation_type === 'ECONOMY' || isPremium;
+                            const validPrice =
+                              !isCommercial ||
+                              recommendationPriceValid(
+                                item.unit_price_snapshot,
+                                alternative.price_snapshot,
+                                alternative.recommendation_type as 'ECONOMY' | 'PREMIUM',
+                              );
 
                             return (
                               <div
@@ -906,45 +947,76 @@ export function RfqItemsTable({
                                     ) : null}
                                   </div>
                                   <p className="text-paragraph-xs text-foreground-muted">
-                                    {t('detail.items.alternatives.unitPrice', {
-                                      amount: fmt.currency(alternative.price_snapshot ?? '0'),
-                                    })}
+                                    {alternative.price_snapshot === null
+                                      ? t('detail.items.alternatives.priceUnavailable')
+                                      : t('detail.items.alternatives.unitPrice', {
+                                          amount: fmt.currency(alternative.price_snapshot),
+                                        })}
                                   </p>
+                                  {!validPrice && (
+                                    <p className="text-paragraph-xs text-warning-foreground">
+                                      {t('detail.items.alternatives.invalidPrice')}
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   {(alternative.recommendation_type === 'ECONOMY' ||
                                     alternative.recommendation_type === 'PREMIUM') && (
-                                    <PendingButton
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={
-                                        updatingAlternativeId !== null ||
-                                        updatingRecommendation !== null
-                                      }
-                                      pending={
-                                        updatingRecommendation ===
-                                        `${item.id}:${alternative.recommendation_type}`
-                                      }
-                                      pendingLabel={t('detail.items.alternatives.pending')}
-                                      onClick={() =>
-                                        setRecommendationPicker({
-                                          item,
-                                          type: alternative.recommendation_type as
-                                            | 'ECONOMY'
-                                            | 'PREMIUM',
-                                          saveToCatalog: false,
-                                        })
-                                      }
-                                    >
-                                      {t('detail.items.alternatives.replace')}
-                                    </PendingButton>
+                                    <>
+                                      <PendingButton
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={
+                                          updatingAlternativeId !== null ||
+                                          updatingRecommendation !== null
+                                        }
+                                        pending={
+                                          updatingRecommendation ===
+                                          `${item.id}:${alternative.recommendation_type}`
+                                        }
+                                        pendingLabel={t('detail.items.alternatives.pending')}
+                                        onClick={() =>
+                                          setRecommendationPicker({
+                                            item,
+                                            type: alternative.recommendation_type as
+                                              | 'ECONOMY'
+                                              | 'PREMIUM',
+                                            saveToCatalog: false,
+                                          })
+                                        }
+                                      >
+                                        {t('detail.items.alternatives.replace')}
+                                      </PendingButton>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={
+                                          updatingAlternativeId !== null ||
+                                          updatingRecommendation !== null
+                                        }
+                                        onClick={() =>
+                                          setPendingRecommendationDelete({
+                                            item,
+                                            id: alternative.id,
+                                            name: alternative.canonical_name ?? '',
+                                          })
+                                        }
+                                      >
+                                        {t('detail.items.alternatives.delete')}
+                                      </Button>
+                                    </>
                                   )}
                                   <PendingButton
                                     type="button"
                                     variant={approved ? 'outline' : 'default'}
                                     size="sm"
-                                    disabled={updatingAlternativeId !== null}
+                                    disabled={
+                                      updatingAlternativeId !== null ||
+                                      updatingRecommendation !== null ||
+                                      (!approved && !validPrice)
+                                    }
                                     pending={pending}
                                     pendingLabel={t('detail.items.alternatives.pending')}
                                     onClick={() =>
@@ -1204,6 +1276,25 @@ export function RfqItemsTable({
             </label>
           ) : undefined
         }
+      />
+
+      <ConfirmDialog
+        open={pendingRecommendationDelete !== null}
+        onOpenChange={(open) =>
+          !open && !updatingAlternativeId && setPendingRecommendationDelete(null)
+        }
+        entity={pendingRecommendationDelete}
+        pending={updatingAlternativeId !== null}
+        title={t('detail.items.alternatives.deleteConfirm.title')}
+        description={(target) =>
+          t('detail.items.alternatives.deleteConfirm.description', { name: target.name })
+        }
+        onConfirm={() => void handleDeleteRecommendation()}
+        labels={{
+          confirm: t('detail.items.alternatives.deleteConfirm.confirm'),
+          pending: t('detail.items.alternatives.deleteConfirm.pending'),
+          cancel: tCommon('actions.cancel'),
+        }}
       />
 
       <ConfirmDialog

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/shopspring/decimal"
 )
 
 func TestCompatibleRecommendation_RequiresMatchingClassificationAndUnit(t *testing.T) {
@@ -31,6 +32,33 @@ func TestCompatibleRecommendation_RequiresMatchingClassificationAndUnit(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			if got := compatibleRecommendation(base, tc.candidate); got != tc.want {
 				t.Fatalf("compatibleRecommendation() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRecommendationPrice_RequiresStrictDirection(t *testing.T) {
+	price := func(value string) decimal.NullDecimal {
+		return decimal.NewNullDecimal(decimal.RequireFromString(value))
+	}
+	for _, tc := range []struct {
+		name            string
+		kind            domain.ProductAlternativeType
+		base, candidate decimal.NullDecimal
+		want            bool
+	}{
+		{"economy below", domain.ProductAlternativeEconomy, price("100"), price("99.99"), true},
+		{"economy equal", domain.ProductAlternativeEconomy, price("100"), price("100"), false},
+		{"economy above", domain.ProductAlternativeEconomy, price("100"), price("101"), false},
+		{"premium above", domain.ProductAlternativePremium, price("100"), price("100.01"), true},
+		{"premium equal", domain.ProductAlternativePremium, price("100"), price("100"), false},
+		{"premium below", domain.ProductAlternativePremium, price("100"), price("99"), false},
+		{"missing base", domain.ProductAlternativeEconomy, decimal.NullDecimal{}, price("99"), false},
+		{"missing candidate", domain.ProductAlternativeEconomy, price("100"), decimal.NullDecimal{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := validRecommendationPrice(tc.kind, tc.base, tc.candidate); got != tc.want {
+				t.Fatalf("validRecommendationPrice() = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -71,6 +99,65 @@ func TestQuoteService_SetRecommendation_RejectsDifferentSubgroup(t *testing.T) {
 	}
 }
 
+func TestQuoteService_RecommendationPriceIsCheckedWhenSelectedAndApproved(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		kind           domain.ProductAlternativeType
+		candidatePrice string
+		wantCode       domain.ErrorCode
+	}{
+		{"equal economy", domain.ProductAlternativeEconomy, "100", domain.CodeRecommendationEconomyPriceInvalid},
+		{"higher economy", domain.ProductAlternativeEconomy, "101", domain.CodeRecommendationEconomyPriceInvalid},
+		{"equal premium", domain.ProductAlternativePremium, "100", domain.CodeRecommendationPremiumPriceInvalid},
+		{"lower premium", domain.ProductAlternativePremium, "99", domain.CodeRecommendationPremiumPriceInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, candidate := uuid.New(), uuid.New()
+			item := pricedLine(base, "10")
+			item.UnitPriceSnapshot = decimal.NewNullDecimal(decimal.NewFromInt(100))
+			f := newQuoteFixture([]domain.QuoteItem{item}, map[uuid.UUID]domain.BranchPrice{
+				candidate: branchPrice(candidate, tc.candidatePrice, nil),
+			})
+			f.quotes.quote.CurrentStatus = domain.QuoteStatusQuoted
+			_, err := f.service.SetRecommendationAlternative(context.Background(), f.tenant, f.quoteID, item.ID, candidate, tc.kind, false)
+			if got := domain.CodeOf(err); got != tc.wantCode {
+				t.Fatalf("selection code = %s, want %s (error %v)", got, tc.wantCode, err)
+			}
+			name, altID := "Alternative", uuid.New()
+			f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{item.ID: {{
+				ID: altID, ProductID: &candidate, CanonicalName: &name, RecommendationType: &tc.kind,
+				PriceSnapshot: decimal.NewNullDecimal(decimal.RequireFromString(tc.candidatePrice)),
+			}}}
+			_, err = f.service.ApproveAlternative(context.Background(), f.tenant, f.quoteID, item.ID, altID, true)
+			if got := domain.CodeOf(err); got != tc.wantCode {
+				t.Fatalf("approval code = %s, want %s (error %v)", got, tc.wantCode, err)
+			}
+		})
+	}
+}
+
+func TestRepresentation_ExcludesRecommendationWhenBasePriceChanges(t *testing.T) {
+	base, candidate, itemID, altID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	family, subgroup, unit := uuid.New(), uuid.New(), "bolsa"
+	kind := domain.ProductAlternativeEconomy
+	quotes := &fakePublicQuoteQuotes{}
+	service := &QuoteRepresentationService{quotes: quotes, recommendationProducts: fakeRecommendationProducts{products: map[uuid.UUID]domain.Product{
+		base:      {ID: base, FamilyID: &family, SubgroupID: &subgroup, Unit: &unit},
+		candidate: {ID: candidate, FamilyID: &family, SubgroupID: &subgroup, Unit: &unit},
+	}}}
+	source := &domain.QuoteRepresentationSource{
+		Items: []domain.QuoteItem{{ID: itemID, ProductID: &base, UnitPriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(90))}},
+		Alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {{ID: altID, ProductID: &candidate, RecommendationType: &kind,
+			PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(95)), ApprovedBySeller: true}}},
+	}
+	if err := service.excludeIncompatibleRecommendations(context.Background(), nil, uuid.New(), uuid.New(), source); err != nil {
+		t.Fatal(err)
+	}
+	if len(source.Alternatives[itemID]) != 0 || len(quotes.unapproved) != 1 || quotes.unapproved[0] != altID {
+		t.Fatalf("alternatives = %+v, unapproved = %v; want candidate excluded and unapproved", source.Alternatives[itemID], quotes.unapproved)
+	}
+}
+
 func TestRepresentation_ExcludesIncompatibleApprovedRecommendations(t *testing.T) {
 	baseID, validID, invalidID := uuid.New(), uuid.New(), uuid.New()
 	itemID, validAltID, invalidAltID := uuid.New(), uuid.New(), uuid.New()
@@ -85,10 +172,10 @@ func TestRepresentation_ExcludesIncompatibleApprovedRecommendations(t *testing.T
 		},
 	}}
 	source := &domain.QuoteRepresentationSource{
-		Items: []domain.QuoteItem{{ID: itemID, ProductID: &baseID}},
+		Items: []domain.QuoteItem{{ID: itemID, ProductID: &baseID, UnitPriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(100))}},
 		Alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {
-			{ID: validAltID, ProductID: &validID, RecommendationType: &kind, ApprovedBySeller: true},
-			{ID: invalidAltID, ProductID: &invalidID, RecommendationType: &kind, ApprovedBySeller: true},
+			{ID: validAltID, ProductID: &validID, RecommendationType: &kind, ApprovedBySeller: true, PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(90))},
+			{ID: invalidAltID, ProductID: &invalidID, RecommendationType: &kind, ApprovedBySeller: true, PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(90))},
 		}},
 	}
 	if err := service.excludeIncompatibleRecommendations(context.Background(), nil, uuid.New(), uuid.New(), source); err != nil {

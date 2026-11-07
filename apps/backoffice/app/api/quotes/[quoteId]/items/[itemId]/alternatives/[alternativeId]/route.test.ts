@@ -6,7 +6,7 @@ import { ACCESS_COOKIE } from '@/lib/auth/tokens';
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 
 const { cookies } = await import('next/headers');
-const { PATCH } =
+const { PATCH, DELETE } =
   await import('@/app/api/quotes/[quoteId]/items/[itemId]/alternatives/[alternativeId]/route');
 
 const BRANCH_ID = '11111111-1111-4111-8111-111111111111';
@@ -28,6 +28,28 @@ afterEach(() => {
 });
 
 describe('the quote alternative approval proxy', () => {
+  it('forwards removal within the quote and branch', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await DELETE(
+      new Request('http://localhost/api/quotes/quote/items/item/alternatives/alternative', {
+        method: 'DELETE',
+        headers: { 'X-Branch-Id': BRANCH_ID },
+      }),
+      {
+        params: Promise.resolve({
+          quoteId: QUOTE_ID,
+          itemId: ITEM_ID,
+          alternativeId: ALTERNATIVE_ID,
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toContain(`/v1/quotes/${QUOTE_ID}/items/${ITEM_ID}/alternatives/${ALTERNATIVE_ID}`);
+    expect(init?.method).toBe('DELETE');
+    expect(new Headers(init?.headers).get('X-Branch-Id')).toBe(BRANCH_ID);
+  });
   it('forwards the seller decision in its quote and branch scope', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

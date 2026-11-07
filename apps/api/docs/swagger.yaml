@@ -7528,6 +7528,54 @@ paths:
       tags:
       - rfqs
   /v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId}:
+    delete:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: Alternative id
+        in: path
+        name: alternativeId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a quote item recommendation
+      tags:
+      - quotes
     patch:
       consumes:
       - application/json

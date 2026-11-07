@@ -32,6 +32,7 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   addQuoteItem: vi.fn(),
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
+  deleteQuoteRecommendation: vi.fn(),
   setQuoteItemRecommendation: vi.fn(),
   updateDiscount: vi.fn(),
   updateQuoteAlternativeApproval: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 const { toast } = await import('sonner');
 const {
   deleteQuoteItem,
+  deleteQuoteRecommendation,
   setQuoteItemRecommendation,
   updateDiscount,
   updateQuoteAlternativeApproval,
@@ -166,6 +168,74 @@ describe('RfqItemsTable action errors', () => {
 });
 
 describe('RfqItemsTable customer alternatives', () => {
+  it.each(['780.00', '800.00', null])(
+    'keeps an invalid or unpriced economy option visible but prevents inclusion (%s)',
+    (price) => {
+      const view = renderItems(BRANCH_ID, 'QUOTED', [
+        { ...PRICED_ITEM, alternatives: [{ ...ECONOMY_ALTERNATIVE, price_snapshot: price }] },
+      ]);
+
+      expect(view.getByText(copy.detail.items.alternatives.invalidPrice)).toBeTruthy();
+      expect(
+        (
+          view.getByRole('button', {
+            name: copy.detail.items.alternatives.include,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        view.getByRole('button', { name: copy.detail.items.alternatives.replace }),
+      ).toBeTruthy();
+      expect(
+        view.getByRole('button', { name: copy.detail.items.alternatives.delete }),
+      ).toBeTruthy();
+    },
+  );
+
+  it('lets the seller uninclude a previously approved option whose price is now invalid', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      {
+        ...PRICED_ITEM,
+        alternatives: [
+          { ...ECONOMY_ALTERNATIVE, price_snapshot: '800.00', approved_by_seller: true },
+        ],
+      },
+    ]);
+
+    expect(view.getByText(copy.detail.items.alternatives.invalidPrice)).toBeTruthy();
+    expect(
+      (
+        view.getByRole('button', {
+          name: copy.detail.items.alternatives.remove,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it('removes a recommendation only after confirmation', async () => {
+    vi.mocked(deleteQuoteRecommendation).mockResolvedValue(undefined);
+    const onItemsChange = vi.fn();
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.delete }));
+    expect(deleteQuoteRecommendation).not.toHaveBeenCalled();
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.deleteConfirm.confirm }),
+    );
+    await vi.waitFor(() =>
+      expect(deleteQuoteRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        ECONOMY_ALTERNATIVE.id,
+        BRANCH_ID,
+      ),
+    );
+    expect(onItemsChange.mock.calls[0]?.[0]?.[0]?.alternatives).toEqual([]);
+  });
   it('lets the seller include an economical alternative in the customer quote', async () => {
     const onItemsChange = vi.fn();
     vi.mocked(updateQuoteAlternativeApproval).mockResolvedValue({

@@ -219,6 +219,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
 	quotes.POST("/:quoteId/representations", h.Quote.GenerateRepresentation)
 	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
+	quotes.DELETE("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.DeleteRecommendationAlternative)
 	quotes.PUT("/:quoteId/items/:itemId/recommendations/:recommendationType", h.Quote.SetRecommendationAlternative)
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)

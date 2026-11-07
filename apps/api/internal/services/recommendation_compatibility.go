@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
@@ -27,4 +28,32 @@ func requireCompatibleRecommendation(base, alternative domain.Product) error {
 		return fmt.Errorf("%w: alternative products must share a family, subgroup and unit", domain.ErrInvalidInput)
 	}
 	return nil
+}
+
+func validRecommendationPrice(kind domain.ProductAlternativeType, base, alternative decimal.NullDecimal) bool {
+	if !base.Valid || !alternative.Valid {
+		return false
+	}
+	switch kind {
+	case domain.ProductAlternativeEconomy:
+		return alternative.Decimal.LessThan(base.Decimal)
+	case domain.ProductAlternativePremium:
+		return alternative.Decimal.GreaterThan(base.Decimal)
+	default:
+		return false
+	}
+}
+
+func requireRecommendationPrice(kind domain.ProductAlternativeType, base, alternative decimal.NullDecimal) error {
+	if !base.Valid {
+		return domain.WithCode(domain.CodeRecommendationBasePriceMissing, domain.ErrInvalidInput)
+	}
+	if validRecommendationPrice(kind, base, alternative) {
+		return nil
+	}
+	code := domain.CodeRecommendationEconomyPriceInvalid
+	if kind == domain.ProductAlternativePremium {
+		code = domain.CodeRecommendationPremiumPriceInvalid
+	}
+	return domain.WithCode(code, domain.ErrInvalidInput)
 }

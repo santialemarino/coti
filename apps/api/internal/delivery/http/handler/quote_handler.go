@@ -19,6 +19,7 @@ type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
 	ApproveAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
 		alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
+	DeleteRecommendationAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID, alternativeID uuid.UUID) error
 	SetRecommendationAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
 		productID uuid.UUID, recommendationType domain.ProductAlternativeType,
 		saveToCatalog bool) (*domain.QuoteItemAlternative, error)

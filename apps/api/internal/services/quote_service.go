@@ -26,6 +26,7 @@ type quoteRepository interface {
 	UpdateVersionValuation(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
 		total decimal.Decimal, currency string) (*domain.QuoteVersion, error)
 	GetAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) (*domain.QuoteItemAlternative, error)
+	DeleteRecommendationAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) error
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
 	ApplyAlternativePricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemAlternativePricing) error
 	SetRecommendationAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, productID uuid.UUID,
@@ -286,6 +287,9 @@ func (s *QuoteService) ApproveAlternative(
 			if err := s.validateRecommendationProducts(ctx, q, tenant.AccountID, *item.ProductID, *alternative.ProductID); err != nil {
 				return err
 			}
+			if err := requireRecommendationPrice(*alternative.RecommendationType, item.UnitPriceSnapshot, alternative.PriceSnapshot); err != nil {
+				return err
+			}
 		}
 		result, err = s.quotes.UpdateAlternativeApproval(ctx, q, tenant.AccountID, version.ID,
 			itemID, alternativeID, approved)
@@ -355,6 +359,9 @@ func (s *QuoteService) SetRecommendationAlternative(
 		}
 		if priceCurrency != currency {
 			return fmt.Errorf("%w: the alternative uses a different quote currency", domain.ErrInvalidInput)
+		}
+		if err := requireRecommendationPrice(recommendationType, item.UnitPriceSnapshot, decimal.NewNullDecimal(price.Price)); err != nil {
+			return err
 		}
 		if saveToCatalog {
 			if s.catalogRecommendations == nil {

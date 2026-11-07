@@ -20,7 +20,15 @@ Seller item changes and alternative approvals reject immutable versions.
 Only priced candidates can be approved. Economy and premium alternatives must also share the base
 product's family, subgroup and unit. Before a new bundle is frozen, previously approved commercial
 alternatives that no longer meet this rule are unapproved and omitted; existing bundles stay intact.
+Economy and premium prices must also be respectively strictly lower and strictly higher than the
+quoted unit price, using snapshots before discounts in the quote's currency. Equal, missing or stale
+prices do not block the quote: nonconforming commercial options are unapproved and excluded when
+the bundle is frozen. The seller can replace or remove them beforehand. Final discounts are
+recalculated for the customer's selected combination, not inferred from the price label.
 Unapproved alternatives never enter the public bundle.
+`DELETE /v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId}` removes an economy or
+premium option from the mutable `QUOTED` version. It leaves the catalog relationship unchanged and
+does not change an immutable or sent version.
 Alternative product prices are snapshotted in a batch during materials acceptance; candidates
 with a different currency stay unpriced. Mixed currencies among quote lines are rejected.
 

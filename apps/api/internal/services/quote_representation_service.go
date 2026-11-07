@@ -327,7 +327,8 @@ func (s *QuoteRepresentationService) excludeIncompatibleRecommendations(ctx cont
 					candidate = products[*alternative.ProductID]
 				}
 				if item.ProductID == nil || alternative.ProductID == nil || *item.ProductID == *alternative.ProductID ||
-					!compatibleRecommendation(base, candidate) {
+					!compatibleRecommendation(base, candidate) ||
+					!validRecommendationPrice(*alternative.RecommendationType, item.UnitPriceSnapshot, alternative.PriceSnapshot) {
 					invalidIDs = append(invalidIDs, alternative.ID)
 					continue
 				}
