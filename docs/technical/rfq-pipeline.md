@@ -192,7 +192,8 @@ and the priced response.
 
 **A candidate that scored zero is dropped from both**, which is the one exception to that table.
 
-Every generated line with a matched product also receives its active, same-unit outgoing
+Every generated line with a matched product also receives its active, same-family, same-subgroup,
+same-unit outgoing
 `ECONOMY` and `PREMIUM` `product_alternative` links. These are `PRODUCT` alternatives with
 `origin = 'AI'` and their source relationship in `recommendation_type`; they have no
 `confidence_score` and start unapproved, so the client cannot see them before the seller decides.
@@ -557,7 +558,7 @@ line with a product:
 | `ADAPT_TO_REACH_DISCOUNT`   | `LOWER_TOTAL_PRICE` | the same line at the next threshold of a promotion it targets, if that is lower |
 | `IMPROVE_QUALITY`           | `IMPROVE_QUALITY`   | its cheapest `PREMIUM` alternative the branch prices                            |
 
-Only an active alternative sold in the base product's unit counts, and ties go to its name:
+Only an active alternative sharing the base product's family, subgroup and unit counts, and ties go to its name:
 `product_alternative` has no rank. The swaps are written as `REPLACE_ITEM` operations and priced at
 once at the branch price the recipe chose them by; quantities never change. `IMPROVE_QUALITY` has
 no cap.

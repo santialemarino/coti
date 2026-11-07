@@ -44,6 +44,7 @@ type quoteRepresentationQuoteRepository interface {
 		quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	FreezeVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID,
 		versionID uuid.UUID) (*domain.QuoteVersion, error)
+	UnapproveAlternatives(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, ids []uuid.UUID) error
 }
 
 // QuoteRepresentationService freezes, validates, renders and persists one bundle per version.
@@ -58,8 +59,15 @@ type QuoteRepresentationService struct {
 	now             func() time.Time
 	log             *slog.Logger
 	// settler records the seller's decision on the handler runs a frozen draft carries.
-	settler handlerDecisionSettler
-	pricing quoteSelectionPricingReader
+	settler                handlerDecisionSettler
+	pricing                quoteSelectionPricingReader
+	recommendationProducts recommendationProductReader
+}
+
+// WithRecommendationProducts excludes incompatible catalog alternatives before freezing.
+func (s *QuoteRepresentationService) WithRecommendationProducts(products recommendationProductReader) *QuoteRepresentationService {
+	s.recommendationProducts = products
+	return s
 }
 
 type handlerDecisionSettler interface {
@@ -205,6 +213,9 @@ func (s *QuoteRepresentationService) ensureLocked(
 		if err != nil {
 			return err
 		}
+		if err := s.excludeIncompatibleRecommendations(ctx, q, tenant.AccountID, version.ID, source); err != nil {
+			return err
+		}
 		if err := validateRepresentationSource(*source); err != nil {
 			return err
 		}
@@ -269,6 +280,63 @@ func (s *QuoteRepresentationService) ensureLocked(
 		return nil, err
 	}
 	return s.decorate(ctx, *created, false)
+}
+
+func (s *QuoteRepresentationService) excludeIncompatibleRecommendations(ctx context.Context, q repository.Querier,
+	accountID, versionID uuid.UUID, source *domain.QuoteRepresentationSource,
+) error {
+	if source.Version.IsImmutable {
+		return nil
+	}
+	var ids []uuid.UUID
+	hasRecommendations := false
+	for _, item := range source.Items {
+		for _, alternative := range source.Alternatives[item.ID] {
+			if alternative.RecommendationType == nil || !isQuoteRecommendationType(*alternative.RecommendationType) {
+				continue
+			}
+			hasRecommendations = true
+			if item.ProductID != nil {
+				ids = append(ids, *item.ProductID)
+			}
+			if alternative.ProductID != nil {
+				ids = append(ids, *alternative.ProductID)
+			}
+		}
+	}
+	if !hasRecommendations {
+		return nil
+	}
+	if s.recommendationProducts == nil {
+		return domain.ErrNotConfigured
+	}
+	products, err := s.recommendationProducts.GetByIDs(ctx, q, accountID, ids)
+	if err != nil {
+		return err
+	}
+	var invalidIDs []uuid.UUID
+	for _, item := range source.Items {
+		kept := source.Alternatives[item.ID][:0]
+		for _, alternative := range source.Alternatives[item.ID] {
+			if alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
+				var base, candidate domain.Product
+				if item.ProductID != nil {
+					base = products[*item.ProductID]
+				}
+				if alternative.ProductID != nil {
+					candidate = products[*alternative.ProductID]
+				}
+				if item.ProductID == nil || alternative.ProductID == nil || *item.ProductID == *alternative.ProductID ||
+					!compatibleRecommendation(base, candidate) {
+					invalidIDs = append(invalidIDs, alternative.ID)
+					continue
+				}
+			}
+			kept = append(kept, alternative)
+		}
+		source.Alternatives[item.ID] = kept
+	}
+	return s.quotes.UnapproveAlternatives(ctx, q, accountID, versionID, invalidIDs)
 }
 
 func (s *QuoteRepresentationService) captureSelectionPricing(

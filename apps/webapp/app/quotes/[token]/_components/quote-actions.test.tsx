@@ -28,10 +28,16 @@ function fetchResolving(body: unknown) {
 }
 
 function SelectAlternative() {
-  const { select } = useQuoteSelections();
+  const { select, setPreviewReady } = useQuoteSelections();
 
   return (
-    <button type="button" onClick={() => select('item-1', 'alternative-1')}>
+    <button
+      type="button"
+      onClick={() => {
+        select('item-1', 'alternative-1');
+        setPreviewReady([{ itemId: 'item-1', alternativeId: 'alternative-1' }], true);
+      }}
+    >
       Select alternative
     </button>
   );

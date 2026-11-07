@@ -351,6 +351,24 @@ type quoteFixture struct {
 	branchID uuid.UUID
 }
 
+type fakeRecommendationProducts struct {
+	products map[uuid.UUID]domain.Product
+}
+
+func (f fakeRecommendationProducts) GetByIDs(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, ids []uuid.UUID,
+) (map[uuid.UUID]domain.Product, error) {
+	if f.products != nil {
+		return f.products, nil
+	}
+	family, subgroup, unit := uuid.New(), uuid.New(), "bolsa"
+	products := make(map[uuid.UUID]domain.Product, len(ids))
+	for _, id := range ids {
+		products[id] = domain.Product{ID: id, FamilyID: &family, SubgroupID: &subgroup, Unit: &unit}
+	}
+	return products, nil
+}
+
 // newQuoteFixture stages a DRAFT quote whose current version holds the lines given.
 func newQuoteFixture(items []domain.QuoteItem, prices map[uuid.UUID]domain.BranchPrice) quoteFixture {
 	accountID, branchID, sellerID := uuid.New(), uuid.New(), uuid.New()
@@ -371,7 +389,7 @@ func newQuoteFixture(items []domain.QuoteItem, prices map[uuid.UUID]domain.Branc
 	branchPrices := &fakeBranchPrices{prices: prices}
 	return quoteFixture{
 		service: NewQuoteService(db, quotes, branchPrices, domain.ARCAEnvironmentHomologation,
-			slog.New(slog.NewTextHandler(io.Discard, nil))),
+			slog.New(slog.NewTextHandler(io.Discard, nil))).WithRecommendationProducts(fakeRecommendationProducts{}),
 		db:     db,
 		quotes: quotes,
 		prices: branchPrices,

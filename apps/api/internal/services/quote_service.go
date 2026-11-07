@@ -71,6 +71,13 @@ type QuoteService struct {
 	invoicing invoicingSwitch
 	// catalogRecommendations is optional so the core quote lifecycle remains deployable alone.
 	catalogRecommendations catalogRecommendationWriter
+	recommendationProducts recommendationProductReader
+}
+
+// WithRecommendationProducts validates the catalog identity of customer alternatives.
+func (s *QuoteService) WithRecommendationProducts(products recommendationProductReader) *QuoteService {
+	s.recommendationProducts = products
+	return s
 }
 
 // WithInvoicingSwitch wires the account switch «No requiere factura» depends on.
@@ -265,6 +272,21 @@ func (s *QuoteService) ApproveAlternative(
 			return fmt.Errorf("%w: an approved alternative needs a frozen price and catalog identity",
 				domain.ErrInvalidInput)
 		}
+		if approved && alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
+			item, getErr := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if getErr != nil {
+				return getErr
+			}
+			if item.ProductID == nil || alternative.ProductID == nil {
+				return fmt.Errorf("%w: recommendation needs two catalog products", domain.ErrInvalidInput)
+			}
+			if *item.ProductID == *alternative.ProductID {
+				return fmt.Errorf("%w: choose a different catalog product as the alternative", domain.ErrInvalidInput)
+			}
+			if err := s.validateRecommendationProducts(ctx, q, tenant.AccountID, *item.ProductID, *alternative.ProductID); err != nil {
+				return err
+			}
+		}
 		result, err = s.quotes.UpdateAlternativeApproval(ctx, q, tenant.AccountID, version.ID,
 			itemID, alternativeID, approved)
 		return err
@@ -311,6 +333,9 @@ func (s *QuoteService) SetRecommendationAlternative(
 		if item.ProductID == nil || *item.ProductID == productID {
 			return fmt.Errorf("%w: choose a different catalog product as the alternative", domain.ErrInvalidInput)
 		}
+		if err := s.validateRecommendationProducts(ctx, q, tenant.AccountID, *item.ProductID, productID); err != nil {
+			return err
+		}
 		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
 			[]uuid.UUID{productID})
 		if err != nil {
@@ -345,6 +370,24 @@ func (s *QuoteService) SetRecommendationAlternative(
 		return err
 	})
 	return result, err
+}
+
+func (s *QuoteService) validateRecommendationProducts(ctx context.Context, q repository.Querier,
+	accountID, baseID, alternativeID uuid.UUID,
+) error {
+	if s.recommendationProducts == nil {
+		return domain.ErrNotConfigured
+	}
+	products, err := s.recommendationProducts.GetByIDs(ctx, q, accountID, []uuid.UUID{baseID, alternativeID})
+	if err != nil {
+		return err
+	}
+	base, baseFound := products[baseID]
+	alternative, alternativeFound := products[alternativeID]
+	if !baseFound || !alternativeFound {
+		return domain.ErrNotFound
+	}
+	return requireCompatibleRecommendation(base, alternative)
 }
 
 func isQuoteRecommendationType(recommendationType domain.ProductAlternativeType) bool {

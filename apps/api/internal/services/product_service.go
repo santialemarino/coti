@@ -370,11 +370,18 @@ func (s *ProductService) AddAlternative(
 
 	var link *domain.ProductAlternative
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID); getErr != nil {
+		base, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID)
+		if getErr != nil {
 			return getErr
 		}
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID); getErr != nil {
+		alternative, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID)
+		if getErr != nil {
 			return getErr
+		}
+		if isRecommendationType(alternativeType) {
+			if err := requireCompatibleRecommendation(*base, *alternative); err != nil {
+				return err
+			}
 		}
 		var createErr error
 		link, createErr = s.alternatives.Create(ctx, q, tenant.AccountID, baseProductID,
@@ -400,11 +407,16 @@ func (s *ProductService) SetRecommendation(
 
 	var link *domain.ProductAlternative
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID); getErr != nil {
+		base, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID)
+		if getErr != nil {
 			return getErr
 		}
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID); getErr != nil {
+		alternative, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID)
+		if getErr != nil {
 			return getErr
+		}
+		if err := requireCompatibleRecommendation(*base, *alternative); err != nil {
+			return err
 		}
 		var setErr error
 		link, setErr = s.alternatives.SetRecommendation(ctx, q, tenant.AccountID, baseProductID,

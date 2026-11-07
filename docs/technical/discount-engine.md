@@ -71,6 +71,11 @@ promotion rules and product taxonomy captured when the quote was sent, not curre
 promotion state. Therefore a selection may form or dissolve an automatic promotion while neither a
 later price update nor an expired or edited promotion can change the accepted offer.
 
+The webapp requires a successful pricing preview for the current selection before acceptance.
+Changing alternatives invalidates that readiness immediately; pending or failed previews keep
+acceptance disabled. Restoring every original item permits acceptance of the frozen offer. Change
+requests and rejections remain available while a selection preview is pending or has failed.
+
 ## Rounding
 
 One rule, shared with invoicing: money is rounded **half-up to two decimals** (`decimal.Round(2)`,

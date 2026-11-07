@@ -167,6 +167,7 @@ func TestRfq_CreateManualAddsConfiguredAlternatives(t *testing.T) {
 	base := e.seedPricedProduct(t, accountID, branchID, "Base cement", "9500", nil)
 	economy := e.seedPricedProduct(t, accountID, branchID, "Economy cement", "8900", nil)
 	premium := e.seedPricedProduct(t, accountID, branchID, "Premium cement", "12000", nil)
+	e.classifyRecommendationProducts(t, accountID, base, economy, premium)
 	for _, alternative := range []struct {
 		productID uuid.UUID
 		kind      domain.ProductAlternativeType

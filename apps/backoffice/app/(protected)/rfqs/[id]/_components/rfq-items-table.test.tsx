@@ -14,7 +14,18 @@ import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn().mockResolvedValue([]) }));
+vi.mock('@/lib/api/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/catalog')>()),
+  searchCatalog: vi.fn().mockResolvedValue([]),
+  getCatalogProduct: vi.fn().mockResolvedValue({
+    id: 'p0000000-0000-4000-8000-000000000001',
+    code: 'LAD-HUE-12',
+    name: 'Ladrillo',
+    unit: 'unidad',
+    familyId: 'family',
+    subgroupId: 'subgroup',
+  }),
+}));
 
 vi.mock('@/lib/api/rfqs-client', () => ({
   addDiscount: vi.fn(),
@@ -198,6 +209,40 @@ describe('RfqItemsTable customer alternatives', () => {
     ]);
 
     expect(view.queryByText(copy.detail.items.alternatives.title)).toBeNull();
+  });
+
+  it('lets the seller replace an existing alternative for the quote', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      { id: 'replacement', code: 'NEW', name: 'Reemplazo', unit: 'unidad' },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'replacement-alternative',
+      product_id: 'replacement',
+      canonical_name: 'Reemplazo',
+    });
+    const onItemsChange = vi.fn();
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.replace }));
+    fireEvent.click(await view.findByText('Reemplazo'));
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'ECONOMY',
+        BRANCH_ID,
+        { product_id: 'replacement', save_to_catalog: false },
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives).toHaveLength(1);
+    expect(updatedItems?.[0]?.alternatives[0]?.product_id).toBe('replacement');
   });
 
   it('lets the seller define an economical option just for this quotation', async () => {

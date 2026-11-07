@@ -980,6 +980,27 @@ func (r *QuoteRepository) UpdateAlternativeApproval(
 	return scanQuoteItemAlternative(row)
 }
 
+// UnapproveAlternatives removes invalid customer options from a mutable version.
+func (r *QuoteRepository) UnapproveAlternatives(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, ids []uuid.UUID,
+) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tag, err := q.Exec(ctx, `UPDATE quote_item_alternative alternative SET approved_by_seller = FALSE
+		FROM quote_item item, quote_version version
+		WHERE alternative.account_id = $1 AND alternative.id = ANY($3)
+		  AND item.account_id = $1 AND item.id = alternative.quote_item_id AND item.version_id = $2
+		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`, accountID, versionID, ids)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(ids)) {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
 // MarkAlternativesChosenByClient stores the customer's answer as response metadata on the sent version.
 func (r *QuoteRepository) MarkAlternativesChosenByClient(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,

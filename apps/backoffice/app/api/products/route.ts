@@ -21,9 +21,13 @@ export async function GET(request: Request) {
   const search = url.searchParams.get('search');
   const limit = url.searchParams.get('limit');
   const offset = url.searchParams.get('offset');
+  const familyId = url.searchParams.get('family_id');
+  const subgroupId = url.searchParams.get('subgroup_id');
   if (search) upstreamUrl.searchParams.set('search', search);
   if (limit) upstreamUrl.searchParams.set('limit', limit);
   if (offset) upstreamUrl.searchParams.set('offset', offset);
+  if (familyId) upstreamUrl.searchParams.set('family_id', familyId);
+  if (subgroupId) upstreamUrl.searchParams.set('subgroup_id', subgroupId);
 
   const upstream = await fetch(upstreamUrl.toString(), {
     method: 'GET',

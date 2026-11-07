@@ -835,6 +835,9 @@ export function RfqItemsTable({
               <p className="text-paragraph-sm text-foreground-muted">
                 {t('detail.items.alternatives.description')}
               </p>
+              <p className="text-paragraph-xs text-foreground-muted">
+                {t('detail.items.alternatives.compatibilityNotice')}
+              </p>
             </div>
             <div className="flex flex-col gap-y-3">
               {items
@@ -908,21 +911,55 @@ export function RfqItemsTable({
                                     })}
                                   </p>
                                 </div>
-                                <PendingButton
-                                  type="button"
-                                  variant={approved ? 'outline' : 'default'}
-                                  size="sm"
-                                  disabled={updatingAlternativeId !== null}
-                                  pending={pending}
-                                  pendingLabel={t('detail.items.alternatives.pending')}
-                                  onClick={() =>
-                                    void handleAlternativeApproval(item, alternative.id, !approved)
-                                  }
-                                >
-                                  {approved
-                                    ? t('detail.items.alternatives.remove')
-                                    : t('detail.items.alternatives.include')}
-                                </PendingButton>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {(alternative.recommendation_type === 'ECONOMY' ||
+                                    alternative.recommendation_type === 'PREMIUM') && (
+                                    <PendingButton
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={
+                                        updatingAlternativeId !== null ||
+                                        updatingRecommendation !== null
+                                      }
+                                      pending={
+                                        updatingRecommendation ===
+                                        `${item.id}:${alternative.recommendation_type}`
+                                      }
+                                      pendingLabel={t('detail.items.alternatives.pending')}
+                                      onClick={() =>
+                                        setRecommendationPicker({
+                                          item,
+                                          type: alternative.recommendation_type as
+                                            | 'ECONOMY'
+                                            | 'PREMIUM',
+                                          saveToCatalog: false,
+                                        })
+                                      }
+                                    >
+                                      {t('detail.items.alternatives.replace')}
+                                    </PendingButton>
+                                  )}
+                                  <PendingButton
+                                    type="button"
+                                    variant={approved ? 'outline' : 'default'}
+                                    size="sm"
+                                    disabled={updatingAlternativeId !== null}
+                                    pending={pending}
+                                    pendingLabel={t('detail.items.alternatives.pending')}
+                                    onClick={() =>
+                                      void handleAlternativeApproval(
+                                        item,
+                                        alternative.id,
+                                        !approved,
+                                      )
+                                    }
+                                  >
+                                    {approved
+                                      ? t('detail.items.alternatives.remove')
+                                      : t('detail.items.alternatives.include')}
+                                  </PendingButton>
+                                </div>
                               </div>
                             );
                           })}
@@ -1139,6 +1176,7 @@ export function RfqItemsTable({
         open={recommendationPicker !== null}
         onOpenChange={(open) => !open && setRecommendationPicker(null)}
         onSelect={selectRecommendationProduct}
+        compatibilityProductId={recommendationPicker?.item.product_id}
         title={
           recommendationPicker
             ? t(`detail.items.alternatives.picker.${recommendationPicker.type}`)

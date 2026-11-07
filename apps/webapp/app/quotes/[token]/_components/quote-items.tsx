@@ -56,7 +56,7 @@ export function QuoteItems({
 }: QuoteItemsProps) {
   const fmt = useFormatters();
   const t = useTranslations('quote');
-  const { selections, select, selectedAlternativeId } = useQuoteSelections();
+  const { selections, select, selectedAlternativeId, setPreviewReady } = useQuoteSelections();
   const basePricing = useMemo<QuotePricing>(
     () => ({ items, discounts, total }),
     [discounts, items, total],
@@ -68,6 +68,7 @@ export function QuoteItems({
 
   useEffect(() => {
     const currentRequest = ++requestID.current;
+    setPreviewReady(selections, false);
     if (selections.length === 0 || disabled) {
       setPricing(basePricing);
       setIsCalculating(false);
@@ -82,6 +83,7 @@ export function QuoteItems({
         total: fixturePreview.quote.total,
         subtotal: fixturePreview.subtotal,
       });
+      setPreviewReady(selections, true);
       setIsCalculating(false);
       setPreviewFailed(false);
       return;
@@ -103,6 +105,7 @@ export function QuoteItems({
           total: preview.quote.total,
           subtotal: preview.subtotal,
         });
+        setPreviewReady(selections, true);
       })
       .catch(() => {
         if (currentRequest !== requestID.current) return;
@@ -112,7 +115,7 @@ export function QuoteItems({
       .finally(() => {
         if (currentRequest === requestID.current) setIsCalculating(false);
       });
-  }, [basePricing, disabled, selections, selectionPreviews, token]);
+  }, [basePricing, disabled, selections, selectionPreviews, setPreviewReady, token]);
 
   if (items.length === 0) {
     return <p className="text-paragraph text-foreground-muted">{t('empty')}</p>;

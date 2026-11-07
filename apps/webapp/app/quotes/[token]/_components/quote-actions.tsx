@@ -85,7 +85,7 @@ const RESPONDED_DESCRIPTION_KEY: Record<CustomerActionType, string> = {
  */
 export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteActionsProps) {
   const t = useTranslations('quote.actions');
-  const { selections } = useQuoteSelections();
+  const { selections, previewReady } = useQuoteSelections();
 
   const [choice, setChoice] = useState<ActionChoice | null>(null);
   const [message, setMessage] = useState('');
@@ -98,6 +98,7 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
   const showMessageError = choice === 'REQUEST_CHANGE' && messageMissing && messageTouched;
 
   function openDialog(next: ActionChoice) {
+    if (next === 'ACCEPT' && !previewReady) return;
     setChoice(next);
     setMessage('');
     setMessageTouched(false);
@@ -111,7 +112,7 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
   }
 
   async function handleConfirm() {
-    if (choice === null) return;
+    if (choice === null || busy || (choice === 'ACCEPT' && !previewReady)) return;
     if (choice === 'REQUEST_CHANGE' && messageMissing) {
       setMessageTouched(true);
       return;
@@ -171,7 +172,7 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-x-3">
-            <Button type="button" onClick={() => openDialog('ACCEPT')}>
+            <Button type="button" disabled={!previewReady} onClick={() => openDialog('ACCEPT')}>
               <CheckIcon />
               {t('acceptLabel')}
             </Button>
@@ -227,6 +228,7 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
               type="button"
               variant={choice === 'REJECT' ? 'destructive' : 'default'}
               pending={busy}
+              disabled={choice === 'ACCEPT' && !previewReady}
               pendingLabel={t('sending')}
               onClick={handleConfirm}
             >

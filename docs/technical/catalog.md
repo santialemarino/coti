@@ -92,6 +92,12 @@ one transaction, so configuring a new premium or economical product cannot leave
 recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
 recommendation slot.
 
+Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
+non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote
+selectors apply the same basic filter; missing classification leaves no selectable alternatives.
+This filter does not establish technical equivalence or normalize package contents: the seller
+still checks suitability before approving an offer.
+
 **Direction is a parameter, not two implementations.** `direction` picks which end of the
 relation to read:
 
@@ -103,10 +109,10 @@ A product cannot be its own alternative (**422**). The link is deletable from ei
 the route's `productId` has to be one of the two: a link between two other products is not
 deletable through a third one.
 
-When an RFQ draft has a matched product, the recommendation engine copies every active, same-unit
+When an RFQ draft has a matched product, the recommendation engine copies every active, classified
 outgoing `ECONOMY` and `PREMIUM` link into the line's unapproved alternatives. The copied row keeps
 the relationship type, so seller review can distinguish a configured recommendation from a matcher
-candidate.
+candidate. Links that no longer pass the family, subgroup and unit filter are omitted.
 
 A seller can replace either quote-line slot while the quote is `QUOTED`. The replacement has to be
 active and priced at the quote branch, and it receives that price as a snapshot before it can be

@@ -1480,6 +1480,7 @@
         },
         "alternatives": {
           "title": "Opciones para el cliente",
+          "compatibilityNotice": "Al enviar, se excluyen las opciones cuya familia, subgrupo o unidad ya no coincidan con el producto cotizado.",
           "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",
           "forItem": "Alternativas para {name}",
           "empty": "Todav\u00eda no hay alternativas definidas para este material.",
@@ -1492,10 +1493,17 @@
           "saveToCatalog": "Guardar tambi\u00e9n como alternativa del cat\u00e1logo",
           "include": "Incluir en la cotizaci\u00f3n",
           "remove": "No incluir",
+          "replace": "Reemplazar",
           "pending": "Guardando\u2026",
           "picker": {
             "ECONOMY": "Elegir alternativa econ\u00f3mica",
-            "PREMIUM": "Elegir alternativa premium"
+            "PREMIUM": "Elegir alternativa premium",
+            "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Revisá que sirvan para el mismo uso antes de elegir.",
+            "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
+            "loadError": "No pudimos consultar el producto en el catálogo. Intentá de nuevo.",
+            "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
+            "searchError": "No pudimos buscar productos. Revisá la conexión e intentá de nuevo.",
+            "retry": "Reintentar"
           },
           "catalogConfirmation": {
             "title": "\u00bfGuardar tambi\u00e9n en el cat\u00e1logo?",
@@ -2378,6 +2386,11 @@
       "picker": {
         "ECONOMY": "Elegir alternativa económica",
         "PREMIUM": "Elegir alternativa premium",
+        "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Revisá que sirvan para el mismo uso antes de elegir.",
+        "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
+        "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
+        "searchError": "No pudimos buscar productos. Revisá la conexión e intentá de nuevo.",
+        "retry": "Reintentar",
         "description": "Buscá el producto que puede ofrecerse en lugar del material base.",
         "placeholder": "Código o nombre del producto…",
         "clear": "Limpiar",

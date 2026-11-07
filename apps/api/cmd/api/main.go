@@ -267,7 +267,8 @@ func run() error {
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithInvoicingSwitch(invoicingRepo).
-		WithCatalogRecommendations(productAlternativeRepo)
+		WithCatalogRecommendations(productAlternativeRepo).
+		WithRecommendationProducts(productRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -276,7 +277,8 @@ func run() error {
 		cfg.Storage.SignedURLExpiry, nil, log).
 		WithHandlerDecisions(services.NewHandlerDecisionSettler(handlerDecisionRepo, quoteRepo,
 			quoteDiscountRepo)).
-		WithSelectionPricing(promotionRepo)
+		WithSelectionPricing(promotionRepo).
+		WithRecommendationProducts(productRepo)
 	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
 		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,

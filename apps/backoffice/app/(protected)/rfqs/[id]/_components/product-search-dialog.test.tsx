@@ -8,9 +8,13 @@ import {
 } from '@/app/(protected)/rfqs/[id]/_components/product-search-dialog';
 import messages from '@/translations/es.json';
 
-vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn() }));
+vi.mock('@/lib/api/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/catalog')>()),
+  searchCatalog: vi.fn(),
+  getCatalogProduct: vi.fn(),
+}));
 
-const { searchCatalog } = await import('@/lib/api/catalog');
+const { getCatalogProduct, searchCatalog } = await import('@/lib/api/catalog');
 
 const CEMENTO_50: ProductSuggestion = {
   id: 'p1',
@@ -107,5 +111,49 @@ describe('ProductSearchDialog', () => {
     view.rerender(dialogTree([], true));
 
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+  });
+
+  it('explains missing classification and does not search for alternatives', async () => {
+    vi.mocked(getCatalogProduct).mockResolvedValue({
+      ...CAL,
+      familyId: 'family',
+      subgroupId: null,
+    });
+    vi.mocked(searchCatalog).mockClear();
+    render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <ProductSearchDialog
+          open
+          onOpenChange={() => {}}
+          onSelect={() => {}}
+          compatibilityProductId="p3"
+        />
+      </NextIntlClientProvider>,
+    );
+    await settle();
+    expect(
+      screen.getByText(messages.rfqs.detail.items.alternatives.picker.missingClassification),
+    ).toBeTruthy();
+    expect(searchCatalog).not.toHaveBeenCalled();
+  });
+
+  it('shows a search failure and lets the seller retry', async () => {
+    vi.mocked(searchCatalog)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([CAL]);
+    renderDialog([]);
+    await settle();
+    expect(screen.getByRole('alert').textContent).toBe(
+      messages.rfqs.detail.items.alternatives.picker.searchError,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: messages.rfqs.detail.items.alternatives.picker.retry }),
+    );
+    await settle();
+    expect(listedNames()).toEqual([CAL.name]);
   });
 });

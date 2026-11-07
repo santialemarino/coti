@@ -42,8 +42,9 @@ type fakeProducts struct {
 
 func newFakeProducts(ids ...uuid.UUID) *fakeProducts {
 	known := make(map[uuid.UUID]domain.Product, len(ids))
+	family, subgroup, unit := uuid.New(), uuid.New(), "bolsa"
 	for _, id := range ids {
-		known[id] = domain.Product{ID: id, AccountID: testAccountID, CanonicalName: "Cemento"}
+		known[id] = domain.Product{ID: id, AccountID: testAccountID, CanonicalName: "Cemento", FamilyID: &family, SubgroupID: &subgroup, Unit: &unit}
 	}
 	return &fakeProducts{known: known}
 }

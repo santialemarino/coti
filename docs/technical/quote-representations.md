@@ -17,13 +17,18 @@ Seller item changes and alternative approvals reject immutable versions.
 
 `PATCH /v1/quotes/{quoteId}/items/{itemId}/alternatives/{alternativeId}` accepts
 `{"approved_by_seller": true}` or `false` while the current `QUOTED` version is mutable.
-Only priced candidates can be approved. Unapproved alternatives never enter the public bundle.
+Only priced candidates can be approved. Economy and premium alternatives must also share the base
+product's family, subgroup and unit. Before a new bundle is frozen, previously approved commercial
+alternatives that no longer meet this rule are unapproved and omitted; existing bundles stay intact.
+Unapproved alternatives never enter the public bundle.
 Alternative product prices are snapshotted in a batch during materials acceptance; candidates
 with a different currency stay unpriced. Mixed currencies among quote lines are rejected.
 
 PDF rendering, logo retrieval and storage run outside transactions. A session advisory lock
 serializes generation for the account and quote across instances. Rendering or upload failure
 returns 503, leaves the quote `QUOTED` and frozen, and permits retry. No client is contacted.
+Retries preserve the alternatives approved at freezing without revalidating live catalog classification
+or changing approvals on the immutable version.
 The representation row is inserted only after upload succeeds. A database failure after upload
 may leave an unreferenced object; retry uses the same key and may overwrite that object.
 

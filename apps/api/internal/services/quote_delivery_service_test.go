@@ -102,6 +102,7 @@ type fakePublicQuoteQuotes struct {
 	deletedAlts  []uuid.UUID
 	quantities   []domain.QuoteItemQuantityUpdate
 	replacements []domain.QuoteItemReplacement
+	unapproved   []uuid.UUID
 	getErr       error
 	statusErr    error
 	statusCalls  []quoteStatusCall
@@ -252,6 +253,12 @@ func (f *fakePublicQuoteQuotes) ReplaceItems(_ context.Context, _ repository.Que
 func (f *fakePublicQuoteQuotes) FreezeVersion(context.Context, repository.Querier,
 	uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.QuoteVersion, error) {
 	return nil, errors.New("not used by public quote action tests")
+}
+
+func (f *fakePublicQuoteQuotes) UnapproveAlternatives(_ context.Context, _ repository.Querier,
+	_, _ uuid.UUID, ids []uuid.UUID) error {
+	f.unapproved = append(f.unapproved, ids...)
+	return nil
 }
 
 func (f *fakePublicQuoteQuotes) SetClient(context.Context, repository.Querier, uuid.UUID,
