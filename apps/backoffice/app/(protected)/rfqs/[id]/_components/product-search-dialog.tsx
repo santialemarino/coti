@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -25,6 +25,7 @@ interface ProductSearchDialogProps {
   onOpenChange: (open: boolean) => void;
   onSelect: (product: CatalogProduct) => void;
   title?: string;
+  footer?: ReactNode;
   /* The candidates matching already weighed for the line, listed first while they fit the query. */
   suggestions?: ProductSuggestion[];
   excludedProductIds?: string[];
@@ -42,6 +43,7 @@ export function ProductSearchDialog({
   onOpenChange,
   onSelect,
   title,
+  footer,
   suggestions = [],
   excludedProductIds = [],
 }: ProductSearchDialogProps) {
@@ -173,6 +175,8 @@ export function ProductSearchDialog({
             </ul>
           )}
         </ScrollArea>
+
+        {footer ? <div className="border-t border-border pt-3">{footer}</div> : null}
       </DialogContent>
     </Dialog>
   );

@@ -1479,43 +1479,35 @@
           "EQUIVALENT": "Alternativa equivalente"
         },
         "alternatives": {
-          "title": "Alternativas para el cliente",
-          "description": "Definí una opción económica y una premium por material, y elegí cuáles se envían junto con la cotización.",
-          "forItem": "Alternativa para {name}",
-          "empty": "Sin alternativa definida",
-          "set": "Definir",
-          "replace": "Reemplazar",
-          "setAndSave": "Definir y guardar en catálogo",
-          "setType": {
-            "ECONOMY": "Definir económica",
-            "PREMIUM": "Definir premium"
+          "title": "Opciones para el cliente",
+          "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",
+          "forItem": "Alternativas para {name}",
+          "empty": "Todav\u00eda no hay alternativas definidas para este material.",
+          "addMissing": "Pod\u00e9s completar las opciones que faltan si quer\u00e9s ofrecerlas.",
+          "addType": {
+            "ECONOMY": "Agregar alternativa econ\u00f3mica",
+            "PREMIUM": "Agregar alternativa premium"
           },
-          "replaceType": {
-            "ECONOMY": "Cambiar económica",
-            "PREMIUM": "Cambiar premium"
-          },
-          "setAndSaveType": {
-            "ECONOMY": "Definir económica y guardar",
-            "PREMIUM": "Definir premium y guardar"
-          },
-          "include": "Incluir en la cotización",
+          "unitPrice": "Precio unitario: {amount}",
+          "saveToCatalog": "Guardar tambi\u00e9n como alternativa del cat\u00e1logo",
+          "include": "Incluir en la cotizaci\u00f3n",
           "remove": "No incluir",
-          "pending": "Guardando…",
+          "pending": "Guardando\u2026",
           "picker": {
-            "ECONOMY": "Elegir alternativa económica",
+            "ECONOMY": "Elegir alternativa econ\u00f3mica",
             "PREMIUM": "Elegir alternativa premium"
           },
           "catalogConfirmation": {
-            "title": "¿Guardar también en el catálogo?",
-            "description": "«{name}» va a reemplazar la {type} actual de este producto en el catálogo. Las próximas cotizaciones la van a usar como opción disponible.",
-            "confirm": "Guardar en catálogo",
-            "pending": "Guardando…"
+            "title": "\u00bfGuardar tambi\u00e9n en el cat\u00e1logo?",
+            "description": "\u00ab{name}\u00bb va a reemplazar la {type} actual de este producto en el cat\u00e1logo. Las pr\u00f3ximas cotizaciones la van a usar como opci\u00f3n disponible.",
+            "confirm": "Guardar en cat\u00e1logo",
+            "pending": "Guardando\u2026"
           },
           "toast": {
-            "included": "La alternativa «{name}» se va a enviar al cliente.",
-            "removed": "La alternativa «{name}» no se va a enviar al cliente.",
-            "set": "Guardamos «{name}» como alternativa de esta cotización.",
-            "savedToCatalog": "Guardamos «{name}» en la cotización y como alternativa del catálogo."
+            "included": "La alternativa \u00ab{name}\u00bb se va a enviar al cliente.",
+            "removed": "La alternativa \u00ab{name}\u00bb no se va a enviar al cliente.",
+            "set": "Guardamos \u00ab{name}\u00bb como alternativa de esta cotizaci\u00f3n.",
+            "savedToCatalog": "Guardamos \u00ab{name}\u00bb en la cotizaci\u00f3n y como alternativa del cat\u00e1logo."
           }
         },
         "searchProduct": "Buscar producto",

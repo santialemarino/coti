@@ -170,6 +170,12 @@ describe('RfqItemsTable customer alternatives', () => {
 
     expect(view.getByText(copy.detail.items.alternatives.title)).toBeTruthy();
     expect(view.getByText(copy.detail.items.recommendationType.ECONOMY)).toBeTruthy();
+    expect(
+      view.queryByRole('button', { name: copy.detail.items.alternatives.addType.ECONOMY }),
+    ).toBeNull();
+    expect(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeTruthy();
 
     fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.include }));
 
@@ -213,8 +219,13 @@ describe('RfqItemsTable customer alternatives', () => {
     const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
 
     fireEvent.click(
-      view.getByRole('button', { name: copy.detail.items.alternatives.setType.ECONOMY }),
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.ECONOMY }),
     );
+    expect(
+      await view.findByRole('checkbox', {
+        name: copy.detail.items.alternatives.saveToCatalog,
+      }),
+    ).toBeTruthy();
     const candidate = await view.findByText('Ladrillo económico');
     fireEvent.click(candidate);
 
@@ -229,6 +240,50 @@ describe('RfqItemsTable customer alternatives', () => {
     );
     const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
     expect(updatedItems?.[0]?.alternatives[0]?.canonical_name).toBe('Ladrillo económico');
+  });
+  it('saves a newly defined alternative to the catalog after confirmation', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      {
+        id: 'p0000000-0000-4000-8000-000000000008',
+        code: 'LAD-PRE-10',
+        name: 'Ladrillo premium',
+        unit: 'unidad',
+      },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000008',
+      product_id: 'p0000000-0000-4000-8000-000000000008',
+      recommendation_type: 'PREMIUM',
+      canonical_name: 'Ladrillo premium',
+    });
+    const view = renderItems();
+
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    );
+    const saveToCatalog = await view.findByRole('checkbox', {
+      name: copy.detail.items.alternatives.saveToCatalog,
+    });
+    fireEvent.click(saveToCatalog);
+    fireEvent.click(await view.findByText('Ladrillo premium'));
+
+    expect(setQuoteItemRecommendation).not.toHaveBeenCalled();
+    fireEvent.click(
+      await view.findByRole('button', {
+        name: copy.detail.items.alternatives.catalogConfirmation.confirm,
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'PREMIUM',
+        BRANCH_ID,
+        { product_id: 'p0000000-0000-4000-8000-000000000008', save_to_catalog: true },
+      ),
+    );
   });
 });
 
