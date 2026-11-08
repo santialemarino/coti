@@ -3,6 +3,7 @@ import type { OnboardingStepKey } from '@/lib/api/onboarding';
 export const ONBOARDING_STEPS = [
   'WELCOME',
   'BRAND',
+  'PORTAL',
   'FIRST_BRANCH',
   'CATALOG_UPLOAD',
   'CATALOG_REVIEW',

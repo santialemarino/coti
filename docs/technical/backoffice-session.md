@@ -369,7 +369,7 @@ response leaves the user with a retry rather than a broken page.
   validation error — a wrong current password marks `currentPassword`. A rejection that belongs
   to no field goes to `root` and renders in `FormRootMessage`: login answers "invalid
   credentials" without saying which half was wrong, and the form must not invent a guess.
-- **The card animates its own height between stages and steps.** `AnimatedHeight` measures the box
+- **The card animates its own height between stages and steps.** `AnimatedHeight` (`@repo/ui`) measures the box
   and animates it directly rather than using motion's `layout`, which scale-corrects its children
   and would squash the inputs. It arms on the stage or step key and travels on the resize that
   follows, because a crossfade holds the outgoing stage through its exit and only resizes after it.

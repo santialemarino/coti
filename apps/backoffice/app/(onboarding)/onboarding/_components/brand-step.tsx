@@ -93,6 +93,7 @@ export function BrandStep({ account, formId, onSubmit }: BrandStepProps) {
               <div className="relative h-14 w-40">
                 <Image
                   src={logoPreviewUrl}
+                  onError={() => setLogoPreviewUrl(null)}
                   alt={tLogo('previewAlt')}
                   fill
                   unoptimized

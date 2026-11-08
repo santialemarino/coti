@@ -67,19 +67,21 @@ func (r *OnboardingRepository) ListSteps(
 func (r *OnboardingRepository) GetEvidence(
 	ctx context.Context, q Querier, accountID uuid.UUID,
 ) (domain.OnboardingEvidence, error) {
-	var brand, catalog, team bool
+	var brand, portal, catalog, team bool
 	err := q.QueryRow(ctx,
 		`SELECT
 		   EXISTS (SELECT 1 FROM account
 		           WHERE id = $1 AND (brand_logo_url IS NOT NULL OR brand_color IS NOT NULL)),
+		   EXISTS (SELECT 1 FROM account WHERE id = $1 AND public_hostname IS NOT NULL),
 		   EXISTS (SELECT 1 FROM product WHERE account_id = $1 AND is_active),
 		   (SELECT count(*) FROM app_user WHERE account_id = $1 AND is_active) > 1`,
-		accountID).Scan(&brand, &catalog, &team)
+		accountID).Scan(&brand, &portal, &catalog, &team)
 	if err != nil {
 		return nil, err
 	}
 	return domain.OnboardingEvidence{
 		domain.OnboardingStepBrand:         brand,
+		domain.OnboardingStepPortal:        portal,
 		domain.OnboardingStepCatalogUpload: catalog,
 		domain.OnboardingStepTeam:          team,
 	}, nil

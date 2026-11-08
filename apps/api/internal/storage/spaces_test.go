@@ -12,8 +12,8 @@ import (
 
 // spacesSettings are DigitalOcean's own shape: an endpoint with no bucket in it, and the signing
 // region Spaces requires whichever datacenter actually holds the Space.
-func spacesSettings() config.SpacesSettings {
-	return config.SpacesSettings{
+func spacesSettings() config.S3Settings {
+	return config.S3Settings{
 		Endpoint:  "https://nyc3.digitaloceanspaces.com",
 		Region:    "us-east-1",
 		Bucket:    "coti-attachments",

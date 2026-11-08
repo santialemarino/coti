@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/delivery/http/middleware"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -18,10 +19,10 @@ type CustomerAuthService interface {
 	Logout(context.Context, domain.CustomerPrincipal) error
 	GoogleOptions(context.Context, string) (*domain.CustomerAuthOptions, error)
 	GoogleExchange(context.Context, string, string, string, string) (*domain.CustomerGoogleResult, error)
-	CompleteGoogle(context.Context, string, string, string, *domain.CustomerPrincipal) (*domain.CustomerLogin, error)
-	ForgotCustomerPassword(context.Context, string, string, string) error
-	VerifyCustomerEmail(context.Context, string, string) error
-	ResetCustomerPassword(context.Context, string, string, string) error
+	CompleteGoogle(context.Context, string, domain.CustomerGoogleCompletion, *domain.CustomerPrincipal) (*domain.CustomerLogin, error)
+	RecoveryOptions(context.Context, string, string) ([]domain.RecoveryContact, error)
+	RequestRecoveryCode(context.Context, string, string, uuid.UUID) (*domain.ContactChallenge, error)
+	ResetWithRecoveryCode(context.Context, string, uuid.UUID, string, string) (*domain.CustomerLogin, error)
 }
 
 // CustomerAuthHandler serves credentials independently of the staff authentication surface.
@@ -61,7 +62,7 @@ func (h *CustomerAuthHandler) Me(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param hostname path string true "Registered supplier hostname"
-// @Param body body dto.CustomerCredentialsRequest true "CUIT/CUIL and password"
+// @Param body body dto.CustomerRegistrationRequest true "CUIT/CUIL, credentials, full name and contacts"
 // @Success 201 {object} dto.CustomerSessionResponse
 // @Failure 400 {object} dto.ErrorResponse
 // @Failure 404 {object} dto.ErrorResponse
@@ -69,12 +70,16 @@ func (h *CustomerAuthHandler) Me(c *gin.Context) {
 // @Failure 429 {object} dto.ErrorResponse
 // @Router /v1/customer/sites/{hostname}/auth/register [post]
 func (h *CustomerAuthHandler) Register(c *gin.Context) {
-	var body dto.CustomerCredentialsRequest
+	var body dto.CustomerRegistrationRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		RespondBindError(c, err)
 		return
 	}
-	login, err := h.auth.Register(c.Request.Context(), c.Param("hostname"), domain.CustomerRegistration{TaxID: body.TaxID, Password: body.Password, RecoveryEmail: body.RecoveryEmail})
+	contacts := make([]domain.ClientContact, 0, len(body.Contacts))
+	for _, contact := range body.Contacts {
+		contacts = append(contacts, domain.ClientContact{Kind: domain.ChannelType(contact.Kind), Value: contact.Value, Primary: contact.Primary})
+	}
+	login, err := h.auth.Register(c.Request.Context(), c.Param("hostname"), domain.CustomerRegistration{TaxID: body.TaxID, Password: body.Password, Name: body.Name, Contacts: contacts})
 	if err != nil {
 		Respond(c, err)
 		return

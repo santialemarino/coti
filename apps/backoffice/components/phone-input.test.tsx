@@ -240,6 +240,10 @@ describe('PhoneInput', () => {
       typeText(national(), '99123456');
 
       fireEvent.click(country());
+      // Narrow the list first: a role query over every country computes each one's accessible name.
+      fireEvent.change(await screen.findByPlaceholderText('Buscá un país'), {
+        target: { value: 'Uruguay' },
+      });
       fireEvent.click(await screen.findByRole('option', { name: /Uruguay/ }));
       expect(country().textContent).toContain('+598');
 

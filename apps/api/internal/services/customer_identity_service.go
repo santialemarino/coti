@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/mail"
-	"net/url"
 	"strings"
 	"time"
 
@@ -17,12 +16,10 @@ import (
 type customerCredentialStore interface {
 	GetHostnameByDeliveryTokenCrossAccount(context.Context, repository.Querier, string) (string, error)
 	GetIdentityByGoogleSubject(context.Context, repository.Querier, uuid.UUID, string) (*domain.CustomerIdentity, error)
-	GetVerifiedRecoveryIdentity(context.Context, repository.Querier, uuid.UUID, string, string) (*domain.CustomerIdentity, error)
 	ConsumeChallenge(context.Context, repository.Querier, uuid.UUID, string, domain.CustomerChallengePurpose, time.Time) (*domain.CustomerChallenge, error)
 	CreateGoogleIdentity(context.Context, repository.Querier, domain.CustomerIdentity) (*domain.CustomerIdentity, error)
 	CreateChallenge(context.Context, repository.Querier, domain.CustomerChallenge) error
 	LinkGoogle(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
-	VerifyRecoveryEmail(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 	ResetCustomerPassword(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string, time.Time) error
 }
 
@@ -38,16 +35,27 @@ func (s *CustomerAuthService) GetDeliveryHostname(ctx context.Context, token str
 }
 
 type customerChallengePayload struct {
-	Subject string `json:"subject,omitempty"`
-	Email   string `json:"email,omitempty"`
-	Name    string `json:"name,omitempty"`
+	Subject       string `json:"subject,omitempty"`
+	Email         string `json:"email,omitempty"`
+	EmailVerified bool   `json:"email_verified,omitempty"`
+	HostedDomain  string `json:"hosted_domain,omitempty"`
+	Name          string `json:"name,omitempty"`
 }
 
-// WithIdentityProviders enables Google and recovery mail through explicit adapter wiring.
-func (s *CustomerAuthService) WithIdentityProviders(store customerCredentialStore, google domain.CustomerGoogleProvider, mail mailSender) *CustomerAuthService {
+type customerContactProver interface {
+	ProveRegisteredContact(context.Context, repository.Querier, domain.CustomerPrincipal, domain.ChannelType, string) error
+}
+
+// WithIdentityProviders enables Google sign-in and credential recovery through explicit adapter wiring.
+func (s *CustomerAuthService) WithIdentityProviders(store customerCredentialStore, google domain.CustomerGoogleProvider) *CustomerAuthService {
 	s.credentials = store
 	s.google = google
-	s.mail = mail
+	return s
+}
+
+// WithContactProof lets a Google-verified address the customer chose count as a verified contact.
+func (s *CustomerAuthService) WithContactProof(prover customerContactProver) *CustomerAuthService {
+	s.prover = prover
 	return s
 }
 
@@ -57,7 +65,7 @@ func (s *CustomerAuthService) GoogleOptions(ctx context.Context, hostname string
 	if err != nil {
 		return nil, err
 	}
-	return &domain.CustomerAuthOptions{ClientID: s.cfg.GoogleClientID, RedirectURI: s.customerOrigin(*site) + "/api/customer/google/callback", PasswordMinLength: s.cfg.PasswordMinLength, SupplierName: site.SupplierName, LogoURL: site.LogoURL}, nil
+	return &domain.CustomerAuthOptions{ClientID: s.cfg.GoogleClientID, RedirectURI: s.customerGoogleRedirectURI(*site), PasswordMinLength: s.cfg.PasswordMinLength, SupplierName: site.SupplierName, LogoURL: site.LogoURL}, nil
 }
 
 // GoogleExchange authenticates a linked Google subject or issues a short-lived first-registration capability.
@@ -72,7 +80,7 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 	if code == "" || len(code) > 4096 || len(verifier) < 43 || len(verifier) > 128 || !validCustomerSecret(nonce) {
 		return nil, domain.ErrInvalidInput
 	}
-	google, err := s.google.Exchange(ctx, code, verifier, s.customerOrigin(*site)+"/api/customer/google/callback", nonce)
+	google, err := s.google.Exchange(ctx, code, verifier, s.customerGoogleRedirectURI(*site), nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -97,24 +105,33 @@ func (s *CustomerAuthService) GoogleExchange(ctx context.Context, hostname, code
 		if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
-		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, Name: google.Name})
+		payload, _ := json.Marshal(customerChallengePayload{Subject: google.Subject, Email: google.Email, EmailVerified: google.EmailVerified, HostedDomain: google.HostedDomain, Name: google.Name})
 		err = s.credentials.CreateChallenge(ctx, q, domain.CustomerChallenge{ID: uuid.New(), AccountID: site.AccountID, Purpose: "GOOGLE_SIGNUP", TokenHash: hashToken(secret), Payload: payload, ExpiresAt: s.now().Add(s.cfg.SignupTTL)})
 		result.SignupToken = secret
+		if email, proven, ok := googleContactEmail(google.Email, google.EmailVerified, google.HostedDomain); ok {
+			result.SignupEmail, result.SignupEmailProven = email, proven
+		}
 		return err
 	})
 	return result, err
 }
 
 // CompleteGoogle binds a new CUIT/CUIL or explicitly links Google to an already authenticated customer.
-func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw, taxID string, principal *domain.CustomerPrincipal) (*domain.CustomerLogin, error) {
+// A new registration needs a name and at least one contact; the Google address is one only when the
+// customer chose it, verified when Google proves the mailbox and pending a code otherwise.
+func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname string, in domain.CustomerGoogleCompletion, principal *domain.CustomerPrincipal) (*domain.CustomerLogin, error) {
 	if s.credentials == nil {
 		return nil, domain.ErrNotConfigured
 	}
-	if !validCustomerSecret(raw) {
+	if !validCustomerSecret(in.Token) {
 		return nil, domain.ErrUnauthenticated
 	}
-	taxID = domain.NormalizeTaxID(taxID)
+	taxID := domain.NormalizeTaxID(in.TaxID)
 	if !domain.ValidCUIT(taxID) {
+		return nil, domain.ErrInvalidInput
+	}
+	contacts, err := domain.NormalizeClientContacts(in.Contacts)
+	if err != nil {
 		return nil, domain.ErrInvalidInput
 	}
 	site, err := s.resolveSite(ctx, hostname)
@@ -130,7 +147,7 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 	}
 	var login *domain.CustomerLogin
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(raw), "GOOGLE_SIGNUP", s.now())
+		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(in.Token), "GOOGLE_SIGNUP", s.now())
 		if err != nil {
 			return err
 		}
@@ -138,25 +155,55 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 		if err = json.Unmarshal(token.Payload, &payload); err != nil {
 			return err
 		}
-		var identity *domain.CustomerIdentity
-		if principal == nil {
-			var name *string
-			if len(payload.Name) <= 255 && payload.Name != "" {
-				name = &payload.Name
-			}
-			identity, err = s.credentials.CreateGoogleIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: taxID, GoogleSubject: &payload.Subject, Name: name})
-		} else {
-			identity, err = s.store.GetIdentityForUpdate(ctx, q, site.AccountID, principal.CustomerID)
+		if principal != nil {
+			identity, err := s.store.GetIdentityForUpdate(ctx, q, site.AccountID, principal.CustomerID)
 			if err != nil {
 				return err
 			}
 			if identity.DisabledAt != nil {
 				return domain.ErrUnauthenticated
 			}
-			err = s.credentials.LinkGoogle(ctx, q, site.AccountID, principal.CustomerID, payload.Subject)
+			if err = s.credentials.LinkGoogle(ctx, q, site.AccountID, principal.CustomerID, payload.Subject); err != nil {
+				return err
+			}
+			login, err = s.createSession(ctx, q, *identity, secret)
+			return err
 		}
+		if name := strings.TrimSpace(in.Name); name != "" {
+			payload.Name = name
+		}
+		if s.profiles == nil || payload.Name == "" || len(payload.Name) > 255 {
+			return domain.ErrInvalidInput
+		}
+		google, proven, chosen := "", false, false
+		if in.UseGoogleEmail {
+			if google, proven, chosen = googleContactEmail(payload.Email, payload.EmailVerified, payload.HostedDomain); !chosen {
+				return domain.ErrInvalidInput
+			}
+			contacts = withGoogleContact(contacts, google)
+		}
+		if len(contacts) == 0 {
+			return domain.ErrInvalidInput
+		}
+		identity, err := s.credentials.CreateGoogleIdentity(ctx, q, domain.CustomerIdentity{ID: uuid.New(), AccountID: site.AccountID, TaxID: taxID, GoogleSubject: &payload.Subject, Name: &payload.Name})
 		if err != nil {
 			return err
+		}
+		registered := domain.CustomerPrincipal{CustomerID: identity.ID, AccountID: site.AccountID, TaxID: taxID}
+		if err := s.profiles.RegisterProfile(ctx, q, registered, domain.ClientContactUpdate{Name: payload.Name, Contacts: contacts}); err != nil {
+			return err
+		}
+		if proven {
+			if s.prover == nil {
+				return domain.ErrNotConfigured
+			}
+			err := s.prover.ProveRegisteredContact(ctx, q, registered, domain.ChannelTypeEmail, google)
+			if errors.Is(err, domain.ErrConflict) {
+				return domain.WithCode(domain.CodeContactInUse, err)
+			}
+			if err != nil {
+				return err
+			}
 		}
 		login, err = s.createSession(ctx, q, *identity, secret)
 		return err
@@ -164,117 +211,49 @@ func (s *CustomerAuthService) CompleteGoogle(ctx context.Context, hostname, raw,
 	return login, err
 }
 
-// ForgotCustomerPassword sends only to the matching verified recovery address and conceals account existence.
-func (s *CustomerAuthService) ForgotCustomerPassword(ctx context.Context, hostname, taxID, email string) error {
-	if s.credentials == nil || s.mail == nil {
-		return domain.ErrNotConfigured
-	}
-	site, err := s.resolveSite(ctx, hostname)
-	if err != nil {
-		return err
-	}
-	taxID = domain.NormalizeTaxID(taxID)
-	email = domain.NormalizeEmail(email)
-	if !domain.ValidCUIT(taxID) || !validCustomerEmail(email) {
-		return nil
-	}
-	var identity *domain.CustomerIdentity
-	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		var err error
-		identity, err = s.credentials.GetVerifiedRecoveryIdentity(ctx, q, site.AccountID, taxID, email)
-		return err
-	})
-	if errors.Is(err, domain.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return s.sendCustomerChallenge(ctx, *site, *identity, "RESET_PASSWORD", email)
-}
-
-// VerifyCustomerEmail enables recovery only after the one-use link confirms the saved address.
-func (s *CustomerAuthService) VerifyCustomerEmail(ctx context.Context, hostname, raw string) error {
-	return s.redeemCustomerChallenge(ctx, hostname, raw, "VERIFY_EMAIL", func(q repository.Querier, token domain.CustomerChallenge, payload customerChallengePayload) error {
-		if token.CustomerID == nil {
-			return domain.ErrUnauthenticated
-		}
-		return s.credentials.VerifyRecoveryEmail(ctx, q, token.AccountID, *token.CustomerID, payload.Email, s.now())
-	})
-}
-
-// ResetCustomerPassword consumes one recovery capability and revokes every previous session.
-func (s *CustomerAuthService) ResetCustomerPassword(ctx context.Context, hostname, raw, password string) error {
-	if err := (domain.PasswordPolicy{MinLength: s.cfg.PasswordMinLength}).Validate(password); err != nil {
-		return err
-	}
-	hash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
-	return s.redeemCustomerChallenge(ctx, hostname, raw, "RESET_PASSWORD", func(q repository.Querier, token domain.CustomerChallenge, _ customerChallengePayload) error {
-		if token.CustomerID == nil {
-			return domain.ErrUnauthenticated
-		}
-		return s.credentials.ResetCustomerPassword(ctx, q, token.AccountID, *token.CustomerID, hash, s.now())
-	})
-}
-
-func (s *CustomerAuthService) redeemCustomerChallenge(ctx context.Context, hostname, raw string, purpose domain.CustomerChallengePurpose, apply func(repository.Querier, domain.CustomerChallenge, customerChallengePayload) error) error {
-	if s.credentials == nil {
-		return domain.ErrNotConfigured
-	}
-	if !validCustomerSecret(raw) {
-		return domain.ErrUnauthenticated
-	}
-	site, err := s.resolveSite(ctx, hostname)
-	if err != nil {
-		return err
-	}
-	return s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		token, err := s.credentials.ConsumeChallenge(ctx, q, site.AccountID, hashToken(raw), purpose, s.now())
-		if err != nil {
-			return err
-		}
-		var payload customerChallengePayload
-		if err = json.Unmarshal(token.Payload, &payload); err != nil {
-			return err
-		}
-		return apply(q, *token, payload)
-	})
-}
-
-func (s *CustomerAuthService) sendCustomerChallenge(ctx context.Context, site domain.CustomerSite, identity domain.CustomerIdentity, purpose domain.CustomerChallengePurpose, email string) error {
-	secret, err := s.newSecret()
-	if err != nil {
-		return err
-	}
-	payload, _ := json.Marshal(customerChallengePayload{Email: email})
-	ttl, path, event := s.cfg.RecoveryTTL, "/reset-password", domain.NotificationEventPasswordReset
-	subject, heading, label := "Restablecé tu contraseña", "Restablecé tu contraseña", "Elegir contraseña"
-	if purpose == "VERIFY_EMAIL" {
-		ttl, path, event = s.cfg.VerificationTTL, "/verify-email", domain.NotificationEventEmailVerification
-		subject, heading, label = "Confirmá tu email de recuperación", "Confirmá tu email de recuperación", "Confirmar email"
-	}
-	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: site.AccountID}, func(q repository.Querier) error {
-		return s.credentials.CreateChallenge(ctx, q, domain.CustomerChallenge{ID: uuid.New(), AccountID: site.AccountID, CustomerID: &identity.ID, Purpose: purpose, TokenHash: hashToken(secret), Payload: payload, ExpiresAt: s.now().Add(ttl)})
-	})
-	if err != nil {
-		return err
-	}
-	// Delivery outcomes never disclose whether a recovery address matches an account.
-	_ = s.mail.Send(ctx, OutboundMail{AccountID: site.AccountID, Event: event, To: email, Subject: subject, Heading: heading, ActionLabel: label, ActionURL: s.customerOrigin(site) + path + "?token=" + url.QueryEscape(secret)})
-	return nil
-}
-
 func (s *CustomerAuthService) customerOrigin(site domain.CustomerSite) string {
-	if s.cfg.GoogleLocalOrigin != "" {
-		return strings.TrimRight(s.cfg.GoogleLocalOrigin, "/")
-	}
-	return "https://" + site.Hostname
+	return customerSiteOrigin(site.Hostname, s.cfg.LinkLocalOrigin())
 }
 
 func validCustomerEmail(value string) bool {
 	a, err := mail.ParseAddress(value)
 	return err == nil && a.Address == value && len(value) <= 255
+}
+
+// googleContactEmail returns the normalized Google address only when Google verified it, and whether
+// Google proves current control of the mailbox: a Gmail address, or a Workspace account whose hosted
+// domain is the address's. Any other domain was proved only when the account was created.
+func googleContactEmail(email string, verified bool, hostedDomain string) (address string, proven, ok bool) {
+	if !verified || !validCustomerEmail(email) {
+		return "", false, false
+	}
+	normalized, err := domain.NormalizeClientContact(domain.ChannelTypeEmail, email)
+	if err != nil {
+		return "", false, false
+	}
+	mailDomain := normalized[strings.LastIndex(normalized, "@")+1:]
+	proven = mailDomain == "gmail.com" || mailDomain == "googlemail.com" || strings.EqualFold(hostedDomain, mailDomain)
+	return normalized, proven, true
+}
+
+// withGoogleContact adds the chosen Google address as the primary email.
+func withGoogleContact(contacts []domain.ClientContact, email string) []domain.ClientContact {
+	found := false
+	for i := range contacts {
+		if contacts[i].Kind == domain.ChannelTypeEmail {
+			contacts[i].Primary = contacts[i].Value == email
+			found = found || contacts[i].Primary
+		}
+	}
+	if found {
+		return contacts
+	}
+	return append(contacts, domain.ClientContact{Kind: domain.ChannelTypeEmail, Value: email, Primary: true})
+}
+
+func (s *CustomerAuthService) customerGoogleRedirectURI(site domain.CustomerSite) string {
+	if s.cfg.GoogleLocalOrigin != "" {
+		return strings.TrimRight(s.cfg.GoogleLocalOrigin, "/") + "/api/customer/google/callback"
+	}
+	return s.customerOrigin(site) + "/api/customer/google/callback"
 }

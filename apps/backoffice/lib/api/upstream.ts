@@ -8,6 +8,9 @@ import { API_URL } from '@/lib/config';
 
 export const BRANCH_HEADER = 'X-Branch-Id';
 
+// The statuses the Fetch standard forbids a body on.
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 interface ForwardInit {
   path: string;
   method: string;
@@ -55,16 +58,25 @@ export async function forwardToApi(
     cache: 'no-store',
   });
 
-  if (upstream.ok && upstream.headers.get('Content-Type')?.startsWith('application/pdf')) {
+  // A file — a PDF, an export — passes through as bytes with its own type, never as JSON.
+  const disposition = upstream.headers.get('Content-Disposition');
+  const contentType = upstream.headers.get('Content-Type');
+  if (
+    upstream.ok &&
+    (contentType?.startsWith('application/pdf') || disposition?.startsWith('attachment'))
+  ) {
     return new NextResponse(await upstream.arrayBuffer(), {
       status: upstream.status,
       headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': upstream.headers.get('Content-Disposition') ?? 'attachment',
+        'Content-Type': contentType ?? 'application/octet-stream',
+        'Content-Disposition': disposition ?? 'attachment',
         'Cache-Control': 'private, no-store',
       },
     });
   }
+  // A body on a null-body status makes the Response constructor throw, turning the answer into a 500.
+  if (NULL_BODY_STATUSES.has(upstream.status))
+    return new NextResponse(null, { status: upstream.status });
   const text = await upstream.text();
   return new NextResponse(text, {
     status: upstream.status,

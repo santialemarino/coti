@@ -43,8 +43,14 @@ const COOKIE_OPTIONS = {
 } as const;
 
 export async function getCustomerHostname(): Promise<string> {
-  const host = PUBLIC_SITE_HOSTNAME || (await headers()).get('host') || '';
-  return host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
+  const host = ((await headers()).get('host') || '')
+    .toLowerCase()
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '');
+  const loopback = host === 'localhost' || host === '127.0.0.1';
+  return loopback && process.env.NODE_ENV !== 'production' && PUBLIC_SITE_HOSTNAME
+    ? PUBLIC_SITE_HOSTNAME.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
+    : host;
 }
 
 export async function getCustomerToken(): Promise<string | undefined> {
@@ -73,7 +79,7 @@ export async function startCustomerSession(
   taxId: string,
   password: string,
   callerAddress?: string,
-  recoveryEmail?: string,
+  profile?: { name: string; phone: string; email: string },
 ): Promise<CustomerSession> {
   const response = await fetch(await customerApiPath(`/auth/${mode}`), {
     method: 'POST',
@@ -85,7 +91,15 @@ export async function startCustomerSession(
     body: JSON.stringify({
       tax_id: taxId,
       password,
-      ...(recoveryEmail ? { recovery_email: recoveryEmail } : {}),
+      ...(profile
+        ? {
+            name: profile.name,
+            contacts: [
+              ...(profile.phone ? [{ kind: 'WHATSAPP', value: profile.phone, primary: true }] : []),
+              ...(profile.email ? [{ kind: 'EMAIL', value: profile.email, primary: true }] : []),
+            ],
+          }
+        : {}),
     }),
   });
   if (!response.ok) throw new CustomerAuthError(response.status);

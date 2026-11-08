@@ -46,11 +46,14 @@ type env struct {
 	db     *repository.DB
 	tokens *services.TokenService
 	mail   *captureMailer
+	// contacts holds the recovery and verification codes the API sent to customer contacts.
+	contacts *captureContactMessenger
 }
 
 type rfqTestProviders struct {
 	extractor domain.RFQExtractor
 	embedder  domain.Embedder
+	google    domain.CustomerGoogleProvider
 }
 
 // captureMailer stands in for the transport so a test can read the link that was mailed.
@@ -119,8 +122,9 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
-		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: time.Hour, VerificationTTL: 24 * time.Hour},
-		Catalog:      config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
+		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: 15 * time.Minute, ContactVerificationTTL: 10 * time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3, ProfileContactsMax: 10,
+			ContactDestinationMax: 1000, ContactDestinationWindow: time.Hour, ContactFailureMax: 1000, ContactLockout: time.Hour, ContactSpamMax: 1000, ContactSpamWindow: time.Hour},
+		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
 		RFQ: config.RFQConfig{
 			MaxTextCharacters: 20000, MaxItems: 200, PipelineTimeout: 25 * time.Second,
 			InlinePipelineTimeout: 25 * time.Second,
@@ -170,7 +174,7 @@ func newEnvWithRFQProviders(
 	mailService := services.NewMailService(db, mailer, repository.NewNotificationRepository(),
 		accountRepo, nil)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), nil, mailService)
+	customerAuth := services.NewCustomerAuthService(db, repository.NewCustomerAuthRepository(), cfg.CustomerAuth, nil).WithIdentityProviders(repository.NewCustomerAuthRepository(), providers.google)
 	authTokenRepo := repository.NewAuthTokenRepository()
 	passwordService := services.NewPasswordService(db, userRepo, authTokenRepo,
 		refreshTokenRepo, mailService, authService, quiet, cfg.Auth, cfg.Web, nil)
@@ -198,6 +202,11 @@ func newEnvWithRFQProviders(
 	rfqRepo := repository.NewRFQRepository()
 	quoteSendRepo := repository.NewQuoteSendRepository()
 	clientRepo := repository.NewClientRepository()
+	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
+	customerAuth.WithClientProfiles(contactService)
+	contactMessenger := &captureContactMessenger{}
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
+	customerAuth.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
 	tagRepo := repository.NewTagRepository()
 	extractor := providers.extractor
 	if extractor == nil {
@@ -248,7 +257,7 @@ func newEnvWithRFQProviders(
 	rfqService.WithPublicContacts(publicRFQRepo, rfqAttachmentService)
 	publicRFQService := services.NewPublicRFQService(db, publicRFQRepo,
 		repository.NewInboundChannelMessageRepository(), rfqRepo, rfqAttachmentService,
-		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize)
+		repository.NewRFQAttachmentRepository(), rfqService, cfg.RFQ, cfg.Storage.MaxFileSize).WithContacts(contactService)
 
 	limiter := ratelimit.NewMemory(nil)
 	mailTargetLimiter := handler.NewMailTargetLimiter(limiter, handler.MailTargetLimitOptions{
@@ -265,6 +274,7 @@ func newEnvWithRFQProviders(
 			Health:         handler.NewHealthHandler(db),
 			Auth:           handler.NewAuthHandler(authService),
 			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuth),
+			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
 			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
@@ -290,14 +300,15 @@ func newEnvWithRFQProviders(
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
 				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
-			Invoice:    handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
-			Onboarding: handler.NewOnboardingHandler(onboardingService),
-			Promotion:  handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
+			Invoice:        handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
+			Onboarding:     handler.NewOnboardingHandler(onboardingService),
+			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),
+			Promotion:      handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
 		},
 		deliveryhttp.Auth{Verifier: tokenService, Resolver: authService, Customer: customerAuth},
 		rateLimit)
 
-	return &env{router: router, db: db, tokens: tokenService, mail: mailer}
+	return &env{router: router, db: db, tokens: tokenService, mail: mailer, contacts: contactMessenger}
 }
 
 // mustCleanup runs a teardown delete on the owner pool and fails the test when it cannot. A
@@ -333,6 +344,15 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 		// quote_id column: lines hang off quote_version. quote.current_version_id keeps a circular
 		// link into quote_version, so it is lifted before the versions go.
 		for _, stmt := range []string{
+			`DELETE FROM customer_contact_history WHERE account_id=$1`,
+			`DELETE FROM customer_contact_ownership WHERE account_id=$1`,
+			`DELETE FROM client_contact_challenge_failure WHERE account_id=$1`,
+			`DELETE FROM client_contact_challenge WHERE account_id=$1`,
+			`DELETE FROM client_contact_outbox WHERE account_id=$1`,
+			`DELETE FROM client_contact_observation WHERE account_id=$1`,
+			`DELETE FROM client_contact WHERE account_id=$1`,
+			`DELETE FROM client_merge_audit WHERE account_id=$1`,
+			`UPDATE client SET merged_into=NULL WHERE account_id=$1`,
 			`DELETE FROM customer_auth_challenge WHERE account_id=$1`,
 			`DELETE FROM customer_session WHERE account_id=$1`,
 			`DELETE FROM customer_identity WHERE account_id=$1`,

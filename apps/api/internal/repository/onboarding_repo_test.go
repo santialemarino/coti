@@ -51,7 +51,7 @@ func TestOnboardingRepository_GetEvidenceReadsTheAccountsOwnData(t *testing.T) {
 	seedUser(t, db, set, "SELLER")
 	seedProduct(t, db, set, "Cemento")
 	if _, err := db.CrossAccount().Exec(ctx,
-		`UPDATE account SET brand_color = '#1d4ed8' WHERE id = $1`, set); err != nil {
+		`UPDATE account SET brand_color = '#1d4ed8', public_hostname = id::text || '.localhost' WHERE id = $1`, set); err != nil {
 		t.Fatalf("set brand: %v", err)
 	}
 	seedUser(t, db, bare, "ADMIN")

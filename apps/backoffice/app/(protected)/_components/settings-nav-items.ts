@@ -35,6 +35,7 @@ export function settingsNavItems({
     { href: ROUTES.catalogSettings, label: t('nav.catalog') },
     { href: ROUTES.priceSettings, label: t('nav.prices') },
     { href: ROUTES.invoicingSettings, label: t('nav.invoicing') },
+    { href: ROUTES.exportSettings, label: t('nav.export') },
     ...(onboarding && hasPendingChecklist(onboarding)
       ? [
           {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/storage"
@@ -53,8 +54,8 @@ func TestBind_SpacesProviderLeavesNothingForTheAPIToServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Bind() = %v, want no error", err)
 	}
-	if _, ok := set.Storage.(*storage.SpacesStorage); !ok {
-		t.Fatalf("Storage = %T, want *storage.SpacesStorage", set.Storage)
+	if _, ok := set.Storage.(*storage.S3Storage); !ok {
+		t.Fatalf("Storage = %T, want *storage.S3Storage", set.Storage)
 	}
 	if set.Local != nil {
 		t.Fatalf("Local = %v, want nil", set.Local)
@@ -70,5 +71,24 @@ func TestBind_UnknownProviderIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "gcs") {
 		t.Errorf("Bind() error does not name the provider; got: %v", err)
+	}
+}
+
+func TestBind_NeonProviderSignsPathStyleLinksWithoutALocalRoute(t *testing.T) {
+	t.Parallel()
+	set, err := Bind(config.StorageConfig{
+		Provider: config.StorageProviderNeon,
+		Endpoint: "https://branch.storage.us-east-1.aws.neon.tech",
+		Region:   "us-east-1", Bucket: "coti-files", AccessKey: "access", SecretKey: "secret",
+	}, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Local != nil {
+		t.Fatal("Neon provider must not expose a local file route")
+	}
+	link, err := set.Storage.GenerateSignedURL(t.Context(), "accounts/a/file.txt", time.Minute)
+	if err != nil || !strings.Contains(link, "branch.storage.us-east-1.aws.neon.tech/coti-files/accounts/a/file.txt?") {
+		t.Fatalf("unexpected Neon link %q: %v", link, err)
 	}
 }

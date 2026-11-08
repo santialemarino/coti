@@ -46,7 +46,7 @@ func TestEmailInbound_PreservesOriginalAndRoutesIdempotently(t *testing.T) {
 	}
 	service := services.NewEmailInboundService(e.db, repository.NewInboundChannelMessageRepository(),
 		repository.NewRFQRepository(), repository.NewRFQAttachmentRepository(),
-		repository.NewChannelRepository(), objects, 1024)
+		repository.NewChannelRepository(), objects, 1024).WithContacts(services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()))
 	route := domain.InboundChannelRoute{AccountID: accountID, BranchID: branchID,
 		ChannelID: channelID, ChannelType: domain.ChannelTypeEmail}
 	original := []byte("From: client@example.com\r\n\r\noriginal full email")
@@ -141,5 +141,48 @@ func TestEmailInbound_PreservesOriginalAndRoutesIdempotently(t *testing.T) {
 	bytes, err := io.ReadAll(object.Body)
 	if err != nil || string(bytes) != string(original) {
 		t.Fatalf("original bytes = %q, %v", bytes, err)
+	}
+}
+
+func TestEmailInbound_NameReplyCompletesOriginalRequestWithoutAnotherRFQ(t *testing.T) {
+	e := newEnv(t)
+	account, branch := e.seedAccount(t, "Name reply")
+	channel := uuid.New()
+	address := uuid.NewString() + "@example.test"
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `INSERT INTO channel(id,account_id,branch_id,type,identifier) VALUES($1,$2,$3,'EMAIL',$4)`, channel, account, branch, address); err != nil {
+		t.Fatal(err)
+	}
+	baseURL, _ := url.Parse("http://localhost:8080")
+	objects, err := storage.NewLocalStorage(t.TempDir(), baseURL, storage.NewURLSigner([]byte("email-name-reply-test-secret-at-least-32-bytes"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository()).WithMessaging(&captureContactMessenger{})
+	service := services.NewEmailInboundService(e.db, repository.NewInboundChannelMessageRepository(), repository.NewRFQRepository(), repository.NewRFQAttachmentRepository(), repository.NewChannelRepository(), objects, 1024).WithContacts(contacts)
+	route := domain.InboundChannelRoute{AccountID: account, BranchID: branch, ChannelID: channel, ChannelType: domain.ChannelTypeEmail}
+	original := domain.InboundEmailMessage{ExternalMessageID: uuid.NewString(), DestinationIdentifier: address, SenderID: "name-reply@example.test", Subject: "Pedido", Body: "20 bolsas de cemento", Original: []byte("Original message")}
+	id, err := service.Ingest(context.Background(), route, original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := original
+	reply.ExternalMessageID = uuid.NewString()
+	reply.Subject = "Re: Pedido"
+	reply.Body = "Nombre y apellido: Juan Perez"
+	reply.Original = []byte("Name reply")
+	for range 2 {
+		actual, err := service.Ingest(context.Background(), route, reply)
+		if err != nil || actual != id {
+			t.Fatalf("name reply routing: %s %v", actual, err)
+		}
+	}
+	var rfqs, messages int
+	var name, raw string
+	var tax *string
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT (SELECT count(*) FROM rfq WHERE account_id=$1),(SELECT count(*) FROM inbound_channel_message WHERE account_id=$1),cl.name,cl.tax_id,r.raw_text FROM rfq r JOIN client cl ON cl.account_id=r.account_id AND cl.id=r.client_id WHERE r.account_id=$1 AND r.id=$2`, account, id).Scan(&rfqs, &messages, &name, &tax, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if rfqs != 1 || messages != 2 || name != "Juan Perez" || tax != nil || !strings.Contains(raw, "20 bolsas de cemento") || strings.Contains(raw, "Nombre y apellido") {
+		t.Fatalf("retained request: %d/%d %q %v %q", rfqs, messages, name, tax, raw)
 	}
 }

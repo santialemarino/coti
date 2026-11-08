@@ -67,6 +67,13 @@ export function formatDate(iso: string, locale?: string): string {
   }).format(parseDate(iso));
 }
 
+// "ene 2025", for a calendar month on a chart axis: the day would be noise.
+export function formatMonth(iso: string, locale?: string): string {
+  return dateTimeFormat(getLocaleTag(locale), { month: 'short', year: 'numeric' }).format(
+    parseDate(iso),
+  );
+}
+
 // "02/01/2025", for a column of dates: same width on every row, scanned rather than read.
 export function formatDateNumeric(iso: string, locale?: string): string {
   return dateTimeFormat(getLocaleTag(locale), {

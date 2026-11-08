@@ -670,18 +670,38 @@ func TestInvoiceService_UpdateClientFiscalTakesOnlyADNI(t *testing.T) {
 	}
 }
 
-// A consumidor final below the identification threshold needs no document, so no sign-up link either.
-func TestInvoiceService_PreviewInvoicesAnUnidentifiedBuyerBelowTheThreshold(t *testing.T) {
+// An invoice B needs no CUIT: below the identification threshold no document at all, at or above it
+// a DNI is enough, so none of these waits on the buyer or offers a sign-up link.
+func TestInvoiceService_PreviewInvoicesAConsumerBWithoutACUIT(t *testing.T) {
 	t.Parallel()
-	f := newInvoiceFixture(t)
 	final := domain.IVAConditionFinalConsumer
-	f.store.client = &domain.ClientFiscal{IVACondition: &final}
-	f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "")
+	dni := "28123456"
+	cases := []struct {
+		name   string
+		client domain.ClientFiscal
+		total  string
+	}{
+		{"unidentified below the threshold", domain.ClientFiscal{IVACondition: &final}, "1000.00"},
+		{"DNI below the threshold", domain.ClientFiscal{IVACondition: &final, DNI: &dni}, "1000.00"},
+		{"DNI at the threshold", domain.ClientFiscal{IVACondition: &final, DNI: &dni}, "10000000.00"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newInvoiceFixture(t)
+			f.store.client = &tc.client
+			product := uuid.New()
+			f.store.rates = map[uuid.UUID]domain.VATRate{product: domain.VATRateTwentyOne}
+			f.quotes.items = []domain.QuoteItem{invoiceLine(&product, tc.total)}
+			f.quotes.version.Total = dec(tc.total)
+			f.service.WithCustomerPortal(fakeCustomerHostnames{hostname: "corralon.example.com"}, "")
 
-	preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
+			preview, err := f.service.Preview(context.Background(), f.tenant, f.quoteID)
 
-	if err != nil || preview.Type != domain.InvoiceTypeB || len(preview.Issues) != 0 || preview.CustomerSignupURL != "" {
-		t.Fatalf("preview = %+v, err = %v, want an issuable B with no sign-up link", preview, err)
+			if err != nil || preview.Type != domain.InvoiceTypeB || len(preview.Issues) != 0 || preview.CustomerSignupURL != "" {
+				t.Fatalf("preview = %+v, err = %v, want an issuable B with no sign-up link", preview, err)
+			}
+		})
 	}
 }
 
@@ -728,7 +748,7 @@ func TestInvoiceService_PreviewOffersNoSignupLinkWithoutACustomerSite(t *testing
 		name, localOrigin, want string
 	}{
 		{"no hostname", "", ""},
-		{"a local stack", "http://localhost:3001/", "http://localhost:3001/signup"},
+		{"a local stack", "http://localhost:3001/", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -112,7 +112,7 @@ func (h *CustomerOrderHandler) GetByToken(c *gin.Context) {
 	c.JSON(http.StatusOK, toCustomerOrder(*item))
 }
 
-// AuthorizeDelivery blocks token reads and actions outside the authenticated CUIT/CUIL's history.
+// AuthorizeDelivery blocks token reads and actions outside the authenticated customer's proved history.
 func (h *CustomerOrderHandler) AuthorizeDelivery(c *gin.Context) {
 	p, ok := middleware.CustomerFrom(c)
 	if !ok {

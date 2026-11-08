@@ -321,6 +321,53 @@ func (r *QuoteRepository) ArchiveInactiveCrossAccount(
 	return archived, rows.Err()
 }
 
+// FlagStalledCrossAccount raises the follow-up flag on up to limit quotes, across every account,
+// that sit unarchived and unflagged in one of statuses and whose row has not changed since before.
+// The flag write leaves quote.updated_at alone (set_quote_updated_at), and the next write to the
+// quote clears it. It runs on a scheduled job's owner connection.
+func (r *QuoteRepository) FlagStalledCrossAccount(
+	ctx context.Context, q Querier, statuses []domain.QuoteStatus, before time.Time, limit int,
+) ([]domain.FlaggedQuote, error) {
+	names := make([]string, len(statuses))
+	for i, status := range statuses {
+		names[i] = string(status)
+	}
+	// SKIP LOCKED leaves a quote a seller is writing right now for the next firing.
+	rows, err := q.Query(ctx,
+		`WITH stale AS (
+		   SELECT id, updated_at FROM quote
+		   WHERE archived_at IS NULL
+		     AND NOT needs_followup
+		     AND current_status = ANY($1::quote_status[])
+		     AND updated_at < $2
+		   ORDER BY updated_at, id
+		   LIMIT $3
+		   FOR UPDATE SKIP LOCKED
+		 )
+		 UPDATE quote
+		 SET needs_followup = TRUE, followup_flagged_at = now()
+		 FROM stale
+		 WHERE quote.id = stale.id
+		 RETURNING quote.account_id, quote.branch_id, quote.id, quote.number,
+		           quote.current_status, stale.updated_at`,
+		names, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	flagged := make([]domain.FlaggedQuote, 0)
+	for rows.Next() {
+		var quote domain.FlaggedQuote
+		if err := rows.Scan(&quote.AccountID, &quote.BranchID, &quote.QuoteID, &quote.Number,
+			&quote.Status, &quote.LastActivityAt); err != nil {
+			return nil, err
+		}
+		flagged = append(flagged, quote)
+	}
+	return flagged, rows.Err()
+}
+
 // ArchiveClosedCrossAccount archives up to limit closed outcomes, across every account, whose row
 // has not changed since before: a REJECTED quote, or an ACCEPTED sale complete as
 // domain.SaleComplete defines it, with an invoice counted in env or in production. It runs on a

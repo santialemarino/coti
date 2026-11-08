@@ -22,6 +22,7 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [selection, setSelection] = useState<File | null>();
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialUrl ?? null);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const file = selection instanceof File ? selection : null;
   // The dialog keeps the image it was cropping while it fades out.
@@ -72,8 +73,16 @@ export function LogoDropzone({ initialUrl, onFileChange, onPreviewChange }: Logo
         preview={
           previewUrl ? (
             <span className="relative flex h-24 w-full max-w-64 items-center justify-center bg-background border border-border rounded-lg">
+              {failedUrl === previewUrl ? (
+                <span className="px-3 text-paragraph-xs text-foreground-muted">
+                  {t('loadFailed')}
+                </span>
+              ) : null}
               <Image
+                key={previewUrl}
                 src={previewUrl}
+                onError={() => setFailedUrl(previewUrl)}
+                hidden={failedUrl === previewUrl}
                 alt={t('previewAlt')}
                 fill
                 unoptimized

@@ -3,6 +3,7 @@ import type {
   CreateDiscountBody,
   FileRfqDraftResponse,
   QuoteDiscountResponse,
+  QuoteFollowupDraftResponse,
   QuoteItemAlternativeResponse,
   QuoteItemResponse,
   QuoteReactivationMode,
@@ -585,6 +586,23 @@ export async function transitionQuote(
     await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
+}
+
+// Draft a fresh follow-up message for a sent quote; nothing is sent or stored.
+export async function draftQuoteFollowup(
+  quoteId: string,
+  branchId: string,
+): Promise<QuoteFollowupDraftResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/followup-draft`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteFollowupDraftResponse>;
 }
 
 // Reset a change-requested draft to the version the customer last received.

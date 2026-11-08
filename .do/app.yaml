@@ -10,9 +10,22 @@ ingress:
   rules:
     - match:
         path:
-          prefix: /api
+          prefix: /api/v1
       component:
         name: api
+        rewrite: /v1/
+    - match:
+        path:
+          prefix: /api/ready
+      component:
+        name: api
+        rewrite: /ready
+    - match:
+        path:
+          prefix: /api/health
+      component:
+        name: api
+        rewrite: /health
     - match:
         path:
           prefix: /q
@@ -223,7 +236,8 @@ jobs:
       branch: main
       deploy_on_push: true
     instance_size_slug: apps-s-1vcpu-1gb
-    run_command: /api/bin/goose -dir /api/migrations postgres "$DATABASE_ADMIN_URL" up
+    run_command: /bin/sh -c 'exec /api/bin/goose -dir /api/migrations postgres
+      "$DATABASE_ADMIN_URL" up'
     envs:
       - key: DATABASE_ADMIN_URL
         scope: RUN_TIME
@@ -422,6 +436,39 @@ jobs:
       - key: ARCA_ENVIRONMENT
         scope: RUN_TIME
         value: homologation
+      - key: DATABASE_ADMIN_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH_JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: STORAGE_LOCAL_SIGNING_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
+  # Flags «Requiere seguimiento» on the quotes nobody moved in QUOTE_FOLLOWUP_SELLER_IDLE_DAYS and the
+  # sent ones unanswered for QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS (Go defaults: 3 each). It only sets a
+  # flag and contacts nobody; early morning, after the archive sweep, so the queue is fresh at opening.
+  - name: quote-followup
+    kind: SCHEDULED
+    schedule:
+      cron: '0 7 * * *'
+      time_zone: America/Argentina/Buenos_Aires
+    dockerfile_path: docker/api.Dockerfile
+    source_dir: /
+    github:
+      repo: santialemarino/coti
+      branch: main
+      deploy_on_push: true
+    instance_size_slug: apps-s-1vcpu-1gb
+    run_command: /api/bin/scheduled-job --job quote-followup
+    envs:
+      - key: ENV
+        scope: RUN_TIME
+        value: production
       - key: DATABASE_ADMIN_URL
         scope: RUN_TIME
         type: SECRET

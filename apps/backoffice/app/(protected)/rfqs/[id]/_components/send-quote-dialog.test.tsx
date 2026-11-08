@@ -173,7 +173,7 @@ beforeEach(() => {
     currentClient: null,
     suggestions: [],
     availableTags: [],
-    contactHints: { taxId: '20123456786', name: 'Constructora', email: null, phone: null },
+    contactHints: { taxId: null, name: 'Constructora', email: null, phone: PHONE },
   });
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 });
@@ -247,8 +247,8 @@ describe('SendQuoteDialog', () => {
         {
           recipient_phone: PHONE,
           clientAssociation: {
-            taxId: '20123456786',
-            newClient: { name: 'Constructora' },
+            taxId: '',
+            newClient: { name: 'Constructora', phone: PHONE },
             tagIds: [],
           },
           email_delivery: null,
@@ -281,8 +281,8 @@ describe('SendQuoteDialog', () => {
         BRANCH_ID,
         {
           clientAssociation: {
-            taxId: '20123456786',
-            newClient: { name: 'Constructora' },
+            taxId: '',
+            newClient: { name: 'Constructora', phone: PHONE },
             tagIds: [],
           },
           email_delivery: { address: 'cliente@empresa.com' },
@@ -324,8 +324,8 @@ describe('SendQuoteDialog', () => {
         BRANCH_ID,
         {
           clientAssociation: {
-            taxId: '20123456786',
-            newClient: { name: 'Constructora' },
+            taxId: '',
+            newClient: { name: 'Constructora', phone: PHONE },
             tagIds: [],
           },
           email_delivery: { address: 'cliente@empresa.com' },

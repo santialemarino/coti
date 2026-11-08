@@ -14,6 +14,7 @@ export const ROUTES = {
   rfqs: '/rfqs',
   rfqsDetail: (id: string) => `/rfqs/${id}`,
   clients: '/clients',
+  clientSuggestions: '/clients/suggestions',
   clientDetail: (id: string) => `/clients/${id}`,
   reports: '/reports',
   administration: '/administration',
@@ -33,6 +34,7 @@ export const ROUTES = {
   // A step of the ARCA guide, linked from the status card when that step is the one left.
   arcaStep: (step: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing/arca#${step}`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
+  exportSettings: `${SETTINGS_ROOT}/export`,
   invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
   // A section of the invoicing page, linked from where a missing piece of it is reported.
   invoicingSection: (section: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing#${section}`,

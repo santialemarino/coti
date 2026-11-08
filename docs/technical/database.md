@@ -42,6 +42,56 @@ pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
 
+### Recommendation branch databases
+
+The recommendation migrations use versions `74`–`76`; versions `60`–`73` belong to the
+integration branch. Fresh databases and databases migrated from `dev` use the normal commands above.
+
+A branch-only database with the recommendation schema recorded as versions `60`–`62` needs a
+one-time history reconciliation. Stop its application and migration jobs, back it up, and set
+`DATABASE_ADMIN_URL` to that database's owner connection. Run this guarded transaction with
+`psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1`. It changes only migration history and refuses
+databases that do not match the branch-only schema:
+
+```sql
+BEGIN;
+LOCK TABLE public.goose_db_version IN EXCLUSIVE MODE;
+DO $$
+BEGIN
+  IF (SELECT max(version_id) FROM public.goose_db_version WHERE is_applied) <> 62
+     OR (SELECT count(*) FROM public.goose_db_version WHERE version_id BETWEEN 60 AND 62) <> 3
+     OR EXISTS (SELECT 1 FROM public.goose_db_version
+                WHERE version_id BETWEEN 60 AND 62 AND NOT is_applied)
+     OR EXISTS (SELECT 1 FROM public.goose_db_version WHERE version_id > 62)
+     OR to_regclass('public.client_contact') IS NOT NULL
+     OR to_regclass('public.uq_client_account_tax_id') IS NOT NULL
+     OR to_regclass('public.uq_product_alternative_recommendation') IS NULL
+     OR (SELECT count(*) FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND ((table_name = 'quote_item_alternative'
+                  AND column_name IN ('recommendation_type', 'min_price_snapshot'))
+              OR (table_name = 'quote_representation'
+                  AND column_name = 'selection_pricing_snapshot'))) <> 3
+  THEN
+    RAISE EXCEPTION 'Database does not match the branch-only recommendation history';
+  END IF;
+END $$;
+UPDATE public.goose_db_version
+   SET version_id = CASE version_id WHEN 60 THEN 74 WHEN 61 THEN 75 WHEN 62 THEN 76 END
+ WHERE version_id BETWEEN 60 AND 62;
+COMMIT;
+```
+
+Then apply the missing integration migrations, leaving the recorded recommendation migrations intact:
+
+```bash
+cd apps/api
+go tool goose -allow-missing -dir migrations postgres "$DATABASE_ADMIN_URL" up
+```
+
+After this one-time step, return to `pnpm db:migrate`. Do not run migration downs or reset the
+database to resolve the numbering conflict.
+
 **Every one of these connects by `DATABASE_ADMIN_URL`** — none of them shells into a container, so
 they reach whatever database that URL names: a differently named container, a Postgres installed on
 the host, a remote development instance. Only the first step of `db:init` is Docker-specific (it runs
@@ -189,7 +239,7 @@ own account, so `branch_id` scoping stays in the application. RLS is the second 
 replacement for the `WHERE`: the explicit predicates still go in every query so the plan uses
 the indexes.
 
-Three known traps:
+Four known traps:
 
 - **Works in psql, empty in the app.** psql as owner bypasses RLS; the app does not. To
   reproduce what the app sees, connect as `coti_app` and set the GUC.
@@ -201,6 +251,12 @@ Three known traps:
 - **The GRANT, by contrast, is already covered:** `ALTER DEFAULT PRIVILEGES` reaches the
   tables the owner creates, and migrations run as that role. It is written explicitly anyway,
   so nothing depends on the migrating role always being the same.
+- **A data migration under row level security updates nothing and still succeeds.** The owner
+  bypasses RLS only on tables that do not `FORCE` it (`arca_setup` and `invoice`
+  do), and a non-owner without `BYPASSRLS` never bypasses it. So a migration that
+  reads or rewrites rows starts with `SELECT assert_migration_sees_all_rows('<table>', …)`
+  naming every table it touches: it raises when the migrating role would see a filtered view,
+  instead of letting the statement match zero rows.
 
 ## Invariants in the database
 
@@ -224,6 +280,7 @@ Whatever can be expressed in the schema is expressed in the schema:
 | `uq_tag_account_name`                    | one tag name per account, case-insensitively       |
 | `uq_promotion_tier_from_quantity`        | one tier per promotion and starting quantity       |
 | `uq_promotion_condition_item_target`     | one condition row per promotion and target         |
+| `uq_client_contact_main`                 | one chosen main contact per client profile         |
 
 **A unique constraint does not compare NULLs**, so on a nullable column it lets every empty
 row escape. That is why the 1-to-1 needs the NOT NULL as well as the index:

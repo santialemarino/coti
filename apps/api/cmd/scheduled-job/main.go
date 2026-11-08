@@ -131,6 +131,7 @@ func run() error {
 			cfg.AI.EmbeddingsProvider != config.AIProviderDisabled),
 		services.NewQuoteAutoArchiveJob(quoteRepo, cfg.QuoteArchive,
 			domain.ARCAEnvironment(strings.ToUpper(cfg.ARCA.Environment)), log),
+		services.NewQuoteFollowupJob(quoteRepo, cfg.QuoteFollowup, log),
 		services.NewConversationBatchJob(services.NewConversationBatchService(db,
 			messageBatchRepo, batchChangeHandler, cfg.Conversation, nil, log)))
 	if err != nil {

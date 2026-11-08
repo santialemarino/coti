@@ -28,6 +28,10 @@ type InboundEmailMessage struct {
 	Original              []byte
 	Attachments           []InboundEmailAttachment
 	ProviderReceivedAt    time.Time
+	// InternetMessageID is the validated RFC 5322 Message-ID, angle brackets included.
+	InternetMessageID string
+	// Automated is set by Auto-Submitted, Precedence bulk/list/junk or mailing-list headers.
+	Automated bool
 }
 
 // InboundEmailAttachment is one decoded MIME part of an incoming email.

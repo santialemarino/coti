@@ -17,7 +17,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 	t.Helper()
 	known := []string{
 		"ENV", "LOG_LEVEL", "API_PORT",
-		"CUSTOMER_GOOGLE_CLIENT_ID", "CUSTOMER_GOOGLE_CLIENT_SECRET", "CUSTOMER_GOOGLE_LOCAL_ORIGIN", "CUSTOMER_GOOGLE_TIMEOUT_SECONDS", "CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES", "CUSTOMER_RECOVERY_TTL_MINUTES", "CUSTOMER_EMAIL_VERIFICATION_TTL_HOURS", "CUSTOMER_ORDER_PAGE_SIZE",
+		"CUSTOMER_GOOGLE_CLIENT_ID", "CUSTOMER_GOOGLE_CLIENT_SECRET", "CUSTOMER_GOOGLE_LOCAL_ORIGIN", "CUSTOMER_GOOGLE_TIMEOUT_SECONDS", "CUSTOMER_GOOGLE_SIGNUP_TTL_MINUTES", "CUSTOMER_RECOVERY_TTL_MINUTES", "CUSTOMER_ORDER_PAGE_SIZE",
 		"CUSTOMER_SESSION_TTL_DAYS", "CUSTOMER_MAX_FAILED_ATTEMPTS", "CUSTOMER_LOCKOUT_MINUTES", "CUSTOMER_PASSWORD_MIN_LENGTH",
 		"ARCA_SETUP_ENCRYPTION_KEY", "ARCA_SETUP_TIMEOUT_SECONDS", "ARCA_ENVIRONMENT",
 		"INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT",
@@ -31,7 +31,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_REQUIRE_VERIFIED_EMAIL", "AUTH_INVITE_TTL_HOURS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
-		"RATE_LIMIT_AI_MAX",
+		"RATE_LIMIT_AI_MAX", "RATE_LIMIT_CONTACT_VERIFICATION_MAX", "RATE_LIMIT_PROFILE_MAX",
 		"RATE_LIMIT_MAIL_PER_ADDRESS_MAX", "RATE_LIMIT_TRUSTED_PROXY_HOPS",
 		"RATE_LIMIT_TRUSTED_PROXY_CIDRS",
 		"MAIL_PROVIDER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME",
@@ -58,8 +58,11 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"JOB_TIMEOUT_MINUTES",
 		"QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS", "QUOTE_AUTO_ARCHIVE_CLOSED_DAYS",
 		"QUOTE_AUTO_ARCHIVE_BATCH_SIZE",
+		"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS",
+		"QUOTE_FOLLOWUP_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
 		"RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"REPORTS_MAX_RANGE_DAYS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
 		"QUOTE_LOGO_FETCH_TIMEOUT_SECONDS", "QUOTE_LOGO_MAX_SIZE_BYTES",
@@ -146,6 +149,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RFQ.PipelineTimeout != 165*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 165s", cfg.RFQ.PipelineTimeout)
 	}
+	if cfg.Reports.MaxRangeDays != 366 {
+		t.Errorf("Reports.MaxRangeDays = %d, want 366", cfg.Reports.MaxRangeDays)
+	}
 	if cfg.QuoteCorrection.SimilarityPercent != 80 ||
 		cfg.QuoteCorrection.MaxPatternsPerAccount != 1000 ||
 		cfg.QuoteCorrection.MaxInterpretationExamples != 3 ||
@@ -179,6 +185,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.RateLimit.AI != 10 {
 		t.Errorf("RateLimit.AI = %d, want 10", cfg.RateLimit.AI)
+	}
+	if cfg.RateLimit.ContactVerification != 5 || cfg.RateLimit.Profile != 10 {
+		t.Errorf("RateLimit.ContactVerification, Profile = %d, %d, want 5, 10", cfg.RateLimit.ContactVerification, cfg.RateLimit.Profile)
 	}
 	if !cfg.RateLimit.Enabled {
 		t.Error("RateLimit.Enabled = false, want true by default")
@@ -528,6 +537,34 @@ func TestLoad_QuoteArchiveKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 }
 
+func TestLoad_QuoteFollowupDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteFollowup.SellerIdleAfter != 3*24*time.Hour ||
+		cfg.QuoteFollowup.CustomerSilentAfter != 3*24*time.Hour || cfg.QuoteFollowup.BatchSize != 100 {
+		t.Errorf("QuoteFollowup = %+v, want 72h/72h/100", cfg.QuoteFollowup)
+	}
+}
+
+func TestLoad_QuoteFollowupKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "2"
+	env["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "5"
+	env["QUOTE_FOLLOWUP_BATCH_SIZE"] = "9"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.QuoteFollowup.SellerIdleAfter != 2*24*time.Hour ||
+		cfg.QuoteFollowup.CustomerSilentAfter != 5*24*time.Hour || cfg.QuoteFollowup.BatchSize != 9 {
+		t.Errorf("QuoteFollowup = %+v, want 48h/120h/9", cfg.QuoteFollowup)
+	}
+}
+
 func TestLoad_QuoteCorrectionKeysLandOnTheirOwnFields(t *testing.T) {
 	env := minimalEnv()
 	env["QUOTE_CORRECTION_SIMILARITY_PERCENT"] = "81"
@@ -764,11 +801,53 @@ func TestLoad_Invalid(t *testing.T) {
 			wantSub: "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero",
 		},
 		{
+			name:    "a quote flagged the moment the seller stops moving it",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a sent quote flagged the moment it is sent",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero",
+		},
+		{
+			// The archive sweep would put the quote away before anyone was asked to chase it.
+			name: "a seller's stall flagged no earlier than it is archived",
+			mutate: func(e map[string]string) {
+				e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "10"
+				e["QUOTE_FOLLOWUP_SELLER_IDLE_DAYS"] = "10"
+			},
+			wantSub: "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS",
+		},
+		{
+			name: "a client's silence flagged no earlier than it is archived",
+			mutate: func(e map[string]string) {
+				e["QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS"] = "10"
+				e["QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS"] = "10"
+			},
+			wantSub: "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS",
+		},
+		{
+			name:    "a follow-up sweep that takes nothing per batch",
+			mutate:  func(e map[string]string) { e["QUOTE_FOLLOWUP_BATCH_SIZE"] = "0" },
+			wantSub: "QUOTE_FOLLOWUP_BATCH_SIZE must be greater than zero",
+		},
+		{
 			// An allowance above the global one can never bite, so it reads as a cost bound that
 			// is not there.
 			name:    "an AI allowance wider than the global one",
 			mutate:  func(e map[string]string) { e["RATE_LIMIT_AI_MAX"] = "301" },
 			wantSub: "RATE_LIMIT_AI_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
+		},
+		{
+			name:    "a contact verification allowance of nothing",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_CONTACT_VERIFICATION_MAX"] = "0" },
+			wantSub: "RATE_LIMIT_CONTACT_VERIFICATION_MAX must be at least 1",
+		},
+		{
+			name:    "a profile allowance wider than the global one",
+			mutate:  func(e map[string]string) { e["RATE_LIMIT_PROFILE_MAX"] = "301" },
+			wantSub: "RATE_LIMIT_PROFILE_MAX (301) exceeds RATE_LIMIT_GLOBAL_MAX",
 		},
 		{
 			name:    "an order bounded at nothing",
@@ -784,6 +863,16 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "a pipeline bounded at nothing",
 			mutate:  func(e map[string]string) { e["RFQ_PIPELINE_TIMEOUT_SECONDS"] = "0" },
 			wantSub: "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero",
+		},
+		{
+			name:    "a report period bounded at nothing",
+			mutate:  func(e map[string]string) { e["REPORTS_MAX_RANGE_DAYS"] = "0" },
+			wantSub: "REPORTS_MAX_RANGE_DAYS must be greater than zero",
+		},
+		{
+			name:    "a report period past the configured ceiling",
+			mutate:  func(e map[string]string) { e["REPORTS_MAX_RANGE_DAYS"] = "3661" },
+			wantSub: "REPORTS_MAX_RANGE_DAYS must not exceed 3660",
 		},
 		{
 			// Allowed to outlast the response budget, the pipeline's answer is cut off while it
@@ -1399,6 +1488,40 @@ func TestLoad_SpacesProviderLoadsWithEveryCredentialPresent(t *testing.T) {
 	}
 }
 
+func TestLoad_NeonProviderUsesRemoteSettingsWithoutALocalSigningSecret(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_PROVIDER"] = "neon"
+	env["STORAGE_ENDPOINT"] = "https://branch.storage.us-east-1.aws.neon.tech"
+	delete(env, "STORAGE_LOCAL_SIGNING_SECRET")
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Storage.Provider != StorageProviderNeon || cfg.Storage.S3().Endpoint != env["STORAGE_ENDPOINT"] {
+		t.Fatal("Neon provider did not load its bucket settings")
+	}
+}
+
+func TestLoad_NeonProviderReportsEveryMissingCredential(t *testing.T) {
+	env := spacesEnv()
+	env["STORAGE_PROVIDER"] = "neon"
+	missing := []string{"STORAGE_ENDPOINT", "STORAGE_REGION", "STORAGE_BUCKET", "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY"}
+	for _, key := range missing {
+		delete(env, key)
+	}
+	setEnv(t, env)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() accepted missing Neon settings")
+	}
+	for _, key := range missing {
+		if !strings.Contains(err.Error(), key+" is required when STORAGE_PROVIDER is neon") {
+			t.Errorf("missing validation error for %s", key)
+		}
+	}
+}
+
 // The mirror of the local case: a bucket signs its own links, so the key that signs the API's
 // own must not be demanded from a deployment that never uses it.
 func TestLoad_SpacesProviderNeedsNoLinkSigningSecret(t *testing.T) {
@@ -1459,7 +1582,7 @@ func TestLoad_StorageRejectsUnusableSettings(t *testing.T) {
 			env := minimalEnv()
 			env["STORAGE_PROVIDER"] = "gcs"
 			return env
-		}, `STORAGE_PROVIDER must be "local" or "spaces", got "gcs"`},
+		}, `STORAGE_PROVIDER must be "local", "neon" or "spaces", got "gcs"`},
 		{"local base url with no host", func() map[string]string {
 			env := minimalEnv()
 			env["STORAGE_LOCAL_API_BASE_URL"] = "localhost:8000"
@@ -1519,12 +1642,12 @@ func TestStorageConfig_NarrowsWhatEachAdapterSees(t *testing.T) {
 		t.Fatal("Local() carries the bucket credentials, which that adapter must not hold")
 	}
 
-	spaces := cfg.Spaces()
+	spaces := cfg.S3()
 	if spaces.Bucket != cfg.Bucket || spaces.Region != cfg.Region || spaces.SecretKey != cfg.SecretKey {
-		t.Fatalf("Spaces() = %+v, want the bucket settings", spaces)
+		t.Fatalf("S3() = %+v, want the bucket settings", spaces)
 	}
 	if strings.Contains(fmt.Sprintf("%+v", spaces), "storage-signing-secret") {
-		t.Fatal("Spaces() carries the link signing secret, which that adapter must not hold")
+		t.Fatal("S3() carries the link signing secret, which that adapter must not hold")
 	}
 }
 

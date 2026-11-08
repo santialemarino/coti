@@ -227,7 +227,8 @@
         "saving": "Preparando logo…",
         "confirm": "Usar logo",
         "error": "No pudimos preparar esta imagen. Probá con otra."
-      }
+      },
+      "loadFailed": "No pudimos cargar el logo guardado. Podés reemplazarlo o quitarlo."
     },
     "fileUpload": {
       "title": "Arrastrá tu archivo hasta acá",
@@ -373,6 +374,7 @@
     "BRANCH_MAILBOX_REQUIRED": "La sucursal envía sus correos desde esa casilla, así que no se puede dejar vacía.",
     "QUOTE_ARCHIVED": "La cotización está archivada y no se puede modificar.",
     "QUOTE_NOT_DRAFT": "La cotización ya no está en un estado que permita esa acción.",
+    "QUOTE_NOT_SENT": "La cotización no está esperando una respuesta del cliente.",
     "QUOTE_NOT_REACTIVATABLE": "La cotización ya no está cerrada o su versión cambió. Actualizá la pantalla.",
     "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
@@ -411,7 +413,12 @@
     "CREDIT_NOTE_IN_PROGRESS": "La nota de crédito ya se está emitiendo. Esperá unos segundos y actualizá la pantalla.",
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
-    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla."
+    "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
+    "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
+    "CLIENT_REGISTERED": "Esta ficha tiene CUIT: sus datos los administra el cliente desde su cuenta.",
+    "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
+    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
   },
   "meta": {
     "home": {
@@ -489,6 +496,10 @@
     "priceSettings": {
       "title": "Precios",
       "description": "Actualización revisada de precios por sucursal."
+    },
+    "exportSettings": {
+      "title": "Exportación de datos",
+      "description": "Descarga de cotizaciones, catálogo, clientes y facturas en CSV o XML."
     },
     "catalogSettings": {
       "title": "Catálogo",
@@ -1455,7 +1466,22 @@
           "customer": "El cliente no respondió desde el {date}. Escribile para retomar la cotización.",
           "customerUndated": "El cliente todavía no respondió. Escribile para retomar la cotización.",
           "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
-          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente."
+          "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente.",
+          "draft": {
+            "action": "Redactar mensaje",
+            "again": "Redactar otro",
+            "pending": "Redactando…",
+            "label": "Mensaje de seguimiento para el cliente",
+            "copy": "Copiar mensaje",
+            "copied": "Mensaje copiado",
+            "copyFailed": "No pudimos copiar el mensaje. Seleccionalo y copialo a mano.",
+            "hint": "Revisalo y mandalo vos por WhatsApp o correo: Coti no lo envía.",
+            "errors": {
+              "AI_UNAVAILABLE": "No pudimos redactar el mensaje ahora. Probá de nuevo en unos minutos.",
+              "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente.",
+              "QUOTE_ARCHIVED": "La cotización está archivada."
+            }
+          }
         }
       },
       "items": {
@@ -1672,8 +1698,8 @@
         "clientNew": "Crear cliente",
         "clientChoose": "Seleccioná un cliente",
         "clientTax": "CUIT/CUIL",
-        "clientName": "Nombre o razón social",
-        "clientEmail": "Email (opcional)",
+        "clientName": "Nombre y apellido",
+        "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No se pudieron cargar los clientes. Cerrá el diálogo e intentá nuevamente.",
@@ -1681,9 +1707,10 @@
         "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
         "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
         "clientNameRequired": "Ingresá el nombre o razón social.",
-        "clientEmailInvalid": "Ingresá un email válido.",
+        "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
-        "clientTags": "Etiquetas"
+        "clientTags": "Etiquetas",
+        "clientContactRequired": "Ingresá al menos un teléfono o un correo."
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -1821,7 +1848,7 @@
         "title": "Datos del solicitante",
         "taxId": "CUIT",
         "name": "Nombre o razón social",
-        "email": "Email",
+        "email": "Correo",
         "phone": "Teléfono",
         "original": "Pedido original",
         "file": "Ver archivo del pedido"
@@ -2022,11 +2049,256 @@
         "INVALID_TAX_ID": "Revisá el DNI del cliente.",
         "TAX_ID_READ_ONLY": "El CUIT lo carga el cliente al crear su cuenta."
       }
+    },
+    "contactSuggestions": "Coincidencias pendientes",
+    "registration": {
+      "title": "Solicitar que complete sus datos",
+      "confirm": "Se enviará a {contact} un enlace para crear su cuenta o ingresar y completar sus datos.",
+      "send": "Enviar enlace",
+      "sending": "Enviando…",
+      "cancel": "Cancelar",
+      "whatsapp": "Solicitar datos por WhatsApp",
+      "email": "Solicitar datos por correo",
+      "selectBranch": "Elegí una sucursal para enviar el enlace",
+      "sent": "Enviamos el enlace al cliente.",
+      "errors": {
+        "NOT_CONFIGURED": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "DELIVERY_UNAVAILABLE": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
+        "INTERNAL": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
+      }
+    },
+    "rename": {
+      "label": "Nombre",
+      "formLabel": "Corregir el nombre del cliente",
+      "placeholder": "Ingresá el nombre y apellido del cliente",
+      "required": "Ingresá el nombre del cliente.",
+      "edit": "Corregir nombre",
+      "unnamed": "Sin nombre",
+      "registered": "Lo administra el cliente desde su cuenta.",
+      "submit": "Guardar",
+      "submitting": "Guardando…",
+      "cancel": "Cancelar",
+      "saved": "Guardamos el nombre «{name}»."
+    },
+    "merge": {
+      "open": "Unir con otra ficha",
+      "title": "Unir con otra ficha",
+      "description": "Juntá en una sola ficha los pedidos y contactos de {name} y otra ficha del mismo cliente.",
+      "other": {
+        "label": "Otra ficha",
+        "placeholder": "Seleccioná una ficha",
+        "search": "Buscá por nombre o contacto",
+        "empty": "No hay fichas con ese nombre o contacto",
+        "none": "No hay otras fichas sin CUIT de tus sucursales para unir."
+      },
+      "survivor": {
+        "label": "Ficha que queda",
+        "hint": "Los pedidos y contactos de {merged} pasan a esta ficha. No se puede deshacer."
+      },
+      "loadError": "No pudimos cargar las fichas.",
+      "retry": "Reintentar",
+      "submit": "Unir fichas",
+      "submitting": "Uniendo…",
+      "cancel": "Cancelar",
+      "merged": "Unimos «{merged}» en «{kept}»."
+    }
+  },
+  "dataExport": {
+    "title": "Exportación de datos",
+    "description": "Descargá los datos de la cuenta para usarlos en otro sistema o migrarlos. Las columnas llevan nombres en español y los montos usan punto decimal.",
+    "entity": {
+      "label": "Qué exportar",
+      "quotes": {
+        "label": "Cotizaciones",
+        "hint": "Cada cotización con su estado, su total y los ítems de la versión vigente."
+      },
+      "catalog": {
+        "label": "Catálogo",
+        "hint": "Los productos con la disponibilidad, el stock y el precio vigente en cada sucursal."
+      },
+      "clients": {
+        "label": "Clientes",
+        "hint": "Los clientes con sus datos fiscales, etiquetas y contactos."
+      },
+      "invoices": {
+        "label": "Facturas",
+        "hint": "Las facturas y notas de crédito con su estado, su CAE y sus montos."
+      }
+    },
+    "format": {
+      "label": "Formato",
+      "csv": "CSV",
+      "xml": "XML",
+      "csvHint": "Una fila por ítem, sucursal o contacto, que repite los datos del registro. Se abre con Excel o Google Sheets.",
+      "xmlHint": "Cada registro con sus ítems anidados, para importarlo en otro sistema."
+    },
+    "branch": {
+      "label": "Sucursal",
+      "all": "Todas las sucursales",
+      "closed": "{name} (cerrada)"
+    },
+    "period": {
+      "from": "Desde",
+      "to": "Hasta",
+      "quotesHint": "Por fecha de creación. Sin fechas, se exporta todo el historial.",
+      "invoicesHint": "Por fecha de emisión. Sin fechas, se exporta todo el historial.",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta."
+    },
+    "download": {
+      "label": "Descargar",
+      "pending": "Preparando el archivo…",
+      "done": "Descargamos «{filename}».",
+      "error": "No pudimos generar el archivo. Probá de nuevo."
     }
   },
   "reports": {
-    "placeholderTitle": "Reportes",
-    "placeholderDescription": "Los reportes de pedidos y cotizaciones se van a mostrar acá."
+    "title": "Reportes",
+    "description": "Actividad de pedidos y cotizaciones en el período.",
+    "descriptionAll": "Actividad de pedidos y cotizaciones de todas las sucursales en el período.",
+    "download": {
+      "label": "Descargar PDF",
+      "pending": "Generando PDF.",
+      "error": "No pudimos generar el PDF. Probá de nuevo."
+    },
+    "filters": {
+      "from": "Desde",
+      "to": "Hasta",
+      "status": "Estado",
+      "statusCount": "{count, plural, one {# estado} other {# estados}}",
+      "clearStatus": "Limpiar estados",
+      "channel": "Canal",
+      "seller": "Vendedor",
+      "client": "Cliente",
+      "tag": "Etiqueta",
+      "tagCount": "{count, plural, one {# etiqueta} other {# etiquetas}}",
+      "clearTag": "Limpiar etiquetas",
+      "branch": "Sucursal",
+      "branchCount": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "clearBranch": "Limpiar sucursales",
+      "allChannel": "Todos los canales",
+      "allSeller": "Todos los vendedores",
+      "allClient": "Todos los clientes",
+      "apply": "Aplicar",
+      "reset": "Restablecer",
+      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
+      "invalid": "No pudimos generar el reporte con esa selección. Revisá las fechas, que el período no sea demasiado largo y los filtros elegidos."
+    },
+    "empty": {
+      "title": "No hay actividad en el período",
+      "description": "Probá con otro período o con menos filtros."
+    },
+    "kpis": {
+      "rfqs": "Pedidos recibidos",
+      "sent": "Cotizaciones enviadas",
+      "accepted": "Cotizaciones aceptadas",
+      "acceptedDetail": "Aceptaciones registradas en el período.",
+      "conversion": "Tasa de conversión",
+      "acceptedAmount": "Importe aceptado",
+      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "responseTime": "Tiempo de respuesta",
+      "timeToAcceptance": "Tiempo hasta la aceptación",
+      "followUpPending": "Seguimientos pendientes",
+      "followUpPendingDetail": "Cotizaciones que esperan un seguimiento hoy."
+    },
+    "conversionDetail": "{accepted, plural, one {# aceptada} other {# aceptadas}} de {sent, plural, one {# enviada} other {# enviadas}} en el período",
+    "responseDetail": "Mediana {median} · {count, plural, one {# pedido} other {# pedidos}}",
+    "timeToAcceptanceDetail": "Mediana {median} · {count, plural, one {# aceptación} other {# aceptaciones}}",
+    "duration": {
+      "seconds": "{count, plural, one {# segundo} other {# segundos}}",
+      "minutes": "{count, plural, one {# minuto} other {# minutos}}",
+      "hours": "{count, plural, one {# hora} other {# horas}}",
+      "hoursMinutes": "{hours} h {minutes} min",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "daysHours": "{days} d {hours} h"
+    },
+    "noDataShort": "—",
+    "status": {
+      "title": "Cotizaciones por estado",
+      "description": "Distribución de las cotizaciones creadas en el período.",
+      "empty": "Todavía no hay cotizaciones en el período.",
+      "total": "{count, plural, one {# cotización} other {# cotizaciones}}",
+      "label": "Estado",
+      "count": "Cotizaciones",
+      "aria": "Cotizaciones creadas en el período agrupadas por estado"
+    },
+    "statusLabels": {
+      "DRAFT": "Borrador",
+      "QUOTED": "Cotizada",
+      "SENT": "Enviada",
+      "CHANGE_REQUESTED": "Cambio solicitado",
+      "ACCEPTED": "Aceptada",
+      "REJECTED": "Rechazada"
+    },
+    "timeline": {
+      "title": "Tendencia",
+      "sent": "Enviadas",
+      "accepted": "Aceptadas",
+      "aria": "Pedidos, envíos, aceptaciones y conversión entre {from} y {to}",
+      "scroll": "Gráfico desplazable",
+      "rfqs": "Pedidos",
+      "conversion": "Conversión de las enviadas en cada período",
+      "bucket": "Período",
+      "weekOf": "Semana del {date}",
+      "by": {
+        "day": "Por día.",
+        "week": "Por semana, desde el lunes.",
+        "month": "Por mes."
+      },
+      "granularity": {
+        "label": "Agrupar por",
+        "day": "Día",
+        "week": "Semana",
+        "month": "Mes"
+      },
+      "weekFrom": "Desde el {date}"
+    },
+    "products": {
+      "title": "Productos más solicitados",
+      "description": "Ranking por cantidad de líneas, sin importar la cantidad pedida.",
+      "empty": "Todavía no hay productos en el período.",
+      "requests": "{count, plural, one {# línea} other {# líneas}}",
+      "unnamed": "Sin nombre"
+    },
+    "revenueProducts": {
+      "title": "Productos con mayor ingreso",
+      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "empty": "Todavía no hay productos aceptados en el período."
+    },
+    "clients": {
+      "title": "Clientes por importe aceptado",
+      "empty": "Todavía no hay clientes aceptados en el período.",
+      "name": "Cliente",
+      "acceptedAmount": "Importe aceptado",
+      "unnamed": "Sin cliente"
+    },
+    "ai": {
+      "title": "Coincidencias automáticas",
+      "empty": "Todavía no hay generaciones de IA en el período.",
+      "matched": "{matched, plural, one {# línea} other {# líneas}} de {total}",
+      "low": "Baja",
+      "medium": "Media",
+      "high": "Alta",
+      "versionUnmatched": "{unmatched, plural, one {# línea queda} other {# líneas quedan}} sin coincidencia en la versión vigente, de {total}."
+    },
+    "branches": {
+      "title": "Pedidos por sucursal",
+      "name": "Sucursal",
+      "rfqs": "Pedidos",
+      "empty": "Todavía no hay pedidos en las sucursales del período."
+    },
+    "assistant": {
+      "title": "Asistente de conversación",
+      "description": "Propuestas del período, por lo que hizo el vendedor. Las que nadie decidió cuentan en el total.",
+      "empty": "Todavía no hay propuestas del asistente en el período.",
+      "rate": "{approved, plural, one {# aprobada} other {# aprobadas}} sin cambios de {total}",
+      "outcomes": {
+        "approvedAsIs": "Sin cambios",
+        "edited": "Editadas",
+        "rejected": "Rechazadas",
+        "manualOverride": "Resueltas a mano",
+        "pending": "Sin decidir"
+      }
+    }
   },
   "catalog": {
     "title": "Catálogo",
@@ -2045,7 +2317,8 @@
       "catalog": "Catálogo",
       "prices": "Precios",
       "onboarding": "Configuración inicial · {done}/{total}",
-      "invoicing": "Facturación"
+      "invoicing": "Facturación",
+      "export": "Exportación de datos"
     },
     "backToInvoicing": "Volver a Facturación"
   },
@@ -2600,7 +2873,8 @@
         "CATALOG_UPLOAD": "Carga",
         "CATALOG_REVIEW": "Revisión",
         "TEAM": "Usuarios",
-        "COMPLETE": "Cuenta lista"
+        "COMPLETE": "Cuenta lista",
+        "PORTAL": "Portal de clientes"
       },
       "statuses": {
         "COMPLETED": "Listo",
@@ -2702,13 +2976,15 @@
         "brand": "Marca revisada",
         "branch": "Sucursal configurada",
         "catalog": "Catálogo disponible",
-        "team": "Usuarios agregados"
+        "team": "Usuarios agregados",
+        "portal": "Portal de clientes configurado"
       },
       "pending": {
         "brand": "Marca pendiente: la completás en Cuenta",
         "branch": "Sucursal pendiente: la revisás en Sucursales",
         "catalog": "Catálogo pendiente: lo importás en Catálogo",
-        "team": "Usuarios pendientes: los sumás en Usuarios"
+        "team": "Usuarios pendientes: los sumás en Usuarios",
+        "portal": "Portal pendiente en Configuración → Cuenta"
       }
     },
     "errors": {
@@ -2737,6 +3013,10 @@
         "TEAM": {
           "title": "Equipo",
           "description": "Los vendedores que atienden los pedidos con vos."
+        },
+        "PORTAL": {
+          "title": "Portal de clientes",
+          "description": "Elegí la dirección donde tus clientes pueden registrarse y enviar pedidos."
         }
       },
       "resume": {
@@ -2756,6 +3036,11 @@
         "pending": "Mostrando…"
       },
       "settingsTitle": "Configuración inicial"
+    },
+    "portal": {
+      "title": "¿Cómo te encuentran tus clientes en internet?",
+      "description": "Elegí la dirección del portal de clientes de tu corralón. Podés configurarla más tarde desde Cuenta.",
+      "later": "Configurar más tarde"
     }
   },
   "priceImport": {
@@ -3180,5 +3465,52 @@
       "actions": "Acciones"
     },
     "testBadge": "Prueba"
+  },
+  "clientContactSuggestions": {
+    "title": "Coincidencias de clientes",
+    "pending": "{count, plural, =0 {Sin coincidencias pendientes} one {# coincidencia pendiente} other {# coincidencias pendientes}}",
+    "empty": "No hay coincidencias pendientes",
+    "unknown": "Cliente sin nombre",
+    "review": "Revisar",
+    "reviewTitle": "Revisar coincidencia",
+    "reviewDescription": "Dos fichas comparten el contacto {value}. Si son el mismo cliente, unilas; si no, descartá la coincidencia.",
+    "taxId": "CUIT/CUIL declarado",
+    "incoming": "Contacto compartido",
+    "candidate": "Ficha que tiene el contacto",
+    "source": "Otra ficha",
+    "absent": "Sin datos",
+    "original": "Mensaje original",
+    "keep": "Ficha que queda",
+    "keepHint": "Los pedidos y contactos de la otra ficha pasan a esta. No se puede deshacer.",
+    "registered": "Una de las fichas tiene CUIT: solo el cliente puede unirla, desde su cuenta. Podés descartar la coincidencia.",
+    "merge": "Unir fichas",
+    "merging": "Uniendo…",
+    "separate": "Descartar",
+    "separating": "Descartando…",
+    "merged": "Unimos las fichas en «{name}».",
+    "separated": "Descartamos la coincidencia de {value}.",
+    "retry": "Reintentar",
+    "loadError": "No pudimos cargar las coincidencias."
+  },
+  "customerPortal": {
+    "label": "Subdominio",
+    "hint": "Esta va a ser la dirección del portal donde tus clientes pueden registrarse, ingresar y enviar pedidos.",
+    "current": "Portal actual:",
+    "loading": "Cargando dirección…",
+    "invalid": "Usá hasta 63 letras sin tildes, números o guiones, sin guiones al principio o al final. Algunos nombres están reservados.",
+    "checking": "Comprobando disponibilidad…",
+    "available": "Subdominio disponible",
+    "taken": "Ese subdominio ya está ocupado. Probá con otro.",
+    "error": "No pudimos comprobar o guardar la dirección. Volvé a intentar.",
+    "conflict": "El subdominio está ocupado o la dirección cambió desde que abriste la pantalla. Recargá y volvé a intentar.",
+    "save": "Guardar dirección del portal",
+    "saving": "Guardando…",
+    "unavailable": "La configuración de subdominios todavía no está habilitada en este entorno.",
+    "legacy": "Esta dirección fue configurada de forma administrativa. Se conserva y no se puede reemplazar desde acá; requiere una migración coordinada de sus enlaces y accesos.",
+    "skipHint": "Podés configurar la dirección más tarde desde Configuración → Cuenta.",
+    "changeTitle": "¿Cambiar la dirección del portal?",
+    "changeWarning": "La dirección anterior dejará de abrir este portal. Los enlaces que ya compartiste dejarán de funcionar: compartí la nueva dirección y reenviá los enlaces de pedidos y cotizaciones. Tus clientes tendrán que volver a ingresar en la nueva dirección; sus cuentas y pedidos se conservan. Las sesiones anteriores no se trasladan entre dominios.",
+    "confirm": "Cambiar dirección",
+    "cancel": "Cancelar"
   }
 }

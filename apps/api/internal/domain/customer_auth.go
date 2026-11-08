@@ -10,18 +10,16 @@ import (
 
 // CustomerIdentity is a supplier-scoped credential, independent of commercial client profiles.
 type CustomerIdentity struct {
-	ID                      uuid.UUID
-	AccountID               uuid.UUID
-	TaxID                   string
-	PasswordHash            string
-	GoogleSubject           *string
-	RecoveryEmail           *string
-	RecoveryEmailVerifiedAt *time.Time
-	Name                    *string
-	FailedAttempts          int
-	LockedUntil             *time.Time
-	DisabledAt              *time.Time
-	CreatedAt               time.Time
+	ID             uuid.UUID
+	AccountID      uuid.UUID
+	TaxID          string
+	PasswordHash   string
+	GoogleSubject  *string
+	Name           *string
+	FailedAttempts int
+	LockedUntil    *time.Time
+	DisabledAt     *time.Time
+	CreatedAt      time.Time
 }
 
 // CustomerPrincipal is an authenticated customer's scope, never a staff tenant or a client ID.
@@ -46,9 +44,10 @@ type CustomerSession struct {
 
 // CustomerRegistration creates credentials without claiming an existing commercial profile.
 type CustomerRegistration struct {
-	TaxID         string
-	Password      string
-	RecoveryEmail string
+	Name     string
+	Contacts []ClientContact
+	TaxID    string
+	Password string
 }
 
 // CustomerCredentials is a CUIT and password login scoped to the supplier's hostname.
@@ -76,6 +75,10 @@ type CustomerGoogleIdentity struct {
 	Subject string
 	Email   string
 	Name    string
+	// EmailVerified carries Google's email_verified claim; only a verified address may become a contact.
+	EmailVerified bool
+	// HostedDomain carries the hd claim, the Google Workspace domain the account belongs to.
+	HostedDomain string
 }
 
 // CustomerGoogleProvider exchanges a single-use authorization code and verifies its ID token.
@@ -98,6 +101,21 @@ type CustomerChallenge struct {
 type CustomerGoogleResult struct {
 	Login       *CustomerLogin
 	SignupToken string
+	// SignupEmail is the Google address the customer may choose as a contact; empty when Google did not verify it.
+	SignupEmail string
+	// SignupEmailProven is true when Google proves current control of SignupEmail, so choosing it
+	// verifies it; otherwise it joins pending a code.
+	SignupEmailProven bool
+}
+
+// CustomerGoogleCompletion is a first Google registration: its own contacts, and the Google address
+// only when the customer chose it.
+type CustomerGoogleCompletion struct {
+	Token          string
+	TaxID          string
+	Name           string
+	Contacts       []ClientContact
+	UseGoogleEmail bool
 }
 
 // CustomerAuthOptions is the public supplier identity and customer credential configuration.
@@ -112,8 +130,4 @@ type CustomerAuthOptions struct {
 // CustomerChallengePurpose scopes one-use capabilities to a single credential operation.
 type CustomerChallengePurpose string
 
-const (
-	CustomerChallengeGoogleSignup  CustomerChallengePurpose = "GOOGLE_SIGNUP"
-	CustomerChallengeResetPassword CustomerChallengePurpose = "RESET_PASSWORD"
-	CustomerChallengeVerifyEmail   CustomerChallengePurpose = "VERIFY_EMAIL"
-)
+const CustomerChallengeGoogleSignup CustomerChallengePurpose = "GOOGLE_SIGNUP"

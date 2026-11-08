@@ -32,6 +32,7 @@ const channelKeyLength = 32
 const defaultCatalogImportMaxBytes = 5 * 1024 * 1024
 const defaultPriceImportMaxBytes = 5 * 1024 * 1024
 const maxBranchExpiryDays = 365
+const maxReportRangeDays = 3660
 
 // Environment is the deployment environment the process runs in.
 type Environment string
@@ -54,6 +55,7 @@ type StorageProvider string
 
 const (
 	StorageProviderLocal  StorageProvider = "local"
+	StorageProviderNeon   StorageProvider = "neon"
 	StorageProviderSpaces StorageProvider = "spaces"
 )
 
@@ -77,14 +79,17 @@ type Config struct {
 	Database        DatabaseConfig
 	Auth            AuthConfig
 	CustomerAuth    CustomerAuthConfig
+	CustomerPortal  CustomerPortalConfig
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
 	Catalog         CatalogConfig
+	Reports         ReportsConfig
 	RFQ             RFQConfig
 	QuoteCorrection QuoteCorrectionConfig
 	QuoteQuality    QuoteQualityConfig
 	QuoteArchive    QuoteArchiveConfig
+	QuoteFollowup   QuoteFollowupConfig
 	Conversation    ConversationConfig
 	Attachment      AttachmentConfig
 	QuoteLogo       QuoteLogoConfig
@@ -249,6 +254,10 @@ type RateLimitConfig struct {
 	// AI bounds the routes billed per call by a provider, the way Mail bounds the ones whose
 	// effect is a message. The global allowance is far too wide for a route that costs money.
 	AI int
+	// ContactVerification bounds requesting and confirming a customer contact proof, per customer and per address.
+	ContactVerification int
+	// Profile bounds a customer's profile saves, per customer and per address.
+	Profile int
 	// MailPerAddress is counted by target address instead of by caller, so it bounds what one
 	// mailbox receives however many callers ask for it.
 	MailPerAddress int
@@ -605,12 +614,21 @@ type QuoteQualityConfig struct {
 // QuoteArchiveConfig drives the sweep that archives quotes nobody has moved.
 type QuoteArchiveConfig struct {
 	// InactiveAfter is how long a quote may go without a change before it is archived. Follow-up
-	// (US-41) flags on the same measure, so this belongs above its threshold.
+	// flags on the same measure, so this belongs above its thresholds.
 	InactiveAfter time.Duration
 	// ClosedAfter is how long a closed outcome — a complete sale or a rejected quote — stays in the
 	// queue without a change before it is archived.
 	ClosedAfter time.Duration
 	BatchSize   int
+}
+
+// QuoteFollowupConfig drives the sweep that flags the quotes a seller has to chase.
+type QuoteFollowupConfig struct {
+	// SellerIdleAfter is how long a DRAFT or QUOTED quote may go without a change before it is flagged.
+	SellerIdleAfter time.Duration
+	// CustomerSilentAfter is how long a SENT quote may go without a change before it is flagged.
+	CustomerSilentAfter time.Duration
+	BatchSize           int
 }
 
 // ConversationConfig calibrates the windows that group a client's messages after a quote is sent.
@@ -688,9 +706,23 @@ type CatalogConfig struct {
 	CorrectionSimilarityPercent int
 }
 
-// StorageConfig holds the object storage settings and file limits. The bucket coordinates are
-// read whichever provider is selected and demanded only under spaces, so a checkout with no
-// object store still boots.
+// ReportsConfig bounds the period one seller report may cover.
+type ReportsConfig struct {
+	// MaxRangeDays is the widest inclusive calendar-day range a report query accepts.
+	MaxRangeDays int
+}
+
+func (r ReportsConfig) problems() []string {
+	if r.MaxRangeDays <= 0 {
+		return []string{"REPORTS_MAX_RANGE_DAYS must be greater than zero"}
+	}
+	if r.MaxRangeDays > maxReportRangeDays {
+		return []string{"REPORTS_MAX_RANGE_DAYS must not exceed 3660"}
+	}
+	return nil
+}
+
+// StorageConfig holds the storage settings, credentials, and file limits.
 type StorageConfig struct {
 	Provider        StorageProvider
 	Dir             string
@@ -713,9 +745,8 @@ type LocalSettings struct {
 	SigningSecret string
 }
 
-// SpacesSettings is what the Spaces adapter is handed: one bucket's coordinates and nothing
-// else, so no other adapter's settings can reach a provider SDK.
-type SpacesSettings struct {
+// S3Settings holds one remote bucket's coordinates and credentials.
+type S3Settings struct {
 	Endpoint  string
 	Region    string
 	Bucket    string
@@ -728,9 +759,9 @@ func (s StorageConfig) Local() LocalSettings {
 	return LocalSettings{Dir: s.Dir, APIBaseURL: s.APIBaseURL, SigningSecret: s.SigningSecret}
 }
 
-// Spaces returns the settings the Spaces adapter needs.
-func (s StorageConfig) Spaces() SpacesSettings {
-	return SpacesSettings{
+// S3 returns only the settings a remote object storage adapter needs.
+func (s StorageConfig) S3() S3Settings {
+	return S3Settings{
 		Endpoint:  s.Endpoint,
 		Region:    s.Region,
 		Bucket:    s.Bucket,
@@ -768,7 +799,7 @@ func (s StorageConfig) problems() []string {
 			problems = append(problems, fmt.Sprintf("STORAGE_LOCAL_API_BASE_URL must be an "+
 				"absolute URL with a scheme and host, got %q", s.APIBaseURL))
 		}
-	case StorageProviderSpaces:
+	case StorageProviderNeon, StorageProviderSpaces:
 		required := []struct{ key, value string }{
 			{"STORAGE_ENDPOINT", s.Endpoint},
 			{"STORAGE_REGION", s.Region},
@@ -779,7 +810,7 @@ func (s StorageConfig) problems() []string {
 		for _, r := range required {
 			if r.value == "" {
 				problems = append(problems, r.key+" is required when STORAGE_PROVIDER is "+
-					string(StorageProviderSpaces))
+					string(s.Provider))
 			}
 		}
 		if s.Endpoint != "" {
@@ -789,8 +820,8 @@ func (s StorageConfig) problems() []string {
 			}
 		}
 	default:
-		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q or %q, got %q",
-			StorageProviderLocal, StorageProviderSpaces, s.Provider))
+		problems = append(problems, fmt.Sprintf("STORAGE_PROVIDER must be %q, %q or %q, got %q",
+			StorageProviderLocal, StorageProviderNeon, StorageProviderSpaces, s.Provider))
 	}
 	return problems
 }
@@ -825,7 +856,8 @@ func Load() (*Config, error) {
 			MaxConnIdleTime: getDuration("DB_MAX_CONN_IDLE_MINUTES", 30*time.Minute, &problems),
 			ConnectTimeout:  getDuration("DB_CONNECT_TIMEOUT_SECONDS", 10*time.Second, &problems),
 		},
-		CustomerAuth: loadCustomerAuth(&problems),
+		CustomerAuth:   loadCustomerAuth(&problems),
+		CustomerPortal: loadCustomerPortal(env, &problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
@@ -906,6 +938,9 @@ func Load() (*Config, error) {
 			MatchReviewMaxLines:           getInt("CATALOG_MATCH_REVIEW_MAX_LINES", 0, &problems),
 			CorrectionSimilarityPercent:   getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
 		},
+		Reports: ReportsConfig{
+			MaxRangeDays: getInt("REPORTS_MAX_RANGE_DAYS", 366, &problems),
+		},
 		Storage: StorageConfig{
 			Provider:        StorageProvider(getString("STORAGE_PROVIDER", string(StorageProviderLocal))),
 			Dir:             getString("STORAGE_LOCAL_DIR", "./.storage"),
@@ -920,16 +955,18 @@ func Load() (*Config, error) {
 			SignedURLExpiry: getDuration("STORAGE_SIGNED_URL_EXPIRY_MINUTES", 15*time.Minute, &problems),
 		},
 		RateLimit: RateLimitConfig{
-			Enabled:          getBool("RATE_LIMIT_ENABLED", true, &problems),
-			Window:           getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
-			Global:           getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
-			Credentials:      getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
-			Signup:           getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
-			Mail:             getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
-			AI:               getInt("RATE_LIMIT_AI_MAX", 10, &problems),
-			MailPerAddress:   getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
-			TrustedProxyHops: getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
-			TrustedProxies:   getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
+			Enabled:             getBool("RATE_LIMIT_ENABLED", true, &problems),
+			Window:              getDuration("RATE_LIMIT_WINDOW_SECONDS", time.Minute, &problems),
+			Global:              getInt("RATE_LIMIT_GLOBAL_MAX", 300, &problems),
+			Credentials:         getInt("RATE_LIMIT_CREDENTIALS_MAX", 10, &problems),
+			Signup:              getInt("RATE_LIMIT_SIGNUP_MAX", 5, &problems),
+			Mail:                getInt("RATE_LIMIT_MAIL_MAX", 5, &problems),
+			AI:                  getInt("RATE_LIMIT_AI_MAX", 10, &problems),
+			ContactVerification: getInt("RATE_LIMIT_CONTACT_VERIFICATION_MAX", 5, &problems),
+			Profile:             getInt("RATE_LIMIT_PROFILE_MAX", 10, &problems),
+			MailPerAddress:      getInt("RATE_LIMIT_MAIL_PER_ADDRESS_MAX", 3, &problems),
+			TrustedProxyHops:    getInt("RATE_LIMIT_TRUSTED_PROXY_HOPS", 0, &problems),
+			TrustedProxies:      getCIDRs("RATE_LIMIT_TRUSTED_PROXY_CIDRS", &problems),
 		},
 		RFQ: RFQConfig{
 			MaxTextCharacters:  getInt("RFQ_MAX_TEXT_CHARACTERS", 20000, &problems),
@@ -960,6 +997,13 @@ func Load() (*Config, error) {
 			ClosedAfter: getDuration("QUOTE_AUTO_ARCHIVE_CLOSED_DAYS", 30*24*time.Hour,
 				&problems),
 			BatchSize: getInt("QUOTE_AUTO_ARCHIVE_BATCH_SIZE", 100, &problems),
+		},
+		QuoteFollowup: QuoteFollowupConfig{
+			SellerIdleAfter: getDuration("QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", 3*24*time.Hour,
+				&problems),
+			CustomerSilentAfter: getDuration("QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS", 3*24*time.Hour,
+				&problems),
+			BatchSize: getInt("QUOTE_FOLLOWUP_BATCH_SIZE", 100, &problems),
 		},
 		Conversation: ConversationConfig{
 			WindowReset:     getDuration("CONVERSATION_WINDOW_RESET_SECONDS", 120*time.Second, &problems),
@@ -1111,6 +1155,7 @@ func Load() (*Config, error) {
 
 	problems = append(problems, cfg.AI.problems()...)
 	problems = append(problems, cfg.QuoteLogo.problems()...)
+	problems = append(problems, cfg.Reports.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 	problems = append(problems, cfg.WhatsApp.problems()...)
 	problems = append(problems, cfg.Gmail.problems()...)
@@ -1221,6 +1266,24 @@ func Load() (*Config, error) {
 	}
 	if cfg.QuoteArchive.BatchSize < 1 {
 		problems = append(problems, "QUOTE_AUTO_ARCHIVE_BATCH_SIZE must be greater than zero")
+	}
+	// A quote has to be flagged before the archive sweep can put it away.
+	if cfg.QuoteFollowup.SellerIdleAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.SellerIdleAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.CustomerSilentAfter <= 0 {
+		problems = append(problems, "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be greater than zero")
+	} else if cfg.QuoteArchive.InactiveAfter > 0 &&
+		cfg.QuoteFollowup.CustomerSilentAfter >= cfg.QuoteArchive.InactiveAfter {
+		problems = append(problems,
+			"QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS must be less than QUOTE_AUTO_ARCHIVE_INACTIVE_DAYS")
+	}
+	if cfg.QuoteFollowup.BatchSize < 1 {
+		problems = append(problems, "QUOTE_FOLLOWUP_BATCH_SIZE must be greater than zero")
 	}
 	if cfg.Conversation.WindowReset <= 0 {
 		problems = append(problems, "CONVERSATION_WINDOW_RESET_SECONDS must be greater than zero")
@@ -1333,6 +1396,8 @@ func Load() (*Config, error) {
 			{"RATE_LIMIT_SIGNUP_MAX", cfg.RateLimit.Signup},
 			{"RATE_LIMIT_MAIL_MAX", cfg.RateLimit.Mail},
 			{"RATE_LIMIT_AI_MAX", cfg.RateLimit.AI},
+			{"RATE_LIMIT_CONTACT_VERIFICATION_MAX", cfg.RateLimit.ContactVerification},
+			{"RATE_LIMIT_PROFILE_MAX", cfg.RateLimit.Profile},
 		}
 		if cfg.RateLimit.Global < 1 {
 			problems = append(problems, "RATE_LIMIT_GLOBAL_MAX must be at least 1")
@@ -1379,6 +1444,9 @@ func Load() (*Config, error) {
 
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	if local, err := url.Parse(cfg.CustomerPortal.BaseURL); err == nil && local.Hostname() == "localhost" {
+		cfg.CustomerAuth.PortalLocalOrigin = cfg.CustomerPortal.BaseURL
 	}
 	return cfg, nil
 }

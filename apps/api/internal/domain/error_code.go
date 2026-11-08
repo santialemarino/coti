@@ -105,6 +105,23 @@ const (
 	CodeQuoteAlreadyPaid ErrorCode = "QUOTE_ALREADY_PAID"
 	// Closing a sale (paid, no invoice needed) applies only to an accepted quote.
 	CodeQuoteNotAccepted ErrorCode = "QUOTE_NOT_ACCEPTED"
+	// An earlier profile with the customer's CUIT stays the seller's until the customer verifies a
+	// contact it already had.
+	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
+	// A customer profile holds a bounded number of contacts.
+	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
+	// A profile with a CUIT belongs to its customer: no seller renames or merges it.
+	CodeClientRegistered ErrorCode = "CLIENT_REGISTERED"
+	// A profile already merged into another one takes no further merge.
+	CodeClientMerged ErrorCode = "CLIENT_MERGED"
+	// A seller merges only profiles whose orders all sit in their own branches.
+	CodeClientOutOfReach ErrorCode = "CLIENT_OUT_OF_REACH"
+	// The Google address a customer chose is already verified on another CUIT/CUIL's profile.
+	CodeContactInUse ErrorCode = "CONTACT_IN_USE"
+	// A link to the supplier's customer portal needs the account's public hostname.
+	CodePortalNotConfigured ErrorCode = "PORTAL_NOT_CONFIGURED"
+	// WhatsApp takes free text only within 24 hours of the customer's last message.
+	CodeWhatsAppWindowClosed ErrorCode = "WHATSAPP_WINDOW_CLOSED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

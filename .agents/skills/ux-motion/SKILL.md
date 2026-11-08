@@ -267,7 +267,7 @@ panel enters from the trigger and then dissolves in place.
   changes, and give the parent `relative` so the popped child is positioned against it.
 - **`layout` is the wrong tool for a box that contains a form.** A layout animation scale-corrects
   its children, which squashes inputs mid-flight. Measure the height and animate it directly
-  instead — `AnimatedHeight` in the backoffice's auth flow is the reference, and four things in it
+  instead — `AnimatedHeight` in `@repo/ui` is the reference, and four things in it
   are load-bearing:
   - **Arm on the state change, travel on the resize that follows.** They are not the same moment: an
     atomic swap resizes in the commit its key changes, but a crossfade holds the outgoing stage for

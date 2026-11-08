@@ -5,13 +5,19 @@
 The customer portal opens at the supplier's registered hostname, such as
 https://supplier.coti.com.ar/. Migration 00051 adds nullable, unique account.public_hostname.
 Provision DNS and TLS separately, preserve Host at the ingress, and set the account hostname
-through database administration. No channel configuration screen is introduced in the backoffice.
+through Account settings or the optional onboarding step when self-service provisioning is enabled.
+Inherited hostnames outside that base remain visible and are managed administratively.
 
 Unknown or inactive suppliers return 404. Customer login remains available when there are no
 active intake branches. The new-request page resolves active branches and WEBAPP destinations
 through GET /v1/public/rfq-sites/{hostname}. Migration 00050 and branch creation provision
-WEBAPP channels. WEB_PUBLIC_SITE_HOSTNAME is a server-only development override for Host;
-leave it unset in a shared production deployment.
+WEBAPP channels. Every supplier is resolved from the request Host. For local development, register
+`account.public_hostname` as `sanmartin.localhost` and open
+`http://sanmartin.localhost:3001/login`. Each supplier uses its own hostname and host-only cookies.
+Bare localhost and unknown supplier subdomains return 404. No hosts-file entry or paid domain is
+needed for these local URLs. `WEB_PUBLIC_SITE_HOSTNAME` is an optional single-supplier override
+only for bare loopback requests during development; it never overrides a supplier subdomain or a
+production request. Leave it empty for local subdomain testing.
 
 ## Customer credentials and sessions
 
@@ -47,58 +53,37 @@ expiration and nonce through go-oidc. Google access tokens are discarded. Accoun
 the stable Google subject, never by a matching email address.
 
 An unknown subject receives a hashed, short-lived GOOGLE_SIGNUP capability. The customer must
-supply CUIT/CUIL before receiving a session. An existing CUIT/CUIL cannot be claimed through a
+supply CUIT/CUIL, a full name and at least one contact before receiving a session; the Google
+address counts only when the customer chooses it (see [Client profiles](client-profiles.md#google-sign-up)). An existing CUIT/CUIL cannot be claimed through a
 new Google subject: the customer must first authenticate to the existing account and explicitly
 link Google. Completing registration and consuming its capability happen in one transaction.
 
 For development, CUSTOMER_GOOGLE_LOCAL_ORIGIN may point to an HTTP localhost origin, for example
-http://localhost:3001. It controls the callback and outgoing portal links and is rejected in
-production. WEB_GOOGLE_FLOW_TTL_SECONDS bounds the browser flow cookie. API provider, signup,
+http://localhost:3001. Register `http://localhost:3001/api/customer/google/callback` with Google.
+Local sign-in retains state, nonce and PKCE in the starting supplier's host-only cookie. The shared
+localhost callback relays the provider response to that supplier's callback, which verifies the
+original cookie before exchanging the code or setting any credential cookie. The relay accepts
+only HTTP single-label `*.localhost` origins on the same port and is disabled in production.
+Development Host handling preserves the supplier when Next normalizes the request URL to localhost.
+Outgoing customer, verification and quotation links use the registered `*.localhost` supplier with
+the local origin's port. This override is rejected in production, which uses each registered HTTPS
+hostname and its exact Google redirect URI. WEB_GOOGLE_FLOW_TTL_SECONDS bounds the browser flow cookie. API provider, signup,
 recovery and verification timeouts are listed in apps/api/.env.example.
 
-## Optional recovery email
+## Account recovery
 
-Password registration can save an unverified recovery email and send a one-use verification link.
-Verification enables recovery without gating portal access. Forgot password requires both CUIT/CUIL
-and the matching stored verified address. It never sends a recovery link to a caller-selected new
-address. Its response is identical for matching, unknown and unverified addresses.
+A forgotten password is recovered with a one-use code sent to one of the account's verified
+contacts; there is no separate recovery address. Resetting the password revokes existing sessions in
+the same transaction. Google-only customers can keep using their linked Google identity, or gain a
+password the same way. See [Client profiles](client-profiles.md#account-recovery).
 
-VERIFY_EMAIL and RESET_PASSWORD capabilities have independent purposes and configurable expiration,
-are stored hashed, and are consumed atomically. Resetting a password revokes existing sessions and
-outstanding reset links in the same transaction. Link GETs do not consume capabilities. Google-only
-customers can continue using their previously linked Google identity.
-
-## History authorization and immutable quotations
-
-The product's access rule is exact CUIT/CUIL matching within the authenticated supplier. Registration
-therefore grants access to earlier matching requests. CUIT/CUIL is treated as a declared identifier;
-this flow does not verify fiscal ownership. Queries match a request's associated commercial client
-or the retained, normalized web declaration. They never infer identity from a loose name. Customer
-credentials do not create or merge commercial profiles. The seller confirms the client association
-in the same transaction that publishes a quotation, so all-channel requests become accessible
-before customer acceptance.
-
-GET /orders provides bounded pages; GET /orders/{rfqId} checks the same supplier and CUIT/CUIL
-before returning the original request and a successful immutable delivery reference. Draft contents
-and AI results are not returned. Until a quotation has been sent, the projection reports RECEIVED.
-Sent versions remain available while the seller edits another version internally.
-
-Every seller send confirms the client profile and creates a WEBAPP publication alongside the
-selected WhatsApp and/or email deliveries. At least one external delivery destination is required. Publication commits
-with delivery outcomes and the backend-controlled SENT transition; no browser push or notification
-subscription flow is included. An external provider failure does not withdraw a web publication.
-Publications do not duplicate seller messages in the conversation.
-
-Legacy /quotes/{token} links first discover only public supplier routing through
-GET /v1/public/quote-sends/{token}/site. A different hostname redirects to the registered supplier.
-After login, the API checks authorization before resolving the immutable delivery. Both legacy
-links and history open /orders/{rfqId}; the original delivery reference is retained in the URL so
-an old link keeps its original expiration and version. The old unauthenticated quote read and
-action endpoints return 401. A token alone no longer authorizes private content or actions.
-
-Customer responses are shared across deliveries of the same frozen version, so a response from
 WhatsApp and a visit from history show the same decision. Existing expiry, archive checks,
 idempotency, quote locking and deterministic state transitions remain enforced.
+
+The authenticated `/profile` page manages optional commercial contact collections through
+`GET`/`PUT /v1/customer/sites/{hostname}/profile` and the main contact through
+`PUT /v1/customer/sites/{hostname}/profile/main-contact`. It never modifies passwords or Google links. See [Client profiles](client-profiles.md) for intake provenance,
+uniqueness, primary-contact compatibility and proof-gated history transfers.
 
 ## Request intake
 
@@ -121,3 +106,34 @@ returned by public supplier metadata endpoints.
 For proxy IP limits, configure WEB_TRUSTED_PROXY_HOPS on the webapp and separately trust the BFF
 peer through RATE_LIMIT_TRUSTED_PROXY_CIDRS and RATE_LIMIT_TRUSTED_PROXY_HOPS on the API. Only
 the trusted ingress hop's valid IP is forwarded. Without that setup, users share the BFF's allowance.
+
+## Self-service portal addresses
+
+The administrator-only endpoints are GET /v1/account/portal, GET
+/v1/account/portal/availability?subdomain=label, and PUT /v1/account/portal. The last accepts
+subdomain, expected_hostname, and confirm_change; the server builds the hostname from
+CUSTOMER_PORTAL_BASE_URL. Availability reveals only a boolean, includes inactive accounts in the
+reservation check, and does not reserve a name. The existing unique public_hostname index arbitrates
+concurrent saves. A stale expected_hostname or a unique collision returns 409 without changing the
+account; the browser preserves the input. Reads and writes are account-scoped under RLS; availability
+is an explicit cross-account public routing discovery operation.
+
+Labels are trimmed, lowercased, limited to one DNS label of at most 63 ASCII letters, digits and
+internal hyphens. Infrastructure names including www, api, admin, auth, app, backoffice, portal,
+mail, smtp, cdn, static, docs, dev, staging, status, support, coti and localhost are reserved.
+
+Changing a managed hostname requires explicit acknowledgement. The old hostname stops resolving
+this supplier; old links must be resent with the new origin. Quote tokens, customer credentials,
+request history and stored sessions are retained in the same account. Host-only cookies do not move
+to the new hostname: customers sign in again. An old cookie never authenticates another supplier,
+even if the freed name is subsequently claimed, because sessions are validated within the resolved
+account. There is no automatic alias, redirect or cross-domain session transfer. Any pending Google
+OAuth or contact verification flow must be restarted; each new production Google callback URI must
+be registered separately before using Google login. The editor warns before committing this change.
+An inherited hostname outside the configured base cannot be replaced through this endpoint; migrate
+its links, callback registration and customer access in a separately coordinated operation.
+
+Outgoing signup, contact verification and quotation links resolve the supplier hostname. RFQ detail
+uses that hostname too. WEB_WEBAPP_URL remains a compatibility fallback only for services instantiated
+without supplier routing; the API wires supplier routing and never directs a supplier without a
+hostname to another account's shared portal. Customer sessions stay separate from staff JWTs.

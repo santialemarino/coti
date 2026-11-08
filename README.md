@@ -9,6 +9,15 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+The customer portal includes authenticated request history and commercial profiles. Registration
+requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
+without CUIT. History requires the authenticated portal author or customer-specific contact proof;
+CUIT matching alone grants no access. Unknown channel senders get a provisional profile immediately.
+Customers verify new contacts before claiming their earlier requests, choose a main contact in
+**My data**, and recover their account with a one-use code sent to a verified contact. See
+[Client profiles](docs/technical/client-profiles.md) for identity rules, migrations, contact delivery
+configuration and account recovery.
+
 ## Stack
 
 | Layer            | Technology                                             |
@@ -71,11 +80,11 @@ pnpm db:init
 pnpm dev
 ```
 
-| App        | URL                   |
-| ---------- | --------------------- |
-| backoffice | http://localhost:3000 |
-| webapp     | http://localhost:3001 |
-| api        | http://localhost:8000 |
+| App        | URL                                                         |
+| ---------- | ----------------------------------------------------------- |
+| backoffice | http://localhost:3000                                       |
+| webapp     | http://sanmartin.localhost:3001 (registered local supplier) |
+| api        | http://localhost:8000                                       |
 
 Outbound mail goes to the log by default. To read a captured message — a password-reset or
 address-verification link — start the Mailpit sandbox, set these values in `apps/api/.env`,
@@ -253,10 +262,10 @@ Customer login, Google sign-in, history, supplier hostname setup and the request
 One port in `apps/api/internal/domain` — upload, download, signed link — with adapters under
 `apps/api/internal/storage/`, bound in `apps/api/internal/storage/provider` and nowhere else.
 `STORAGE_PROVIDER` selects one: `local` keeps objects on the filesystem and serves them through
-the API's own signed-link route, `spaces` stores them in an S3-compatible bucket that signs and
-serves its own. `local` is the default and it genuinely works, so a checkout with no bucket
-still stores, signs, serves and expires a file; selecting `spaces` makes its five credentials
-required at startup. Object keys are canonical, relative paths and both adapters refuse anything
+the API's own signed-link route; `neon` and `spaces` use private remote buckets that serve signed
+downloads. `local` is the default for development without a bucket. Selecting a remote provider
+makes its endpoint, region, bucket and credentials required at startup. Object keys are canonical,
+relative paths and all adapters refuse anything
 else, so an object stored through one stays reachable through the other.
 
 See [docs/technical/file-storage.md](docs/technical/file-storage.md).
@@ -285,13 +294,17 @@ See [docs/technical/public-site.md](docs/technical/public-site.md).
 
 ## Deployment
 
-Nothing is deployed yet. The target is DigitalOcean App Platform — three Web Services from the
+The application hosting target is DigitalOcean App Platform — three Web Services from the
 three Dockerfiles, a `PRE_DEPLOY` job that applies the migration chain with goose, a `SCHEDULED`
 job for the sweeps, and Managed Postgres. `.do/app.yaml` is the committed app spec, carrying
 component shapes and env var names only: this repository is public, so every credential is a
 `type: SECRET` entry whose value is supplied at deploy time.
 
-See [docs/technical/deployment.md](docs/technical/deployment.md).
+Neon can provide PostgreSQL while DigitalOcean hosts the applications. See
+[Neon setup](docs/technical/neon.md) for connection roles and migration requirements, and
+[deployment](docs/technical/deployment.md) for the application hosting configuration.
+Without a custom domain, `.do/app.neon.yaml` and `.do/portal.yaml` deploy the core and customer
+portal onto separate temporary hostnames, using Neon for both PostgreSQL and private file storage.
 
 ## Branching & commits
 
@@ -304,3 +317,6 @@ GitFlow (simplified): `main` (production) ← `dev` (integration) ← ephemeral
 ## License
 
 Proprietary — see [LICENSE](./LICENSE). All rights reserved.
+
+Customer portal addresses are configured in onboarding or Account settings. The API owns the
+base domain and validation; see [portal routing](docs/technical/public-rfq-intake.md#self-service-portal-addresses).

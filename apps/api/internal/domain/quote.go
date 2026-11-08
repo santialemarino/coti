@@ -20,6 +20,16 @@ const (
 	QuoteStatusRejected        QuoteStatus = "REJECTED"
 )
 
+// IsValidQuoteStatus reports whether status is one of the quote lifecycle states.
+func IsValidQuoteStatus(status QuoteStatus) bool {
+	switch status {
+	case QuoteStatusDraft, QuoteStatusQuoted, QuoteStatusSent,
+		QuoteStatusChangeRequested, QuoteStatusAccepted, QuoteStatusRejected:
+		return true
+	}
+	return false
+}
+
 // QuoteReactivationMode selects whether a closed quote reuses its frozen version or opens a new draft.
 type QuoteReactivationMode string
 
@@ -128,6 +138,23 @@ var AutoArchiveStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted, Quo
 
 // ArchivedQuote is one quote the inactivity sweep archived, with the activity it went quiet after.
 type ArchivedQuote struct {
+	AccountID      uuid.UUID
+	BranchID       uuid.UUID
+	QuoteID        uuid.UUID
+	Number         int64
+	Status         QuoteStatus
+	LastActivityAt time.Time
+}
+
+// FollowupSellerStatuses are the stalls waiting on the seller, flagged when nobody moves the quote.
+var FollowupSellerStatuses = []QuoteStatus{QuoteStatusDraft, QuoteStatusQuoted}
+
+// FollowupCustomerStatuses are the stalls waiting on the client, flagged when the client does not
+// answer; an offer that lapsed unanswered is still worth chasing.
+var FollowupCustomerStatuses = []QuoteStatus{QuoteStatusSent}
+
+// FlaggedQuote is one quote the follow-up sweep flagged, with the activity it went quiet after.
+type FlaggedQuote struct {
 	AccountID      uuid.UUID
 	BranchID       uuid.UUID
 	QuoteID        uuid.UUID

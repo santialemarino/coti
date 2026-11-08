@@ -32,7 +32,41 @@ const (
 	inviteHeading = "Te invitaron a Coti"
 	inviteAction  = "Elegir mi contraseña"
 	inviteIgnore  = "Si no esperabas esta invitación, ignorá este correo: nadie puede entrar con tu dirección sin este enlace."
+
+	// Decision 79: the same fixed text goes to every unknown sender, so it reveals no profile data.
+	contactNamePrompt = "Gracias por escribirnos. Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
+
+	contactVerificationSubject     = "Confirmá tu contacto"
+	contactRecoverySubject         = "Tu código para recuperar la cuenta"
+	contactRegistrationLinkSubject = "Completá tus datos de facturación"
 )
+
+// contactNamePromptSubject names the supplier, never the platform, because the prompt answers mail
+// the customer sent to the supplier's own mailbox.
+func contactNamePromptSubject(supplier string) string {
+	return "Tu pedido a " + supplier
+}
+
+// contactVerificationLink invites the customer to open the one-use link that proves a contact.
+func contactVerificationLink(link string) string {
+	return "Confirmá tu contacto para asociarlo a tu cuenta: " + link
+}
+
+// contactVerificationCode carries the one-use code that proves a phone.
+func contactVerificationCode(code string) string {
+	return "Tu código para confirmar el teléfono en Coti es: " + code
+}
+
+// contactRecoveryCode carries the one-use code that recovers an account; it says what to do if the
+// customer did not ask, since nobody else is told.
+func contactRecoveryCode(code string) string {
+	return "Tu código para recuperar tu cuenta es " + code + ". Si no lo pediste, ignorá este mensaje: nadie puede entrar sin el código."
+}
+
+// contactRegistrationLink sends a customer to the account where billing data is completed.
+func contactRegistrationLink(link string) string {
+	return "Para completar tus datos de facturación, ingresá a tu cuenta o creala en " + link + ". Si ya tenés una cuenta con tu CUIT/CUIL, usá esa misma cuenta y agregá el contacto con el que hiciste el pedido."
+}
 
 // passwordResetIntro greets the user by name and states what the link is for.
 func passwordResetIntro(name string) string {

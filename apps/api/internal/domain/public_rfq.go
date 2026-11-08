@@ -80,9 +80,10 @@ type PublicRFQDestination struct {
 
 // PublicRFQInput carries a single request payload and its retry identifier.
 type PublicRFQInput struct {
-	RequestID uuid.UUID
-	Contact   PublicRFQContact
-	Text      string
-	File      *AttachmentUpload
-	Filename  string
+	CustomerID uuid.UUID
+	RequestID  uuid.UUID
+	Contact    PublicRFQContact
+	Text       string
+	File       *AttachmentUpload
+	Filename   string
 }

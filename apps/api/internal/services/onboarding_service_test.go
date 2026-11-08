@@ -206,6 +206,7 @@ func TestOnboardingService_GetClosesADismissedSetupWithNothingPending(t *testing
 	repo.evidence = domain.OnboardingEvidence{
 		domain.OnboardingStepCatalogUpload: true,
 		domain.OnboardingStepTeam:          true,
+		domain.OnboardingStepPortal:        true,
 	}
 
 	got, err := svc.Get(context.Background(), adminTenant())

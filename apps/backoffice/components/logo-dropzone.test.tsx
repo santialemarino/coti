@@ -74,3 +74,19 @@ describe('LogoDropzone', () => {
     expect(view.getByRole('dialog').dataset.state).toBe('closed');
   });
 });
+
+it('explains an unavailable saved logo while preserving remove and replace', async () => {
+  const onFileChange = vi.fn();
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <LogoDropzone
+        initialUrl="https://api.test/api/v1/public/account-logos/account/logo"
+        onFileChange={onFileChange}
+      />
+    </NextIntlClientProvider>,
+  );
+  fireEvent.error(view.getByAltText(messages.common.logoUpload.previewAlt));
+  expect(view.getByText(messages.common.logoUpload.loadFailed)).toBeTruthy();
+  fireEvent.click(view.getByRole('button', { name: messages.common.logoUpload.remove }));
+  expect(onFileChange).toHaveBeenCalledWith(null);
+});
