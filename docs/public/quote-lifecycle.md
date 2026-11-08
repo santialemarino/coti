@@ -8,8 +8,6 @@ When the seller approves them, a sent quote can include one economical and one p
 alternative for each individual line. The seller can use recommendations configured in the catalog
 or replace a line's option for that quote, then chooses which options to send. The customer keeps
 the quoted product or selects one approved alternative per line, then accepts the quote directly.
-Coti also lets the seller search the catalog again on demand before deciding which alternatives to
-offer; searching does not approve or send them.
 Coti recalculates the price, promotions, and discounts for the selected combination and preserves
 the sent offer as an immutable version, so the original offer remains auditable.
 

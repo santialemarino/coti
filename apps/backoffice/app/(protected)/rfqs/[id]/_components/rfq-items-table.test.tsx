@@ -30,12 +30,10 @@ vi.mock('@/lib/api/catalog', async (importOriginal) => ({
 vi.mock('@/lib/api/rfqs-client', () => ({
   addDiscount: vi.fn(),
   addQuoteItem: vi.fn(),
-  addQuoteRecommendationIfVacant: vi.fn(),
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
   deleteQuoteRecommendation: vi.fn(),
   setQuoteItemRecommendation: vi.fn(),
-  searchQuoteRecommendations: vi.fn(),
   updateDiscount: vi.fn(),
   updateQuoteAlternativeApproval: vi.fn(),
   updateQuoteItem: vi.fn(),
@@ -43,11 +41,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 
 const { toast } = await import('sonner');
 const {
-  addQuoteRecommendationIfVacant,
   deleteQuoteItem,
   deleteQuoteRecommendation,
   setQuoteItemRecommendation,
-  searchQuoteRecommendations,
   updateDiscount,
   updateQuoteAlternativeApproval,
   updateQuoteItem,
@@ -172,117 +168,21 @@ describe('RfqItemsTable action errors', () => {
 });
 
 describe('RfqItemsTable customer alternatives', () => {
-  it('searches only on demand and shows the empty state', async () => {
-    vi.mocked(searchQuoteRecommendations).mockResolvedValue([]);
-    const view = renderItems();
-    expect(searchQuoteRecommendations).not.toHaveBeenCalled();
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.search }));
-    await vi.waitFor(() =>
-      expect(searchQuoteRecommendations).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID),
-    );
-    expect(await view.findByText(copy.detail.items.onDemand.empty)).toBeTruthy();
-  });
-
-  it('requires an explicit add and does not approve a suggested alternative', async () => {
-    vi.mocked(searchQuoteRecommendations).mockResolvedValue([
-      {
-        itemId: ITEM_ID,
-        productId: ECONOMY_ALTERNATIVE.product_id!,
-        recommendationType: 'ECONOMY',
-        name: 'Ladrillo económico',
-        code: 'LAD-HUE-08',
-        unit: 'unidad',
-        unitPrice: '650.00',
-        currency: 'ARS',
-      },
-    ]);
-    vi.mocked(addQuoteRecommendationIfVacant).mockResolvedValue(ECONOMY_ALTERNATIVE);
-    const onItemsChange = vi.fn();
-    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.search }));
-    await view.findByText('Ladrillo económico');
-    expect(addQuoteRecommendationIfVacant).not.toHaveBeenCalled();
-    expect(updateQuoteAlternativeApproval).not.toHaveBeenCalled();
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.add }));
-    await vi.waitFor(() =>
-      expect(addQuoteRecommendationIfVacant).toHaveBeenCalledWith(
-        QUOTE_ID,
-        ITEM_ID,
-        'ECONOMY',
-        BRANCH_ID,
-        ECONOMY_ALTERNATIVE.product_id,
-      ),
-    );
-    expect(onItemsChange).toHaveBeenCalledWith([
-      {
-        ...PRICED_ITEM,
-        alternatives: [ECONOMY_ALTERNATIVE],
-      },
-    ]);
-    expect(updateQuoteAlternativeApproval).not.toHaveBeenCalled();
-  });
-
-  it('reports a failed search without changing the quote', async () => {
-    vi.mocked(searchQuoteRecommendations).mockRejectedValue(new ApiError('QUOTE_NOT_DRAFT', 409));
-    const onItemsChange = vi.fn();
-    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.search }));
-    await vi.waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(copy.detail.items.errors.QUOTE_NOT_DRAFT),
-    );
-    expect(onItemsChange).not.toHaveBeenCalled();
-  });
-
-  it('updates a preexisting matcher candidate without duplicating its id', async () => {
-    const candidate = { ...ECONOMY_ALTERNATIVE, recommendation_type: null };
-    vi.mocked(searchQuoteRecommendations).mockResolvedValue([
-      {
-        itemId: ITEM_ID,
-        productId: ECONOMY_ALTERNATIVE.product_id!,
-        recommendationType: 'ECONOMY',
-        name: 'Ladrillo económico',
-        code: null,
-        unit: 'unidad',
-        unitPrice: '650.00',
-        currency: 'ARS',
-      },
-    ]);
-    vi.mocked(addQuoteRecommendationIfVacant).mockResolvedValue(ECONOMY_ALTERNATIVE);
-    const onItemsChange = vi.fn();
-    const item = { ...PRICED_ITEM, alternatives: [candidate] };
-    const view = renderItems(BRANCH_ID, 'QUOTED', [item], onItemsChange);
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.search }));
-    fireEvent.click(await view.findByRole('button', { name: copy.detail.items.onDemand.add }));
-    await vi.waitFor(() =>
-      expect(onItemsChange).toHaveBeenCalledWith([
-        {
-          ...item,
-          alternatives: [ECONOMY_ALTERNATIVE],
-        },
-      ]),
-    );
-  });
-
-  it('does not show an add action when a recommendation slot is already occupied', async () => {
-    vi.mocked(searchQuoteRecommendations).mockResolvedValue([
-      {
-        itemId: ITEM_ID,
-        productId: 'other-product',
-        recommendationType: 'ECONOMY',
-        name: 'Otra opción',
-        code: null,
-        unit: 'unidad',
-        unitPrice: '650.00',
-        currency: 'ARS',
-      },
-    ]);
+  it('shows existing and manual alternatives without a search recommendations button', () => {
     const view = renderItems(BRANCH_ID, 'QUOTED', [
       { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
     ]);
-    fireEvent.click(view.getByRole('button', { name: copy.detail.items.onDemand.search }));
-    await vi.waitFor(() => expect(searchQuoteRecommendations).toHaveBeenCalled());
-    expect(view.queryByRole('button', { name: copy.detail.items.onDemand.add })).toBeNull();
+
+    expect(view.queryByRole('button', { name: 'Buscar recomendaciones' })).toBeNull();
+    expect(view.getByText(ECONOMY_ALTERNATIVE.canonical_name!)).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.include })).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.replace })).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.delete })).toBeTruthy();
+    expect(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeTruthy();
   });
+
   it.each(['780.00', '800.00', null])(
     'keeps an invalid or unpriced economy option visible but prevents inclusion (%s)',
     (price) => {
