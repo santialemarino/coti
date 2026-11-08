@@ -1481,6 +1481,13 @@
           "PREMIUM": "Alternativa premium",
           "EQUIVALENT": "Alternativa equivalente"
         },
+        "onDemand": {
+          "search": "Buscar recomendaciones",
+          "pending": "Buscando…",
+          "empty": "No encontramos nuevas alternativas. Las opciones que ya estaban cargadas siguen disponibles.",
+          "review": "Sugerencias del catálogo. Agregalas para revisarlas antes de incluirlas en el envío.",
+          "add": "Agregar para revisar"
+        },
         "alternatives": {
           "title": "Opciones para el cliente",
           "compatibilityNotice": "La económica debe tener un precio unitario menor y la premium, mayor al cotizado. Al enviar, se excluyen las opciones que no cumplan esta regla o cuya familia, subgrupo o unidad ya no coincidan. Revisá también que la presentación sea adecuada.",

@@ -112,6 +112,13 @@ definitions:
     - quantity
     - requested_description
     type: object
+  dto.AddRecommendationRequest:
+    properties:
+      product_id:
+        type: string
+    required:
+    - product_id
+    type: object
   dto.AddSynonymRequest:
     properties:
       source:
@@ -2494,6 +2501,35 @@ definitions:
         type: string
     required:
     - mode
+    type: object
+  dto.RecommendationProposalResponse:
+    properties:
+      code:
+        type: string
+      currency:
+        type: string
+      item_id:
+        type: string
+      name:
+        type: string
+      product_id:
+        type: string
+      recommendation_type:
+        enum:
+        - ECONOMY
+        - PREMIUM
+        type: string
+      unit:
+        type: string
+      unit_price:
+        type: string
+    type: object
+  dto.RecommendationSearchResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.RecommendationProposalResponse'
+        type: array
     type: object
   dto.RefreshRequest:
     properties:
@@ -7707,6 +7743,69 @@ paths:
       summary: Set a quote item recommendation
       tags:
       - quotes
+  /v1/quotes/{quoteId}/items/{itemId}/recommendations/{recommendationType}/add:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Item id
+        in: path
+        name: itemId
+        required: true
+        type: string
+      - description: ECONOMY or PREMIUM
+        in: path
+        name: recommendationType
+        required: true
+        type: string
+      - description: Suggested product
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AddRecommendationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a suggested quote recommendation
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/message-batches/{batchId}/retry:
     post:
       description: Requeues a batch that ran out of attempts while the handler may
@@ -7894,6 +7993,47 @@ paths:
       security:
       - BearerAuth: []
       summary: Reactivate a closed quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/recommendations/search:
+    post:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RecommendationSearchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Search for quote recommendations
       tags:
       - quotes
   /v1/quotes/{quoteId}/representations:

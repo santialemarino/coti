@@ -17,6 +17,72 @@ import type {
 } from '@/lib/api/rfqs';
 import { mapListItem, mapRfqDetail } from '@/lib/api/rfqs';
 
+interface RecommendationProposalRaw {
+  item_id: string;
+  product_id: string;
+  recommendation_type: 'ECONOMY' | 'PREMIUM';
+  name: string;
+  code: string | null;
+  unit: string | null;
+  unit_price: string;
+  currency: string;
+}
+
+export interface RecommendationProposal {
+  itemId: string;
+  productId: string;
+  recommendationType: 'ECONOMY' | 'PREMIUM';
+  name: string;
+  code: string | null;
+  unit: string | null;
+  unitPrice: string;
+  currency: string;
+}
+
+export async function searchQuoteRecommendations(
+  quoteId: string,
+  branchId: string,
+): Promise<RecommendationProposal[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/recommendations/search`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: '{}',
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const body = (await response.json()) as { items: RecommendationProposalRaw[] };
+  return body.items.map((item) => ({
+    itemId: item.item_id,
+    productId: item.product_id,
+    recommendationType: item.recommendation_type,
+    name: item.name,
+    code: item.code,
+    unit: item.unit,
+    unitPrice: item.unit_price,
+    currency: item.currency,
+  }));
+}
+
+export async function addQuoteRecommendationIfVacant(
+  quoteId: string,
+  itemId: string,
+  type: 'ECONOMY' | 'PREMIUM',
+  branchId: string,
+  productId: string,
+): Promise<QuoteItemAlternativeResponse> {
+  const response = await fetch(
+    `/api/quotes/${quoteId}/items/${itemId}/recommendations/${type}/add`,
+    {
+      method: 'POST',
+      headers: branchHeaders(branchId, true),
+      body: JSON.stringify({ product_id: productId }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) await throwApiError(response);
+  return response.json() as Promise<QuoteItemAlternativeResponse>;
+}
+
 interface CreateRfqBody {
   client_label?: string | null;
   work_type?: string | null;

@@ -269,6 +269,8 @@ func run() error {
 		WithInvoicingSwitch(invoicingRepo).
 		WithCatalogRecommendations(productAlternativeRepo).
 		WithRecommendationProducts(productRepo)
+	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
+		productAlternativeRepo, productPriceRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -323,13 +325,14 @@ func run() error {
 			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
-			Conversation:  handler.NewConversationHandler(conversationReviewService),
-			Client:        handler.NewClientHandler(clientService),
-			Prices:        handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
-			CatalogImport: handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
-			Account:       handler.NewAccountHandler(accountService),
-			AccountLogo:   handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
-			Onboarding:    handler.NewOnboardingHandler(onboardingService),
+			RecommendationRequest: handler.NewRecommendationRequestHandler(recommendationRequestService),
+			Conversation:          handler.NewConversationHandler(conversationReviewService),
+			Client:                handler.NewClientHandler(clientService),
+			Prices:                handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),
+			CatalogImport:         handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
+			Account:               handler.NewAccountHandler(accountService),
+			AccountLogo:           handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
+			Onboarding:            handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
 				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
 			Gmail:     gmailHandler,

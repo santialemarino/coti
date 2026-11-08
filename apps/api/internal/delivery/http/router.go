@@ -29,34 +29,35 @@ const mailScope = "mail"
 
 // Handlers carries every handler the router mounts.
 type Handlers struct {
-	Health         *handler.HealthHandler
-	Auth           *handler.AuthHandler
-	CustomerAuth   *handler.CustomerAuthHandler
-	CustomerOrders *handler.CustomerOrderHandler
-	Password       *handler.PasswordHandler
-	Verification   *handler.VerificationHandler
-	User           *handler.UserHandler
-	Branch         *handler.BranchHandler
-	Rfq            *handler.RfqHandler
-	Channel        *handler.ChannelHandler
-	Product        *handler.ProductHandler
-	BranchCatalog  *handler.BranchCatalogHandler
-	RFQ            *handler.RFQHandler
-	RFQAttachment  *handler.RFQAttachmentHandler
-	PublicRFQ      *handler.PublicRFQHandler
-	Quote          *handler.QuoteHandler
-	Conversation   *handler.ConversationHandler
-	Client         *handler.ClientHandler
-	Account        *handler.AccountHandler
-	AccountLogo    *handler.BrandLogoHandler
-	Prices         *handler.ProductPriceHandler
-	CatalogImport  *handler.CatalogImportHandler
-	Onboarding     *handler.OnboardingHandler
-	WhatsApp       *handler.WhatsAppWebhookHandler
-	Gmail          *handler.GmailHandler
-	ARCASetup      *handler.ARCASetupHandler
-	Invoice        *handler.InvoiceHandler
-	Promotion      *handler.PromotionHandler
+	Health                *handler.HealthHandler
+	Auth                  *handler.AuthHandler
+	CustomerAuth          *handler.CustomerAuthHandler
+	CustomerOrders        *handler.CustomerOrderHandler
+	Password              *handler.PasswordHandler
+	Verification          *handler.VerificationHandler
+	User                  *handler.UserHandler
+	Branch                *handler.BranchHandler
+	Rfq                   *handler.RfqHandler
+	Channel               *handler.ChannelHandler
+	Product               *handler.ProductHandler
+	BranchCatalog         *handler.BranchCatalogHandler
+	RFQ                   *handler.RFQHandler
+	RFQAttachment         *handler.RFQAttachmentHandler
+	PublicRFQ             *handler.PublicRFQHandler
+	Quote                 *handler.QuoteHandler
+	RecommendationRequest *handler.RecommendationRequestHandler
+	Conversation          *handler.ConversationHandler
+	Client                *handler.ClientHandler
+	Account               *handler.AccountHandler
+	AccountLogo           *handler.BrandLogoHandler
+	Prices                *handler.ProductPriceHandler
+	CatalogImport         *handler.CatalogImportHandler
+	Onboarding            *handler.OnboardingHandler
+	WhatsApp              *handler.WhatsAppWebhookHandler
+	Gmail                 *handler.GmailHandler
+	ARCASetup             *handler.ARCASetupHandler
+	Invoice               *handler.InvoiceHandler
+	Promotion             *handler.PromotionHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
 }
@@ -217,6 +218,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// its own beyond the global one.
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
+	quotes.POST("/:quoteId/recommendations/search", h.RecommendationRequest.Search)
+	quotes.POST("/:quoteId/items/:itemId/recommendations/:recommendationType/add", h.RecommendationRequest.AddIfVacant)
 	quotes.POST("/:quoteId/representations", h.Quote.GenerateRepresentation)
 	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
 	quotes.DELETE("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.DeleteRecommendationAlternative)

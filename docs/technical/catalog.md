@@ -120,6 +120,11 @@ approved for sending. The seller can save the same choice to the catalog in the 
 that intentionally replaces the catalog slot for later quotes. Missing catalog relations or branch
 prices are omitted from a quote without turning the quote into an error.
 
+The seller can also request a fresh catalog recommendation search on a mutable `QUOTED` version.
+Search is read-only; an explicit action adds a still-valid proposal to an empty line slot, without
+approving it or replacing a seller's existing choice. Generation-time catalog proposals remain in
+place. The seller separately decides which options enter the customer's offer.
+
 Catalog slots do not encode branch prices. In a quote, an economy alternative's unit price must be
 strictly lower than the quoted line's unit price, and a premium alternative's must be strictly higher;
 equal prices qualify for neither slot. The comparison uses the two price snapshots in the quote's

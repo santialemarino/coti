@@ -49,14 +49,17 @@ import type {
 import {
   addDiscount,
   addQuoteItem,
+  addQuoteRecommendationIfVacant,
   deleteDiscount,
   deleteQuoteItem,
   deleteQuoteRecommendation,
+  searchQuoteRecommendations,
   setQuoteItemRecommendation,
   updateDiscount,
   updateQuoteAlternativeApproval,
   updateQuoteItem,
 } from '@/lib/api/rfqs-client';
+import type { RecommendationProposal } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 import { recommendationPriceValid } from '@/lib/recommendation-price';
 import { shortUnit } from '@/lib/utils/units';
@@ -215,6 +218,20 @@ export function RfqItemsTable({
     product: CatalogProduct;
   } | null>(null);
   const [updatingRecommendation, setUpdatingRecommendation] = useState<string | null>(null);
+  const [searchingRecommendations, setSearchingRecommendations] = useState(false);
+  const [requestedRecommendations, setRequestedRecommendations] = useState<
+    RecommendationProposal[] | null
+  >(null);
+  const visibleRequestedRecommendations = requestedRecommendations?.filter((proposal) =>
+    items.some(
+      (item) =>
+        item.id === proposal.itemId &&
+        item.product_id !== null &&
+        !item.alternatives.some(
+          (alternative) => alternative.recommendation_type === proposal.recommendationType,
+        ),
+    ),
+  );
 
   const hasQuote = !!quoteId;
   const showPricing = hasQuote && PRICED_STATUSES.has(quoteStatus ?? '');
@@ -520,6 +537,63 @@ export function RfqItemsTable({
         ),
       );
       setCatalogRecommendationConfirmation(null);
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setUpdatingRecommendation(null);
+    }
+  }
+
+  async function requestRecommendations() {
+    if (!quoteId || searchingRecommendations) return;
+    setSearchingRecommendations(true);
+    setRequestedRecommendations(null);
+    try {
+      setRequestedRecommendations(await searchQuoteRecommendations(quoteId, branchId));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setSearchingRecommendations(false);
+    }
+  }
+
+  async function addRequestedRecommendation(
+    item: QuoteItemResponse,
+    proposal: RecommendationProposal,
+  ) {
+    if (!quoteId || updatingRecommendation) return;
+    const key = `${item.id}:${proposal.recommendationType}`;
+    setUpdatingRecommendation(key);
+    try {
+      const updated = await addQuoteRecommendationIfVacant(
+        quoteId,
+        item.id,
+        proposal.recommendationType,
+        branchId,
+        proposal.productId,
+      );
+      onItemsChange(
+        items.map((current) =>
+          current.id === item.id
+            ? {
+                ...current,
+                alternatives: [
+                  ...current.alternatives.filter((alternative) => alternative.id !== updated.id),
+                  updated,
+                ],
+              }
+            : current,
+        ),
+      );
+      setRequestedRecommendations(
+        (current) =>
+          current?.filter(
+            (candidate) =>
+              candidate.itemId !== item.id ||
+              candidate.recommendationType !== proposal.recommendationType,
+          ) ?? null,
+      );
+      toast.success(t('detail.items.alternatives.toast.set', { name: proposal.name }));
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
     } finally {
@@ -872,6 +946,25 @@ export function RfqItemsTable({
               <p className="text-paragraph-xs text-foreground-muted">
                 {t('detail.items.alternatives.compatibilityNotice')}
               </p>
+              <div>
+                <PendingButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  pending={searchingRecommendations}
+                  pendingLabel={t('detail.items.onDemand.pending')}
+                  disabled={updatingAlternativeId !== null || updatingRecommendation !== null}
+                  onClick={() => void requestRecommendations()}
+                >
+                  {t('detail.items.onDemand.search')}
+                </PendingButton>
+              </div>
+              {visibleRequestedRecommendations !== undefined &&
+                visibleRequestedRecommendations.length === 0 && (
+                  <p role="status" className="text-paragraph-sm text-foreground-muted">
+                    {t('detail.items.onDemand.empty')}
+                  </p>
+                )}
             </div>
             <div className="flex flex-col gap-y-3">
               {items
@@ -883,6 +976,11 @@ export function RfqItemsTable({
                   const missingTypes = CUSTOMER_RECOMMENDATION_TYPES.filter(
                     (type) =>
                       !alternatives.some((alternative) => alternative.recommendation_type === type),
+                  );
+                  const proposals = (visibleRequestedRecommendations ?? []).filter(
+                    (proposal) =>
+                      proposal.itemId === item.id &&
+                      missingTypes.includes(proposal.recommendationType),
                   );
 
                   return (
@@ -1040,6 +1138,71 @@ export function RfqItemsTable({
                         <p className="text-paragraph-sm text-foreground-muted">
                           {t('detail.items.alternatives.empty')}
                         </p>
+                      )}
+
+                      {proposals.length > 0 && (
+                        <div className="flex flex-col gap-y-2 border-t border-border pt-3">
+                          <p className="text-paragraph-xs text-foreground-muted">
+                            {t('detail.items.onDemand.review')}
+                          </p>
+                          {proposals.map((proposal) => (
+                            <div
+                              key={`${proposal.productId}:${proposal.recommendationType}`}
+                              className="flex flex-wrap items-center justify-between p-3 gap-2 bg-sunken border border-border rounded-lg"
+                            >
+                              <div className="flex flex-col gap-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge
+                                    tone={
+                                      proposal.recommendationType === 'PREMIUM'
+                                        ? 'neutral'
+                                        : 'success'
+                                    }
+                                    size="sm"
+                                    className={
+                                      proposal.recommendationType === 'PREMIUM'
+                                        ? 'border-recommendation-premium-border bg-recommendation-premium-subtle text-recommendation-premium-foreground'
+                                        : undefined
+                                    }
+                                  >
+                                    {t(
+                                      `detail.items.recommendationType.${proposal.recommendationType}`,
+                                    )}
+                                  </Badge>
+                                  <span className="text-paragraph-sm-medium text-foreground">
+                                    {proposal.name}
+                                  </span>
+                                  {proposal.code && (
+                                    <span className="text-paragraph-xs text-foreground-muted">
+                                      {proposal.code}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-paragraph-xs text-foreground-muted">
+                                  {t('detail.items.alternatives.unitPrice', {
+                                    amount: fmt.currency(proposal.unitPrice, proposal.currency),
+                                  })}
+                                </p>
+                              </div>
+                              <PendingButton
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                pending={
+                                  updatingRecommendation ===
+                                  `${item.id}:${proposal.recommendationType}`
+                                }
+                                pendingLabel={t('detail.items.alternatives.pending')}
+                                disabled={
+                                  updatingRecommendation !== null || updatingAlternativeId !== null
+                                }
+                                onClick={() => void addRequestedRecommendation(item, proposal)}
+                              >
+                                {t('detail.items.onDemand.add')}
+                              </PendingButton>
+                            </div>
+                          ))}
+                        </div>
                       )}
 
                       {missingTypes.length > 0 && (
