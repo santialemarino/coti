@@ -92,28 +92,35 @@ type QuoteItemResponse struct {
 	CreatedAt          time.Time `json:"created_at"`
 }
 
-// QuoteItemAlternativeResponse is one candidate offered for a flagged line. rank is its place in
-// the matcher's ranking, so a line that kept the leading candidate offers none at rank one. The
-// catalog identity is read as it stands now rather than frozen with the line.
+// QuoteItemAlternativeResponse is one candidate or configured recommendation offered for a line.
+// recommendation_type is null for matcher and seller candidates.
 type QuoteItemAlternativeResponse struct {
-	ID               uuid.UUID  `json:"id"`
-	ProductID        *uuid.UUID `json:"product_id"`
-	ComboID          *uuid.UUID `json:"combo_id"`
-	Type             string     `json:"type"`
-	Origin           string     `json:"origin"`
-	Rank             int        `json:"rank"`
-	ConfidenceScore  *string    `json:"confidence_score"`
-	PriceSnapshot    *string    `json:"price_snapshot"`
-	ApprovedBySeller bool       `json:"approved_by_seller"`
-	ChosenByClient   bool       `json:"chosen_by_client"`
-	Code             *string    `json:"code"`
-	CanonicalName    *string    `json:"canonical_name"`
-	Unit             *string    `json:"unit"`
+	ID                 uuid.UUID  `json:"id"`
+	ProductID          *uuid.UUID `json:"product_id"`
+	ComboID            *uuid.UUID `json:"combo_id"`
+	Type               string     `json:"type"`
+	RecommendationType *string    `json:"recommendation_type" enums:"EQUIVALENT,PREMIUM,ECONOMY"`
+	Origin             string     `json:"origin"`
+	Rank               int        `json:"rank"`
+	ConfidenceScore    *string    `json:"confidence_score"`
+	PriceSnapshot      *string    `json:"price_snapshot"`
+	ApprovedBySeller   bool       `json:"approved_by_seller"`
+	ChosenByClient     bool       `json:"chosen_by_client"`
+	Code               *string    `json:"code"`
+	CanonicalName      *string    `json:"canonical_name"`
+	Unit               *string    `json:"unit"`
 }
 
 // QuoteAlternativeApprovalRequest records the seller's explicit publication decision.
 type QuoteAlternativeApprovalRequest struct {
 	ApprovedBySeller *bool `json:"approved_by_seller" binding:"required"`
+}
+
+// SetQuoteItemRecommendationRequest selects the product in one quote item's recommendation slot.
+// SaveToCatalog also replaces that product's matching catalog recommendation.
+type SetQuoteItemRecommendationRequest struct {
+	ProductID     uuid.UUID `json:"product_id" binding:"required"`
+	SaveToCatalog bool      `json:"save_to_catalog"`
 }
 
 // QuoteSendRequest selects delivery destinations and an optional validity override.
@@ -163,8 +170,26 @@ type PublicQuoteSendResponse struct {
 
 // PublicQuoteActionRequest is the customer's response to the frozen quote.
 type PublicQuoteActionRequest struct {
-	Type    string  `json:"type" binding:"required"`
-	Message *string `json:"message"`
+	Type       string                                   `json:"type" binding:"required"`
+	Message    *string                                  `json:"message"`
+	Selections []PublicQuoteAlternativeSelectionRequest `json:"selections"`
+}
+
+// PublicQuoteAlternativeSelectionRequest elects a seller-approved alternative for one sent line.
+type PublicQuoteAlternativeSelectionRequest struct {
+	ItemID        uuid.UUID `json:"item_id" binding:"required"`
+	AlternativeID uuid.UUID `json:"alternative_id" binding:"required"`
+}
+
+// PublicQuoteSelectionPreviewRequest is the body for POST /v1/customer/quote-sends/{token}/preview.
+type PublicQuoteSelectionPreviewRequest struct {
+	Selections []PublicQuoteAlternativeSelectionRequest `json:"selections"`
+}
+
+// PublicQuoteSelectionPreviewResponse returns the deterministic price of a tentative selection.
+type PublicQuoteSelectionPreviewResponse struct {
+	Quote    QuoteRepresentationPayloadResponse `json:"quote"`
+	Subtotal string                             `json:"subtotal"`
 }
 
 // PublicQuoteActionResponse reports the recorded answer and the status the quote settled on. When
@@ -173,6 +198,7 @@ type PublicQuoteActionResponse struct {
 	CustomerStatus string    `json:"customer_status"`
 	CreatedAt      time.Time `json:"created_at"`
 	QuoteStatus    *string   `json:"quote_status"`
+	Total          *string   `json:"total,omitempty"`
 }
 
 // QuoteRepresentationResponse is one authenticated immutable output bundle.
@@ -223,6 +249,7 @@ type QuoteRepresentationCustomerResponse struct {
 
 // QuoteRepresentationItemResponse is one priced public line.
 type QuoteRepresentationItemResponse struct {
+	ID                   uuid.UUID                                `json:"id"`
 	RequestedDescription string                                   `json:"requested_description"`
 	ProductCode          *string                                  `json:"product_code,omitempty"`
 	ProductName          string                                   `json:"product_name"`
@@ -235,10 +262,13 @@ type QuoteRepresentationItemResponse struct {
 
 // QuoteRepresentationAlternativeResponse is one approved public alternative.
 type QuoteRepresentationAlternativeResponse struct {
-	Code      *string `json:"code,omitempty"`
-	Name      string  `json:"name"`
-	Unit      *string `json:"unit,omitempty"`
-	UnitPrice string  `json:"unit_price"`
+	ID                 uuid.UUID `json:"id"`
+	Code               *string   `json:"code,omitempty"`
+	Name               string    `json:"name"`
+	Unit               *string   `json:"unit,omitempty"`
+	UnitPrice          string    `json:"unit_price"`
+	RecommendationType *string   `json:"recommendation_type,omitempty" enums:"EQUIVALENT,PREMIUM,ECONOMY"`
+	Selectable         bool      `json:"selectable"`
 }
 
 // QuoteRepresentationDiscountResponse is one applied public discount.

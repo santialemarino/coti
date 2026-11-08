@@ -3,6 +3,7 @@ import 'server-only';
 import { cache } from 'react';
 
 import { API_URL } from '@/lib/config';
+import { API_INTERNAL_URL } from '@/lib/config/server';
 
 interface PublicRfqDestinationRaw {
   supplier_name: string;
@@ -37,7 +38,7 @@ export const getPublicRfqDestination = cache(
   async (channelId: string): Promise<PublicRfqDestination | null> => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(channelId))
       return null;
-    const response = await fetch(`${API_URL}/v1/public/rfq-channels/${channelId}`, {
+    const response = await fetch(`${API_INTERNAL_URL}/v1/public/rfq-channels/${channelId}`, {
       cache: 'no-store',
       headers: { Accept: 'application/json' },
     });
@@ -53,9 +54,12 @@ export interface PublicRfqSite {
 }
 
 export async function getPublicRfqSite(hostname: string): Promise<PublicRfqSite | null> {
-  const response = await fetch(`${API_URL}/v1/public/rfq-sites/${encodeURIComponent(hostname)}`, {
-    cache: 'no-store',
-  });
+  const response = await fetch(
+    `${API_INTERNAL_URL}/v1/public/rfq-sites/${encodeURIComponent(hostname)}`,
+    {
+      cache: 'no-store',
+    },
+  );
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('Failed to resolve public RFQ site');
   const raw = (await response.json()) as Omit<PublicRfqDestinationRaw, 'branch_name'> & {

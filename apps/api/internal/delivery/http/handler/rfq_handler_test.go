@@ -242,6 +242,7 @@ func TestToTextRFQDraftResponse_LeavesThePricingQuestionOpenAndCarriesTheCandida
 		Quantity: decimal.RequireFromString("2"), MatchStatus: domain.ItemMatchStatusNoMatch,
 	}
 	candidate := uuid.New()
+	recommendationType := domain.ProductAlternativeEconomy
 	name := "Membrana asfáltica 4mm"
 	code := "MEM-4"
 	response := textDraftResponse(domain.TextRFQDraft{
@@ -252,8 +253,9 @@ func TestToTextRFQDraftResponse_LeavesThePricingQuestionOpenAndCarriesTheCandida
 		Alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{
 			flagged.ID: {{
 				ID: uuid.New(), QuoteItemID: flagged.ID, ProductID: &candidate,
-				Type:   domain.QuoteItemAlternativeTypeProduct,
-				Origin: domain.QuoteItemAlternativeOriginAI, Rank: 1,
+				Type:               domain.QuoteItemAlternativeTypeProduct,
+				RecommendationType: &recommendationType,
+				Origin:             domain.QuoteItemAlternativeOriginAI, Rank: 1,
 				ConfidenceScore: decimal.NewNullDecimal(decimal.RequireFromString("0.5500")),
 				Code:            &code, CanonicalName: &name,
 			}},
@@ -292,6 +294,9 @@ func TestToTextRFQDraftResponse_LeavesThePricingQuestionOpenAndCarriesTheCandida
 	}
 	if offer.Origin != string(domain.QuoteItemAlternativeOriginAI) {
 		t.Errorf("offer origin = %q, want AI", offer.Origin)
+	}
+	if offer.RecommendationType == nil || *offer.RecommendationType != string(recommendationType) {
+		t.Errorf("offer recommendation type = %v, want %q", offer.RecommendationType, recommendationType)
 	}
 }
 

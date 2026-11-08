@@ -42,6 +42,56 @@ pnpm db:reset     # drop the volume and rebuild
 pnpm db:create-migration <name>
 ```
 
+### Recommendation branch databases
+
+The recommendation migrations use versions `74`–`76`; versions `60`–`73` belong to the
+integration branch. Fresh databases and databases migrated from `dev` use the normal commands above.
+
+A branch-only database with the recommendation schema recorded as versions `60`–`62` needs a
+one-time history reconciliation. Stop its application and migration jobs, back it up, and set
+`DATABASE_ADMIN_URL` to that database's owner connection. Run this guarded transaction with
+`psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1`. It changes only migration history and refuses
+databases that do not match the branch-only schema:
+
+```sql
+BEGIN;
+LOCK TABLE public.goose_db_version IN EXCLUSIVE MODE;
+DO $$
+BEGIN
+  IF (SELECT max(version_id) FROM public.goose_db_version WHERE is_applied) <> 62
+     OR (SELECT count(*) FROM public.goose_db_version WHERE version_id BETWEEN 60 AND 62) <> 3
+     OR EXISTS (SELECT 1 FROM public.goose_db_version
+                WHERE version_id BETWEEN 60 AND 62 AND NOT is_applied)
+     OR EXISTS (SELECT 1 FROM public.goose_db_version WHERE version_id > 62)
+     OR to_regclass('public.client_contact') IS NOT NULL
+     OR to_regclass('public.uq_client_account_tax_id') IS NOT NULL
+     OR to_regclass('public.uq_product_alternative_recommendation') IS NULL
+     OR (SELECT count(*) FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND ((table_name = 'quote_item_alternative'
+                  AND column_name IN ('recommendation_type', 'min_price_snapshot'))
+              OR (table_name = 'quote_representation'
+                  AND column_name = 'selection_pricing_snapshot'))) <> 3
+  THEN
+    RAISE EXCEPTION 'Database does not match the branch-only recommendation history';
+  END IF;
+END $$;
+UPDATE public.goose_db_version
+   SET version_id = CASE version_id WHEN 60 THEN 74 WHEN 61 THEN 75 WHEN 62 THEN 76 END
+ WHERE version_id BETWEEN 60 AND 62;
+COMMIT;
+```
+
+Then apply the missing integration migrations, leaving the recorded recommendation migrations intact:
+
+```bash
+cd apps/api
+go tool goose -allow-missing -dir migrations postgres "$DATABASE_ADMIN_URL" up
+```
+
+After this one-time step, return to `pnpm db:migrate`. Do not run migration downs or reset the
+database to resolve the numbering conflict.
+
 **Every one of these connects by `DATABASE_ADMIN_URL`** — none of them shells into a container, so
 they reach whatever database that URL names: a differently named container, a Postgres installed on
 the host, a remote development instance. Only the first step of `db:init` is Docker-specific (it runs

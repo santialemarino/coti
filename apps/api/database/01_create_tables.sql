@@ -385,6 +385,10 @@ CREATE TABLE product_alternative (
   CONSTRAINT uq_product_alternative UNIQUE (base_product_id, alternative_product_id)
 );
 
+CREATE UNIQUE INDEX uq_product_alternative_recommendation
+  ON product_alternative (account_id, base_product_id, type)
+  WHERE type IN ('ECONOMY', 'PREMIUM');
+
 -- A composite product sold as one unit. Different from the ITEM_SET promotion type.
 -- Account-scoped like the product: per-branch availability lives in branch_combo. It has no
 -- price of its own — that derives from its items, already priced per branch — and no stock,
@@ -669,9 +673,13 @@ CREATE TABLE quote_representation (
   pdf_sha256         CHAR(64) NOT NULL,
   logo_fallback_used BOOLEAN NOT NULL DEFAULT FALSE,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  selection_pricing_snapshot JSONB,
   CONSTRAINT uq_quote_representation_version UNIQUE (account_id, version_id),
   CONSTRAINT ck_quote_representation_schema CHECK (schema_version = 1),
   CONSTRAINT ck_quote_representation_payload CHECK (jsonb_typeof(payload) = 'object'),
+  CONSTRAINT ck_quote_representation_selection_snapshot CHECK (
+    selection_pricing_snapshot IS NULL OR jsonb_typeof(selection_pricing_snapshot) = 'object'
+  ),
   CONSTRAINT ck_quote_representation_message CHECK (length(message) > 0),
   CONSTRAINT ck_quote_representation_pdf_type CHECK (pdf_content_type = 'application/pdf'),
   CONSTRAINT ck_quote_representation_pdf_size CHECK (pdf_size_bytes > 0),
@@ -718,7 +726,11 @@ CREATE TABLE quote_item_alternative (
   -- records it. confidence_score is what it scored, on quote_item.confidence_score's scale.
   rank               SMALLINT NOT NULL,
   confidence_score   NUMERIC(5,4),
-  CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL)
+  recommendation_type product_alternative_type,
+  min_price_snapshot NUMERIC(14,2),
+  CONSTRAINT ck_qia_target CHECK (product_id IS NOT NULL OR combo_id IS NOT NULL),
+  CONSTRAINT ck_qia_recommendation_type
+    CHECK (recommendation_type IS NULL OR type = 'PRODUCT')
 );
 
 -- The original AI proposal is append-only and independent of the mutable commercial version.

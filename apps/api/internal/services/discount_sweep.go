@@ -91,6 +91,42 @@ func (s *discountSweep) settle(
 	return result.total, nil
 }
 
+// settleWithSnapshot re-evaluates a fresh version against the promotion rules frozen when its
+// source offer was sent. Catalog edits and promotion expiry after sending cannot change it.
+func (s *discountSweep) settleWithSnapshot(
+	ctx context.Context, q repository.Querier, accountID, branchID, versionID uuid.UUID,
+	items []domain.QuoteItem, snapshot domain.QuoteSelectionPricingSnapshot,
+) (decimal.Decimal, error) {
+	discounts, err := s.discounts.ListByVersionID(ctx, q, accountID, versionID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	links, err := s.discounts.ListItemIDsByDiscountIDs(ctx, q, accountID, versionID, discountIDs(discounts))
+	if err != nil {
+		return decimal.Zero, err
+	}
+	groups := make(map[uuid.UUID]domain.ProductGroup, len(snapshot.ProductGroups))
+	for _, product := range snapshot.ProductGroups {
+		groups[product.ProductID] = product.Group
+	}
+	state := sweepState{discounts: discounts, links: links, promotions: snapshot.Promotions,
+		groups: groups, at: snapshot.CapturedAt}
+	result, err := state.evaluate(branchID, items)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	for _, moved := range result.followed {
+		if err := s.discounts.UpdateAmount(ctx, q, accountID, versionID, moved.discountID,
+			moved.amount); err != nil {
+			return decimal.Zero, err
+		}
+	}
+	if err := s.persist(ctx, q, accountID, versionID, result.engine, state.links, result.earned); err != nil {
+		return decimal.Zero, err
+	}
+	return result.total, nil
+}
+
 // load reads a version's discounts with their lines, and the rules in force with the taxonomy of
 // the given products. No rules are read when none are wired.
 func (s *discountSweep) load(

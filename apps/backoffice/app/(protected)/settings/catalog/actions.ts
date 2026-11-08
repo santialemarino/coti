@@ -10,10 +10,104 @@ interface ProductResponseRaw {
   id: string;
 }
 
+interface ProductAlternativeRaw {
+  id: string;
+  alternative_product_id: string;
+  type: 'EQUIVALENT' | 'ECONOMY' | 'PREMIUM';
+  product: {
+    code: string | null;
+    canonical_name: string;
+    unit: string | null;
+  } | null;
+}
+
+interface ProductAlternativeListRaw {
+  items: ProductAlternativeRaw[];
+}
+
 export interface ProductWriteResult {
   ok?: true;
   productId?: string;
+  recommendationId?: string;
   error?: ApiErrorCode;
+}
+
+export interface ProductRecommendation {
+  id: string;
+  productId: string;
+  type: 'ECONOMY' | 'PREMIUM';
+  name: string;
+  code: string | null;
+  unit: string | null;
+}
+
+export type ProductRecommendationResult =
+  | { ok: true; items: ProductRecommendation[] }
+  | { ok?: false; error: ApiErrorCode };
+
+export async function listProductRecommendations(
+  productId: string,
+): Promise<ProductRecommendationResult> {
+  try {
+    const response = await apiRequest<ProductAlternativeListRaw>({
+      path: `/v1/products/${productId}/alternatives`,
+      branchScoped: false,
+    });
+    return {
+      ok: true,
+      items: response.items.flatMap((item) => {
+        if ((item.type !== 'ECONOMY' && item.type !== 'PREMIUM') || !item.product) return [];
+        return [
+          {
+            id: item.id,
+            productId: item.alternative_product_id,
+            type: item.type,
+            name: item.product.canonical_name,
+            code: item.product.code,
+            unit: item.product.unit,
+          },
+        ];
+      }),
+    };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
+
+export async function setProductRecommendation(
+  productId: string,
+  recommendationType: 'ECONOMY' | 'PREMIUM',
+  alternativeProductId: string,
+): Promise<ProductWriteResult> {
+  try {
+    const recommendation = await apiRequest<ProductAlternativeRaw>({
+      path: `/v1/products/${productId}/recommendations/${recommendationType}`,
+      method: 'PUT',
+      branchScoped: false,
+      body: { alternative_product_id: alternativeProductId },
+    });
+    revalidatePath('/settings/catalog');
+    return { ok: true, productId, recommendationId: recommendation.id };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
+
+export async function removeProductRecommendation(
+  productId: string,
+  alternativeId: string,
+): Promise<ProductWriteResult> {
+  try {
+    await apiRequest({
+      path: `/v1/products/${productId}/alternatives/${alternativeId}`,
+      method: 'DELETE',
+      branchScoped: false,
+    });
+    revalidatePath('/settings/catalog');
+    return { ok: true, productId };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
 }
 
 export async function createProduct(values: ProductValues): Promise<ProductWriteResult> {

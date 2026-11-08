@@ -159,6 +159,7 @@ func valueQuoteAlternatives(
 					}
 					if priceCurrency == currency {
 						pricing.PriceSnapshot = decimal.NewNullDecimal(price.Price)
+						pricing.MinPriceSnapshot = price.MinPrice
 					}
 				}
 			}
@@ -176,13 +177,19 @@ func applyAlternativePricing(
 	alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
 	pricings []domain.QuoteItemAlternativePricing,
 ) {
-	byID := make(map[uuid.UUID]decimal.NullDecimal, len(pricings))
+	type snapshots struct {
+		price decimal.NullDecimal
+		floor decimal.NullDecimal
+	}
+	byID := make(map[uuid.UUID]snapshots, len(pricings))
 	for _, pricing := range pricings {
-		byID[pricing.AlternativeID] = pricing.PriceSnapshot
+		byID[pricing.AlternativeID] = snapshots{price: pricing.PriceSnapshot, floor: pricing.MinPriceSnapshot}
 	}
 	for itemID, offered := range alternatives {
 		for i := range offered {
-			offered[i].PriceSnapshot = byID[offered[i].ID]
+			snapshot := byID[offered[i].ID]
+			offered[i].PriceSnapshot = snapshot.price
+			offered[i].MinPriceSnapshot = snapshot.floor
 		}
 		alternatives[itemID] = offered
 	}

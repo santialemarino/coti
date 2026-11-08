@@ -40,8 +40,8 @@ const quoteStatusChangeColumns = `id, account_id, quote_id, previous_status, new
 // alternative points at with nothing, so all three come back empty there.
 const quoteItemAlternativeColumns = `alternative.id, alternative.account_id,
 	alternative.quote_item_id, alternative.product_id, alternative.combo_id, alternative.type,
-	alternative.origin, alternative.rank, alternative.confidence_score,
-	alternative.price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
+	alternative.recommendation_type, alternative.origin, alternative.rank, alternative.confidence_score,
+	alternative.price_snapshot, alternative.min_price_snapshot, alternative.approved_by_seller, alternative.chosen_by_client,
 	alternative.created_at, product.code, product.canonical_name, product.unit`
 
 const quoteRFQIndex = "uq_quote_rfq"
@@ -822,13 +822,15 @@ func (r *QuoteRepository) ApplyAlternativePricing(
 		return nil
 	}
 	type payload struct {
-		AlternativeID uuid.UUID `json:"alternative_id"`
-		PriceSnapshot *string   `json:"price_snapshot"`
+		AlternativeID    uuid.UUID `json:"alternative_id"`
+		PriceSnapshot    *string   `json:"price_snapshot"`
+		MinPriceSnapshot *string   `json:"min_price_snapshot"`
 	}
 	rows := make([]payload, len(pricings))
 	for i, pricing := range pricings {
 		rows[i] = payload{AlternativeID: pricing.AlternativeID,
-			PriceSnapshot: nullDecimalString(pricing.PriceSnapshot)}
+			PriceSnapshot:    nullDecimalString(pricing.PriceSnapshot),
+			MinPriceSnapshot: nullDecimalString(pricing.MinPriceSnapshot)}
 	}
 	encoded, err := json.Marshal(rows)
 	if err != nil {
@@ -836,11 +838,12 @@ func (r *QuoteRepository) ApplyAlternativePricing(
 	}
 	tag, err := q.Exec(ctx, `WITH incoming AS (
 		  SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(
-		    alternative_id uuid, price_snapshot numeric
+		    alternative_id uuid, price_snapshot numeric, min_price_snapshot numeric
 		  )
 		)
 		UPDATE quote_item_alternative alternative
-		SET price_snapshot = incoming.price_snapshot
+		SET price_snapshot = incoming.price_snapshot,
+		    min_price_snapshot = incoming.min_price_snapshot
 		FROM incoming
 		JOIN quote_item item ON item.account_id = $1 AND item.version_id = $2
 		WHERE alternative.account_id = $1 AND alternative.id = incoming.alternative_id
@@ -882,8 +885,9 @@ func (r *QuoteRepository) ListAlternativesByItemIDs(
 	for rows.Next() {
 		var alternative domain.QuoteItemAlternative
 		if scanErr := rows.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
-			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.Origin,
-			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
+			&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
+			&alternative.Origin,
+			&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot, &alternative.MinPriceSnapshot,
 			&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 			&alternative.Code, &alternative.CanonicalName, &alternative.Unit,
 		); scanErr != nil {
@@ -932,20 +936,23 @@ func (r *QuoteRepository) CreateAlternatives(
 		     product_id uuid,
 		     combo_id uuid,
 		     type text,
+		     recommendation_type text,
 		     origin text,
 		     rank int,
 		     confidence_score numeric,
-		     price_snapshot numeric
+		     price_snapshot numeric,
+		     min_price_snapshot numeric
 		   )
 		 )
 		 INSERT INTO quote_item_alternative (
-		   account_id, quote_item_id, product_id, combo_id, type, origin, rank,
-		   confidence_score, price_snapshot
+		   account_id, quote_item_id, product_id, combo_id, type, recommendation_type, origin, rank,
+		   confidence_score, price_snapshot, min_price_snapshot
 		 )
 		 SELECT $1, item.id, incoming.product_id, incoming.combo_id,
 		        incoming.type::quote_item_alternative_type,
+		        incoming.recommendation_type::product_alternative_type,
 		        incoming.origin::quote_item_alternative_origin,
-		        incoming.rank, incoming.confidence_score, incoming.price_snapshot
+		        incoming.rank, incoming.confidence_score, incoming.price_snapshot, incoming.min_price_snapshot
 		 FROM incoming
 		 JOIN quote_item item ON item.account_id = $1 AND item.id = incoming.quote_item_id`,
 		accountID, payload)
@@ -956,6 +963,42 @@ func (r *QuoteRepository) CreateAlternatives(
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+// SetRecommendationAlternative replaces one ECONOMY or PREMIUM slot on a mutable quote item.
+func (r *QuoteRepository) SetRecommendationAlternative(
+	ctx context.Context, q Querier, accountID, versionID, itemID, productID uuid.UUID,
+	recommendationType domain.ProductAlternativeType, priceSnapshot, minPriceSnapshot decimal.NullDecimal,
+) (*domain.QuoteItemAlternative, error) {
+	row := q.QueryRow(ctx, `WITH removed AS (
+		DELETE FROM quote_item_alternative alternative
+		USING quote_item item, quote_version version
+		WHERE alternative.account_id = $1
+		  AND alternative.quote_item_id = $3
+		  AND alternative.recommendation_type = $5::product_alternative_type
+		  AND item.account_id = $1 AND item.id = $3 AND item.version_id = $2
+		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE
+	), created AS (
+		INSERT INTO quote_item_alternative (
+		  account_id, quote_item_id, product_id, type, recommendation_type, origin, rank,
+		  price_snapshot, min_price_snapshot
+		)
+		SELECT $1, item.id, $4, 'PRODUCT', $5::product_alternative_type, 'SELLER', 1, $6, $7
+		FROM quote_item item
+		JOIN quote_version version ON version.account_id = $1 AND version.id = $2
+		WHERE item.account_id = $1 AND item.id = $3 AND item.version_id = $2
+		  AND version.is_immutable = FALSE
+		RETURNING *
+	)
+	SELECT created.id, created.account_id, created.quote_item_id, created.product_id,
+	       created.combo_id, created.type, created.recommendation_type, created.origin,
+	       created.rank, created.confidence_score, created.price_snapshot, created.min_price_snapshot,
+	       created.approved_by_seller, created.chosen_by_client, created.created_at, product.code,
+	       product.canonical_name, product.unit
+	FROM created
+	LEFT JOIN product ON product.account_id = created.account_id AND product.id = created.product_id`,
+		accountID, versionID, itemID, productID, recommendationType, priceSnapshot, minPriceSnapshot)
+	return scanQuoteItemAlternative(row)
 }
 
 // UpdateAlternativeApproval records the seller's decision on a candidate of a mutable version.
@@ -974,14 +1017,67 @@ func (r *QuoteRepository) UpdateAlternativeApproval(
 		RETURNING alternative.*
 	)
 	SELECT changed.id, changed.account_id, changed.quote_item_id, changed.product_id,
-	       changed.combo_id, changed.type, changed.origin, changed.rank,
-	       changed.confidence_score, changed.price_snapshot, changed.approved_by_seller,
+	       changed.combo_id, changed.type, changed.recommendation_type, changed.origin, changed.rank,
+	       changed.confidence_score, changed.price_snapshot, changed.min_price_snapshot, changed.approved_by_seller,
 	       changed.chosen_by_client, changed.created_at, product.code,
 	       product.canonical_name, product.unit
 	FROM changed
 	LEFT JOIN product ON product.account_id = changed.account_id AND product.id = changed.product_id`,
 		accountID, versionID, itemID, alternativeID, approved)
 	return scanQuoteItemAlternative(row)
+}
+
+// UnapproveAlternatives removes invalid customer options from a mutable version.
+func (r *QuoteRepository) UnapproveAlternatives(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID, ids []uuid.UUID,
+) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tag, err := q.Exec(ctx, `UPDATE quote_item_alternative alternative SET approved_by_seller = FALSE
+		FROM quote_item item, quote_version version
+		WHERE alternative.account_id = $1 AND alternative.id = ANY($3)
+		  AND item.account_id = $1 AND item.id = alternative.quote_item_id AND item.version_id = $2
+		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`, accountID, versionID, ids)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(ids)) {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
+// MarkAlternativesChosenByClient stores the customer's answer as response metadata on the sent version.
+func (r *QuoteRepository) MarkAlternativesChosenByClient(
+	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
+	selections []domain.ClientAlternativeSelection,
+) error {
+	if len(selections) == 0 {
+		return nil
+	}
+	payload, err := json.Marshal(selections)
+	if err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx, `WITH incoming AS (
+		SELECT * FROM jsonb_to_recordset($3::jsonb) AS x(item_id uuid, alternative_id uuid)
+	)
+	UPDATE quote_item_alternative alternative
+	SET chosen_by_client = TRUE
+	FROM incoming
+	JOIN quote_item item ON item.account_id = $1 AND item.version_id = $2
+	                    AND item.id = incoming.item_id
+	WHERE alternative.account_id = $1
+	  AND alternative.quote_item_id = item.id
+	  AND alternative.id = incoming.alternative_id`, accountID, versionID, payload)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != int64(len(selections)) {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // AppendStatusChange records a quote lifecycle transition.
@@ -1065,14 +1161,16 @@ type quoteItemReplacementPayload struct {
 }
 
 type quoteItemAlternativePayload struct {
-	QuoteItemID     uuid.UUID  `json:"quote_item_id"`
-	ProductID       *uuid.UUID `json:"product_id"`
-	ComboID         *uuid.UUID `json:"combo_id"`
-	Type            string     `json:"type"`
-	Origin          string     `json:"origin"`
-	Rank            int        `json:"rank"`
-	ConfidenceScore *string    `json:"confidence_score"`
-	PriceSnapshot   *string    `json:"price_snapshot"`
+	QuoteItemID        uuid.UUID  `json:"quote_item_id"`
+	ProductID          *uuid.UUID `json:"product_id"`
+	ComboID            *uuid.UUID `json:"combo_id"`
+	Type               string     `json:"type"`
+	RecommendationType *string    `json:"recommendation_type"`
+	Origin             string     `json:"origin"`
+	Rank               int        `json:"rank"`
+	ConfidenceScore    *string    `json:"confidence_score"`
+	PriceSnapshot      *string    `json:"price_snapshot"`
+	MinPriceSnapshot   *string    `json:"min_price_snapshot"`
 }
 
 func quoteItemPayloads(items []domain.NewQuoteItem) []quoteItemPayload {
@@ -1145,15 +1243,22 @@ func quoteItemAlternativePayloads(
 ) []quoteItemAlternativePayload {
 	payloads := make([]quoteItemAlternativePayload, 0, len(alternatives))
 	for _, alternative := range alternatives {
+		var recommendationType *string
+		if alternative.RecommendationType != nil {
+			value := string(*alternative.RecommendationType)
+			recommendationType = &value
+		}
 		payloads = append(payloads, quoteItemAlternativePayload{
-			QuoteItemID:     alternative.QuoteItemID,
-			ProductID:       alternative.ProductID,
-			ComboID:         alternative.ComboID,
-			Type:            string(alternative.Type),
-			Origin:          string(alternative.Origin),
-			Rank:            alternative.Rank,
-			ConfidenceScore: nullDecimalString(alternative.ConfidenceScore),
-			PriceSnapshot:   nullDecimalString(alternative.PriceSnapshot),
+			QuoteItemID:        alternative.QuoteItemID,
+			ProductID:          alternative.ProductID,
+			ComboID:            alternative.ComboID,
+			Type:               string(alternative.Type),
+			RecommendationType: recommendationType,
+			Origin:             string(alternative.Origin),
+			Rank:               alternative.Rank,
+			ConfidenceScore:    nullDecimalString(alternative.ConfidenceScore),
+			PriceSnapshot:      nullDecimalString(alternative.PriceSnapshot),
+			MinPriceSnapshot:   nullDecimalString(alternative.MinPriceSnapshot),
 		})
 	}
 	return payloads
@@ -1447,8 +1552,9 @@ func scanQuoteItemWithProductRow(row pgx.Row) (*domain.QuoteItem, error) {
 func scanQuoteItemAlternative(row pgx.Row) (*domain.QuoteItemAlternative, error) {
 	var alternative domain.QuoteItemAlternative
 	err := row.Scan(&alternative.ID, &alternative.AccountID, &alternative.QuoteItemID,
-		&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.Origin,
-		&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot,
+		&alternative.ProductID, &alternative.ComboID, &alternative.Type, &alternative.RecommendationType,
+		&alternative.Origin,
+		&alternative.Rank, &alternative.ConfidenceScore, &alternative.PriceSnapshot, &alternative.MinPriceSnapshot,
 		&alternative.ApprovedBySeller, &alternative.ChosenByClient, &alternative.CreatedAt,
 		&alternative.Code, &alternative.CanonicalName, &alternative.Unit)
 	if errors.Is(err, pgx.ErrNoRows) {

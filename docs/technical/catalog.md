@@ -25,6 +25,7 @@ Account level:
 | `GET`    | `/v1/products/{productId}/alternatives`                 | Alternatives, in the requested direction |
 | `POST`   | `/v1/products/{productId}/alternatives`                 | Define an alternative                    |
 | `DELETE` | `/v1/products/{productId}/alternatives/{alternativeId}` | Remove an alternative                    |
+| `PUT`    | `/v1/products/{productId}/recommendations/{type}`       | Set the ECONOMY or PREMIUM slot          |
 
 Per branch:
 
@@ -85,6 +86,18 @@ target, so two simultaneous requests carrying the same term cannot both pass.
 `EQUIVALENT`, `PREMIUM` or `ECONOMY`. `uq_product_alternative` allows one link per ordered
 pair: repeating it returns **409**, and changing the type means deleting and recreating.
 
+`ECONOMY` and `PREMIUM` are commercial recommendation slots: a base product has at most one
+of each. `PUT /v1/products/{productId}/recommendations/{type}` replaces the existing slot in
+one transaction, so configuring a new premium or economical product cannot leave competing
+recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
+recommendation slot.
+
+Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
+non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote
+selectors apply the same basic filter; missing classification leaves no selectable alternatives.
+This filter does not establish technical equivalence or normalize package contents: the seller
+still checks suitability before approving an offer.
+
 **Direction is a parameter, not two implementations.** `direction` picks which end of the
 relation to read:
 
@@ -95,6 +108,29 @@ relation to read:
 A product cannot be its own alternative (**422**). The link is deletable from either end, and
 the route's `productId` has to be one of the two: a link between two other products is not
 deletable through a third one.
+
+When an RFQ draft has a matched product, the recommendation engine copies every active, classified
+outgoing `ECONOMY` and `PREMIUM` link into the line's unapproved alternatives. The copied row keeps
+the relationship type, so seller review can distinguish a configured recommendation from a matcher
+candidate. Links that no longer pass the family, subgroup and unit filter are omitted.
+
+A seller can replace either quote-line slot while the quote is `QUOTED`. The replacement has to be
+active and priced at the quote branch, and it receives that price as a snapshot before it can be
+approved for sending. The seller can save the same choice to the catalog in the same transaction;
+that intentionally replaces the catalog slot for later quotes. Missing catalog relations or branch
+prices are omitted from a quote without turning the quote into an error.
+
+The API also exposes catalog recommendation search on a mutable `QUOTED` version. Search is
+read-only; a separate API action adds a still-valid proposal to an empty line slot without approving
+it or replacing a seller's existing choice. The backoffice does not expose this search. Generation-time
+catalog proposals remain in place, and the seller separately chooses which options to offer.
+
+Catalog slots do not encode branch prices. In a quote, an economy alternative's unit price must be
+strictly lower than the quoted line's unit price, and a premium alternative's must be strictly higher;
+equal prices qualify for neither slot. The comparison uses the two price snapshots in the quote's
+currency before discounts, without converting package sizes. The seller checks presentation and
+suitability. Discounts are recalculated for the selected combination, so a lower unit price does not
+guarantee a lower final total.
 
 ## The check the database does not do
 

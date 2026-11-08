@@ -5,24 +5,50 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RfqListProvider } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqItemsTable } from '@/app/(protected)/rfqs/[id]/_components/rfq-items-table';
 import { ApiError } from '@/lib/api/errors';
-import type { QuoteDiscountResponse, QuoteItemResponse } from '@/lib/api/rfqs';
+import type {
+  QuoteDiscountResponse,
+  QuoteItemAlternativeResponse,
+  QuoteItemResponse,
+} from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-vi.mock('@/lib/api/catalog', () => ({ searchCatalog: vi.fn().mockResolvedValue([]) }));
+vi.mock('@/lib/api/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/catalog')>()),
+  searchCatalog: vi.fn().mockResolvedValue([]),
+  getCatalogProduct: vi.fn().mockResolvedValue({
+    id: 'p0000000-0000-4000-8000-000000000001',
+    code: 'LAD-HUE-12',
+    name: 'Ladrillo',
+    unit: 'unidad',
+    familyId: 'family',
+    subgroupId: 'subgroup',
+  }),
+}));
 
 vi.mock('@/lib/api/rfqs-client', () => ({
   addDiscount: vi.fn(),
   addQuoteItem: vi.fn(),
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
+  deleteQuoteRecommendation: vi.fn(),
+  setQuoteItemRecommendation: vi.fn(),
   updateDiscount: vi.fn(),
+  updateQuoteAlternativeApproval: vi.fn(),
   updateQuoteItem: vi.fn(),
 }));
 
 const { toast } = await import('sonner');
-const { deleteQuoteItem, updateDiscount, updateQuoteItem } = await import('@/lib/api/rfqs-client');
+const {
+  deleteQuoteItem,
+  deleteQuoteRecommendation,
+  setQuoteItemRecommendation,
+  updateDiscount,
+  updateQuoteAlternativeApproval,
+  updateQuoteItem,
+} = await import('@/lib/api/rfqs-client');
+const { searchCatalog } = await import('@/lib/api/catalog');
 
 const copy = messages.rfqs;
 
@@ -50,6 +76,23 @@ const PRICED_ITEM: QuoteItemResponse = {
   pricing_unavailable: false,
   quantity_rationale: null,
   created_at: '2026-09-07T20:45:00.000Z',
+};
+
+const ECONOMY_ALTERNATIVE: QuoteItemAlternativeResponse = {
+  id: 'a0000000-0000-4000-8000-000000000001',
+  product_id: 'p0000000-0000-4000-8000-000000000002',
+  combo_id: null,
+  type: 'PRODUCT',
+  recommendation_type: 'ECONOMY',
+  origin: 'CATALOG',
+  rank: 1,
+  confidence_score: null,
+  price_snapshot: '650.00',
+  approved_by_seller: false,
+  chosen_by_client: false,
+  code: 'LAD-HUE-08',
+  canonical_name: 'Ladrillo hueco 8x18x33',
+  unit: 'unidad',
 };
 
 function renderItems(
@@ -120,6 +163,256 @@ describe('RfqItemsTable action errors', () => {
       expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
         unit_price_snapshot: '900',
       }),
+    );
+  });
+});
+
+describe('RfqItemsTable customer alternatives', () => {
+  it('shows existing and manual alternatives without a search recommendations button', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
+    ]);
+
+    expect(view.queryByRole('button', { name: 'Buscar recomendaciones' })).toBeNull();
+    expect(view.getByText(ECONOMY_ALTERNATIVE.canonical_name!)).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.include })).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.replace })).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.detail.items.alternatives.delete })).toBeTruthy();
+    expect(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeTruthy();
+  });
+
+  it.each(['780.00', '800.00', null])(
+    'keeps an invalid or unpriced economy option visible but prevents inclusion (%s)',
+    (price) => {
+      const view = renderItems(BRANCH_ID, 'QUOTED', [
+        { ...PRICED_ITEM, alternatives: [{ ...ECONOMY_ALTERNATIVE, price_snapshot: price }] },
+      ]);
+
+      expect(view.getByText(copy.detail.items.alternatives.invalidPrice)).toBeTruthy();
+      expect(
+        (
+          view.getByRole('button', {
+            name: copy.detail.items.alternatives.include,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        view.getByRole('button', { name: copy.detail.items.alternatives.replace }),
+      ).toBeTruthy();
+      expect(
+        view.getByRole('button', { name: copy.detail.items.alternatives.delete }),
+      ).toBeTruthy();
+    },
+  );
+
+  it('lets the seller uninclude a previously approved option whose price is now invalid', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      {
+        ...PRICED_ITEM,
+        alternatives: [
+          { ...ECONOMY_ALTERNATIVE, price_snapshot: '800.00', approved_by_seller: true },
+        ],
+      },
+    ]);
+
+    expect(view.getByText(copy.detail.items.alternatives.invalidPrice)).toBeTruthy();
+    expect(
+      (
+        view.getByRole('button', {
+          name: copy.detail.items.alternatives.remove,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it('removes a recommendation only after confirmation', async () => {
+    vi.mocked(deleteQuoteRecommendation).mockResolvedValue(undefined);
+    const onItemsChange = vi.fn();
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.delete }));
+    expect(deleteQuoteRecommendation).not.toHaveBeenCalled();
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.deleteConfirm.confirm }),
+    );
+    await vi.waitFor(() =>
+      expect(deleteQuoteRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        ECONOMY_ALTERNATIVE.id,
+        BRANCH_ID,
+      ),
+    );
+    expect(onItemsChange.mock.calls[0]?.[0]?.[0]?.alternatives).toEqual([]);
+  });
+  it('lets the seller include an economical alternative in the customer quote', async () => {
+    const onItemsChange = vi.fn();
+    vi.mocked(updateQuoteAlternativeApproval).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      approved_by_seller: true,
+    });
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+
+    expect(view.getByText(copy.detail.items.alternatives.title)).toBeTruthy();
+    expect(view.getByText(copy.detail.items.recommendationType.ECONOMY)).toBeTruthy();
+    expect(
+      view.queryByRole('button', { name: copy.detail.items.alternatives.addType.ECONOMY }),
+    ).toBeNull();
+    expect(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeTruthy();
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.include }));
+
+    await vi.waitFor(() =>
+      expect(updateQuoteAlternativeApproval).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        ECONOMY_ALTERNATIVE.id,
+        BRANCH_ID,
+        true,
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives[0]?.approved_by_seller).toBe(true);
+  });
+
+  it('hides customer alternatives once the quote has been sent', () => {
+    const view = renderItems(BRANCH_ID, 'SENT', [
+      { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
+    ]);
+
+    expect(view.queryByText(copy.detail.items.alternatives.title)).toBeNull();
+  });
+
+  it('lets the seller replace an existing alternative for the quote', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      { id: 'replacement', code: 'NEW', name: 'Reemplazo', unit: 'unidad' },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'replacement-alternative',
+      product_id: 'replacement',
+      canonical_name: 'Reemplazo',
+    });
+    const onItemsChange = vi.fn();
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.replace }));
+    fireEvent.click(await view.findByText('Reemplazo'));
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'ECONOMY',
+        BRANCH_ID,
+        { product_id: 'replacement', save_to_catalog: false },
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives).toHaveLength(1);
+    expect(updatedItems?.[0]?.alternatives[0]?.product_id).toBe('replacement');
+  });
+
+  it('lets the seller define an economical option just for this quotation', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      {
+        id: 'p0000000-0000-4000-8000-000000000007',
+        code: 'LAD-ECO-10',
+        name: 'Ladrillo económico',
+        unit: 'unidad',
+      },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000007',
+      product_id: 'p0000000-0000-4000-8000-000000000007',
+      canonical_name: 'Ladrillo económico',
+    });
+    const onItemsChange = vi.fn();
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
+
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.ECONOMY }),
+    );
+    expect(
+      await view.findByRole('checkbox', {
+        name: copy.detail.items.alternatives.saveToCatalog,
+      }),
+    ).toBeTruthy();
+    const candidate = await view.findByText('Ladrillo económico');
+    fireEvent.click(candidate);
+
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'ECONOMY',
+        BRANCH_ID,
+        { product_id: 'p0000000-0000-4000-8000-000000000007', save_to_catalog: false },
+      ),
+    );
+    const [updatedItems] = onItemsChange.mock.calls[0] ?? [];
+    expect(updatedItems?.[0]?.alternatives[0]?.canonical_name).toBe('Ladrillo económico');
+  });
+  it('saves a newly defined alternative to the catalog after confirmation', async () => {
+    vi.mocked(searchCatalog).mockResolvedValue([
+      {
+        id: 'p0000000-0000-4000-8000-000000000008',
+        code: 'LAD-PRE-10',
+        name: 'Ladrillo premium',
+        unit: 'unidad',
+      },
+    ]);
+    vi.mocked(setQuoteItemRecommendation).mockResolvedValue({
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000008',
+      product_id: 'p0000000-0000-4000-8000-000000000008',
+      recommendation_type: 'PREMIUM',
+      canonical_name: 'Ladrillo premium',
+    });
+    const view = renderItems();
+
+    fireEvent.click(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    );
+    const saveToCatalog = await view.findByRole('checkbox', {
+      name: copy.detail.items.alternatives.saveToCatalog,
+    });
+    fireEvent.click(saveToCatalog);
+    fireEvent.click(await view.findByText('Ladrillo premium'));
+
+    expect(setQuoteItemRecommendation).not.toHaveBeenCalled();
+    fireEvent.click(
+      await view.findByRole('button', {
+        name: copy.detail.items.alternatives.catalogConfirmation.confirm,
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(setQuoteItemRecommendation).toHaveBeenCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        'PREMIUM',
+        BRANCH_ID,
+        { product_id: 'p0000000-0000-4000-8000-000000000008', save_to_catalog: true },
+      ),
     );
   });
 });
@@ -262,6 +555,7 @@ describe('RfqItemsTable choosing a product for a flagged line', () => {
           product_id: 'p0000000-0000-4000-8000-000000000009',
           combo_id: null,
           type: 'PRODUCT',
+          recommendation_type: null,
           origin: 'AI',
           rank: 1,
           confidence_score: '0.4200',
@@ -291,6 +585,7 @@ describe('RfqItemsTable choosing a product for a flagged line', () => {
     product_id: 'p0000000-0000-4000-8000-000000000008',
     combo_id: null,
     type: 'PRODUCT',
+    recommendation_type: null,
     origin: 'AI',
     rank: 1,
     confidence_score: '0.6100',

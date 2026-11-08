@@ -29,6 +29,11 @@ func (*captureQuoteDelivery) ResolvePublic(context.Context, string) (*domain.Pub
 	return nil, nil
 }
 
+func (*captureQuoteDelivery) PreviewPublic(context.Context, string,
+	[]domain.ClientAlternativeSelection) (*domain.PublicQuoteSelectionPreview, error) {
+	return nil, nil
+}
+
 func (*captureQuoteDelivery) RespondPublic(context.Context, string,
 	domain.ClientActionInput) (*domain.PublicQuoteActionResult, error) {
 	return nil, nil

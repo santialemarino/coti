@@ -6,14 +6,17 @@ import { QuoteActions } from '@/app/quotes/[token]/_components/quote-actions';
 import { QuoteHeader } from '@/app/quotes/[token]/_components/quote-header';
 import { QuoteInfo } from '@/app/quotes/[token]/_components/quote-info';
 import { QuoteItems } from '@/app/quotes/[token]/_components/quote-items';
+import { QuoteSelectionProvider } from '@/app/quotes/[token]/_components/quote-selection-context';
 import { Brand } from '@/components/brand';
-import type { PublicQuoteSend } from '@/lib/api/public-quotes';
+import type { PublicQuoteSelectionPreview, PublicQuoteSend } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
 interface PublicQuoteViewProps {
   send: PublicQuoteSend;
   /* The token the answer posts to; the dev-only preview route leaves it undefined. */
   token?: string;
+  /* Frozen preview responses let the dev route exercise the selection UI without a customer session. */
+  selectionPreviews?: Record<string, PublicQuoteSelectionPreview>;
 }
 
 /*
@@ -21,7 +24,7 @@ interface PublicQuoteViewProps {
  * it the live getPublicQuoteByToken result, the dev-only /quotes/preview route a frozen fixture.
  * Either way it renders the frozen representation the send published, never live commercial data.
  */
-export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
+export async function PublicQuoteView({ send, token, selectionPreviews }: PublicQuoteViewProps) {
   const fmt = await getFormatters();
   const t = await getTranslations('quote');
   const tCommon = await getTranslations('common');
@@ -71,20 +74,29 @@ export async function PublicQuoteView({ send, token }: PublicQuoteViewProps) {
           <p className="text-paragraph text-foreground-muted">{t('intro')}</p>
         </div>
 
-        <QuoteItems
-          items={quote.items}
-          discounts={quote.discounts}
-          total={quote.total}
-          currency={quote.currency}
-        />
+        <QuoteSelectionProvider>
+          <QuoteItems
+            items={quote.items}
+            discounts={quote.discounts}
+            total={quote.total}
+            currency={quote.currency}
+            token={token}
+            disabled={send.customerStatus !== undefined}
+            selectionPreviews={selectionPreviews}
+          />
 
-        <QuoteInfo
-          expiresAt={send.expiresAt}
-          validityNote={quote.validityNote}
-          pdfUrl={send.pdfUrl}
-        />
+          <QuoteInfo
+            expiresAt={send.expiresAt}
+            validityNote={quote.validityNote}
+            pdfUrl={send.pdfUrl}
+          />
 
-        <QuoteActions token={token} customerStatus={send.customerStatus} />
+          <QuoteActions
+            token={token}
+            customerStatus={send.customerStatus}
+            currency={quote.currency}
+          />
+        </QuoteSelectionProvider>
 
         <footer className="flex flex-col gap-y-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <Brand variant="wordmark" size="sm" label={tCommon('appName')} />

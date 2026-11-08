@@ -96,11 +96,13 @@ type fakePublicQuoteQuotes struct {
 	newVersion   *domain.QuoteVersion
 	newItems     []domain.NewQuoteItem
 	newAlts      []domain.NewQuoteItemAlternative
+	chosenAlts   []domain.ClientAlternativeSelection
 	itemBatches  [][]domain.NewQuoteItem
 	deletedItems []uuid.UUID
 	deletedAlts  []uuid.UUID
 	quantities   []domain.QuoteItemQuantityUpdate
 	replacements []domain.QuoteItemReplacement
+	unapproved   []uuid.UUID
 	getErr       error
 	statusErr    error
 	statusCalls  []quoteStatusCall
@@ -207,6 +209,13 @@ func (f *fakePublicQuoteQuotes) ListAlternativesByItemIDs(context.Context, repos
 	return f.alternatives, nil
 }
 
+func (f *fakePublicQuoteQuotes) MarkAlternativesChosenByClient(_ context.Context, _ repository.Querier,
+	_ uuid.UUID, _ uuid.UUID, selections []domain.ClientAlternativeSelection,
+) error {
+	f.chosenAlts = append(f.chosenAlts, selections...)
+	return nil
+}
+
 func (f *fakePublicQuoteQuotes) CreateAlternatives(_ context.Context, _ repository.Querier,
 	_ uuid.UUID, alternatives []domain.NewQuoteItemAlternative) error {
 	f.newAlts = alternatives
@@ -244,6 +253,12 @@ func (f *fakePublicQuoteQuotes) ReplaceItems(_ context.Context, _ repository.Que
 func (f *fakePublicQuoteQuotes) FreezeVersion(context.Context, repository.Querier,
 	uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.QuoteVersion, error) {
 	return nil, errors.New("not used by public quote action tests")
+}
+
+func (f *fakePublicQuoteQuotes) UnapproveAlternatives(_ context.Context, _ repository.Querier,
+	_, _ uuid.UUID, ids []uuid.UUID) error {
+	f.unapproved = append(f.unapproved, ids...)
+	return nil
 }
 
 func (f *fakePublicQuoteQuotes) SetClient(context.Context, repository.Querier, uuid.UUID,
@@ -467,6 +482,10 @@ func (h *quoteActionHarness) seedActiveSend(versionID uuid.UUID) *domain.QuoteSe
 	if h.quotes.quote == nil {
 		h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
 			CurrentVersionID: &versionID, CurrentStatus: domain.QuoteStatusSent}
+	}
+	if h.quotes.version == nil {
+		h.quotes.version = &domain.QuoteVersion{ID: versionID, QuoteID: testQuoteID,
+			VersionNumber: 1, Currency: "ARS", IsImmutable: true}
 	}
 	return send
 }

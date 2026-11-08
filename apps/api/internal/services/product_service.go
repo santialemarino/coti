@@ -38,6 +38,7 @@ type productSynonymRepository interface {
 type productAlternativeRepository interface {
 	List(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, direction domain.AlternativeDirection) ([]domain.ProductAlternativeView, error)
 	Create(ctx context.Context, q repository.Querier, accountID, baseProductID, alternativeProductID uuid.UUID, alternativeType domain.ProductAlternativeType) (*domain.ProductAlternative, error)
+	SetRecommendation(ctx context.Context, q repository.Querier, accountID, baseProductID, alternativeProductID uuid.UUID, alternativeType domain.ProductAlternativeType) (*domain.ProductAlternative, error)
 	Delete(ctx context.Context, q repository.Querier, accountID, productID, id uuid.UUID) error
 }
 
@@ -369,16 +370,58 @@ func (s *ProductService) AddAlternative(
 
 	var link *domain.ProductAlternative
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID); getErr != nil {
+		base, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID)
+		if getErr != nil {
 			return getErr
 		}
-		if _, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID); getErr != nil {
+		alternative, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID)
+		if getErr != nil {
 			return getErr
+		}
+		if isRecommendationType(alternativeType) {
+			if err := requireCompatibleRecommendation(*base, *alternative); err != nil {
+				return err
+			}
 		}
 		var createErr error
 		link, createErr = s.alternatives.Create(ctx, q, tenant.AccountID, baseProductID,
 			alternativeProductID, alternativeType)
 		return createErr
+	}); err != nil {
+		return nil, err
+	}
+	return link, nil
+}
+
+// SetRecommendation replaces the product's ECONOMY or PREMIUM catalog recommendation.
+func (s *ProductService) SetRecommendation(
+	ctx context.Context, tenant domain.Tenant, baseProductID, alternativeProductID uuid.UUID,
+	alternativeType domain.ProductAlternativeType,
+) (*domain.ProductAlternative, error) {
+	if !isRecommendationType(alternativeType) {
+		return nil, fmt.Errorf("%w: recommendation type must be ECONOMY or PREMIUM", domain.ErrInvalidInput)
+	}
+	if baseProductID == alternativeProductID {
+		return nil, fmt.Errorf("%w: a product cannot be its own alternative", domain.ErrInvalidInput)
+	}
+
+	var link *domain.ProductAlternative
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		base, getErr := s.products.GetByID(ctx, q, tenant.AccountID, baseProductID)
+		if getErr != nil {
+			return getErr
+		}
+		alternative, getErr := s.products.GetByID(ctx, q, tenant.AccountID, alternativeProductID)
+		if getErr != nil {
+			return getErr
+		}
+		if err := requireCompatibleRecommendation(*base, *alternative); err != nil {
+			return err
+		}
+		var setErr error
+		link, setErr = s.alternatives.SetRecommendation(ctx, q, tenant.AccountID, baseProductID,
+			alternativeProductID, alternativeType)
+		return setErr
 	}); err != nil {
 		return nil, err
 	}
@@ -392,6 +435,11 @@ func (s *ProductService) RemoveAlternative(
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		return s.alternatives.Delete(ctx, q, tenant.AccountID, productID, alternativeID)
 	})
+}
+
+func isRecommendationType(alternativeType domain.ProductAlternativeType) bool {
+	return alternativeType == domain.ProductAlternativeEconomy ||
+		alternativeType == domain.ProductAlternativePremium
 }
 
 // resolveLimit clamps a requested page size to the configured default and cap.

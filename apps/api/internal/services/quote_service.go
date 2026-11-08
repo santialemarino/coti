@@ -22,11 +22,15 @@ type quoteRepository interface {
 	ClaimForEdit(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID, from, to domain.QuoteStatus) (*domain.Quote, error)
 	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.QuoteVersion, error)
+	GetItem(ctx context.Context, q repository.Querier, accountID, versionID, itemID uuid.UUID) (*domain.QuoteItem, error)
 	UpdateVersionValuation(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
 		total decimal.Decimal, currency string) (*domain.QuoteVersion, error)
 	GetAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) (*domain.QuoteItemAlternative, error)
+	DeleteRecommendationAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID) error
 	ApplyPricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemPricing) error
 	ApplyAlternativePricing(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID, pricings []domain.QuoteItemAlternativePricing) error
+	SetRecommendationAlternative(ctx context.Context, q repository.Querier, accountID, versionID, itemID, productID uuid.UUID,
+		recommendationType domain.ProductAlternativeType, priceSnapshot, minPriceSnapshot decimal.NullDecimal) (*domain.QuoteItemAlternative, error)
 	UpdateAlternativeApproval(ctx context.Context, q repository.Querier, accountID, versionID, itemID, alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
 	AppendStatusChange(ctx context.Context, q repository.Querier, accountID, quoteID uuid.UUID, previousStatus *domain.QuoteStatus, newStatus domain.QuoteStatus, userID *uuid.UUID) (*domain.QuoteStatusChange, error)
 	Archive(ctx context.Context, q repository.Querier, accountID, branchID, quoteID uuid.UUID) (*domain.Quote, error)
@@ -47,6 +51,12 @@ type branchPriceReader interface {
 	GetCurrentByProductIDs(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID) (map[uuid.UUID]domain.BranchPrice, error)
 }
 
+// catalogRecommendationWriter keeps a seller-selected recommendation reusable for future quotes.
+type catalogRecommendationWriter interface {
+	SetRecommendation(ctx context.Context, q repository.Querier, accountID, baseProductID,
+		alternativeProductID uuid.UUID, alternativeType domain.ProductAlternativeType) (*domain.ProductAlternative, error)
+}
+
 // QuoteService owns the quote lifecycle from the seller's review of the generated materials on.
 type QuoteService struct {
 	db     tenantTxRunner
@@ -60,11 +70,28 @@ type QuoteService struct {
 	carry *draftCarry
 	// invoicing is the account switch; nil reads as off, so no sale is waived from an invoice.
 	invoicing invoicingSwitch
+	// catalogRecommendations is optional so the core quote lifecycle remains deployable alone.
+	catalogRecommendations catalogRecommendationWriter
+	recommendationProducts recommendationProductReader
+}
+
+// WithRecommendationProducts validates the catalog identity of customer alternatives.
+func (s *QuoteService) WithRecommendationProducts(products recommendationProductReader) *QuoteService {
+	s.recommendationProducts = products
+	return s
 }
 
 // WithInvoicingSwitch wires the account switch «No requiere factura» depends on.
 func (s *QuoteService) WithInvoicingSwitch(invoicing invoicingSwitch) *QuoteService {
 	s.invoicing = invoicing
+	return s
+}
+
+// WithCatalogRecommendations lets a seller save a quote-specific choice as the catalog default.
+func (s *QuoteService) WithCatalogRecommendations(
+	recommendations catalogRecommendationWriter,
+) *QuoteService {
+	s.catalogRecommendations = recommendations
 	return s
 }
 
@@ -246,11 +273,133 @@ func (s *QuoteService) ApproveAlternative(
 			return fmt.Errorf("%w: an approved alternative needs a frozen price and catalog identity",
 				domain.ErrInvalidInput)
 		}
+		if approved && alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
+			item, getErr := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+			if getErr != nil {
+				return getErr
+			}
+			if item.ProductID == nil || alternative.ProductID == nil {
+				return fmt.Errorf("%w: recommendation needs two catalog products", domain.ErrInvalidInput)
+			}
+			if *item.ProductID == *alternative.ProductID {
+				return fmt.Errorf("%w: choose a different catalog product as the alternative", domain.ErrInvalidInput)
+			}
+			if err := s.validateRecommendationProducts(ctx, q, tenant.AccountID, *item.ProductID, *alternative.ProductID); err != nil {
+				return err
+			}
+			if err := requireRecommendationPrice(*alternative.RecommendationType, item.UnitPriceSnapshot, alternative.PriceSnapshot); err != nil {
+				return err
+			}
+		}
 		result, err = s.quotes.UpdateAlternativeApproval(ctx, q, tenant.AccountID, version.ID,
 			itemID, alternativeID, approved)
 		return err
 	})
 	return result, err
+}
+
+// SetRecommendationAlternative replaces the line's ECONOMY or PREMIUM candidate with a seller
+// choice. The selected product needs a current price at the quote branch before it can be shown.
+func (s *QuoteService) SetRecommendationAlternative(
+	ctx context.Context, tenant domain.Tenant, quoteID, itemID, productID uuid.UUID,
+	recommendationType domain.ProductAlternativeType, saveToCatalog bool,
+) (*domain.QuoteItemAlternative, error) {
+	if err := requireBranch(tenant, "a quote alternative"); err != nil {
+		return nil, err
+	}
+	if !isQuoteRecommendationType(recommendationType) {
+		return nil, fmt.Errorf("%w: recommendation type must be ECONOMY or PREMIUM", domain.ErrInvalidInput)
+	}
+
+	var result *domain.QuoteItemAlternative
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if err := requireUnarchived(*quote); err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusQuoted {
+			return domain.ErrConflict
+		}
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID, quote.ID)
+		if err != nil {
+			return err
+		}
+		if version.IsImmutable {
+			return domain.ErrConflict
+		}
+		item, err := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
+		if err != nil {
+			return err
+		}
+		if item.ProductID == nil || *item.ProductID == productID {
+			return fmt.Errorf("%w: choose a different catalog product as the alternative", domain.ErrInvalidInput)
+		}
+		if err := s.validateRecommendationProducts(ctx, q, tenant.AccountID, *item.ProductID, productID); err != nil {
+			return err
+		}
+		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
+			[]uuid.UUID{productID})
+		if err != nil {
+			return err
+		}
+		price, ok := prices[productID]
+		if !ok {
+			return fmt.Errorf("%w: the alternative is not active and priced at this branch", domain.ErrInvalidInput)
+		}
+		currency := version.Currency
+		if currency == "" {
+			currency = domain.DefaultCurrency
+		}
+		priceCurrency := price.Currency
+		if priceCurrency == "" {
+			priceCurrency = domain.DefaultCurrency
+		}
+		if priceCurrency != currency {
+			return fmt.Errorf("%w: the alternative uses a different quote currency", domain.ErrInvalidInput)
+		}
+		if err := requireRecommendationPrice(recommendationType, item.UnitPriceSnapshot, decimal.NewNullDecimal(price.Price)); err != nil {
+			return err
+		}
+		if saveToCatalog {
+			if s.catalogRecommendations == nil {
+				return domain.ErrNotConfigured
+			}
+			if _, err := s.catalogRecommendations.SetRecommendation(ctx, q, tenant.AccountID,
+				*item.ProductID, productID, recommendationType); err != nil {
+				return err
+			}
+		}
+		result, err = s.quotes.SetRecommendationAlternative(ctx, q, tenant.AccountID, version.ID,
+			item.ID, productID, recommendationType, decimal.NewNullDecimal(price.Price), price.MinPrice)
+		return err
+	})
+	return result, err
+}
+
+func (s *QuoteService) validateRecommendationProducts(ctx context.Context, q repository.Querier,
+	accountID, baseID, alternativeID uuid.UUID,
+) error {
+	if s.recommendationProducts == nil {
+		return domain.ErrNotConfigured
+	}
+	products, err := s.recommendationProducts.GetByIDs(ctx, q, accountID, []uuid.UUID{baseID, alternativeID})
+	if err != nil {
+		return err
+	}
+	base, baseFound := products[baseID]
+	alternative, alternativeFound := products[alternativeID]
+	if !baseFound || !alternativeFound {
+		return domain.ErrNotFound
+	}
+	return requireCompatibleRecommendation(base, alternative)
+}
+
+func isQuoteRecommendationType(recommendationType domain.ProductAlternativeType) bool {
+	return recommendationType == domain.ProductAlternativeEconomy ||
+		recommendationType == domain.ProductAlternativePremium
 }
 
 // requireMaterialsPendingAcceptance is the state×intention check, run before anything is written.
