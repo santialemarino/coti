@@ -14,6 +14,8 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/app/(protected)/settings/catalog/actions', () => ({
   createProduct: vi.fn(),
+  getProductPrice: vi.fn(),
+  setProductPrice: vi.fn(),
   updateProduct: vi.fn(),
   deactivateProduct: vi.fn(),
   listProductRecommendations: vi.fn(),
@@ -39,8 +41,13 @@ vi.mock('motion/react', async (importOriginal) => ({
   ),
 }));
 
-const { deactivateProduct, listProductRecommendations, reactivateProduct, updateProduct } =
-  await import('@/app/(protected)/settings/catalog/actions');
+const {
+  deactivateProduct,
+  getProductPrice,
+  listProductRecommendations,
+  reactivateProduct,
+  updateProduct,
+} = await import('@/app/(protected)/settings/catalog/actions');
 
 const FAMILY: ProductFamily = {
   id: 'family-1',
@@ -80,6 +87,16 @@ function renderManager(
         query={query}
         invoicingEnabled={invoicingEnabled}
         bulkEditTargetId={bulkEditTargetId}
+        branches={[
+          {
+            id: 'b0000000-0000-4000-8000-000000000002',
+            name: 'Morón',
+            address: null,
+            email: null,
+            defaultExpiryDays: 7,
+            isActive: true,
+          },
+        ]}
       />
     </NextIntlClientProvider>,
   );
@@ -88,6 +105,25 @@ function renderManager(
 beforeEach(() => vi.clearAllMocks());
 
 describe('ProductManager', () => {
+  it('opens the branch-price editor from the selected product edit dialog', async () => {
+    vi.mocked(getProductPrice).mockResolvedValue({
+      ok: true,
+      current: { price: '5000.00', minPrice: null, currency: 'ARS' },
+    });
+    const view = renderManager();
+    const row = within(view.getByRole('row', { name: new RegExp(PRODUCT.name) }));
+    fireEvent.click(row.getByRole('button', { name: messages.products.edit.action }));
+    fireEvent.click(
+      await view.findByRole('button', { name: messages.products.priceEditor.action }),
+    );
+    await view.findByDisplayValue('5.000,00');
+    expect(getProductPrice).toHaveBeenCalledWith(
+      PRODUCT.id,
+      'b0000000-0000-4000-8000-000000000002',
+    );
+    expect(view.getByRole('button', { name: messages.products.priceEditor.save })).toBeTruthy();
+  });
+
   it('lists catalog fields with the existing table and status components', () => {
     const view = renderManager();
     const row = within(view.getByRole('row', { name: new RegExp(PRODUCT.name) }));

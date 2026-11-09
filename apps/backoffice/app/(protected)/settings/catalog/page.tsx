@@ -46,6 +46,8 @@ export default async function CatalogSettingsPage({
         families={families}
         query={query}
         invoicingEnabled={account.invoicingEnabled}
+        branches={branches}
+        activeBranchId={activeBranchId ?? undefined}
         bulkEditTargetId={branch ? BULK_EDIT_ID : undefined}
       />
       {branch ? (

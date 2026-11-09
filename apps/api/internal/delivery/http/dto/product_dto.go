@@ -9,8 +9,8 @@ import (
 // ListProductsQuery is the query string for GET /v1/products.
 type ListProductsQuery struct {
 	Search          string     `form:"search" binding:"omitempty,max=255"`
-	FamilyID        *uuid.UUID `form:"family_id"`
-	SubgroupID      *uuid.UUID `form:"subgroup_id"`
+	FamilyID        *uuid.UUID `form:"family_id,parser=encoding.TextUnmarshaler"`
+	SubgroupID      *uuid.UUID `form:"subgroup_id,parser=encoding.TextUnmarshaler"`
 	IncludeInactive bool       `form:"include_inactive"`
 	Limit           int        `form:"limit" binding:"omitempty,min=1"`
 	Offset          int        `form:"offset" binding:"omitempty,min=0"`

@@ -171,7 +171,7 @@ func run() error {
 		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
 		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo, branchProductRepo,
-		productPriceRepo, nil)
+		productPriceRepo, quoteRepo, nil)
 	productPriceImportService := services.NewProductPriceImportService(db, productPriceRepo, nil)
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 	dataExportService := services.NewDataExportService(db, dataExportRepo)

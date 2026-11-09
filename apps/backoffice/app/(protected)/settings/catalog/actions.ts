@@ -3,6 +3,11 @@
 import { revalidatePath } from 'next/cache';
 
 import { productSchema, type ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
+import {
+  productPriceSchema,
+  type ProductPriceValues,
+} from '@/app/(protected)/settings/catalog/price-schema';
+import { ROUTES } from '@/config/routes';
 import { apiRequest } from '@/lib/api/client';
 import { errorCodeOf, type ApiErrorCode } from '@/lib/api/errors';
 
@@ -44,6 +49,74 @@ export interface ProductRecommendation {
 export type ProductRecommendationResult =
   | { ok: true; items: ProductRecommendation[] }
   | { ok?: false; error: ApiErrorCode };
+
+interface ProductPriceRaw {
+  price: string;
+  min_price: string | null;
+  currency: string;
+  valid_from: string;
+  valid_to: string | null;
+}
+
+export type ProductPriceResult =
+  | { ok: true; current: { price: string; minPrice: string | null; currency: string } | null }
+  | { ok?: false; error: ApiErrorCode };
+
+export async function getProductPrice(
+  productId: string,
+  branchId: string,
+): Promise<ProductPriceResult> {
+  if (!branchId) return { error: 'INVALID_BODY' };
+  try {
+    const response = await apiRequest<{ items: ProductPriceRaw[] }>({
+      path: `/v1/products/${productId}/prices`,
+      branchId,
+    });
+    const now = Date.now();
+    const current = response.items.find(
+      (price) =>
+        Date.parse(price.valid_from) <= now &&
+        (!price.valid_to || Date.parse(price.valid_to) > now),
+    );
+    return {
+      ok: true,
+      current: current
+        ? {
+            price: current.price,
+            minPrice: current.min_price,
+            currency: current.currency,
+          }
+        : null,
+    };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
+
+export async function setProductPrice(
+  productId: string,
+  values: ProductPriceValues,
+): Promise<ProductWriteResult> {
+  const parsed = productPriceSchema().safeParse(values);
+  if (!parsed.success) return { error: 'INVALID_BODY' };
+  try {
+    await apiRequest({
+      path: `/v1/products/${productId}/prices`,
+      method: 'POST',
+      branchId: parsed.data.branchId,
+      body: {
+        price: parsed.data.price,
+        min_price: parsed.data.minPrice || null,
+        currency: parsed.data.currency,
+      },
+    });
+    revalidatePath('/settings/catalog');
+    revalidatePath(ROUTES.rfqs, 'layout');
+    return { ok: true, productId };
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+}
 
 export async function listProductRecommendations(
   productId: string,

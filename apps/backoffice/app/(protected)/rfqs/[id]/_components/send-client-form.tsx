@@ -5,10 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
 import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
+import { toast } from 'sonner';
 import { z } from 'zod';
 
 import {
-  Callout,
+  Button,
   Checkbox,
   Combobox,
   Form,
@@ -48,6 +49,7 @@ export function SendClientForm({
   const [context, setContext] = useState<QuoteClientAssociation | null>(null);
   const [directory, setDirectory] = useState<ClientMatch[]>([]);
   const [failed, setFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const schema = useMemo(
     () =>
       z
@@ -118,6 +120,8 @@ export function SendClientForm({
   }, [serialized, onChange]);
   useEffect(() => {
     let active = true;
+    setFailed(false);
+    setContext(null);
     Promise.all([getQuoteClientAssociation(quoteId, branchId), getClientDirectory(branchId)])
       .then(([association, clients]) => {
         if (!active) return;
@@ -144,12 +148,15 @@ export function SendClientForm({
         });
       })
       .catch(() => {
-        if (active) setFailed(true);
+        if (active) {
+          setFailed(true);
+          toast.error(t('clientLoadFailed'));
+        }
       });
     return () => {
       active = false;
     };
-  }, [quoteId, branchId, form]);
+  }, [quoteId, branchId, form, loadAttempt, t]);
 
   function selectClient(id: string) {
     const match = directory.find((item) => item.client.id === id);
@@ -158,7 +165,12 @@ export function SendClientForm({
     if (match?.client.taxId) form.setValue('taxId', match.client.taxId, { shouldValidate: true });
   }
 
-  if (failed) return <Callout tone="danger">{t('clientLoadFailed')}</Callout>;
+  if (failed)
+    return (
+      <Button variant="outline" size="sm" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+        {t('clientRetry')}
+      </Button>
+    );
   if (!context)
     return (
       <div

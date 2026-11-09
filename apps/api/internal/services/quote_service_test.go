@@ -924,6 +924,9 @@ func TestQuoteService_SetRecommendationAlternative_RejectsAnUnpricedProduct(t *t
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("SetRecommendationAlternative() = %v, want %v", err, domain.ErrInvalidInput)
 	}
+	if domain.CodeOf(err) != domain.CodeRecommendationPriceUnavailable {
+		t.Fatalf("CodeOf() = %v, want %v", domain.CodeOf(err), domain.CodeRecommendationPriceUnavailable)
+	}
 }
 
 // quoteFixtureAt builds a fixture around a quote in an arbitrary state, for the state-machine

@@ -5,6 +5,7 @@ import { signOutCustomer } from '@/app/login/actions';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerOrders } from '@/lib/api/customer-orders';
+import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { requireCustomer } from '@/lib/auth/customer-flow';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
@@ -22,6 +23,10 @@ export default async function OrdersPage({
     getTranslations('customerOrders'),
     getFormatters(),
   ]);
+  const profile = orders.length === 0 ? await getCustomerProfile() : null;
+  const needsContactProof =
+    profile !== null &&
+    (profile.ownershipUnproved || !profile.contacts.some((contact) => contact.verified));
   return (
     <main className="flex min-h-dvh flex-col items-center px-4 py-8 sm:px-6 sm:py-12">
       <div className="flex w-full max-w-3xl flex-col gap-y-6">
@@ -42,7 +47,21 @@ export default async function OrdersPage({
           </div>
         </header>
         {orders.length === 0 ? (
-          <Card className="px-6 text-paragraph-sm text-foreground-muted">{t('empty')}</Card>
+          <Card className="px-6 gap-y-3">
+            <p className="text-paragraph-sm text-foreground-muted">
+              {t(needsContactProof ? 'emptyUnverified' : 'empty')}
+            </p>
+            {needsContactProof && (
+              <>
+                <p className="text-paragraph-sm text-foreground-muted">
+                  {t(profile?.ownershipUnproved ? 'proveEarlierContact' : 'verifyContactHint')}
+                </p>
+                <Button variant="outline" className="self-start" asChild>
+                  <Link href={ROUTES.profile}>{t('verifyContacts')}</Link>
+                </Button>
+              </>
+            )}
+          </Card>
         ) : (
           <ul className="flex flex-col gap-y-3">
             {orders.map((order) => (

@@ -120,6 +120,11 @@ approved for sending. The seller can save the same choice to the catalog in the 
 that intentionally replaces the catalog slot for later quotes. Missing catalog relations or branch
 prices are omitted from a quote without turning the quote into an error.
 
+Customer options start collapsed in the quote workspace and can be expanded or collapsed together.
+If a selected replacement has no active branch price, the API returns
+`RECOMMENDATION_PRICE_UNAVAILABLE`. A toast explains the missing price and the selector stays open
+so the seller can choose another product or have its branch price configured.
+
 The API also exposes catalog recommendation search on a mutable `QUOTED` version. Search is
 read-only; a separate API action adds a still-valid proposal to an empty line slot without approving
 it or replacing a seller's existing choice. The backoffice does not expose this search. Generation-time
@@ -215,6 +220,15 @@ Administrators manage account-level products at `/settings/catalog`. The screen 
 inactive products with server-side search and pagination, and supports creating, replacing editable
 attributes, deactivating, reactivating, and assigning a primary image. Deactivation is always soft:
 historical quotes and prices keep their product reference.
+
+The product edit dialog opens a branch-price editor from the button below the subgroup fields. It loads the selected branch's
+current price and optional discount floor, preserves the currency, and writes decimal strings to
+`POST /v1/products/{productId}/prices`. Each save opens a new validity period and updates matching
+commercial alternatives on current, editable quote versions at that branch, clearing their prior
+approval when the price or floor changes. Base line prices and immutable offers keep their snapshots.
+The quote and version rows are locked before updating alternatives so freezing cannot race the refresh.
+The selected branch is sent explicitly on reads and writes, even if the
+header's branch selection changes. A failed read blocks saving until it is retried successfully.
 
 The form reads the same database-backed family and subgroup taxonomy as the spreadsheet flow.
 `GET /v1/product-taxonomy` exposes it to administrators, and the API still validates the selected

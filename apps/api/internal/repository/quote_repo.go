@@ -1027,6 +1027,52 @@ func (r *QuoteRepository) UpdateAlternativeApproval(
 	return scanQuoteItemAlternative(row)
 }
 
+// RefreshMutableRecommendationPrice updates editable customer options at one branch.
+func (r *QuoteRepository) RefreshMutableRecommendationPrice(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, price domain.ProductPrice,
+) error {
+	// Lock both rows so freezing cannot race a catalog price change.
+	_, err := q.Exec(ctx, `WITH mutable_versions AS MATERIALIZED (
+		SELECT quote.id, version.id AS version_id, version.currency
+		FROM quote
+		JOIN quote_version version ON version.account_id=$1 AND version.id=quote.current_version_id
+		WHERE quote.account_id=$1 AND quote.branch_id=$2 AND quote.archived_at IS NULL
+		  AND quote.current_status IN ('DRAFT','CHANGE_REQUESTED','QUOTED')
+		  AND version.is_immutable=FALSE
+		  AND EXISTS (
+		    SELECT 1 FROM quote_item item
+		    JOIN quote_item_alternative alternative ON alternative.account_id=$1 AND alternative.quote_item_id=item.id
+		    WHERE item.account_id=$1 AND item.version_id=version.id
+		      AND alternative.product_id=$3
+		      AND alternative.recommendation_type IN ('ECONOMY','PREMIUM')
+		  )
+		ORDER BY quote.id
+		FOR UPDATE OF quote, version
+	), priced AS (
+		SELECT alternative.id,
+		       CASE WHEN product.is_active AND availability.is_active AND version.currency=$6
+		            THEN $4::numeric END AS price,
+		       CASE WHEN product.is_active AND availability.is_active AND version.currency=$6
+		            THEN $5::numeric END AS min_price
+		FROM mutable_versions version
+		JOIN quote_item item ON item.account_id=$1 AND item.version_id=version.version_id
+		JOIN quote_item_alternative alternative ON alternative.account_id=$1 AND alternative.quote_item_id=item.id
+		JOIN product product ON product.account_id=$1 AND product.id=alternative.product_id
+		LEFT JOIN branch_product availability ON availability.account_id=$1 AND availability.branch_id=$2
+		  AND availability.product_id=product.id
+		WHERE alternative.product_id=$3
+		  AND alternative.recommendation_type IN ('ECONOMY','PREMIUM')
+	)
+	UPDATE quote_item_alternative alternative
+	SET price_snapshot=priced.price, min_price_snapshot=priced.min_price, approved_by_seller=FALSE
+	FROM priced
+	WHERE alternative.account_id=$1 AND alternative.id=priced.id
+	  AND (alternative.price_snapshot, alternative.min_price_snapshot)
+	      IS DISTINCT FROM (priced.price, priced.min_price)`, accountID, branchID, price.ProductID,
+		price.Price, price.MinPrice, price.Currency)
+	return err
+}
+
 // UnapproveAlternatives removes invalid customer options from a mutable version.
 func (r *QuoteRepository) UnapproveAlternatives(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID, ids []uuid.UUID,

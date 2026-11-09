@@ -19,7 +19,7 @@ func customerSiteOrigin(hostname, localOrigin string) string {
 			return origin + "/c/" + normalized
 		}
 	}
-	if strings.HasSuffix(hostname, ".localhost") {
+	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
 		local, err := url.Parse(origin)
 		if err == nil && local.Scheme == "http" && (local.Hostname() == "localhost" || local.Hostname() == "127.0.0.1") {
 			port := local.Port()

@@ -187,7 +187,7 @@ func newEnvWithRFQProviders(
 		repository.NewProductSynonymRepository(), repository.NewProductAlternativeRepository(),
 		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), cfg.Catalog)
 	branchCatalogService := services.NewBranchCatalogService(db, productRepo,
-		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), nil)
+		repository.NewBranchProductRepository(), repository.NewProductPriceRepository(), repository.NewQuoteRepository(), nil)
 	onboardingRepo := repository.NewOnboardingRepository()
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	// Providers default to disabled; RFQ tests may inject deterministic doubles into this wiring.
@@ -229,7 +229,9 @@ func newEnvWithRFQProviders(
 	quoteService := services.NewQuoteService(db, quoteRepo,
 		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, quiet).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
-		WithInvoicingSwitch(repository.NewInvoicingRepository())
+		WithInvoicingSwitch(repository.NewInvoicingRepository()).
+		WithCatalogRecommendations(repository.NewProductAlternativeRepository()).
+		WithRecommendationProducts(productRepo)
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(domain.ARCAEnvironmentHomologation)
 	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)

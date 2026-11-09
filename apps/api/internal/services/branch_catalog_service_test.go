@@ -92,21 +92,37 @@ func (f *fakeAvailability) Save(
 }
 
 type pricingHarness struct {
-	service      *BranchCatalogService
-	db           *fakeDB
-	products     *fakeProducts
-	availability *fakeAvailability
-	prices       *fakePrices
+	service         *BranchCatalogService
+	db              *fakeDB
+	products        *fakeProducts
+	availability    *fakeAvailability
+	prices          *fakePrices
+	recommendations *fakeMutableRecommendationPrices
+}
+
+type fakeMutableRecommendationPrices struct {
+	accountID  uuid.UUID
+	branchID   uuid.UUID
+	productIDs []uuid.UUID
+	err        error
+}
+
+func (f *fakeMutableRecommendationPrices) RefreshMutableRecommendationPrice(
+	_ context.Context, _ repository.Querier, accountID, branchID uuid.UUID, price domain.ProductPrice,
+) error {
+	f.accountID, f.branchID, f.productIDs = accountID, branchID, []uuid.UUID{price.ProductID}
+	return f.err
 }
 
 func newPricingHarness(open *domain.ProductPrice, known ...uuid.UUID) *pricingHarness {
 	h := &pricingHarness{
-		db:           &fakeDB{},
-		products:     newFakeProducts(known...),
-		availability: &fakeAvailability{},
-		prices:       &fakePrices{open: open},
+		db:              &fakeDB{},
+		products:        newFakeProducts(known...),
+		availability:    &fakeAvailability{},
+		prices:          &fakePrices{open: open},
+		recommendations: &fakeMutableRecommendationPrices{},
 	}
-	h.service = NewBranchCatalogService(h.db, h.products, h.availability, h.prices,
+	h.service = NewBranchCatalogService(h.db, h.products, h.availability, h.prices, h.recommendations,
 		func() time.Time { return fixedNow })
 	return h
 }
@@ -115,6 +131,38 @@ func branchTenant() domain.Tenant {
 	return domain.Tenant{
 		AccountID: testAccountID, UserID: testUserID, Role: domain.UserRoleAdmin,
 		BranchID: testBranchID,
+	}
+}
+
+func TestBranchCatalogService_SetPrice_RefreshesBranchRecommendationsInTheSameTransaction(t *testing.T) {
+	h := newPricingHarness(nil, testProductID)
+	_, err := h.service.SetPrice(context.Background(), branchTenant(), testProductID,
+		domain.NewProductPrice{Price: decimal.RequireFromString("70")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.recommendations.accountID != testAccountID || h.recommendations.branchID != testBranchID ||
+		!reflect.DeepEqual(h.recommendations.productIDs, []uuid.UUID{testProductID}) {
+		t.Fatalf("refresh scope = %+v", h.recommendations)
+	}
+	want := errors.New("refresh failed")
+	h.recommendations.err = want
+	_, err = h.service.SetPrice(context.Background(), branchTenant(), testProductID,
+		domain.NewProductPrice{Price: decimal.RequireFromString("60")})
+	if !errors.Is(err, want) {
+		t.Fatalf("SetPrice() = %v, want refresh failure", err)
+	}
+}
+
+func TestBranchCatalogService_SetPrice_FuturePeriodsKeepCurrentRecommendationPrices(t *testing.T) {
+	h := newPricingHarness(nil, testProductID)
+	_, err := h.service.SetPrice(context.Background(), branchTenant(), testProductID,
+		domain.NewProductPrice{Price: decimal.RequireFromString("70"), ValidFrom: fixedNow.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.recommendations.productIDs) != 0 {
+		t.Fatal("a future price refreshed current recommendations")
 	}
 }
 

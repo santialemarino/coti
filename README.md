@@ -27,6 +27,10 @@ Customers verify new contacts before claiming their earlier requests, choose a m
 **My data**, and recover their account with a one-use code sent to a verified contact. See
 [Client profiles](docs/technical/client-profiles.md) for identity rules, migrations, contact delivery
 configuration and account recovery.
+An empty, unproved history links directly to contact verification; earlier seller-entered requests
+require proof of a contact already on the profile.
+Quotations sent to a verified contact after its proof also appear in that customer's history,
+including the paired online link, without granting access to earlier sends or the whole profile.
 
 ## Stack
 
@@ -95,6 +99,10 @@ pnpm dev
 | backoffice | http://localhost:3000                                       |
 | webapp     | http://sanmartin.localhost:3001 (registered local supplier) |
 | api        | http://localhost:8000                                       |
+
+Local quotation links preserve HTTP and the configured port for a registered `localhost` hostname.
+Supplier `.localhost` hostnames use `/c/<supplier>` on the shared portal. The API reads
+`CUSTOMER_PORTAL_BASE_URL` (default `http://localhost:3001` in development).
 
 Outbound mail goes to the log by default. To read a captured message — a password-reset or
 address-verification link — start the Mailpit sandbox, set these values in `apps/api/.env`,
@@ -254,6 +262,11 @@ startup.
 See [docs/technical/ai-providers.md](docs/technical/ai-providers.md).
 
 ## The RFQ pipeline
+
+Customer options in the quote workspace expand from their heading. Administrators can edit a
+product's branch price from **Settings → Catalog → Edit product → Edit branch prices**, including
+its optional discount floor. Editable alternatives take the new price and need approval again;
+base quote lines and immutable offers keep their snapshots.
 
 `POST /v1/rfqs/text-drafts` turns one informal order into a quote a seller can review: the text is
 stored first, then read into materials with a forced schema, then matched against the branch's

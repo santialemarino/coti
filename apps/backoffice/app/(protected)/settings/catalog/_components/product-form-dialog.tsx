@@ -28,12 +28,16 @@ import {
   PendingButton,
   Textarea,
 } from '@repo/ui/components';
+import { ProductPriceDialog } from '@/app/(protected)/settings/catalog/_components/product-price-dialog';
 import { productSchema, type ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
 import { AmountInput } from '@/components/amount-input';
+import type { Branch } from '@/lib/api/branches';
 import { DEFAULT_VAT_RATE, VAT_RATES } from '@/lib/api/invoicing';
 import type { Product, ProductFamily } from '@/lib/api/products';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+
+const NO_BRANCHES: Branch[] = [];
 
 interface ProductFormDialogProps {
   open: boolean;
@@ -45,6 +49,8 @@ interface ProductFormDialogProps {
   invoicingEnabled: boolean;
   pending: boolean;
   onSubmit: (values: ProductValues, image: File | null) => void;
+  branches?: Branch[];
+  activeBranchId?: string;
 }
 
 export function ProductFormDialog({
@@ -56,6 +62,8 @@ export function ProductFormDialog({
   invoicingEnabled,
   pending,
   onSubmit,
+  branches = NO_BRANCHES,
+  activeBranchId,
 }: ProductFormDialogProps) {
   const t = useTranslations('products');
   const tRates = useTranslations('invoicing.vatRates');
@@ -66,6 +74,7 @@ export function ProductFormDialog({
   const copy = open ? mode : lastMode.current;
   const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [priceOpen, setPriceOpen] = useState(false);
   const form = useForm<ProductValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
@@ -90,6 +99,7 @@ export function ProductFormDialog({
     });
     setImage(null);
     setPreviewUrl(product?.imageUrl ?? null);
+    setPriceOpen(false);
   }, [open, product, form]);
 
   useEffect(() => {
@@ -262,6 +272,12 @@ export function ProductFormDialog({
               ) : null}
             </div>
 
+            {copy === 'edit' && product ? (
+              <Button variant="outline" disabled={pending} onClick={() => setPriceOpen(true)}>
+                {t('priceEditor.action')}
+              </Button>
+            ) : null}
+
             {copy === 'create' && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
@@ -348,6 +364,16 @@ export function ProductFormDialog({
           </form>
         </Form>
       </DialogContent>
+      {product ? (
+        <ProductPriceDialog
+          open={priceOpen && open}
+          onOpenChange={setPriceOpen}
+          productId={product.id}
+          productName={product.name}
+          branches={branches}
+          initialBranchId={activeBranchId}
+        />
+      ) : null}
     </Dialog>
   );
 }

@@ -9,19 +9,26 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
-// customerOrderFrom opens a request through a contact only if it arrived after this customer proved that contact.
+// customerDeliveryContactProof also covers the web publication paired with a proved recipient's send.
+const customerDeliveryContactProof = `EXISTS (
+ SELECT 1 FROM quote_send delivered
+ JOIN channel destination_channel ON destination_channel.account_id=delivered.account_id
+   AND destination_channel.id=delivered.channel_id AND destination_channel.branch_id=r.branch_id
+ JOIN customer_contact_ownership ownership ON ownership.account_id=delivered.account_id AND ownership.customer_id=$2
+ JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
+ WHERE delivered.account_id=r.account_id AND delivered.version_id=s.version_id
+   AND (delivered.id=s.id OR (ch.type='WEBAPP' AND delivered.idempotency_key=s.idempotency_key))
+   AND delivered.tracking_status IN ('SENT','DELIVERED','VIEWED') AND delivered.sent_at>=ownership.verified_at
+   AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL AND contact.kind=destination_channel.type
+   AND contact.value=CASE WHEN destination_channel.type='EMAIL' THEN lower(delivered.destination) ELSE delivered.destination END
+ )`
+
+// customerOrderFrom keeps request ownership separate from access to individual published offers.
 const customerOrderFrom = ` FROM rfq r
  JOIN branch b ON b.account_id=r.account_id AND b.id=r.branch_id
  LEFT JOIN quote qt ON qt.account_id=r.account_id AND qt.branch_id=r.branch_id AND qt.rfq_id=r.id
  LEFT JOIN client cl ON cl.account_id=r.account_id AND cl.id=COALESCE(qt.client_id,r.client_id)
- LEFT JOIN LATERAL (
-   SELECT s.public_token FROM quote_send s
-   JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
-   JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
-   WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
-   ORDER BY v.version_number DESC,s.sent_at DESC,s.id DESC LIMIT 1
- ) published ON TRUE
- WHERE r.account_id=$1 AND (
+ JOIN LATERAL (SELECT (
  EXISTS (SELECT 1 FROM inbound_channel_message own_message
    JOIN channel own_channel ON own_channel.account_id=own_message.account_id AND own_channel.branch_id=own_message.branch_id AND own_channel.id=own_message.channel_id AND own_channel.type='WEBAPP'
    WHERE own_message.account_id=$1 AND own_message.branch_id=r.branch_id AND own_message.rfq_id=r.id AND own_message.payload->>'customer_id'=$2::uuid::text)
@@ -37,7 +44,16 @@ const customerOrderFrom = ` FROM rfq r
      WHERE observation.account_id=$1 AND observed.account_id=$1 AND observed.branch_id=r.branch_id AND observed.rfq_id=r.id
        AND observation.kind=contact.kind AND observation.value=contact.value AND observed.provider_received_at>=ownership.verified_at
    ))
- ))`
+ )) AS full_history) visibility ON TRUE
+ LEFT JOIN LATERAL (
+   SELECT s.public_token FROM quote_send s
+   JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
+   JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
+   WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
+     AND (visibility.full_history OR ` + customerDeliveryContactProof + `)
+   ORDER BY v.version_number DESC,s.sent_at DESC,s.id DESC LIMIT 1
+ ) published ON TRUE
+ WHERE r.account_id=$1 AND (visibility.full_history OR published.public_token IS NOT NULL)`
 
 const customerOrderColumns = `r.id,r.branch_id,b.name,r.received_at,
  CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN qt.current_status IN ('DRAFT','QUOTED') THEN 'SENT' ELSE qt.current_status::text END,
@@ -77,7 +93,8 @@ func (r *CustomerOrderRepository) GetByToken(ctx context.Context, q Querier, acc
 	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND EXISTS (
  SELECT 1 FROM quote_send s JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
  JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
- WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED'))`, accountID, customerID, token))
+ WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
+ AND (visibility.full_history OR `+customerDeliveryContactProof+`))`, accountID, customerID, token))
 }
 
 func scanCustomerOrder(row pgx.Row) (*domain.CustomerOrder, error) {
