@@ -1,0 +1,85 @@
+name: Production Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - '.github/workflows/cd.production.yml'
+      - 'scripts/deploy-digitalocean*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deployment-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/deploy-digitalocean.test.mjs
+
+  api:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.api.yml
+  backoffice:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.backoffice.yml
+  webapp:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.webapp.yml
+  ui:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.ui.yml
+  scripts:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.scripts.yml
+  docker:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.docker.yml
+  deploy-spec:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.deploy-spec.yml
+  skills:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.skills.yml
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: [deployment-tests, api, backoffice, webapp, ui, scripts, docker, deploy-spec, skills]
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Skip a superseded release
+        id: latest
+        shell: bash
+        run: |
+          latest="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$latest" = "$GITHUB_SHA" ]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main release is queued; skipping this commit.'
+          fi
+      - name: Deploy core, migrations and customer portal
+        if: steps.latest.outputs.current == 'true'
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          DIGITALOCEAN_CORE_APP_ID: ${{ vars.DIGITALOCEAN_CORE_APP_ID }}
+          DIGITALOCEAN_PORTAL_APP_ID: ${{ vars.DIGITALOCEAN_PORTAL_APP_ID }}
+          DO_DEPLOY_TIMEOUT_SECONDS: '1800'
+          DO_DEPLOY_POLL_SECONDS: '10'
+        run: node scripts/deploy-digitalocean.mjs

@@ -43,7 +43,7 @@ describe('CustomerPortalEditor', () => {
     const view = mount();
     const input = await view.findByLabelText(copy.label, { exact: false });
     fireEvent.change(input, { target: { value: 'Marko' } });
-    expect(view.getByText('http://marko.localhost:3001')).toBeTruthy();
+    expect(view.getByText('http://localhost:3001/c/marko')).toBeTruthy();
     await view.findByText(copy.available);
     fireEvent.click(view.getByRole('button', { name: copy.save }));
     await waitFor(() => expect(savePortal).toHaveBeenCalledWith('marko', '', false));
@@ -75,7 +75,7 @@ describe('CustomerPortalEditor', () => {
         ...portal,
         hostname: 'old.localhost',
         subdomain: 'old',
-        url: 'http://old.localhost:3001',
+        url: 'http://localhost:3001/c/old',
       },
     });
     const view = mount();

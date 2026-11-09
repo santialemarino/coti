@@ -1,7 +1,6 @@
 'use server';
 
-import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 
 import { ROUTES } from '@/config/routes';
 import { forwardedClientAddress } from '@/lib/api/forwarded-address';
@@ -21,6 +20,8 @@ import {
   startCustomerSession,
   type CustomerLoginRaw,
 } from '@/lib/auth/customer-session';
+import { customerCookies as cookies } from '@/lib/portal/cookies';
+import { customerRedirect } from '@/lib/portal/server';
 
 export interface CustomerAuthResult {
   error?: string;
@@ -55,7 +56,7 @@ export async function signInCustomer(values: {
       error: error instanceof CustomerAuthError ? errorForStatus(error.status) : 'unavailable',
     };
   }
-  redirect(safeCustomerDestination(values.next));
+  return await customerRedirect(safeCustomerDestination(values.next));
 }
 
 export async function signUpCustomer(values: {
@@ -79,7 +80,7 @@ export async function signUpCustomer(values: {
       error: error instanceof CustomerAuthError ? errorForStatus(error.status) : 'unavailable',
     };
   }
-  redirect(safeCustomerDestination(values.next, ROUTES.newRequest));
+  return await customerRedirect(safeCustomerDestination(values.next, ROUTES.newRequest));
 }
 
 export async function completeCustomerGoogle(values: {
@@ -123,10 +124,10 @@ export async function completeCustomerGoogle(values: {
   } catch {
     return { error: 'unavailable' };
   }
-  redirect(safeCustomerDestination(values.next, ROUTES.newRequest));
+  return await customerRedirect(safeCustomerDestination(values.next, ROUTES.newRequest));
 }
 
 export async function signOutCustomer(): Promise<void> {
   await endCustomerSession();
-  redirect(ROUTES.login);
+  return await customerRedirect(ROUTES.login);
 }

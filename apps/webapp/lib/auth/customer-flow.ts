@@ -1,11 +1,12 @@
 import 'server-only';
 
-import { cookies, headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 
 import { ROUTES } from '@/config/routes';
 import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import { customerApiPath, getCustomerSession, getCustomerToken } from '@/lib/auth/customer-session';
+import { customerCookies as cookies } from '@/lib/portal/cookies';
+import { customerRedirect } from '@/lib/portal/server';
 
 export const GOOGLE_STATE_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_google_state' : 'coti_google_state';
@@ -51,7 +52,9 @@ export function safeCustomerDestination(value: unknown, fallback: string = ROUTE
 export async function requireCustomer(destination: string) {
   const session = await getCustomerSession();
   if (!session)
-    redirect(`${ROUTES.login}?next=${encodeURIComponent(safeCustomerDestination(destination))}`);
+    return await customerRedirect(
+      `${ROUTES.login}?next=${encodeURIComponent(safeCustomerDestination(destination))}`,
+    );
   return session;
 }
 

@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { InlineLink } from '@repo/ui/components';
 import { PublicRfqSiteForm } from '@/app/_components/public-rfq-site-form';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { getPublicRfqSite } from '@/lib/api/public-rfqs';

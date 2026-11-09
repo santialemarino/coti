@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
-
 import { CustomerAuthPage } from '@/components/customer-auth-page';
 import { ROUTES } from '@/config/routes';
 import {
@@ -8,9 +6,10 @@ import {
   safeCustomerDestination,
 } from '@/lib/auth/customer-flow';
 import { getCustomerSession } from '@/lib/auth/customer-session';
+import { customerRedirect } from '@/lib/portal/server';
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  if (!(await pendingGoogleSignup())) redirect(ROUTES.login);
+  if (!(await pendingGoogleSignup())) return await customerRedirect(ROUTES.login);
   const session = await getCustomerSession();
   const query = await searchParams;
   return (

@@ -38,6 +38,7 @@ import { ROUTES } from '@/config/routes';
 import type { PublicRfqDestination } from '@/lib/api/public-rfqs';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { browserPortalPath } from '@/lib/portal/routing';
 
 interface PublicRfqFormProps {
   channelId: string;
@@ -147,7 +148,7 @@ export function PublicRfqForm({
       const payload = selectedFile
         ? body
         : JSON.stringify({ ...Object.fromEntries(body.entries()), text: values.text.trim() });
-      const response = await fetch(ROUTES.rfqSubmit(channelId), {
+      const response = await fetch(browserPortalPath(ROUTES.rfqSubmit(channelId)), {
         method: 'POST',
         body: payload,
         headers: selectedFile ? undefined : { 'Content-Type': 'application/json' },

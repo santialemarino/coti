@@ -9,8 +9,8 @@ describe('portal input', () => {
       expect(portalSchema().safeParse({ subdomain }).success).toBe(false);
   });
   it('uses the configured scheme, base hostname and port', () => {
-    expect(portalPreview('http://localhost:3001', 'Marko')).toBe('http://marko.localhost:3001');
-    expect(portalPreview('https://suppliers.test', 'Marko')).toBe('https://marko.suppliers.test');
+    expect(portalPreview('http://localhost:3001', 'Marko')).toBe('http://localhost:3001/c/marko');
+    expect(portalPreview('https://suppliers.test', 'Marko')).toBe('https://suppliers.test/c/marko');
     expect(portalPreview('', 'Marko')).toBe('');
   });
 });

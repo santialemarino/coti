@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
 import { CustomerProfileForm } from '@/app/profile/_components/customer-profile-form';
 import { MainContactCard } from '@/app/profile/_components/main-contact-card';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { requireCustomer } from '@/lib/auth/customer-flow';

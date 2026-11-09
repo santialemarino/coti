@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
@@ -18,6 +17,7 @@ import { RecoveryCodeStep } from '@/app/forgot-password/_components/recovery-cod
 import { RecoveryContactStep } from '@/app/forgot-password/_components/recovery-contact-step';
 import { RecoveryIdentifyStep } from '@/app/forgot-password/_components/recovery-identify-step';
 import type { RecoveryContact } from '@/app/forgot-password/actions';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 
 interface AccountRecoveryProps {

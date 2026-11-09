@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Badge, Button, Card } from '@repo/ui/components';
 import { signOutCustomer } from '@/app/login/actions';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerOrders } from '@/lib/api/customer-orders';
 import { requireCustomer } from '@/lib/auth/customer-flow';

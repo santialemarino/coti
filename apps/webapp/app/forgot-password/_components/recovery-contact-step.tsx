@@ -1,7 +1,6 @@
 'use client';
 
 import { useId } from 'react';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
@@ -22,6 +21,7 @@ import {
   RadioGroupItem,
 } from '@repo/ui/components';
 import { sendRecoveryCode, type RecoveryContact } from '@/app/forgot-password/actions';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 

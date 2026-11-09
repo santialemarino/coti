@@ -1,5 +1,4 @@
 import { timingSafeEqual } from 'node:crypto';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ROUTES } from '@/config/routes';
@@ -16,9 +15,12 @@ import {
 import { acceptCustomerSession, type CustomerLoginRaw } from '@/lib/auth/customer-session';
 import { customerRequestOrigin, localGoogleReturnOrigin } from '@/lib/auth/local-google-flow';
 import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
+import { customerCookies as cookies } from '@/lib/portal/cookies';
+import { PORTAL_SLUG_HEADER, portalPath, portalSlug } from '@/lib/portal/routing';
 
 export async function GET(request: NextRequest) {
   const requestOrigin = customerRequestOrigin(request.url, request.headers.get('host'));
+  const slug = portalSlug(request.headers.get(PORTAL_SLUG_HEADER));
   const returnOrigin = localGoogleReturnOrigin(
     request.nextUrl.searchParams.get('state') || '',
     requestOrigin,
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
   clearCustomerCookie(jar, GOOGLE_STATE_COOKIE);
   const fail = () => {
     const response = NextResponse.redirect(
-      new URL(`${ROUTES.login}?error=googleFailed`, requestOrigin),
+      new URL(portalPath(`${ROUTES.login}?error=googleFailed`, slug), requestOrigin),
     );
     response.headers.set('Cache-Control', 'no-store');
     return response;
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
       else clearCustomerCookie(jar, GOOGLE_EMAIL_PROVEN_COOKIE);
       destination = `${ROUTES.googleComplete}?next=${encodeURIComponent(destination === ROUTES.orders ? ROUTES.newRequest : destination)}`;
     } else return fail();
-    const redirect = NextResponse.redirect(new URL(destination, requestOrigin));
+    const redirect = NextResponse.redirect(new URL(portalPath(destination, slug), requestOrigin));
     redirect.headers.set('Cache-Control', 'no-store');
     return redirect;
   } catch {
