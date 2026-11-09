@@ -1,5 +1,10 @@
 # Deployment
 
+Customer Google sign-in redirects use the public `Host` header over HTTPS in production.
+The reverse proxy must preserve that header, which also scopes customer API requests to the
+registered supplier. The container's `localhost:3001` request URL must not become a browser
+redirect. Development retains HTTP supplier subdomains under `localhost`.
+
 ## Browser routes and the versioned API
 
 Reserve `/api/v1` for the Go API and rewrite that prefix to `/v1/`. Keep the trailing slash:
