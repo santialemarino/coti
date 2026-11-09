@@ -9,6 +9,26 @@ import {
 const nonce = 'n'.repeat(43);
 afterEach(() => vi.unstubAllEnvs());
 
+it('uses the public HTTPS host behind the production reverse proxy', () => {
+  vi.stubEnv('NODE_ENV', 'production');
+  expect(
+    customerRequestOrigin('http://localhost:3001/callback', 'coti-portal-8zcrm.ondigitalocean.app'),
+  ).toBe('https://coti-portal-8zcrm.ondigitalocean.app');
+});
+
+it.each([
+  'evil.com/path',
+  'user@evil.com',
+  'evil.com,other.com',
+  'evil.com#fragment',
+  'evil.com:3001',
+])('does not use a malformed public host %s', (host) => {
+  vi.stubEnv('NODE_ENV', 'production');
+  expect(customerRequestOrigin('https://supplier.test/callback', host)).toBe(
+    'https://supplier.test',
+  );
+});
+
 it('routes the development callback back to its starting supplier and port', () => {
   const state = localGoogleState(nonce, 'http://sanmartin.localhost:3001');
   expect(localGoogleReturnOrigin(state, 'http://localhost:3001')).toBe(

@@ -45,6 +45,23 @@ function callback(value = state) {
 }
 beforeEach(() => vi.clearAllMocks());
 
+it('completes production signup on the public supplier host behind a reverse proxy', async () => {
+  vi.stubEnv('NODE_ENV', 'production');
+  flow();
+  vi.mocked(postCustomerAuth).mockResolvedValue(
+    new Response(JSON.stringify({ signup_token: 'p'.repeat(43) })),
+  );
+  const response = await GET(
+    new NextRequest(
+      `https://localhost:3001/api/customer/google/callback?code=provider-code&state=${state}`,
+      { headers: { host: 'coti-portal-8zcrm.ondigitalocean.app' } },
+    ),
+  );
+  expect(response.headers.get('location')).toBe(
+    'https://coti-portal-8zcrm.ondigitalocean.app/google-complete?next=%2Fnew-request',
+  );
+});
+
 it('keeps the supplier host after signup when Next normalizes the callback URL', async () => {
   const localState = localGoogleState(state, 'http://sanmartin.localhost:3001');
   const jar = flow();
