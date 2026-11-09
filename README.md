@@ -9,6 +9,10 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+Merges into `main` trigger the production release workflow: all CI checks must pass before
+DigitalOcean deploys core, migrations and the customer portal. Development stays local; see
+[deployment](docs/technical/deployment.md#automatic-production-releases) for setup and retries.
+
 Customer portals share one deployment and use `/c/<supplier>` URLs. An administrator chooses the
 available supplier name during onboarding or later in Account settings; the editor previews the
 complete URL. Local portals use `http://localhost:3001/c/<supplier>`, and production can use the

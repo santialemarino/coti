@@ -49,7 +49,7 @@ func TestCustomerPortal_AdminIsolationAndConcurrentClaims(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &portal); err != nil {
 			t.Fatal(err)
 		}
-		if codes[i] == 200 && (portal.Hostname != label+".localhost" || portal.URL != "http://"+label+".localhost:3001") {
+		if codes[i] == 200 && (portal.Hostname != label+".localhost" || portal.URL != "http://localhost:3001/c/"+label) {
 			t.Fatalf("saved portal: %s", rec.Body)
 		}
 		if codes[i] == 409 && portal.Hostname != "" {

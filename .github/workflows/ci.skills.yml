@@ -10,7 +10,6 @@ on:
   workflow_call:
   push:
     branches:
-      - main
       - dev
     paths:
       - '.claude/skills/**'

@@ -27,12 +27,45 @@ separate origins. Neither template declares a paid DigitalOcean database or a Sp
 | `.do/app.neon.yaml` | `coti-core`   | API, backoffice, migrations and seven scheduled jobs |
 | `.do/portal.yaml`   | `coti-portal` | Customer webapp                                      |
 
-Both clone the public GitHub repository over HTTPS, using `main` as the source branch. This avoids
-requiring a repository-owner GitHub App installation. Redeploy explicitly after a release; this
-source mode does not enable automatic deploys on push. Publish the integration through the repository's
+Both clone the public GitHub repository over HTTPS, using `main` as the source branch. GitHub Actions
+orchestrates automatic releases without requiring a repository-owner GitHub App installation.
+Publish the integration through the repository's
 review and release flow before creating the apps. App Platform cannot build uncommitted local files.
 For a validation deployment, use the review branch in a local copy of each spec and switch both
 apps to `main` after approval and release.
+
+## Automatic production releases
+
+`.github/workflows/cd.production.yml` runs on a push to `main` or a manual dispatch from `main`.
+It calls all eight reusable CI workflows and deploys only after every check succeeds. Their
+standalone push triggers cover `dev`; PR checks remain unchanged. Feature branches and dev never
+receive deployment credentials or deploy. Workflow changes have a separate secret-free PR test job.
+
+Repository configuration:
+
+| Setting                      | Kind             | Purpose                                           |
+| ---------------------------- | ---------------- | ------------------------------------------------- |
+| `DIGITALOCEAN_ACCESS_TOKEN`  | Actions secret   | Read and update the two App Platform applications |
+| `DIGITALOCEAN_CORE_APP_ID`   | Actions variable | Existing core application UUID                    |
+| `DIGITALOCEAN_PORTAL_APP_ID` | Actions variable | Existing portal application UUID                  |
+
+`scripts/deploy-digitalocean.mjs` reads and validates both live app specs before changing either.
+It requires the expected repository on main and a pre-deployment migration job on core. Each update
+uses the freshly read live spec with `update_all_source_versions`, preserving runtime secrets,
+domains, routing, schedules and instance sizes. Committed `.do/` templates are not applied over
+the live configuration. Infrastructure changes still require an explicit configuration update.
+
+Core and its migrations deploy first, then the customer portal. The script waits for each release
+to become active, checks every source component's commit, and probes core readiness and the portal
+manifest. These probes do not replace authenticated integration tests. Deployments are serialized
+and a superseded commit is skipped before publishing. A main update during source resolution causes
+a commit mismatch failure; the queued newer release must complete its own checks and deploy.
+
+A failure stops the release and is visible in GitHub Actions and DigitalOcean Activity. This is
+not an atomic two-app transaction: a portal failure can leave core on the new version. Automatic
+database rollback is never attempted. To retry, run Production Release from main after checking
+Activity. `--check` validates live configuration without deploying and can be run locally with the
+same repository variables and token. The normal deployment command refuses local shells and non-main runs.
 
 Each web service uses a fixed 1 GiB instance. At the published price of USD 10 per service per month,
 the three services total USD 30 per month before scheduled jobs, usage-based services and taxes.
