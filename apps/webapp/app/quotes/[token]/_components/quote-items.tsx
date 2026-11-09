@@ -24,6 +24,7 @@ import type {
   QuoteItem,
 } from '@/lib/api/public-quotes';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { browserPortalPath } from '@/lib/portal/routing';
 import { useQuoteSelections } from './quote-selection-context';
 import { QuoteSummary } from './quote-summary';
 
@@ -402,7 +403,7 @@ async function requestSelectionPreview(
   token: string,
   selections: PublicQuoteAlternativeSelection[],
 ): Promise<PublicQuoteSelectionPreview> {
-  const response = await fetch('/api/public-quote-preview', {
+  const response = await fetch(browserPortalPath('/api/public-quote-preview'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

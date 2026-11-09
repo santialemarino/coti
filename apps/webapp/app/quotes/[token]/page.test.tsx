@@ -9,6 +9,8 @@ vi.mock('@/lib/api/customer-orders', () => ({
   getDeliveryHostname: vi.fn(),
 }));
 vi.mock('@/lib/auth/customer-flow', () => ({ requireCustomer: vi.fn() }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
+
 vi.mock('next/navigation', () => ({
   redirect: (path: string) => {
     throw new Error('redirect:' + path);

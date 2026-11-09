@@ -1445,7 +1445,7 @@ func Load() (*Config, error) {
 	if len(problems) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  - %s", strings.Join(problems, "\n  - "))
 	}
-	if local, err := url.Parse(cfg.CustomerPortal.BaseURL); err == nil && local.Hostname() == "localhost" {
+	if local, err := url.Parse(cfg.CustomerPortal.BaseURL); err == nil && local.Hostname() != "" {
 		cfg.CustomerAuth.PortalLocalOrigin = cfg.CustomerPortal.BaseURL
 	}
 	return cfg, nil

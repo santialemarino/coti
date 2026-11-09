@@ -13,5 +13,5 @@ export function portalSchema(message = 'invalid') {
 export function portalPreview(baseUrl: string, subdomain: string): string {
   if (!baseUrl) return '';
   const base = new URL(baseUrl);
-  return `${base.protocol}//${subdomain.trim().toLowerCase() || '…'}.${base.host}`;
+  return `${base.origin}/c/${subdomain.trim().toLowerCase() || '…'}`;
 }

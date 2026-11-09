@@ -43,7 +43,7 @@ func TestCustomerPortalService_ValidationIsolationAndConfirmation(t *testing.T) 
 		t.Fatal(err)
 	}
 	p, err := s.Update(ctx, tenant, domain.CustomerPortalUpdate{Subdomain: " Marko "})
-	if err != nil || p.URL != "http://marko.localhost:3001" {
+	if err != nil || p.URL != "http://localhost:3001/c/marko" {
 		t.Fatalf("%+v %v", p, err)
 	}
 	in := domain.CustomerPortalUpdate{Subdomain: "otro", ExpectedHostname: "marko.localhost"}
@@ -84,5 +84,21 @@ func TestCustomerPortalService_ValidationIsolationAndConfirmation(t *testing.T) 
 	s.baseURL = ""
 	if _, err = s.Update(ctx, tenant, in); !errors.Is(err, domain.ErrNotConfigured) {
 		t.Fatal(err)
+	}
+}
+
+func TestCustomerPortalService_MigratesSharedStarterDomainOnlyWithConfirmation(t *testing.T) {
+	ctx := context.Background()
+	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
+	f := &portalFake{accountID: tenant.AccountID, hostname: "portal.ondigitalocean.app"}
+	s := NewCustomerPortalService(&fakeDB{}, f, config.CustomerPortalConfig{BaseURL: "https://portal.ondigitalocean.app"})
+	in := domain.CustomerPortalUpdate{Subdomain: "marko", ExpectedHostname: f.hostname}
+	if _, err := s.Update(ctx, tenant, in); !errors.Is(err, domain.ErrConflict) {
+		t.Fatal(err)
+	}
+	in.ConfirmChange = true
+	p, err := s.Update(ctx, tenant, in)
+	if err != nil || p.URL != "https://portal.ondigitalocean.app/c/marko" || p.Legacy {
+		t.Fatalf("%+v %v", p, err)
 	}
 }

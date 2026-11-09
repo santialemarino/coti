@@ -4,6 +4,8 @@ import HomePage from '@/app/page';
 import { getCustomerSession } from '@/lib/auth/customer-session';
 
 vi.mock('@/lib/auth/customer-session', () => ({ getCustomerSession: vi.fn() }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
+
 vi.mock('next/navigation', () => ({
   redirect: (path: string) => {
     throw new Error('redirect:' + path);

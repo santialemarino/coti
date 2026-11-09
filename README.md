@@ -9,6 +9,12 @@ catalog and pricing, and hands the sales rep a structured, ready-to-review quote
 Human review is always in the main flow — Coti is a sales copilot, not an
 autopilot.
 
+Customer portals share one deployment and use `/c/<supplier>` URLs. An administrator chooses the
+available supplier name during onboarding or later in Account settings; the editor previews the
+complete URL. Local portals use `http://localhost:3001/c/<supplier>`, and production can use the
+DigitalOcean starter domain with no custom DNS. Each supplier has separate customer cookies and
+the backend resolves the registered supplier before authenticating any request.
+
 The customer portal includes authenticated request history and commercial profiles. Registration
 requires CUIT/CUIL, full name and at least one contact; channel and seller-created profiles start
 without CUIT. History requires the authenticated portal author or customer-specific contact proof;

@@ -1,6 +1,7 @@
 // Every link and redirect reads from here, so a route rename is one edit.
 export const ROUTES = {
   home: '/',
+  portal: (slug: string) => `/c/${slug}`,
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',

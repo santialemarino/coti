@@ -124,14 +124,14 @@ func (s *CustomerPortalService) settings(hostname string) *domain.CustomerPortal
 	settings.URL = "https://" + hostname
 	base, err := url.Parse(s.baseURL)
 	if err == nil && base.Hostname() != "" {
+		if hostname == base.Hostname() {
+			settings.URL = base.String()
+			return settings
+		}
 		label := strings.TrimSuffix(hostname, "."+base.Hostname())
 		if normalized, err := domain.NormalizeSubdomain(label); err == nil && normalized+"."+base.Hostname() == hostname {
 			settings.Subdomain = normalized
-			port := base.Port()
-			base.Host = hostname
-			if port != "" {
-				base.Host += ":" + port
-			}
+			base.Path = "/c/" + normalized
 			settings.URL = base.String()
 			return settings
 		}

@@ -1,7 +1,6 @@
-import { redirect } from 'next/navigation';
-
 import { ROUTES } from '@/config/routes';
+import { customerRedirect } from '@/lib/portal/server';
 
 export default async function LegacyRequestPage() {
-  redirect(ROUTES.newRequest);
+  return await customerRedirect(ROUTES.newRequest);
 }

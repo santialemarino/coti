@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { SearchXIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { Button, Card, StatusScreen } from '@repo/ui/components';
 import { Brand } from '@/components/brand';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 
 export async function generateMetadata(): Promise<Metadata> {

@@ -3,6 +3,7 @@ package config
 import "testing"
 
 func TestCustomerPortalConfiguration(t *testing.T) {
+	t.Setenv("WEB_WEBAPP_URL", "")
 	for _, tc := range []struct {
 		env       Environment
 		raw, want string
@@ -23,5 +24,15 @@ func TestCustomerPortalConfiguration(t *testing.T) {
 		if (len(problems) > 0) != tc.invalid || (!tc.invalid && got.BaseURL != tc.want) {
 			t.Errorf("%s %q: %+v, %v", tc.env, tc.raw, got, problems)
 		}
+	}
+}
+
+func TestCustomerPortalProductionUsesSharedWebappOrigin(t *testing.T) {
+	t.Setenv("CUSTOMER_PORTAL_BASE_URL", "")
+	t.Setenv("WEB_WEBAPP_URL", "https://portal.ondigitalocean.app")
+	var problems []string
+	got := loadCustomerPortal(EnvironmentProduction, &problems)
+	if len(problems) != 0 || got.BaseURL != "https://portal.ondigitalocean.app" {
+		t.Fatalf("%+v %v", got, problems)
 	}
 }

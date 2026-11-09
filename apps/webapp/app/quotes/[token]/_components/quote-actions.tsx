@@ -26,6 +26,7 @@ import {
   Textarea,
 } from '@repo/ui/components';
 import type { CustomerActionType, PublicQuoteActionResult } from '@/lib/api/public-quotes';
+import { browserPortalPath } from '@/lib/portal/routing';
 import { useQuoteSelections } from './quote-selection-context';
 
 const MAX_ACTION_MESSAGE = 512;
@@ -249,7 +250,7 @@ async function submitAction(
     selections: { itemId: string; alternativeId: string }[];
   },
 ): Promise<PublicQuoteActionResult> {
-  const response = await fetch('/api/public-quote-action', {
+  const response = await fetch(browserPortalPath('/api/public-quote-action'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

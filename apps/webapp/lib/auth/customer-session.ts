@@ -1,10 +1,12 @@
 import 'server-only';
 
 import { cache } from 'react';
-import { cookies, headers } from 'next/headers';
+import { headers } from 'next/headers';
 
 import { PUBLIC_SITE_HOSTNAME } from '@/lib/config';
 import { API_INTERNAL_URL } from '@/lib/config/server';
+import { customerCookies as cookies } from '@/lib/portal/cookies';
+import { getPortalSlug } from '@/lib/portal/server';
 
 export const CUSTOMER_SESSION_COOKIE =
   process.env.NODE_ENV === 'production' ? '__Host-coti_customer' : 'coti_customer';
@@ -48,6 +50,8 @@ export async function getCustomerHostname(): Promise<string> {
     .replace(/:\d+$/, '')
     .replace(/\.$/, '');
   const loopback = host === 'localhost' || host === '127.0.0.1';
+  const slug = await getPortalSlug();
+  if (slug) return `${slug}.${host}`;
   return loopback && process.env.NODE_ENV !== 'production' && PUBLIC_SITE_HOSTNAME
     ? PUBLIC_SITE_HOSTNAME.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
     : host;

@@ -14,7 +14,7 @@ import {
 import { acceptCustomerSession } from '@/lib/auth/customer-session';
 import { localGoogleState } from '@/lib/auth/local-google-flow';
 
-vi.mock('next/headers', () => ({ cookies: vi.fn() }));
+vi.mock('next/headers', () => ({ cookies: vi.fn(), headers: async () => new Headers() }));
 vi.mock('@/lib/auth/customer-flow', async (original) => ({
   ...(await original<typeof import('@/lib/auth/customer-flow')>()),
   postCustomerAuth: vi.fn(),
