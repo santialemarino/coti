@@ -61,6 +61,8 @@ type quoteDeliveryQuoteRepository interface {
 		items []domain.NewQuoteItem) ([]domain.QuoteItem, error)
 	ListAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		itemIDs []uuid.UUID) (map[uuid.UUID][]domain.QuoteItemAlternative, error)
+	MarkAlternativesChosenByClient(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
+		selections []domain.ClientAlternativeSelection) error
 	CreateAlternatives(ctx context.Context, q repository.Querier, accountID uuid.UUID,
 		alternatives []domain.NewQuoteItemAlternative) error
 	DeleteAlternativesByItemIDs(ctx context.Context, q repository.Querier, accountID, versionID uuid.UUID,
@@ -117,6 +119,11 @@ type quoteRepresentationEnsurer interface {
 		publicURL string) (*domain.PublicQuoteRepresentation, error)
 }
 
+type quoteDeliveryRepresentationReader interface {
+	GetByVersionID(ctx context.Context, q repository.Querier, accountID,
+		versionID uuid.UUID) (*domain.QuoteRepresentation, error)
+}
+
 type quotePublicDB interface {
 	tenantTxRunner
 	CrossAccount() repository.Querier
@@ -138,6 +145,7 @@ type QuoteDeliveryService struct {
 	email               quoteEmailSender
 	evaluator           QuoteQualityEvaluator
 	representations     quoteRepresentationEnsurer
+	selectionSnapshots  quoteDeliveryRepresentationReader
 	actions             clientActionRecorder
 	sellers             quoteSellerReader
 	windows             changeRequestQueue
@@ -163,6 +171,14 @@ func (s *QuoteDeliveryService) WithRepresentationService(
 	representations quoteRepresentationEnsurer,
 ) *QuoteDeliveryService {
 	s.representations = representations
+	return s
+}
+
+// WithSelectionSnapshots supplies the private commercial snapshot attached to a sent offer.
+func (s *QuoteDeliveryService) WithSelectionSnapshots(
+	representations quoteDeliveryRepresentationReader,
+) *QuoteDeliveryService {
+	s.selectionSnapshots = representations
 	return s
 }
 
@@ -731,6 +747,96 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	return result, nil
 }
 
+// PreviewPublic calculates the frozen commercial outcome of customer alternative choices.
+func (s *QuoteDeliveryService) PreviewPublic(ctx context.Context, token string,
+	selections []domain.ClientAlternativeSelection,
+) (*domain.PublicQuoteSelectionPreview, error) {
+	if s.selectionSnapshots == nil || s.draftCarry == nil || s.draftCarry.sweep == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, domain.ErrNotFound
+	}
+	accountID, err := s.sends.GetAccountIDByPublicToken(ctx, s.db.CrossAccount(), token)
+	if err != nil {
+		return nil, err
+	}
+	var preview *domain.PublicQuoteSelectionPreview
+	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
+		func(q repository.Querier) error {
+			send, getErr := s.sends.GetPublicByToken(ctx, q, accountID, token)
+			if getErr != nil {
+				return getErr
+			}
+			if send.ExpiresAt == nil {
+				return domain.ErrNotFound
+			}
+			if !s.now().Before(*send.ExpiresAt) {
+				return domain.WithCode(domain.CodeQuoteSendExpired, domain.ErrConflict)
+			}
+			quote, getErr := s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
+			if getErr != nil {
+				return getErr
+			}
+			if quote.ArchivedAt != nil {
+				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
+				quote.CurrentStatus != domain.QuoteStatusSent {
+				return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+			}
+			representation, getErr := s.selectionSnapshots.GetByVersionID(ctx, q, accountID,
+				send.VersionID)
+			if getErr != nil {
+				return getErr
+			}
+			if representation.SelectionPricing == nil {
+				return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+			}
+			items, getErr := s.quotes.ListItems(ctx, q, accountID, send.VersionID)
+			if getErr != nil {
+				return getErr
+			}
+			alternatives, getErr := s.quotes.ListAlternativesByItemIDs(ctx, q, accountID,
+				quoteItemIDs(items))
+			if getErr != nil {
+				return getErr
+			}
+			selected, selectionErr := selectedAlternatives(items, alternatives, selections)
+			if selectionErr != nil {
+				return selectionErr
+			}
+			discounts, getErr := s.draftCarry.sweep.discounts.ListByVersionID(ctx, q, accountID,
+				send.VersionID)
+			if getErr != nil {
+				return getErr
+			}
+			links, getErr := s.draftCarry.sweep.discounts.ListItemIDsByDiscountIDs(ctx, q, accountID,
+				send.VersionID, discountIDs(discounts))
+			if getErr != nil {
+				return getErr
+			}
+			selectedItems := withSelectedAlternatives(items, selected)
+			result, evaluationErr := previewSelectionPricing(quote.BranchID,
+				selectedItems, discounts, links,
+				*representation.SelectionPricing)
+			if evaluationErr != nil {
+				return evaluationErr
+			}
+			payload := previewSelectionPayload(representation.Payload,
+				selectedItems, selected, discounts,
+				*representation.SelectionPricing, result)
+			preview = &domain.PublicQuoteSelectionPreview{Payload: payload,
+				Subtotal: sumItemSubtotals(selectedItems).StringFixed(domain.MoneyScale)}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return preview, nil
+}
+
 // RespondPublic records the customer's deliberate answer to a published quote and closes the loop
 // when that answer addresses the version the quote still shows: ACCEPT moves SENT to ACCEPTED,
 // REJECT to REJECTED, and REQUEST_CHANGE to CHANGE_REQUESTED. A token that already answered
@@ -760,6 +866,97 @@ func (s *QuoteDeliveryService) RespondPublic(ctx context.Context, token string,
 		return respondErr
 	})
 	return result, err
+}
+
+func previewSelectionPayload(payload domain.QuoteRepresentationPayload,
+	items []domain.QuoteItem, selected map[uuid.UUID]domain.QuoteItemAlternative,
+	discounts []domain.QuoteDiscount, snapshot domain.QuoteSelectionPricingSnapshot,
+	result sweepResult,
+) domain.QuoteRepresentationPayload {
+	byID := make(map[uuid.UUID]domain.QuoteItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	payload.Items = append([]domain.QuoteRepresentationItem(nil), payload.Items...)
+	for index := range payload.Items {
+		item, found := byID[payload.Items[index].ID]
+		if !found {
+			continue
+		}
+		payload.Items[index].UnitPrice = item.UnitPriceSnapshot.Decimal.StringFixed(domain.MoneyScale)
+		payload.Items[index].Subtotal = item.Subtotal.Decimal.StringFixed(domain.MoneyScale)
+		if alternative, chosen := selected[item.ID]; chosen {
+			payload.Items[index].ProductCode = alternative.Code
+			if alternative.CanonicalName != nil {
+				payload.Items[index].ProductName = *alternative.CanonicalName
+			}
+			payload.Items[index].Unit = alternative.Unit
+		}
+	}
+	payload.Discounts = previewSelectionDiscounts(discounts, snapshot, result)
+	payload.Total = result.total.StringFixed(domain.MoneyScale)
+	return payload
+}
+
+func previewSelectionPricing(branchID uuid.UUID, items []domain.QuoteItem,
+	discounts []domain.QuoteDiscount, links map[uuid.UUID][]uuid.UUID,
+	snapshot domain.QuoteSelectionPricingSnapshot,
+) (sweepResult, error) {
+	carried := make([]domain.QuoteDiscount, 0, len(discounts))
+	for _, discount := range discounts {
+		if discount.Origin != domain.DiscountOriginManualSeller && !discount.SuppressedBySeller {
+			continue
+		}
+		if discount.Origin == domain.DiscountOriginAIAdaptation {
+			discount.Origin = domain.DiscountOriginAutomatic
+		}
+		carried = append(carried, discount)
+	}
+	groups := make(map[uuid.UUID]domain.ProductGroup, len(snapshot.ProductGroups))
+	for _, product := range snapshot.ProductGroups {
+		groups[product.ProductID] = product.Group
+	}
+	return (sweepState{discounts: carried, links: links, promotions: snapshot.Promotions,
+		groups: groups, at: snapshot.CapturedAt}).evaluate(branchID, items)
+}
+
+func previewSelectionDiscounts(discounts []domain.QuoteDiscount,
+	snapshot domain.QuoteSelectionPricingSnapshot, result sweepResult,
+) []domain.QuoteRepresentationDiscount {
+	followed := make(map[uuid.UUID]string, len(result.followed))
+	for _, amount := range result.followed {
+		followed[amount.discountID] = amount.amount.StringFixed(domain.MoneyScale)
+	}
+	promotions := make(map[uuid.UUID]string, len(snapshot.Promotions))
+	for _, promotion := range snapshot.Promotions {
+		promotions[promotion.ID] = promotion.Name
+	}
+	preview := make([]domain.QuoteRepresentationDiscount, 0, len(discounts)+len(result.earned))
+	for _, discount := range discounts {
+		if discount.Origin != domain.DiscountOriginManualSeller || discount.SuppressedBySeller {
+			continue
+		}
+		description := ""
+		if discount.Description != nil {
+			description = *discount.Description
+		} else if discount.PromotionName != nil {
+			description = *discount.PromotionName
+		}
+		amount := discount.Amount.StringFixed(domain.MoneyScale)
+		if updated, moved := followed[discount.ID]; moved {
+			amount = updated
+		}
+		preview = append(preview, domain.QuoteRepresentationDiscount{
+			Description: description, Amount: amount,
+		})
+	}
+	for _, application := range result.earned {
+		preview = append(preview, domain.QuoteRepresentationDiscount{
+			Description: promotions[application.PromotionID],
+			Amount:      application.Amount.StringFixed(domain.MoneyScale),
+		})
+	}
+	return preview
 }
 
 func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid.UUID, token string,
@@ -807,6 +1004,37 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			if !ok {
 				return domain.ErrInvalidInput
 			}
+			var acceptedVersion *domain.QuoteVersion
+			if in.Type == domain.ClientActionAccept {
+				current, currentErr := s.quotes.GetCurrentVersion(ctx, q, accountID, quote.BranchID, quote.ID)
+				if currentErr != nil {
+					return currentErr
+				}
+				acceptedVersion = current
+				if len(in.Selections) > 0 {
+					if s.selectionSnapshots == nil || s.draftCarry == nil {
+						return domain.ErrNotConfigured
+					}
+					representation, representationErr := s.selectionSnapshots.GetByVersionID(ctx, q,
+						accountID, send.VersionID)
+					if representationErr != nil {
+						return representationErr
+					}
+					if representation.SelectionPricing == nil {
+						return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+					}
+					acceptedVersion, currentErr = cloneQuoteVersionForClientSelection(ctx, q, s.quotes, s.quotes,
+						accountID, quote.BranchID, quote.ID, *current, in.Selections, s.draftCarry,
+						*representation.SelectionPricing)
+					if currentErr != nil {
+						return currentErr
+					}
+					if currentErr = s.quotes.MarkAlternativesChosenByClient(ctx, q, accountID,
+						send.VersionID, in.Selections); currentErr != nil {
+						return currentErr
+					}
+				}
+			}
 			created, err := s.actions.Create(ctx, q, accountID, domain.NewClientAction{
 				ID: uuid.New(), QuoteSendID: &send.ID, VersionID: send.VersionID, Type: in.Type,
 				Comment: in.Message})
@@ -831,6 +1059,10 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			}
 			result = &domain.PublicQuoteActionResult{CustomerStatus: created.Type,
 				CreatedAt: created.CreatedAt, QuoteStatus: target}
+			if acceptedVersion != nil {
+				total := acceptedVersion.Total.StringFixed(domain.MoneyScale)
+				result.Total = &total
+			}
 			if in.Type == domain.ClientActionAccept || in.Type == domain.ClientActionReject {
 				moved = &domain.ClientQuoteOutcome{QuoteID: updated.ID,
 					Reference: string(domain.QuoteReference(updated.Number)), Status: target,
@@ -946,6 +1178,9 @@ func normalizeClientAction(in *domain.ClientActionInput) error {
 		utf8.RuneCountInString(*in.Message) > maxClientActionComment {
 		return fmt.Errorf("%w: comment must be at most %d characters",
 			domain.ErrInvalidInput, maxClientActionComment)
+	}
+	if in.Type != domain.ClientActionAccept && len(in.Selections) > 0 {
+		return fmt.Errorf("%w: alternatives can only be selected when accepting", domain.ErrInvalidInput)
 	}
 	return nil
 }

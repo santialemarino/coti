@@ -1,13 +1,14 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useForm } from 'react-hook-form';
 
 import { Button, Form, FormRootMessage, PendingButton } from '@repo/ui/components';
 import { confirmContactVerification } from '@/app/profile/actions';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
+import { browserPortalPath } from '@/lib/portal/routing';
 
 export function ContactEmailConfirmation({
   challenge,
@@ -25,7 +26,7 @@ export function ContactEmailConfirmation({
       form.setError('root', { message: result.error });
       return;
     }
-    router.replace(ROUTES.profile);
+    router.replace(browserPortalPath(ROUTES.profile));
     router.refresh();
   }
   return (

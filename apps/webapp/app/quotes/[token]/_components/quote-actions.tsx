@@ -26,6 +26,8 @@ import {
   Textarea,
 } from '@repo/ui/components';
 import type { CustomerActionType, PublicQuoteActionResult } from '@/lib/api/public-quotes';
+import { browserPortalPath } from '@/lib/portal/routing';
+import { useQuoteSelections } from './quote-selection-context';
 
 const MAX_ACTION_MESSAGE = 512;
 // The refusal the route forwards by name when the corralón archived the quote under the open page.
@@ -38,6 +40,7 @@ interface QuoteActionsProps {
   /* Absent on the dev-only preview route, which demos the flow without a wire call. */
   token?: string;
   customerStatus?: CustomerActionType;
+  currency?: string;
 }
 
 // Declining is a legitimate answer, not a failure, so it is confirmed in neutral rather than red.
@@ -81,8 +84,9 @@ const RESPONDED_DESCRIPTION_KEY: Record<CustomerActionType, string> = {
  * The customer's answer to the frozen quote. A change request requires a message so the seller
  * knows what to rework. The preview route simulates the round trip without a running API.
  */
-export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
+export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteActionsProps) {
   const t = useTranslations('quote.actions');
+  const { selections, previewReady } = useQuoteSelections();
 
   const [choice, setChoice] = useState<ActionChoice | null>(null);
   const [message, setMessage] = useState('');
@@ -95,6 +99,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
   const showMessageError = choice === 'REQUEST_CHANGE' && messageMissing && messageTouched;
 
   function openDialog(next: ActionChoice) {
+    if (next === 'ACCEPT' && !previewReady) return;
     setChoice(next);
     setMessage('');
     setMessageTouched(false);
@@ -108,7 +113,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
   }
 
   async function handleConfirm() {
-    if (choice === null) return;
+    if (choice === null || busy || (choice === 'ACCEPT' && !previewReady)) return;
     if (choice === 'REQUEST_CHANGE' && messageMissing) {
       setMessageTouched(true);
       return;
@@ -117,7 +122,11 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
     setSubmitError(null);
     try {
       const outcome = token
-        ? await submitAction(token, { type: choice, message: message.trim() || undefined })
+        ? await submitAction(token, {
+            type: choice,
+            message: message.trim() || undefined,
+            selections,
+          })
         : await simulateAction(choice);
       setResult(outcome);
       closeDialog();
@@ -149,6 +158,11 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
                 result ? RESULT_DESCRIPTION_KEY[answered] : RESPONDED_DESCRIPTION_KEY[answered],
               )}
             />
+            {answered === 'ACCEPT' && result?.total ? (
+              <p className="text-center text-paragraph-sm-medium text-foreground">
+                {t('resultTotal', { amount: formatCurrency(result.total, currency) })}
+              </p>
+            ) : null}
           </Card>
         </>
       ) : (
@@ -159,7 +173,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-center sm:gap-x-3">
-            <Button type="button" onClick={() => openDialog('ACCEPT')}>
+            <Button type="button" disabled={!previewReady} onClick={() => openDialog('ACCEPT')}>
               <CheckIcon />
               {t('acceptLabel')}
             </Button>
@@ -215,6 +229,7 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
               type="button"
               variant={choice === 'REJECT' ? 'destructive' : 'default'}
               pending={busy}
+              disabled={choice === 'ACCEPT' && !previewReady}
               pendingLabel={t('sending')}
               onClick={handleConfirm}
             >
@@ -229,18 +244,37 @@ export function QuoteActions({ token, customerStatus }: QuoteActionsProps) {
 
 async function submitAction(
   token: string,
-  action: { type: CustomerActionType; message?: string },
+  action: {
+    type: CustomerActionType;
+    message?: string;
+    selections: { itemId: string; alternativeId: string }[];
+  },
 ): Promise<PublicQuoteActionResult> {
-  const response = await fetch('/api/public-quote-action', {
+  const response = await fetch(browserPortalPath('/api/public-quote-action'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, type: action.type, message: action.message }),
+    body: JSON.stringify({
+      token,
+      type: action.type,
+      message: action.message,
+      selections:
+        action.type === 'ACCEPT' && action.selections.length > 0
+          ? action.selections.map((selection) => ({
+              item_id: selection.itemId,
+              alternative_id: selection.alternativeId,
+            }))
+          : undefined,
+    }),
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
     throw new ActionRefusedError(typeof body?.error === 'string' ? body.error : undefined);
   }
   return (await response.json()) as PublicQuoteActionResult;
+}
+
+function formatCurrency(amount: string, currency: string): string {
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency }).format(Number(amount));
 }
 
 async function simulateAction(choice: CustomerActionType): Promise<PublicQuoteActionResult> {

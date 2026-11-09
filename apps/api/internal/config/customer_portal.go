@@ -10,13 +10,16 @@ import (
 
 var portalBaseHostname = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 
-// CustomerPortalConfig carries the provisioned base origin.
+// CustomerPortalConfig carries the shared origin for supplier portal paths.
 type CustomerPortalConfig struct {
 	BaseURL string
 }
 
 func loadCustomerPortal(env Environment, problems *[]string) CustomerPortalConfig {
 	base := os.Getenv("CUSTOMER_PORTAL_BASE_URL")
+	if base == "" && env == EnvironmentProduction {
+		base = os.Getenv("WEB_WEBAPP_URL")
+	}
 	if base == "" && env == EnvironmentDevelopment {
 		base = "http://localhost:3001"
 	}

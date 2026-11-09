@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uploadAccountLogo } from '@/lib/api/account-logo';
 
 vi.mock('@/lib/api/client', () => ({ apiRequest: vi.fn() }));
-vi.mock('@/lib/config', () => ({ API_URL: 'https://api.coti.test/api/' }));
+vi.mock('@/lib/config', () => ({
+  API_URL: 'http://api:8000',
+  PUBLIC_API_URL: 'https://api.coti.test/api/',
+}));
 
 const { apiRequest } = await import('@/lib/api/client');
 const { ApiError } = await import('@/lib/api/errors');

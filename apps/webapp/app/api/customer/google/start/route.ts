@@ -1,5 +1,4 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { ROUTES } from '@/config/routes';
@@ -11,18 +10,26 @@ import {
 import { customerApiPath } from '@/lib/auth/customer-session';
 import { customerRequestOrigin, localGoogleState } from '@/lib/auth/local-google-flow';
 import { GOOGLE_FLOW_TTL_SECONDS } from '@/lib/config';
+import { customerCookies as cookies } from '@/lib/portal/cookies';
+import { PORTAL_SLUG_HEADER, portalPath, portalSlug } from '@/lib/portal/routing';
 
 export async function GET(request: NextRequest) {
   const requestOrigin = customerRequestOrigin(request.url, request.headers.get('host'));
+  const slug = portalSlug(request.headers.get(PORTAL_SLUG_HEADER));
   const response = await fetch(await customerApiPath('/auth/google/options'), {
     cache: 'no-store',
   });
   if (!response.ok)
-    return NextResponse.redirect(new URL(`${ROUTES.login}?error=unavailable`, requestOrigin));
+    return NextResponse.redirect(
+      new URL(portalPath(`${ROUTES.login}?error=unavailable`, slug), requestOrigin),
+    );
   const options = (await response.json()) as { client_id: string; redirect_uri: string };
   if (!options.client_id)
-    return NextResponse.redirect(new URL(`${ROUTES.login}?error=googleUnavailable`, requestOrigin));
-  const state = localGoogleState(randomBytes(32).toString('base64url'), requestOrigin);
+    return NextResponse.redirect(
+      new URL(portalPath(`${ROUTES.login}?error=googleUnavailable`, slug), requestOrigin),
+    );
+  const secret = randomBytes(32).toString('base64url');
+  const state = slug ? `${secret}.p.${slug}` : localGoogleState(secret, requestOrigin);
   const nonce = randomBytes(32).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
   const next = safeCustomerDestination(request.nextUrl.searchParams.get('next'));

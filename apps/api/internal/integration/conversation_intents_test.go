@@ -17,6 +17,17 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
+func (e *env) classifyRecommendationProducts(t *testing.T, accountID uuid.UUID, ids ...uuid.UUID) {
+	t.Helper()
+	tag, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE product
+		SET family_id = category.family_id, subgroup_id = category.id, unit = 'bolsa'
+		FROM (SELECT id, family_id FROM product_subgroup ORDER BY family_id, sort_order LIMIT 1) category
+		WHERE product.account_id = $1 AND product.id = ANY($2)`, accountID, ids)
+	if err != nil || tag.RowsAffected() != int64(len(ids)) {
+		t.Fatalf("classify recommendation products: updated %d, error %v", tag.RowsAffected(), err)
+	}
+}
+
 // alternativeOf seeds a priced product (unpriced when price is empty) and links it to base.
 func (e *env) alternativeOf(t *testing.T, quote handlerQuote, base uuid.UUID, name, price string,
 	kind domain.ProductAlternativeType,
@@ -30,6 +41,7 @@ func (e *env) alternativeOf(t *testing.T, quote handlerQuote, base uuid.UUID, na
 	} else {
 		product = e.seedPricedProduct(t, accountID, branchID, name, price, nil)
 	}
+	e.classifyRecommendationProducts(t, accountID, base, product)
 	if _, err := e.db.CrossAccount().Exec(context.Background(),
 		`INSERT INTO product_alternative (account_id, base_product_id, alternative_product_id, type)
 		 VALUES ($1, $2, $3, $4)`, accountID, base, product, kind); err != nil {
@@ -112,19 +124,12 @@ func (e *env) runBatch(t *testing.T, quote handlerQuote,
 	return proposer
 }
 
-/*
- * «Está caro» swaps the cement (2 × 50) for its cheapest ECONOMY alternative the branch prices
- * below 50: not the dearer one, not the unpriced one, and never a PREMIUM. The swapped line is
- * priced at once and the quantity is kept.
- */
-func TestConversationIntents_LowerTotalPriceTakesTheCheapestCheaperAlternative(t *testing.T) {
+// A lower-price request uses the ECONOMY slot and keeps the requested quantity.
+func TestConversationIntents_LowerTotalPriceTakesTheEconomyAlternative(t *testing.T) {
 	e := newEnv(t)
 	quote := e.sentHandlerQuote(t, "Intent cheaper")
-	e.alternativeOf(t, quote, quote.cementID, "Cemento económico A", "40", domain.ProductAlternativeEconomy)
 	cheapest := e.alternativeOf(t, quote, quote.cementID, "Cemento económico B", "35",
 		domain.ProductAlternativeEconomy)
-	e.alternativeOf(t, quote, quote.cementID, "Cemento económico caro", "60", domain.ProductAlternativeEconomy)
-	e.alternativeOf(t, quote, quote.cementID, "Cemento económico sin precio", "", domain.ProductAlternativeEconomy)
 	e.alternativeOf(t, quote, quote.cementID, "Cemento premium", "20", domain.ProductAlternativePremium)
 
 	e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice), "está caro")
@@ -147,6 +152,27 @@ func TestConversationIntents_LowerTotalPriceTakesTheCheapestCheaperAlternative(t
 		len(run.StrategiesTried) != 1 || run.StrategiesTried[0] != "FIND_CHEAPER_ALTERNATIVES" ||
 		len(run.Operations) != 1 || run.Operations[0].Type != domain.ChangeRequestOperationReplaceItem {
 		t.Errorf("run = %+v, want an applied REPLACE_ITEM from the cheaper-alternatives recipe", run)
+	}
+}
+
+func TestConversationIntents_LowerPriceSkipsUnpricedOrDearerEconomy(t *testing.T) {
+	for _, tc := range []struct{ name, price string }{
+		{"unpriced", ""},
+		{"dearer", "60"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			quote := e.sentHandlerQuote(t, "Intent "+tc.name)
+			e.alternativeOf(t, quote, quote.cementID, "Economy cement", tc.price, domain.ProductAlternativeEconomy)
+			e.alternativeOf(t, quote, quote.cementID, "Premium cement", "20", domain.ProductAlternativePremium)
+			e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice), "lower price")
+			if products := e.draftProducts(t, e.quoteState(t, quote.quoteID).currentID); len(products) != 1 || products[0] != quote.cementID {
+				t.Fatalf("draft products = %v, want original product", products)
+			}
+			if run := e.lastRun(t, quote.quoteID); run.Outcome != "NO_MATCH" {
+				t.Fatalf("outcome = %s, want NO_MATCH", run.Outcome)
+			}
+		})
 	}
 }
 
@@ -179,31 +205,28 @@ func TestConversationIntents_LowerTotalPriceIsDroppedUnlessTheEngineEndsLower(t 
 // Only an active alternative sold in the line's own unit is a substitute: a cheaper one in another
 // pack, or one no longer sold, is never swapped in.
 func TestConversationIntents_RecipesSkipInactiveAndOtherUnitAlternatives(t *testing.T) {
-	e := newEnv(t)
-	quote := e.sentHandlerQuote(t, "Intent substitutes")
-	inactive := e.alternativeOf(t, quote, quote.cementID, "Cemento discontinuado", "20",
-		domain.ProductAlternativeEconomy)
-	otherUnit := e.alternativeOf(t, quote, quote.cementID, "Cemento 25 kg", "25",
-		domain.ProductAlternativeEconomy)
-	valid := e.alternativeOf(t, quote, quote.cementID, "Cemento económico", "40",
-		domain.ProductAlternativeEconomy)
-	for _, stmt := range []struct {
-		sql string
-		id  uuid.UUID
+	for _, tc := range []struct {
+		name string
+		sql  string
 	}{
-		{`UPDATE product SET is_active = FALSE WHERE id = $1`, inactive},
-		{`UPDATE product SET unit = 'bolsa 25 kg' WHERE id = $1`, otherUnit},
+		{"inactive", `UPDATE product SET is_active = FALSE WHERE id = $1`},
+		{"other unit", `UPDATE product SET unit = 'bolsa 25 kg' WHERE id = $1`},
 	} {
-		if _, err := e.db.CrossAccount().Exec(context.Background(), stmt.sql, stmt.id); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice), "más barato")
-
-	if products := e.draftProducts(t, e.quoteState(t, quote.quoteID).currentID); len(products) != 1 ||
-		products[0] != valid {
-		t.Errorf("draft products = %v, want the active same-unit alternative %s", products, valid)
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			quote := e.sentHandlerQuote(t, "Intent "+tc.name)
+			alternative := e.alternativeOf(t, quote, quote.cementID, "Economy cement", "20", domain.ProductAlternativeEconomy)
+			if _, err := e.db.CrossAccount().Exec(context.Background(), tc.sql, alternative); err != nil {
+				t.Fatal(err)
+			}
+			e.runBatch(t, quote, intent(domain.ChangeRequestIntentLowerTotalPrice), "lower price")
+			if products := e.draftProducts(t, e.quoteState(t, quote.quoteID).currentID); len(products) != 1 || products[0] != quote.cementID {
+				t.Fatalf("draft products = %v, want original product", products)
+			}
+			if run := e.lastRun(t, quote.quoteID); run.Outcome != "NO_MATCH" {
+				t.Fatalf("outcome = %s, want NO_MATCH", run.Outcome)
+			}
+		})
 	}
 }
 
@@ -269,12 +292,11 @@ func TestConversationIntents_ComplexIsRecheckedAgainstTheMatrix(t *testing.T) {
 	}
 }
 
-// Better quality takes the cheapest PREMIUM the branch prices, with no cap on how much it adds,
+// Better quality takes the configured PREMIUM the branch prices, with no cap on how much it adds,
 // on the lines the customer named.
-func TestConversationIntents_ImproveQualityTakesTheCheapestPremium(t *testing.T) {
+func TestConversationIntents_ImproveQualityTakesThePremium(t *testing.T) {
 	e := newEnv(t)
 	quote := e.sentHandlerQuote(t, "Intent premium")
-	e.alternativeOf(t, quote, quote.cementID, "Cemento premium caro", "90", domain.ProductAlternativePremium)
 	premium := e.alternativeOf(t, quote, quote.cementID, "Cemento premium", "70",
 		domain.ProductAlternativePremium)
 	e.alternativeOf(t, quote, quote.cementID, "Cemento económico", "30", domain.ProductAlternativeEconomy)
@@ -289,7 +311,7 @@ func TestConversationIntents_ImproveQualityTakesTheCheapestPremium(t *testing.T)
 	e.runBatch(t, quote, intent(domain.ChangeRequestIntentImproveQuality, line), "quiero mejor cemento")
 
 	if products := e.draftProducts(t, draft); len(products) != 1 || products[0] != premium {
-		t.Fatalf("draft products = %v, want the cheapest PREMIUM %s", products, premium)
+		t.Fatalf("draft products = %v, want the configured PREMIUM %s", products, premium)
 	}
 	if got := e.storedVersionTotal(t, draft); !got.Equal(decimal.NewFromInt(140)) {
 		t.Errorf("draft total = %s, want 140: quality may raise the total", got)

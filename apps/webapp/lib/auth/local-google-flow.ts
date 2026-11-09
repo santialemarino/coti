@@ -36,6 +36,15 @@ export function localGoogleReturnOrigin(state: string, callbackOrigin: string): 
 
 export function customerRequestOrigin(url: string, host: string | null): string {
   const origin = new URL(url);
+  // The public Host also scopes customer API calls; Next's URL can contain the container address.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    host &&
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::443)?$/i.test(host) &&
+    !host.toLowerCase().replace(/:443$/, '').endsWith('.localhost')
+  ) {
+    return new URL('https://' + host).origin;
+  }
   if (
     process.env.NODE_ENV !== 'production' &&
     origin.protocol === 'http:' &&

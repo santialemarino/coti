@@ -228,6 +228,66 @@ func TestRfqService_CreateManual_BornGeneratedAndDraft(t *testing.T) {
 	}
 }
 
+func TestRfqService_CreateManual_AddsConfiguredAlternatives(t *testing.T) {
+	itemID, economy, premium := uuid.New(), uuid.New(), uuid.New()
+	repo := &fakeRfqRepoManual{
+		channelID: manualChannelID,
+		owned:     1,
+		creation:  &domain.RfqCreation{Version: domain.QuoteVersion{ID: testVersionID}},
+	}
+	quotes := &fakeQuoteDrafts{itemsByVersionID: []domain.QuoteItem{{
+		ID: itemID, ProductID: &knownProduct, MatchStatus: domain.ItemMatchStatusMatched,
+	}}}
+	configured := &fakeProductAlternatives{
+		byType: map[domain.ProductAlternativeType]map[uuid.UUID][]domain.ProductAlternativeView{
+			domain.ProductAlternativeEconomy: {
+				knownProduct: {{
+					Link: domain.ProductAlternative{
+						BaseProductID: knownProduct, AlternativeProductID: economy,
+						Type: domain.ProductAlternativeEconomy,
+					},
+					Product: domain.Product{ID: economy, CanonicalName: "Economy cement", IsActive: true},
+				}},
+			},
+			domain.ProductAlternativePremium: {
+				knownProduct: {{
+					Link: domain.ProductAlternative{
+						BaseProductID: knownProduct, AlternativeProductID: premium,
+						Type: domain.ProductAlternativePremium,
+					},
+					Product: domain.Product{ID: premium, CanonicalName: "Premium cement", IsActive: true},
+				}},
+			},
+		},
+	}
+	svc := NewRFQService(&fakeDB{}, repo, quotes, nil, nil, nil, &fakeSellerReach{serves: true},
+		nil, nil, nil, config.RFQConfig{}).WithProductAlternatives(configured)
+
+	if _, err := svc.CreateManual(context.Background(), branchTenant(), domain.NewRfq{Items: manualItems()}); err != nil {
+		t.Fatalf("CreateManual() error = %v", err)
+	}
+	if len(configured.calls) != 2 {
+		t.Fatalf("configured alternative reads = %d, want 2", len(configured.calls))
+	}
+	if len(quotes.alternativeBatches) != 1 {
+		t.Fatalf("alternative batches = %d, want 1", len(quotes.alternativeBatches))
+	}
+	byProduct := make(map[uuid.UUID]domain.QuoteItemAlternative)
+	for _, alternative := range quotes.storedAlternatives {
+		if alternative.ProductID != nil {
+			byProduct[*alternative.ProductID] = alternative
+		}
+	}
+	if alternative, ok := byProduct[economy]; !ok || alternative.RecommendationType == nil ||
+		*alternative.RecommendationType != domain.ProductAlternativeEconomy || alternative.ApprovedBySeller {
+		t.Errorf("economy alternative = %+v, want unapproved ECONOMY", alternative)
+	}
+	if alternative, ok := byProduct[premium]; !ok || alternative.RecommendationType == nil ||
+		*alternative.RecommendationType != domain.ProductAlternativePremium || alternative.ApprovedBySeller {
+		t.Errorf("premium alternative = %+v, want unapproved PREMIUM", alternative)
+	}
+}
+
 func TestRfqService_CreateManual_NeedsAnActiveBranch(t *testing.T) {
 	repo := &fakeRfqRepoManual{channelID: manualChannelID}
 	svc, _ := manualHarness(repo)
@@ -467,6 +527,32 @@ func (f *fakeCatalogMatcher) Match(
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
 	return f.matches, f.err
+}
+
+type productAlternativeRead struct {
+	baseProductIDs []uuid.UUID
+	kind           domain.ProductAlternativeType
+}
+
+type fakeProductAlternatives struct {
+	byType map[domain.ProductAlternativeType]map[uuid.UUID][]domain.ProductAlternativeView
+	calls  []productAlternativeRead
+	err    error
+}
+
+func (f *fakeProductAlternatives) ListByBaseProductIDs(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, baseProductIDs []uuid.UUID,
+	kind domain.ProductAlternativeType,
+) (map[uuid.UUID][]domain.ProductAlternativeView, error) {
+	f.calls = append(f.calls, productAlternativeRead{baseProductIDs: append([]uuid.UUID(nil), baseProductIDs...), kind: kind})
+	if f.err != nil {
+		return nil, f.err
+	}
+	result := make(map[uuid.UUID][]domain.ProductAlternativeView, len(baseProductIDs))
+	for _, productID := range baseProductIDs {
+		result[productID] = append([]domain.ProductAlternativeView(nil), f.byType[kind][productID]...)
+	}
+	return result, nil
 }
 
 type blockingMatcher struct{}
@@ -971,7 +1057,8 @@ func (f *fakeQuoteDrafts) CreateAlternatives(
 		f.storedAlternatives = append(f.storedAlternatives, domain.QuoteItemAlternative{
 			ID: uuid.New(), AccountID: accountID, QuoteItemID: alternative.QuoteItemID,
 			ProductID: alternative.ProductID, ComboID: alternative.ComboID,
-			Type: alternative.Type, Origin: alternative.Origin, Rank: alternative.Rank,
+			Type: alternative.Type, RecommendationType: alternative.RecommendationType,
+			Origin: alternative.Origin, Rank: alternative.Rank,
 			ConfidenceScore: alternative.ConfidenceScore, PriceSnapshot: alternative.PriceSnapshot,
 		})
 	}
@@ -1186,18 +1273,19 @@ func (f *fakeRFQClientActions) ListByQuote(
 }
 
 type rfqHarness struct {
-	service         *RFQService
-	db              *fakeRFQDB
-	extractor       *fakeRFQExtractor
-	matcher         *fakeCatalogMatcher
-	rfqs            *fakeRFQs
-	quotes          *fakeQuoteDrafts
-	discounts       *fakeQuoteDiscounts
-	sends           *fakeQuoteSends
-	generations     *fakeQuoteAIGenerations
-	channels        *fakeRFQChannels
-	clientActions   *fakeRFQClientActions
-	inboundMessages *fakeInboundChannelMessages
+	service             *RFQService
+	db                  *fakeRFQDB
+	extractor           *fakeRFQExtractor
+	matcher             *fakeCatalogMatcher
+	productAlternatives *fakeProductAlternatives
+	rfqs                *fakeRFQs
+	quotes              *fakeQuoteDrafts
+	discounts           *fakeQuoteDiscounts
+	sends               *fakeQuoteSends
+	generations         *fakeQuoteAIGenerations
+	channels            *fakeRFQChannels
+	clientActions       *fakeRFQClientActions
+	inboundMessages     *fakeInboundChannelMessages
 }
 
 func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
@@ -1212,17 +1300,18 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		}
 	}
 	h := &rfqHarness{
-		db:              db,
-		extractor:       &fakeRFQExtractor{lines: lines, db: db},
-		matcher:         &fakeCatalogMatcher{matches: matches, db: db},
-		rfqs:            &fakeRFQs{},
-		quotes:          &fakeQuoteDrafts{},
-		discounts:       &fakeQuoteDiscounts{},
-		sends:           &fakeQuoteSends{},
-		generations:     &fakeQuoteAIGenerations{},
-		channels:        &fakeRFQChannels{},
-		clientActions:   &fakeRFQClientActions{},
-		inboundMessages: &fakeInboundChannelMessages{},
+		db:                  db,
+		extractor:           &fakeRFQExtractor{lines: lines, db: db},
+		matcher:             &fakeCatalogMatcher{matches: matches, db: db},
+		productAlternatives: &fakeProductAlternatives{byType: map[domain.ProductAlternativeType]map[uuid.UUID][]domain.ProductAlternativeView{}},
+		rfqs:                &fakeRFQs{},
+		quotes:              &fakeQuoteDrafts{},
+		discounts:           &fakeQuoteDiscounts{},
+		sends:               &fakeQuoteSends{},
+		generations:         &fakeQuoteAIGenerations{},
+		channels:            &fakeRFQChannels{},
+		clientActions:       &fakeRFQClientActions{},
+		inboundMessages:     &fakeInboundChannelMessages{},
 	}
 	channel := domain.Channel{
 		ID: testChannelID, AccountID: testAccountID, BranchID: testBranchID,
@@ -1235,6 +1324,69 @@ func newRFQHarness(lines []domain.ExtractedRFQLine) *rfqHarness {
 		WithDiscounts(h.discounts).WithClientActions(h.clientActions).
 		WithInboundMessages(h.inboundMessages)
 	return h
+}
+
+func TestRFQService_CreateTextDraft_AddsConfiguredEconomyAndPremiumAlternatives(t *testing.T) {
+	h := newRFQHarness([]domain.ExtractedRFQLine{explicitLine("cemento", "10", "bolsa", "pedido")})
+	economy, premium := uuid.New(), uuid.New()
+	h.productAlternatives.byType[domain.ProductAlternativeEconomy] = map[uuid.UUID][]domain.ProductAlternativeView{
+		testProductID: {{
+			Link: domain.ProductAlternative{BaseProductID: testProductID, AlternativeProductID: economy,
+				Type: domain.ProductAlternativeEconomy},
+			Product: domain.Product{ID: economy, CanonicalName: "Cemento económico", IsActive: true},
+		}},
+	}
+	h.productAlternatives.byType[domain.ProductAlternativePremium] = map[uuid.UUID][]domain.ProductAlternativeView{
+		testProductID: {{
+			Link: domain.ProductAlternative{BaseProductID: testProductID, AlternativeProductID: premium,
+				Type: domain.ProductAlternativePremium},
+			Product: domain.Product{ID: premium, CanonicalName: "Cemento premium", IsActive: true},
+		}},
+	}
+	h.service.WithProductAlternatives(h.productAlternatives)
+
+	draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(), domain.TextRFQDraftInput{
+		ChannelID: testChannelID, RawText: "10 bolsas de cemento",
+	})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v, want no error", err)
+	}
+	if len(h.productAlternatives.calls) != 2 {
+		t.Fatalf("configured alternatives were read %d times, want ECONOMY and PREMIUM", len(h.productAlternatives.calls))
+	}
+	if h.productAlternatives.calls[0].kind != domain.ProductAlternativeEconomy ||
+		h.productAlternatives.calls[1].kind != domain.ProductAlternativePremium {
+		t.Errorf("configured alternative kinds = %v, %v; want ECONOMY then PREMIUM",
+			h.productAlternatives.calls[0].kind, h.productAlternatives.calls[1].kind)
+	}
+	if got := h.productAlternatives.calls[0].baseProductIDs; len(got) != 1 || got[0] != testProductID {
+		t.Errorf("configured alternatives read for %v, want [%v]", got, testProductID)
+	}
+
+	if len(draft.Items) != 1 {
+		t.Fatalf("draft items = %d, want one", len(draft.Items))
+	}
+	offers := draft.Alternatives[draft.Items[0].ID]
+	if len(offers) != 2 {
+		t.Fatalf("configured offers = %d, want economy and premium", len(offers))
+	}
+	byProduct := make(map[uuid.UUID]domain.QuoteItemAlternative, len(offers))
+	for _, offer := range offers {
+		if offer.ProductID != nil {
+			byProduct[*offer.ProductID] = offer
+		}
+		if offer.ApprovedBySeller {
+			t.Error("a configured recommendation was exposed without seller approval")
+		}
+	}
+	if offer, ok := byProduct[economy]; !ok || offer.RecommendationType == nil ||
+		*offer.RecommendationType != domain.ProductAlternativeEconomy || offer.Rank != 1 {
+		t.Errorf("economy offer = %+v, want ECONOMY at rank 1", offer)
+	}
+	if offer, ok := byProduct[premium]; !ok || offer.RecommendationType == nil ||
+		*offer.RecommendationType != domain.ProductAlternativePremium || offer.Rank != 2 {
+		t.Errorf("premium offer = %+v, want PREMIUM at rank 2", offer)
+	}
 }
 
 func rfqTenant() domain.Tenant {

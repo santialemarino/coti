@@ -1,4 +1,8 @@
-import type { PublicQuoteSend, QuotePayload } from '@/lib/api/public-quotes';
+import type {
+  PublicQuoteSelectionPreview,
+  PublicQuoteSend,
+  QuotePayload,
+} from '@/lib/api/public-quotes';
 
 export const EXPIRES_AT = '2026-09-22T12:00:00Z';
 export const PDF_URL = 'https://files.example.test/cot-42.pdf?sig=abc';
@@ -24,6 +28,7 @@ export function makeQuotePayload(overrides: Partial<QuotePayload> = {}): QuotePa
     customerName: 'Obra Norte',
     items: [
       {
+        id: '11111111-1111-4111-8111-111111111111',
         requestedDescription: 'dos bolsas de cemento',
         productCode: 'CEM-01',
         productName: 'Cemento Portland 50kg',
@@ -32,10 +37,19 @@ export function makeQuotePayload(overrides: Partial<QuotePayload> = {}): QuotePa
         unitPrice: '110.00',
         subtotal: '220.00',
         alternatives: [
-          { code: 'CEM-02', name: 'Cemento Portland 25kg', unit: 'bolsa', unitPrice: '60.00' },
+          {
+            id: '21111111-1111-4111-8111-111111111111',
+            code: 'CEM-02',
+            name: 'Cemento Portland 25kg',
+            unit: 'bolsa',
+            unitPrice: '60.00',
+            recommendationType: 'ECONOMY',
+            selectable: true,
+          },
         ],
       },
       {
+        id: '12222222-2222-4222-8222-222222222222',
         requestedDescription: 'diez kilos de cal',
         productName: 'Cal común',
         quantity: '10',
@@ -92,6 +106,7 @@ export function makeSentPreviewSend(): PublicQuoteSend {
       customerName: 'Constructora del Riachuelo',
       items: [
         {
+          id: '31111111-1111-4111-8111-111111111111',
           requestedDescription: '80 bolsas de cemento portland',
           productCode: 'CEM-01',
           productName: 'Cemento Portland CP40 50 kg',
@@ -101,14 +116,18 @@ export function makeSentPreviewSend(): PublicQuoteSend {
           subtotal: '760000.00',
           alternatives: [
             {
+              id: '41111111-1111-4111-8111-111111111111',
               code: 'CEM-02',
               name: 'Cemento Portland CP40 25 kg',
               unit: 'bolsa',
               unitPrice: '5100.00',
+              recommendationType: 'ECONOMY',
+              selectable: true,
             },
           ],
         },
         {
+          id: '32222222-2222-4222-8222-222222222222',
           requestedDescription: '12 m3 de arena fina',
           productCode: 'ARE-FIN-01',
           productName: 'Arena fina lavada',
@@ -117,10 +136,19 @@ export function makeSentPreviewSend(): PublicQuoteSend {
           unitPrice: '32000.00',
           subtotal: '384000.00',
           alternatives: [
-            { code: 'ARE-GRU-01', name: 'Arena gruesa', unit: 'm3', unitPrice: '31000.00' },
+            {
+              id: '42222222-2222-4222-8222-222222222222',
+              code: 'ARE-GRU-01',
+              name: 'Arena gruesa',
+              unit: 'm3',
+              unitPrice: '35000.00',
+              recommendationType: 'PREMIUM',
+              selectable: true,
+            },
           ],
         },
         {
+          id: '33333333-3333-4333-8333-333333333333',
           requestedDescription: '10 hierros del 8',
           productCode: 'HIER-08',
           productName: 'Hierro ADN 420 8 mm',
@@ -131,6 +159,7 @@ export function makeSentPreviewSend(): PublicQuoteSend {
           alternatives: [],
         },
         {
+          id: '34444444-4444-4444-8444-444444444444',
           requestedDescription: '3 rollos de membrana asfáltica de 4 mm',
           productCode: 'MEMB-ASF-04',
           productName: 'Membrana asfáltica 4 mm',
@@ -141,6 +170,7 @@ export function makeSentPreviewSend(): PublicQuoteSend {
           alternatives: [],
         },
         {
+          id: '35555555-5555-4555-8555-555555555555',
           requestedDescription: '2 baldes de hidrófugo',
           productCode: 'HIDR-01',
           productName: 'Hidrófugo para mezclas',
@@ -156,4 +186,42 @@ export function makeSentPreviewSend(): PublicQuoteSend {
       validityNote: 'Precios sujetos a disponibilidad.',
     }),
   });
+}
+
+/* Frozen deterministic-engine responses let the dev preview exercise every selection combination. */
+export function makeSentPreviewSelectionPreviews(
+  send: PublicQuoteSend,
+): Record<string, PublicQuoteSelectionPreview> {
+  const quote = send.quote!;
+  const economy = quote.items[0]!;
+  const premium = quote.items[1]!;
+  const economySelection = `${economy.id}:${economy.alternatives[0]!.id}`;
+  const premiumSelection = `${premium.id}:${premium.alternatives[0]!.id}`;
+
+  return {
+    [economySelection]: previewResponse(quote, '1018800.00', '22900.00', '995900.00'),
+    [premiumSelection]: previewResponse(quote, '1406800.00', '31600.00', '1375200.00'),
+    [[economySelection, premiumSelection].sort().join('|')]: previewResponse(
+      quote,
+      '1054800.00',
+      '23700.00',
+      '1031100.00',
+    ),
+  };
+}
+
+function previewResponse(
+  quote: QuotePayload,
+  subtotal: string,
+  discountAmount: string,
+  total: string,
+): PublicQuoteSelectionPreview {
+  return {
+    quote: {
+      ...quote,
+      discounts: [{ description: 'Bonificación por pronto pago', amount: discountAmount }],
+      total,
+    },
+    subtotal,
+  };
 }

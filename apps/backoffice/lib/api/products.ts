@@ -2,7 +2,7 @@ import 'server-only';
 
 import { apiRequest } from '@/lib/api/client';
 import { vatRateOf, type VatRate } from '@/lib/api/invoicing';
-import { API_URL } from '@/lib/config';
+import { PUBLIC_API_URL } from '@/lib/config';
 
 interface ProductRaw {
   id: string;
@@ -83,7 +83,7 @@ function mapProduct(raw: ProductRaw): Product {
     unit: raw.unit,
     familyId: raw.family_id,
     subgroupId: raw.subgroup_id,
-    imageUrl: raw.image_path ? new URL(raw.image_path, API_URL).toString() : null,
+    imageUrl: raw.image_path ? new URL(raw.image_path, PUBLIC_API_URL).toString() : null,
     vatRate: vatRateOf(raw.vat_rate),
     isActive: raw.is_active,
     createdAt: raw.created_at,

@@ -114,7 +114,7 @@ func loadCustomerAuth(problems *[]string) CustomerAuthConfig {
 	return cfg
 }
 
-// LinkLocalOrigin supplies the local portal origin independently of Google credentials.
+// LinkLocalOrigin supplies the shared portal origin independently of Google credentials.
 func (c CustomerAuthConfig) LinkLocalOrigin() string {
 	if c.PortalLocalOrigin != "" {
 		return c.PortalLocalOrigin

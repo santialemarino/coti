@@ -36,6 +36,7 @@ function rawSend(overrides: Record<string, unknown> = {}) {
       customer: { name: 'Obra Norte' },
       items: [
         {
+          id: 'item-1',
           requested_description: 'dos bolsas de cemento',
           product_code: 'CEM-01',
           product_name: 'Cemento Portland 50kg',
@@ -44,7 +45,15 @@ function rawSend(overrides: Record<string, unknown> = {}) {
           unit_price: '110.00',
           subtotal: '220.00',
           alternatives: [
-            { code: 'CEM-02', name: 'Cemento Portland 25kg', unit: 'bolsa', unit_price: '60.00' },
+            {
+              id: 'alternative-1',
+              code: 'CEM-02',
+              name: 'Cemento Portland 25kg',
+              unit: 'bolsa',
+              unit_price: '60.00',
+              recommendation_type: 'ECONOMY',
+              selectable: true,
+            },
           ],
         },
       ],
@@ -99,6 +108,7 @@ describe('getPublicQuoteByToken', () => {
         customerName: 'Obra Norte',
         items: [
           {
+            id: 'item-1',
             requestedDescription: 'dos bolsas de cemento',
             productCode: 'CEM-01',
             productName: 'Cemento Portland 50kg',
@@ -107,7 +117,15 @@ describe('getPublicQuoteByToken', () => {
             unitPrice: '110.00',
             subtotal: '220.00',
             alternatives: [
-              { code: 'CEM-02', name: 'Cemento Portland 25kg', unit: 'bolsa', unitPrice: '60.00' },
+              {
+                id: 'alternative-1',
+                code: 'CEM-02',
+                name: 'Cemento Portland 25kg',
+                unit: 'bolsa',
+                unitPrice: '60.00',
+                recommendationType: 'ECONOMY',
+                selectable: true,
+              },
             ],
           },
         ],

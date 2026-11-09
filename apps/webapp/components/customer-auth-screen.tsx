@@ -2,7 +2,6 @@
 
 import { Fragment } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Building2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -31,6 +30,7 @@ import {
 import { AccountRecovery } from '@/app/forgot-password/_components/account-recovery';
 import { completeCustomerGoogle, signInCustomer, signUpCustomer } from '@/app/login/actions';
 import { customerAuthSchema, type CustomerAuthMode } from '@/components/customer-auth-schema';
+import { PortalLink as Link, usePortalPath } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { FORM_VALIDATION } from '@/lib/forms/options';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -59,6 +59,7 @@ export function CustomerAuthScreen({
   googleEnabled,
 }: CustomerAuthScreenProps) {
   const t = useTranslations('customerAuth');
+  const portalPath = usePortalPath();
   const common = useTranslations('common');
   const phoneLabels = useTranslations('rfq.fields.phone');
   const formatters = useFormatters();
@@ -163,7 +164,9 @@ export function CustomerAuthScreen({
                 <>
                   {googleEnabled ? (
                     <Button asChild variant="outline" size="lg">
-                      <a href={`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`}>
+                      <a
+                        href={portalPath(`${ROUTES.googleStart}?next=${encodeURIComponent(next)}`)}
+                      >
                         {googleLabel}
                       </a>
                     </Button>

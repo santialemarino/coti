@@ -74,6 +74,30 @@ func (r *ProductRepository) GetByID(
 		accountID, id))
 }
 
+// GetByIDs loads catalog products within the account in one query.
+func (r *ProductRepository) GetByIDs(
+	ctx context.Context, q Querier, accountID uuid.UUID, ids []uuid.UUID,
+) (map[uuid.UUID]domain.Product, error) {
+	products := make(map[uuid.UUID]domain.Product, len(ids))
+	if len(ids) == 0 {
+		return products, nil
+	}
+	rows, err := q.Query(ctx, `SELECT `+productColumns+` FROM product WHERE account_id = $1 AND id = ANY($2)`, accountID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p domain.Product
+		if err := rows.Scan(&p.ID, &p.AccountID, &p.Code, &p.CanonicalName, &p.Description,
+			&p.Unit, &p.FamilyID, &p.SubgroupID, &p.ImageID, &p.IsActive, &p.VATRate, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		products[p.ID] = p
+	}
+	return products, rows.Err()
+}
+
 // GetByIDForUpdate loads one product within the account and holds a row lock on it until the
 // transaction ends, so writes that must not interleave for the same product serialize on it.
 func (r *ProductRepository) GetByIDForUpdate(

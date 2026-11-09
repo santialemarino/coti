@@ -13,7 +13,7 @@ import {
 import { acceptCustomerSession } from '@/lib/auth/customer-session';
 import messages from '@/translations/es.json';
 
-vi.mock('next/headers', () => ({ cookies: vi.fn(), headers: vi.fn() }));
+vi.mock('next/headers', () => ({ cookies: vi.fn(), headers: async () => new Headers() }));
 vi.mock('@/lib/auth/customer-session', async (original) => ({
   ...(await original<typeof import('@/lib/auth/customer-session')>()),
   acceptCustomerSession: vi.fn(),

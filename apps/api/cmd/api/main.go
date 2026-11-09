@@ -201,6 +201,7 @@ func run() error {
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
 		WithPrices(productPriceRepo).
+		WithProductAlternatives(productAlternativeRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithPublicContacts(repository.NewPublicRFQRepository(), rfqAttachmentService).
@@ -277,7 +278,11 @@ func run() error {
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
-		WithInvoicingSwitch(invoicingRepo)
+		WithInvoicingSwitch(invoicingRepo).
+		WithCatalogRecommendations(productAlternativeRepo).
+		WithRecommendationProducts(productRepo)
+	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
+		productAlternativeRepo, productPriceRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
 		WithCorrectionLearning(quoteCorrectionService)
 	quoteRepresentationService := services.NewQuoteRepresentationService(db,
@@ -285,7 +290,9 @@ func run() error {
 		branding.NewLogoLoader(cfg.QuoteLogo), quotePDF.NewQuoteRenderer(),
 		cfg.Storage.SignedURLExpiry, nil, log).
 		WithHandlerDecisions(services.NewHandlerDecisionSettler(handlerDecisionRepo, quoteRepo,
-			quoteDiscountRepo))
+			quoteDiscountRepo)).
+		WithSelectionPricing(promotionRepo).
+		WithRecommendationProducts(productRepo)
 	conversationReviewService := services.NewConversationReviewService(db, quoteRepo,
 		productPriceRepo, quoteDiscountRepo, promotionRepo, handlerDecisionRepo, messageBatchRepo)
 	quoteDeliveryService := services.NewQuoteDeliveryService(db, quoteSendRepo, quoteRepo, rfqRepo,
@@ -295,6 +302,7 @@ func run() error {
 			WithArgentineTestRecipientFallback(cfg.Environment == config.EnvironmentDevelopment), quoteMailService,
 		quoteQualityService, cfg.Web.WebAppURL, nil, log).
 		WithRepresentationService(quoteRepresentationService).
+		WithSelectionSnapshots(quoteRepresentationRepo).
 		WithClientActions(clientActionRepo, userRepo).
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
@@ -329,7 +337,8 @@ func run() error {
 			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
-			Conversation: handler.NewConversationHandler(conversationReviewService),
+			RecommendationRequest: handler.NewRecommendationRequestHandler(recommendationRequestService),
+			Conversation:          handler.NewConversationHandler(conversationReviewService),
 			QuoteFollowup: handler.NewQuoteFollowupHandler(services.NewQuoteFollowupService(db,
 				quoteRepo, accountRepo, clientRepo, userRepo, followupDrafter)),
 			Client:         handler.NewClientHandler(clientService),

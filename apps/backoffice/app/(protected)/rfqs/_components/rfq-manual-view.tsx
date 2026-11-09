@@ -93,7 +93,7 @@ export function RfqManualView({
     let cancelled = false;
     setLoadingCatalog(true);
     const timer = window.setTimeout(async () => {
-      const results = await searchCatalog(query);
+      const results = await searchCatalog(query).catch(() => []);
       if (cancelled) return;
       setCatalog(results);
       setLoadingCatalog(false);

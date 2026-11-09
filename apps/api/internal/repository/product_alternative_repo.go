@@ -96,7 +96,10 @@ func (r *ProductAlternativeRepository) ListByBaseProductIDs(
 		 JOIN product p ON p.id = pa.alternative_product_id AND p.account_id = pa.account_id
 		 JOIN product b ON b.id = pa.base_product_id AND b.account_id = pa.account_id
 		 WHERE pa.account_id = $1 AND pa.base_product_id = ANY($2) AND pa.type = $3
-		   AND p.is_active = TRUE AND lower(p.unit) IS NOT DISTINCT FROM lower(b.unit)
+		   AND p.is_active = TRUE
+		   AND ((pa.type NOT IN ('ECONOMY', 'PREMIUM') AND lower(p.unit) IS NOT DISTINCT FROM lower(b.unit))
+		     OR (pa.type IN ('ECONOMY', 'PREMIUM') AND p.family_id = b.family_id AND p.subgroup_id = b.subgroup_id
+		       AND NULLIF(btrim(p.unit), '') IS NOT NULL AND lower(btrim(p.unit)) = lower(btrim(b.unit))))
 		 ORDER BY pa.base_product_id, p.canonical_name, p.id`,
 		accountID, baseProductIDs, kind)
 	if err != nil {
@@ -134,6 +137,34 @@ func (r *ProductAlternativeRepository) Create(
 	if isUniqueViolation(err, productAlternativePair) {
 		return nil, domain.ErrConflict
 	}
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+// SetRecommendation replaces the base product's one ECONOMY or PREMIUM relation. Replacing a
+// relation is intentional: a recommendation slot must never accumulate competing products.
+func (r *ProductAlternativeRepository) SetRecommendation(
+	ctx context.Context, q Querier, accountID, baseProductID, alternativeProductID uuid.UUID,
+	alternativeType domain.ProductAlternativeType,
+) (*domain.ProductAlternative, error) {
+	if _, err := q.Exec(ctx,
+		`DELETE FROM product_alternative
+		 WHERE account_id = $1 AND base_product_id = $2
+		   AND (type = $4 OR alternative_product_id = $3)`,
+		accountID, baseProductID, alternativeProductID, alternativeType); err != nil {
+		return nil, err
+	}
+
+	var a domain.ProductAlternative
+	err := q.QueryRow(ctx,
+		`INSERT INTO product_alternative
+		   (account_id, base_product_id, alternative_product_id, type)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING `+productAlternativeColumns,
+		accountID, baseProductID, alternativeProductID, alternativeType,
+	).Scan(&a.ID, &a.AccountID, &a.BaseProductID, &a.AlternativeProductID, &a.Type, &a.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

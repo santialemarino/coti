@@ -379,6 +379,9 @@
     "NO_AI_CHANGES": "Este borrador ya no tiene cambios de la IA para descartar. Actualizá la pantalla.",
     "BATCH_NOT_RETRYABLE": "Estos mensajes ya no se pueden reintentar: la cotización cambió de estado o ya están en la cola.",
     "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica a esta cotización, así que no se puede restaurar.",
+    "RECOMMENDATION_BASE_PRICE_MISSING": "El producto cotizado necesita un precio unitario para comparar alternativas.",
+    "RECOMMENDATION_ECONOMY_PRICE_INVALID": "La alternativa económica debe tener un precio unitario menor al del producto cotizado.",
+    "RECOMMENDATION_PREMIUM_PRICE_INVALID": "La alternativa premium debe tener un precio unitario mayor al del producto cotizado.",
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "QUOTE_ITEMS_UNRESOLVED": "Hay ítems sin producto confirmado o sin precio. Confirmalos o elegí el producto antes de enviar.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
@@ -1499,6 +1502,61 @@
         "confirmMatch": "Confirmar producto",
         "select": "Seleccionar",
         "suggested": "Sugerido",
+        "recommendationType": {
+          "ECONOMY": "Alternativa econ\u00f3mica",
+          "PREMIUM": "Alternativa premium",
+          "EQUIVALENT": "Alternativa equivalente"
+        },
+        "alternatives": {
+          "title": "Opciones para el cliente",
+          "compatibilityNotice": "La económica debe tener un precio unitario menor y la premium, mayor al cotizado. Al enviar, se excluyen las opciones que no cumplan esta regla o cuya familia, subgrupo o unidad ya no coincidan. Revisá también que la presentación sea adecuada.",
+          "priceUnavailable": "Precio no disponible",
+          "invalidPrice": "Esta alternativa no cumple la regla de precio y no se enviará. Podés reemplazarla o quitarla.",
+          "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",
+          "forItem": "Alternativas para {name}",
+          "empty": "Todav\u00eda no hay alternativas definidas para este material.",
+          "addMissing": "Pod\u00e9s completar las opciones que faltan si quer\u00e9s ofrecerlas.",
+          "addType": {
+            "ECONOMY": "Agregar alternativa econ\u00f3mica",
+            "PREMIUM": "Agregar alternativa premium"
+          },
+          "unitPrice": "Precio unitario: {amount}",
+          "saveToCatalog": "Guardar tambi\u00e9n como alternativa del cat\u00e1logo",
+          "include": "Incluir en la cotizaci\u00f3n",
+          "remove": "No incluir",
+          "replace": "Reemplazar",
+          "delete": "Quitar alternativa",
+          "deleteConfirm": {
+            "title": "¿Quitar esta alternativa?",
+            "description": "«{name}» dejará de estar disponible en esta cotización. La alternativa del catálogo no se modifica.",
+            "confirm": "Quitar alternativa",
+            "pending": "Quitando…"
+          },
+          "pending": "Guardando\u2026",
+          "picker": {
+            "ECONOMY": "Elegir alternativa econ\u00f3mica",
+            "PREMIUM": "Elegir alternativa premium",
+            "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Comprobá que tengan el mismo uso y una presentación equivalente: compartir unidad no garantiza el mismo peso o contenido.",
+            "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
+            "loadError": "No pudimos consultar el producto en el catálogo. Intentá de nuevo.",
+            "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
+            "searchError": "No pudimos buscar productos. Revisá la conexión e intentá de nuevo.",
+            "retry": "Reintentar"
+          },
+          "catalogConfirmation": {
+            "title": "\u00bfGuardar tambi\u00e9n en el cat\u00e1logo?",
+            "description": "\u00ab{name}\u00bb va a reemplazar la {type} actual de este producto en el cat\u00e1logo. Las pr\u00f3ximas cotizaciones la van a usar como opci\u00f3n disponible.",
+            "confirm": "Guardar en cat\u00e1logo",
+            "pending": "Guardando\u2026"
+          },
+          "toast": {
+            "deleted": "Quitamos la alternativa de esta cotización.",
+            "included": "La alternativa \u00ab{name}\u00bb se va a enviar al cliente.",
+            "removed": "La alternativa \u00ab{name}\u00bb no se va a enviar al cliente.",
+            "set": "Guardamos \u00ab{name}\u00bb como alternativa de esta cotizaci\u00f3n.",
+            "savedToCatalog": "Guardamos \u00ab{name}\u00bb en la cotizaci\u00f3n y como alternativa del cat\u00e1logo."
+          }
+        },
         "searchProduct": "Buscar producto",
         "searchProductPlaceholder": "Código o nombre del producto…",
         "noResults": "No encontramos productos con esa búsqueda.",
@@ -1579,6 +1637,9 @@
           "INVALID_INPUT": "Revisá el dato ingresado: la cantidad debe ser mayor a cero y los precios pueden tener hasta dos decimales.",
           "QUOTE_ARCHIVED": "Esta cotización está archivada. Desarchivala antes de modificarla.",
           "QUOTE_NOT_DRAFT": "Esta cotización ya cambió de estado. Actualizá la pantalla antes de volver a editarla.",
+          "RECOMMENDATION_ECONOMY_PRICE_INVALID": "La alternativa económica debe tener un precio unitario menor al del producto cotizado.",
+          "RECOMMENDATION_PREMIUM_PRICE_INVALID": "La alternativa premium debe tener un precio unitario mayor al del producto cotizado.",
+          "RECOMMENDATION_BASE_PRICE_MISSING": "El producto cotizado necesita un precio unitario para comparar alternativas.",
           "DISCOUNT_NOT_APPLICABLE": "Esa promoción ya no aplica con los materiales actuales, así que no se puede restaurar.",
           "FORBIDDEN": "No tenés permiso para modificar esta cotización.",
           "UNREACHABLE": "No pudimos comunicarnos con el servidor. Revisá tu conexión.",
@@ -2597,6 +2658,49 @@
     "reactivate": {
       "action": "Reactivar"
     },
+    "recommendations": {
+      "action": "Alternativas comerciales",
+      "title": "Alternativas de {name}",
+      "description": "Definí una opción económica y una premium. Cada tipo conserva una sola alternativa.",
+      "type": {
+        "ECONOMY": "Alternativa económica",
+        "PREMIUM": "Alternativa premium"
+      },
+      "empty": "Todavía no hay una alternativa definida.",
+      "set": "Definir",
+      "close": "Cerrar",
+      "cancel": "Cancelar",
+      "saved": "Guardamos «{name}» como alternativa.",
+      "removed": "Quitamos «{name}» de las alternativas.",
+      "picker": {
+        "ECONOMY": "Elegir alternativa económica",
+        "PREMIUM": "Elegir alternativa premium",
+        "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Comprobá que tengan el mismo uso y una presentación equivalente: compartir unidad no garantiza el mismo peso o contenido.",
+        "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
+        "noCompatibleProducts": "No encontramos productos con la misma familia, subgrupo y unidad.",
+        "searchError": "No pudimos buscar productos. Revisá la conexión e intentá de nuevo.",
+        "retry": "Reintentar",
+        "description": "Buscá el producto que puede ofrecerse en lugar del material base.",
+        "placeholder": "Código o nombre del producto…",
+        "clear": "Limpiar",
+        "hint": "Escribí para buscar productos del catálogo.",
+        "noResults": "No encontramos productos con esa búsqueda."
+      },
+      "replace": {
+        "action": "Reemplazar",
+        "title": "¿Reemplazar la alternativa?",
+        "description": "«{name}» va a quedar como {type}. Si ya había una alternativa de ese tipo, se reemplaza.",
+        "confirm": "Reemplazar alternativa",
+        "pending": "Reemplazando…"
+      },
+      "remove": {
+        "action": "Quitar",
+        "title": "¿Quitar la alternativa?",
+        "description": "«{name}» deja de aparecer como alternativa para este producto.",
+        "confirm": "Quitar alternativa",
+        "pending": "Quitando…"
+      }
+    },
     "name": {
       "label": "Nombre",
       "placeholder": "Ej. Cemento Portland 50 kg",
@@ -3389,23 +3493,23 @@
     "loadError": "No pudimos cargar las coincidencias."
   },
   "customerPortal": {
-    "label": "Subdominio",
+    "label": "Dirección del portal",
     "hint": "Esta va a ser la dirección del portal donde tus clientes pueden registrarse, ingresar y enviar pedidos.",
     "current": "Portal actual:",
     "loading": "Cargando dirección…",
     "invalid": "Usá hasta 63 letras sin tildes, números o guiones, sin guiones al principio o al final. Algunos nombres están reservados.",
     "checking": "Comprobando disponibilidad…",
-    "available": "Subdominio disponible",
-    "taken": "Ese subdominio ya está ocupado. Probá con otro.",
+    "available": "Dirección disponible",
+    "taken": "Esa dirección ya está ocupado. Probá con otro.",
     "error": "No pudimos comprobar o guardar la dirección. Volvé a intentar.",
-    "conflict": "El subdominio está ocupado o la dirección cambió desde que abriste la pantalla. Recargá y volvé a intentar.",
+    "conflict": "La dirección está ocupada o la dirección cambió desde que abriste la pantalla. Recargá y volvé a intentar.",
     "save": "Guardar dirección del portal",
     "saving": "Guardando…",
-    "unavailable": "La configuración de subdominios todavía no está habilitada en este entorno.",
+    "unavailable": "La configuración de direcciones todavía no está habilitada en este entorno.",
     "legacy": "Esta dirección fue configurada de forma administrativa. Se conserva y no se puede reemplazar desde acá; requiere una migración coordinada de sus enlaces y accesos.",
     "skipHint": "Podés configurar la dirección más tarde desde Configuración → Cuenta.",
     "changeTitle": "¿Cambiar la dirección del portal?",
-    "changeWarning": "La dirección anterior dejará de abrir este portal. Los enlaces que ya compartiste dejarán de funcionar: compartí la nueva dirección y reenviá los enlaces de pedidos y cotizaciones. Tus clientes tendrán que volver a ingresar en la nueva dirección; sus cuentas y pedidos se conservan. Las sesiones anteriores no se trasladan entre dominios.",
+    "changeWarning": "La dirección anterior dejará de abrir este portal. Los enlaces que ya compartiste dejarán de funcionar: compartí la nueva dirección y reenviá los enlaces de pedidos y cotizaciones. Tus clientes tendrán que volver a ingresar en la nueva dirección; sus cuentas y pedidos se conservan. Cada portal mantiene una sesión independiente.",
     "confirm": "Cambiar dirección",
     "cancel": "Cancelar"
   }

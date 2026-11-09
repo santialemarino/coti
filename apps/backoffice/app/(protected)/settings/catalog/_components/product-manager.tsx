@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   FileSpreadsheetIcon,
   ImageIcon,
+  LayersIcon,
   PackageOpenIcon,
   PencilIcon,
   PlusIcon,
@@ -39,6 +40,7 @@ import {
 } from '@repo/ui/components';
 import { EASE, MOTION } from '@repo/ui/lib';
 import { ProductFormDialog } from '@/app/(protected)/settings/catalog/_components/product-form-dialog';
+import { ProductRecommendationsDialog } from '@/app/(protected)/settings/catalog/_components/product-recommendations-dialog';
 import {
   createProduct,
   deactivateProduct,
@@ -81,6 +83,7 @@ export function ProductManager({
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; product: Product | null } | null>(
     null,
   );
+  const [recommendationProduct, setRecommendationProduct] = useState<Product | null>(null);
   const [deactivating, setDeactivating] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
@@ -301,6 +304,12 @@ export function ProductManager({
                 <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
                     <RowActionButton
+                      icon={LayersIcon}
+                      label={t('recommendations.action')}
+                      disabled={busy}
+                      onClick={() => setRecommendationProduct(product)}
+                    />
+                    <RowActionButton
                       icon={PencilIcon}
                       label={t('edit.action')}
                       disabled={busy}
@@ -354,6 +363,12 @@ export function ProductManager({
         invoicingEnabled={invoicingEnabled}
         pending={saving}
         onSubmit={onSubmit}
+      />
+
+      <ProductRecommendationsDialog
+        open={recommendationProduct !== null}
+        onOpenChange={(open) => !open && !saving && setRecommendationProduct(null)}
+        product={recommendationProduct}
       />
 
       <ConfirmDialog

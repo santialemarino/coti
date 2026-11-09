@@ -16,6 +16,8 @@ vi.mock('next/headers', () => ({
     new Headers({ host: 'supplier.coti.test:3001', 'x-forwarded-host': 'other.coti.test' }),
 }));
 
+vi.mock('@/lib/config/server', () => ({ API_INTERNAL_URL: 'http://api.internal.test' }));
+
 const identity = {
   id: 'customer-id',
   tax_id: '20123456786',
@@ -44,8 +46,8 @@ describe('customer sessions', () => {
       name: null,
       sessionExpiresAt: identity.session_expires_at,
     });
-    expect(request.mock.calls[0]?.[0]).toContain(
-      '/v1/customer/sites/supplier.coti.test/auth/register',
+    expect(request.mock.calls[0]?.[0]).toBe(
+      'http://api.internal.test/v1/customer/sites/supplier.coti.test/auth/register',
     );
     expect(JSON.parse(request.mock.calls[0]?.[1].body)).toEqual({
       tax_id: identity.tax_id,

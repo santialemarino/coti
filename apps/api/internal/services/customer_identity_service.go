@@ -255,5 +255,9 @@ func (s *CustomerAuthService) customerGoogleRedirectURI(site domain.CustomerSite
 	if s.cfg.GoogleLocalOrigin != "" {
 		return strings.TrimRight(s.cfg.GoogleLocalOrigin, "/") + "/api/customer/google/callback"
 	}
-	return s.customerOrigin(site) + "/api/customer/google/callback"
+	origin := s.customerOrigin(site)
+	if index := strings.Index(origin, "/c/"); index >= 0 {
+		origin = origin[:index]
+	}
+	return origin + "/api/customer/google/callback"
 }

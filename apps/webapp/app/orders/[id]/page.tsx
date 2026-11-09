@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { Card, InlineLink } from '@repo/ui/components';
 import { PublicQuoteView } from '@/app/quotes/_components/public-quote-view';
+import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerOrder, getCustomerOrderByToken } from '@/lib/api/customer-orders';
 import { getPublicQuoteByToken } from '@/lib/api/public-quotes';

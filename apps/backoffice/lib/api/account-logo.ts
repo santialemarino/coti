@@ -2,7 +2,7 @@ import 'server-only';
 
 import { apiRequest } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
-import { API_URL } from '@/lib/config';
+import { PUBLIC_API_URL } from '@/lib/config';
 
 interface AccountLogoUploadRaw {
   path: string;
@@ -18,7 +18,7 @@ export async function uploadAccountLogo(file: File): Promise<string> {
       formData,
       branchScoped: false,
     });
-    const base = API_URL.replace(/\/+$/, '');
+    const base = PUBLIC_API_URL.replace(/\/+$/, '');
     return new URL(uploaded.path.replace(/^\/+/, ''), base + '/').toString();
   } catch (error) {
     // This route resolves no entity, so 404 means the API deployment does not expose it.

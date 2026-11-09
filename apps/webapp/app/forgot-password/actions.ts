@@ -1,9 +1,8 @@
 'use server';
 
-import { redirect } from 'next/navigation';
-
 import { postCustomerAuth, safeCustomerDestination } from '@/lib/auth/customer-flow';
 import { acceptCustomerSession, type CustomerLoginRaw } from '@/lib/auth/customer-session';
+import { customerRedirect } from '@/lib/portal/server';
 
 export type RecoveryContactKind = 'EMAIL' | 'WHATSAPP';
 
@@ -93,5 +92,5 @@ export async function resetWithRecoveryCode(values: {
   } catch {
     return { error: 'unavailable' };
   }
-  redirect(safeCustomerDestination(values.next));
+  return await customerRedirect(safeCustomerDestination(values.next));
 }

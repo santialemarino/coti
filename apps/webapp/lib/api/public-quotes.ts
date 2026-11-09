@@ -20,6 +20,12 @@ interface PublicQuoteActionResultRaw {
   customer_status: string;
   created_at: string;
   quote_status?: string;
+  total?: string;
+}
+
+interface PublicQuoteSelectionPreviewRaw {
+  quote: QuotePayloadRaw;
+  subtotal: string;
 }
 
 interface QuotePayloadRaw {
@@ -50,6 +56,7 @@ interface BranchRaw {
 }
 
 interface QuoteItemRaw {
+  id: string;
   requested_description: string;
   product_code?: string;
   product_name: string;
@@ -61,10 +68,13 @@ interface QuoteItemRaw {
 }
 
 interface QuoteAlternativeRaw {
+  id: string;
   code?: string;
   name: string;
   unit?: string;
   unit_price: string;
+  recommendation_type?: 'EQUIVALENT' | 'PREMIUM' | 'ECONOMY';
+  selectable: boolean;
 }
 
 interface QuoteDiscountRaw {
@@ -96,12 +106,24 @@ export interface PublicQuoteSend {
 export interface PublicQuoteAction {
   type: CustomerActionType;
   message?: string;
+  selections?: PublicQuoteAlternativeSelection[];
+}
+
+export interface PublicQuoteAlternativeSelection {
+  itemId: string;
+  alternativeId: string;
 }
 
 export interface PublicQuoteActionResult {
   customerStatus: CustomerActionType;
   createdAt: string;
   quoteStatus?: string;
+  total?: string;
+}
+
+export interface PublicQuoteSelectionPreview {
+  quote: QuotePayload;
+  subtotal: string; // backend-calculated NUMERIC(14,2) decimal string
 }
 
 export interface QuotePayload {
@@ -132,6 +154,7 @@ export interface Branch {
 }
 
 export interface QuoteItem {
+  id: string;
   requestedDescription: string;
   productCode?: string;
   productName: string;
@@ -143,10 +166,13 @@ export interface QuoteItem {
 }
 
 export interface QuoteAlternative {
+  id: string;
   code?: string;
   name: string;
   unit?: string;
   unitPrice: string; // NUMERIC(14,2) decimal string, never float
+  recommendationType?: 'EQUIVALENT' | 'PREMIUM' | 'ECONOMY';
+  selectable: boolean;
 }
 
 export interface QuoteDiscount {
@@ -168,6 +194,7 @@ function mapSupplier(raw: SupplierRaw): Supplier {
 
 function mapItem(raw: QuoteItemRaw): QuoteItem {
   return {
+    id: raw.id,
     requestedDescription: raw.requested_description,
     productCode: raw.product_code,
     productName: raw.product_name,
@@ -180,7 +207,15 @@ function mapItem(raw: QuoteItemRaw): QuoteItem {
 }
 
 function mapAlternative(raw: QuoteAlternativeRaw): QuoteAlternative {
-  return { code: raw.code, name: raw.name, unit: raw.unit, unitPrice: raw.unit_price };
+  return {
+    id: raw.id,
+    code: raw.code,
+    name: raw.name,
+    unit: raw.unit,
+    unitPrice: raw.unit_price,
+    recommendationType: raw.recommendation_type,
+    selectable: raw.selectable,
+  };
 }
 
 function mapQuotePayload(raw: QuotePayloadRaw): QuotePayload {
@@ -251,6 +286,40 @@ export class PublicQuoteActionError extends Error {
   }
 }
 
+// PublicQuoteSelectionPreviewError retains the backend refusal for the same-origin proxy route.
+export class PublicQuoteSelectionPreviewError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`public quote selection preview failed with ${status}`);
+    this.status = status;
+  }
+}
+
+// Prices a tentative selection with the same frozen rules the final acceptance will use.
+export async function previewPublicQuoteSelection(
+  token: string,
+  selections: PublicQuoteAlternativeSelection[],
+): Promise<PublicQuoteSelectionPreview> {
+  const response = await customerFetch(
+    `${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/preview`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        selections: selections.map((selection) => ({
+          item_id: selection.itemId,
+          alternative_id: selection.alternativeId,
+        })),
+      }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) throw new PublicQuoteSelectionPreviewError(response.status);
+  const raw = (await response.json()) as PublicQuoteSelectionPreviewRaw;
+  return { quote: mapQuotePayload(raw.quote), subtotal: raw.subtotal };
+}
+
 /*
  * Records the customer's deliberate answer on the frozen version. Like the read above this is
  * server-only and unauthenticated: the token in the URL is the access control. The API treats a
@@ -264,7 +333,14 @@ export async function submitPublicQuoteAction(
   const response = await customerFetch(`${PUBLIC_QUOTE_PATH}/${encodeURIComponent(token)}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ type: action.type, message: action.message }),
+    body: JSON.stringify({
+      type: action.type,
+      message: action.message,
+      selections: action.selections?.map((selection) => ({
+        item_id: selection.itemId,
+        alternative_id: selection.alternativeId,
+      })),
+    }),
     cache: 'no-store',
   });
   if (!response.ok) {
@@ -279,5 +355,6 @@ export async function submitPublicQuoteAction(
     customerStatus: raw.customer_status as CustomerActionType,
     createdAt: raw.created_at,
     quoteStatus: raw.quote_status,
+    total: raw.total,
   };
 }

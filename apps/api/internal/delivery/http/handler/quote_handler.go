@@ -19,6 +19,10 @@ type QuoteService interface {
 	AcceptMaterials(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error)
 	ApproveAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
 		alternativeID uuid.UUID, approved bool) (*domain.QuoteItemAlternative, error)
+	DeleteRecommendationAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID, alternativeID uuid.UUID) error
+	SetRecommendationAlternative(ctx context.Context, tenant domain.Tenant, quoteID, itemID,
+		productID uuid.UUID, recommendationType domain.ProductAlternativeType,
+		saveToCatalog bool) (*domain.QuoteItemAlternative, error)
 	Reactivate(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		mode domain.QuoteReactivationMode) (*domain.Quote, error)
 	Transition(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, to domain.QuoteStatus) (*domain.Quote, error)
@@ -34,6 +38,8 @@ type QuoteService interface {
 type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
+	PreviewPublic(ctx context.Context, token string,
+		selections []domain.ClientAlternativeSelection) (*domain.PublicQuoteSelectionPreview, error)
 	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
 	RespondPublic(ctx context.Context, token string,
 		in domain.ClientActionInput) (*domain.PublicQuoteActionResult, error)
@@ -102,6 +108,54 @@ func (h *QuoteHandler) ApproveAlternative(c *gin.Context) {
 	}
 	alternative, err := h.quotes.ApproveAlternative(c.Request.Context(), tenant, quoteID,
 		itemID, alternativeID, *request.ApprovedBySeller)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toQuoteItemAlternativeResponse(*alternative))
+}
+
+// SetRecommendationAlternative replaces one commercial recommendation on a priced line.
+//
+// @Summary Set a quote item recommendation
+// @Description Replaces the line's ECONOMY or PREMIUM option. The seller can also save it as the catalog default.
+// @Tags quotes
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param quoteId path string true "Quote id"
+// @Param itemId path string true "Item id"
+// @Param recommendationType path string true "ECONOMY or PREMIUM"
+// @Param request body dto.SetQuoteItemRecommendationRequest true "Recommendation product"
+// @Success 200 {object} dto.QuoteItemAlternativeResponse
+// @Failure 400,401,404,409,422,503 {object} dto.ErrorResponse
+// @Router /v1/quotes/{quoteId}/items/{itemId}/recommendations/{recommendationType} [put]
+func (h *QuoteHandler) SetRecommendationAlternative(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	itemID, ok := pathUUID(c, "itemId")
+	if !ok {
+		return
+	}
+	recommendationType, err := parseQuoteRecommendationType(c.Param("recommendationType"))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	var request dto.SetQuoteItemRecommendationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	alternative, err := h.quotes.SetRecommendationAlternative(c.Request.Context(), tenant, quoteID,
+		itemID, request.ProductID, recommendationType, request.SaveToCatalog)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -245,6 +299,40 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// PreviewPublic calculates the frozen promotion and discount outcome of tentative selections.
+//
+//	@Summary	Preview public quote selections
+//	@Tags		public quote sends
+//	@Accept		json
+//	@Produce	json
+//	@Param		token		path	string								true	"Public delivery token"
+//	@Param		request		body	dto.PublicQuoteSelectionPreviewRequest	true	"Tentative selections"
+//	@Success	200			{object}	dto.PublicQuoteSelectionPreviewResponse
+//	@Failure	400,404,409	{object}	dto.ErrorResponse
+//	@Router		/v1/customer/quote-sends/{token}/preview [post]
+func (h *QuoteHandler) PreviewPublic(c *gin.Context) {
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	var request dto.PublicQuoteSelectionPreviewRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	result, err := h.delivery.PreviewPublic(c.Request.Context(), c.Param("token"),
+		toClientAlternativeSelections(request.Selections))
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, dto.PublicQuoteSelectionPreviewResponse{
+		Quote:    toQuoteRepresentationPayloadResponse(result.Payload),
+		Subtotal: result.Subtotal,
+	})
+}
+
 // RespondPublic records the customer's answer to a frozen quote and moves the quote when the
 // answer addresses the version it still shows.
 //
@@ -271,17 +359,29 @@ func (h *QuoteHandler) RespondPublic(c *gin.Context) {
 		return
 	}
 	result, err := h.delivery.RespondPublic(c.Request.Context(), c.Param("token"),
-		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message})
+		domain.ClientActionInput{Type: domain.ClientActionType(request.Type), Message: request.Message,
+			Selections: toClientAlternativeSelections(request.Selections)})
 	if err != nil {
 		Respond(c, err)
 		return
 	}
 	response := dto.PublicQuoteActionResponse{CustomerStatus: string(result.CustomerStatus),
-		CreatedAt: result.CreatedAt}
+		CreatedAt: result.CreatedAt, Total: result.Total}
 	status := string(result.QuoteStatus)
 	response.QuoteStatus = &status
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, response)
+}
+
+func toClientAlternativeSelections(
+	selections []dto.PublicQuoteAlternativeSelectionRequest,
+) []domain.ClientAlternativeSelection {
+	result := make([]domain.ClientAlternativeSelection, 0, len(selections))
+	for _, selection := range selections {
+		result = append(result, domain.ClientAlternativeSelection{ItemID: selection.ItemID,
+			AlternativeID: selection.AlternativeID})
+	}
+	return result
 }
 
 func toQuoteSendResponse(result domain.QuoteDeliveryResult) dto.QuoteSendResponse {
@@ -317,12 +417,18 @@ func toQuoteRepresentationPayloadResponse(
 		alternatives := make([]dto.QuoteRepresentationAlternativeResponse, 0,
 			len(item.Alternatives))
 		for _, alternative := range item.Alternatives {
+			var recommendationType *string
+			if alternative.RecommendationType != nil {
+				value := string(*alternative.RecommendationType)
+				recommendationType = &value
+			}
 			alternatives = append(alternatives, dto.QuoteRepresentationAlternativeResponse{
-				Code: alternative.Code, Name: alternative.Name, Unit: alternative.Unit,
-				UnitPrice: alternative.UnitPrice})
+				ID: alternative.ID, Code: alternative.Code, Name: alternative.Name, Unit: alternative.Unit,
+				UnitPrice: alternative.UnitPrice, RecommendationType: recommendationType,
+				Selectable: alternative.Selectable})
 		}
 		items = append(items, dto.QuoteRepresentationItemResponse{
-			RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
+			ID: item.ID, RequestedDescription: item.RequestedDescription, ProductCode: item.ProductCode,
 			ProductName: item.ProductName, Quantity: item.Quantity, Unit: item.Unit,
 			UnitPrice: item.UnitPrice, Subtotal: item.Subtotal, Alternatives: alternatives})
 	}
@@ -655,6 +761,14 @@ func parseQuoteReactivationMode(raw string) (domain.QuoteReactivationMode, error
 	}
 }
 
+func parseQuoteRecommendationType(raw string) (domain.ProductAlternativeType, error) {
+	kind := domain.ProductAlternativeType(raw)
+	if kind == domain.ProductAlternativeEconomy || kind == domain.ProductAlternativePremium {
+		return kind, nil
+	}
+	return "", fmt.Errorf("%w: %q is not an ECONOMY or PREMIUM recommendation", domain.ErrInvalidInput, raw)
+}
+
 func toPricedQuoteResponse(
 	priced domain.PricedQuote, highConfidence decimal.Decimal,
 ) dto.PricedQuoteResponse {
@@ -702,10 +816,16 @@ func toQuoteVersionResponse(version domain.QuoteVersion) dto.QuoteVersionRespons
 func toQuoteItemAlternativeResponse(
 	alternative domain.QuoteItemAlternative,
 ) dto.QuoteItemAlternativeResponse {
+	var recommendationType *string
+	if alternative.RecommendationType != nil {
+		value := string(*alternative.RecommendationType)
+		recommendationType = &value
+	}
 	return dto.QuoteItemAlternativeResponse{
 		ID: alternative.ID, ProductID: alternative.ProductID, ComboID: alternative.ComboID,
-		Type: string(alternative.Type), Origin: string(alternative.Origin), Rank: alternative.Rank,
-		ConfidenceScore:  amountString(alternative.ConfidenceScore),
+		Type: string(alternative.Type), RecommendationType: recommendationType,
+		Origin: string(alternative.Origin), Rank: alternative.Rank,
+		ConfidenceScore:  confidenceString(alternative.ConfidenceScore),
 		PriceSnapshot:    amountString(alternative.PriceSnapshot),
 		ApprovedBySeller: alternative.ApprovedBySeller, ChosenByClient: alternative.ChosenByClient,
 		Code: alternative.Code, CanonicalName: alternative.CanonicalName, Unit: alternative.Unit,
@@ -749,21 +869,7 @@ func toQuoteItemAlternativeResponses(
 ) []dto.QuoteItemAlternativeResponse {
 	responses := make([]dto.QuoteItemAlternativeResponse, 0, len(alternatives))
 	for _, alternative := range alternatives {
-		responses = append(responses, dto.QuoteItemAlternativeResponse{
-			ID:               alternative.ID,
-			ProductID:        alternative.ProductID,
-			ComboID:          alternative.ComboID,
-			Type:             string(alternative.Type),
-			Origin:           string(alternative.Origin),
-			Rank:             alternative.Rank,
-			ConfidenceScore:  confidenceString(alternative.ConfidenceScore),
-			PriceSnapshot:    amountString(alternative.PriceSnapshot),
-			ApprovedBySeller: alternative.ApprovedBySeller,
-			ChosenByClient:   alternative.ChosenByClient,
-			Code:             alternative.Code,
-			CanonicalName:    alternative.CanonicalName,
-			Unit:             alternative.Unit,
-		})
+		responses = append(responses, toQuoteItemAlternativeResponse(alternative))
 	}
 	return responses
 }

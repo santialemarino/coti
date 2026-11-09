@@ -624,6 +624,8 @@ func TestQuoteRepository_ListAlternativesByItemIDs_RanksEachLinesOffersBestFirst
 		newAlternative(cementItem, second, 2, "0.8000"),
 		newAlternative(membraneItem, nearMiss, 1, "0.5500"),
 	}
+	recommendationType := domain.ProductAlternativeEconomy
+	insertOrder[2].RecommendationType = &recommendationType
 
 	var byItem map[uuid.UUID][]domain.QuoteItemAlternative
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
@@ -667,6 +669,10 @@ func TestQuoteRepository_ListAlternativesByItemIDs_RanksEachLinesOffersBestFirst
 		cementOffers[0].Type != domain.QuoteItemAlternativeTypeProduct {
 		t.Errorf("cemento best offer = (%q, %q), want (PRODUCT, AI)", cementOffers[0].Type,
 			cementOffers[0].Origin)
+	}
+	if cementOffers[0].RecommendationType == nil ||
+		*cementOffers[0].RecommendationType != domain.ProductAlternativeEconomy {
+		t.Errorf("cemento recommendation type = %v, want ECONOMY", cementOffers[0].RecommendationType)
 	}
 	// This ticket freezes no prices: valorization owns those.
 	if cementOffers[0].PriceSnapshot.Valid {

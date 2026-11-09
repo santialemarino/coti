@@ -7,7 +7,7 @@ import { GET } from '@/app/api/customer/google/start/route';
 import { GOOGLE_STATE_COOKIE } from '@/lib/auth/customer-flow';
 import { localGoogleReturnOrigin } from '@/lib/auth/local-google-flow';
 
-vi.mock('next/headers', () => ({ cookies: vi.fn() }));
+vi.mock('next/headers', () => ({ cookies: vi.fn(), headers: async () => new Headers() }));
 vi.mock('@/lib/auth/customer-session', () => ({
   customerApiPath: async () => 'http://api.test/options',
 }));

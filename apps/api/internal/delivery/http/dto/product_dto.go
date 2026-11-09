@@ -65,6 +65,11 @@ type AddAlternativeRequest struct {
 	Type                 string    `json:"type" binding:"required,oneof=EQUIVALENT PREMIUM ECONOMY"`
 }
 
+// SetProductRecommendationRequest replaces one commercial recommendation slot in the catalog.
+type SetProductRecommendationRequest struct {
+	AlternativeProductID uuid.UUID `json:"alternative_product_id" binding:"required"`
+}
+
 // ProductResponse is returned by list, get, create, and update.
 type ProductResponse struct {
 	ID            uuid.UUID  `json:"id"`
