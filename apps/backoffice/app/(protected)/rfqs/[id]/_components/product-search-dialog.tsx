@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
 import {
@@ -30,7 +30,7 @@ export type ProductSuggestion = CatalogProduct & {
 interface ProductSearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (product: CatalogProduct) => void;
+  onSelect: (product: CatalogProduct) => void | boolean | Promise<void | boolean>;
   title?: string;
   footer?: ReactNode;
   /* The candidates matching already weighed for the line, listed first while they fit the query. */
@@ -68,6 +68,8 @@ export function ProductSearchDialog({
     product: CatalogProduct | null;
   } | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
+  const [selecting, setSelecting] = useState(false);
+  const selectionInFlight = useRef(false);
 
   // Each opening starts a fresh search; clearing on close would empty the list mid-exit.
   if (open !== wasOpen) {
@@ -147,14 +149,22 @@ export function ProductSearchDialog({
     }
   }
 
-  function handleSelect(product: CatalogProduct) {
-    onSelect(product);
-    onOpenChange(false);
+  async function handleSelect(product: CatalogProduct) {
+    if (selectionInFlight.current) return;
+    selectionInFlight.current = true;
+    setSelecting(true);
+    try {
+      const selected = await onSelect(product);
+      if (selected !== false) onOpenChange(false);
+    } finally {
+      selectionInFlight.current = false;
+      setSelecting(false);
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" closeOnClickOutside={!selecting}>
         <DialogHeader>
           <DialogTitle>{title ?? t('searchProduct')}</DialogTitle>
           {compatibilityProductId && !baseLoading && (
@@ -231,8 +241,9 @@ export function ProductSearchDialog({
                       <li key={product.id}>
                         <button
                           type="button"
-                          className="flex w-full items-center justify-between p-3 gap-x-3 bg-card border border-border rounded-lg outline-none transition-[background-color,border-color,box-shadow] duration-150 ease-out-soft hover:bg-accent active:bg-accent-strong focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 text-left"
-                          onClick={() => handleSelect(product)}
+                          disabled={selecting}
+                          className="flex w-full items-center justify-between p-3 gap-x-3 bg-card border border-border rounded-lg outline-none transition-[background-color,border-color,box-shadow] duration-150 ease-out-soft hover:bg-accent active:bg-accent-strong focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45 disabled:pointer-events-none disabled:opacity-50 text-left"
+                          onClick={() => void handleSelect(product)}
                         >
                           <div className="min-w-0">
                             <p className="truncate text-paragraph-sm-medium text-foreground">

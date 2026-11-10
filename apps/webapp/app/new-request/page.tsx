@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { InlineLink } from '@repo/ui/components';
 import { PublicRfqSiteForm } from '@/app/_components/public-rfq-site-form';
+import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
@@ -18,6 +19,7 @@ export default async function NewRequestPage() {
   const t = await getTranslations('customerOrders');
   return (
     <>
+      <CustomerHeader section="orders" />
       <nav className="mx-auto w-full max-w-xl px-4 pt-6 sm:px-6">
         <InlineLink asChild>
           <Link href={ROUTES.orders}>{t('back')}</Link>

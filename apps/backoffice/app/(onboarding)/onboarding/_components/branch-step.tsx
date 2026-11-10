@@ -81,12 +81,31 @@ export function BranchStep({ branch, formId, onSubmit }: BranchStepProps) {
           />
           <FormField
             control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{tFields('email.label')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    placeholder={tFields('email.placeholder')}
+                    maxLength={255}
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
             name="defaultExpiryDays"
             render={({ field }) => (
-              <FormItem className="md:col-span-2">
+              <FormItem>
                 <FormLabel required>{tFields('defaultExpiryDays.label')}</FormLabel>
                 <FormControl>
-                  <QuantityInput min={EXPIRY_MIN_DAYS} containerClassName="max-w-44" {...field} />
+                  <QuantityInput min={EXPIRY_MIN_DAYS} containerClassName="w-full" {...field} />
                 </FormControl>
                 <FormDescription>{t('expiryHint')}</FormDescription>
                 <FormMessage />

@@ -74,7 +74,14 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
 
   async function save(values: AccountValues, disconnectARCA: boolean) {
     setInvoicePending(false);
-    const result = await updateAccount(values, logo, disconnectARCA);
+    let result;
+    try {
+      result = await updateAccount(values, logo, disconnectARCA);
+    } catch {
+      form.setError('root', { message: message('INTERNAL') });
+      toast.error(message('INTERNAL'));
+      return;
+    }
     if (result.ok) {
       toast.success(t(disconnectARCA ? 'savedDisconnected' : 'saved'));
       return;
@@ -112,14 +119,20 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit((values) => save(values, false))}
+        onSubmit={form.handleSubmit(
+          (values) => save(values, false),
+          (errors) => {
+            const first = Object.values(errors).find((error) => typeof error?.message === 'string');
+            toast.error(
+              typeof first?.message === 'string' ? first.message : message('INVALID_BODY'),
+            );
+          },
+        )}
         noValidate
         className="flex flex-col w-full gap-y-6 lg:gap-y-8"
       >
-        {/* One column as narrow as a field reads well, or two filling the page once it is wide
-            enough; the save button spans both because it saves both. */}
-        <div className="grid grid-cols-1 gap-x-12 gap-y-8 lg:grid-cols-2">
-          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+        <div className="flex w-full max-w-xl flex-col gap-y-8">
+          <section className="flex flex-col gap-y-5">
             <h2 className="text-heading-6">{t('company.title')}</h2>
 
             <FormField
@@ -184,7 +197,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
             <CustomerPortalEditor />
           </section>
 
-          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+          <section className="flex flex-col gap-y-5">
             <h2 className="text-heading-6">{t('brand.title')}</h2>
 
             <LogoDropzone initialUrl={account.brandLogoUrl} onFileChange={setLogo} />
@@ -198,7 +211,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
             />
           </section>
 
-          <section className="flex flex-col max-w-md gap-y-5 lg:max-w-none">
+          <section className="flex flex-col gap-y-5">
             <h2 className="text-heading-6">{t('lowerPrice.title')}</h2>
 
             <FormField
@@ -245,7 +258,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
 
         <PendingButton
           type="submit"
-          className="w-full max-w-md lg:max-w-none"
+          className="w-full max-w-xl"
           pending={form.formState.isSubmitting}
           pendingLabel={t('submitting')}
         >

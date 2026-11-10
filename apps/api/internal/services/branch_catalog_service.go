@@ -38,27 +38,32 @@ type productPriceRepository interface {
 	CloseOpenPeriod(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, at time.Time) (int64, error)
 }
 
+type mutableRecommendationPrices interface {
+	RefreshMutableRecommendationPrice(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, price domain.ProductPrice) error
+}
+
 // BranchCatalogService owns the per-branch face of the catalog: what a branch carries, and
 // at what price.
 type BranchCatalogService struct {
-	db           tenantTxRunner
-	products     productLookup
-	availability branchProductRepository
-	prices       productPriceRepository
-	now          func() time.Time
+	db              tenantTxRunner
+	products        productLookup
+	availability    branchProductRepository
+	prices          productPriceRepository
+	recommendations mutableRecommendationPrices
+	now             func() time.Time
 }
 
 // NewBranchCatalogService builds a BranchCatalogService. now is injectable so the validity
 // periods a price update writes are deterministic in tests.
 func NewBranchCatalogService(
 	db tenantTxRunner, products productLookup, availability branchProductRepository,
-	prices productPriceRepository, now func() time.Time,
+	prices productPriceRepository, recommendations mutableRecommendationPrices, now func() time.Time,
 ) *BranchCatalogService {
 	if now == nil {
 		now = time.Now
 	}
 	return &BranchCatalogService{
-		db: db, products: products, availability: availability, prices: prices, now: now,
+		db: db, products: products, availability: availability, prices: prices, recommendations: recommendations, now: now,
 	}
 }
 
@@ -150,8 +155,9 @@ func (s *BranchCatalogService) SetPrice(
 	if in.Currency == "" {
 		in.Currency = domain.DefaultCurrency
 	}
+	effectiveAt := s.now()
 	if in.ValidFrom.IsZero() {
-		in.ValidFrom = s.now()
+		in.ValidFrom = effectiveAt
 	}
 
 	var price *domain.ProductPrice
@@ -184,7 +190,14 @@ func (s *BranchCatalogService) SetPrice(
 		var createErr error
 		price, createErr = s.prices.Create(ctx, q, tenant.AccountID, tenant.BranchID, productID,
 			&tenant.UserID, in)
-		return createErr
+		if createErr != nil {
+			return createErr
+		}
+		if in.ValidFrom.After(effectiveAt) {
+			return nil
+		}
+		return s.recommendations.RefreshMutableRecommendationPrice(ctx, q, tenant.AccountID,
+			tenant.BranchID, *price)
 	}); err != nil {
 		return nil, err
 	}

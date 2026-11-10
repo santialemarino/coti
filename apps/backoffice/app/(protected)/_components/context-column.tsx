@@ -17,12 +17,14 @@ import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
 import { isOrdersPath } from '@/config/routes';
 import { useColumnSection } from '@/hooks/use-column-section';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import type { ContactSuggestion } from '@/lib/api/client-contact-suggestions';
 import type { Onboarding } from '@/lib/api/onboarding';
 
 // Tailwind's `lg`, where the column stops being the page and sits beside it.
 const WIDE = '(min-width: 64rem)';
 
 interface ContextColumnProps {
+  suggestions?: ContactSuggestion[] | null;
   // The settings sections the caller is offered; none closes the column on the settings pages.
   settingsNav: SettingsNavItem[];
   // An administrator's unfinished setup card; below lg the queue's landing carries it.
@@ -33,7 +35,7 @@ interface ContextColumnProps {
  * The shell's one left column: the queue or the settings sections, closed elsewhere. It lives in the
  * layout so it can slide out as well as in; its content keeps its width and rides the box's edge.
  */
-export function ContextColumn({ settingsNav, onboarding }: ContextColumnProps) {
+export function ContextColumn({ settingsNav, onboarding, suggestions }: ContextColumnProps) {
   const pathname = usePathname();
   const t = useTranslations('rfqs');
   const tSettings = useTranslations('settings');
@@ -88,11 +90,9 @@ export function ContextColumn({ settingsNav, onboarding }: ContextColumnProps) {
         role={isPage ? 'main' : undefined}
         className="flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:bg-transparent max-lg:border-r-0"
       >
-        {section === 'clients' ? (
-          <ColumnPanel hidden={false} title={tClients('title')} isPage={false}>
-            <ClientContactSuggestions compact />
-          </ColumnPanel>
-        ) : null}
+        <ColumnPanel hidden={section !== 'clients'} title={tClients('title')} isPage={false}>
+          <ClientContactSuggestions compact initialItems={suggestions} />
+        </ColumnPanel>
         {/* Both stay mounted so the queue keeps its open stacks across a visit to settings; the one
             on show fades in each time it returns. */}
         {hasQueue ? (

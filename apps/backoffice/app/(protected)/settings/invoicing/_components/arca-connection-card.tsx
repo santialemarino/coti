@@ -18,6 +18,7 @@ import type { ARCASetup } from '@/lib/api/arca-setup';
 import { formatCuit } from '@/lib/api/invoicing';
 import { useFormatters } from '@/lib/i18n/formatters';
 import type { ARCAConnectionState } from '@/lib/utils/arca-connection';
+import { showsTestEnvironment } from '@/lib/utils/invoicing-environment';
 
 const CONNECTION_TONE: Record<ARCAConnectionState, 'neutral' | 'warning' | 'success' | 'danger'> = {
   disabled: 'neutral',
@@ -57,7 +58,7 @@ export function ARCAConnectionCard({ setup, state }: ARCAConnectionCardProps) {
   const fmt = useFormatters();
   const t = useTranslations('invoicing.settings.connection');
   const expiresOn = setup.certificateExpiresAt ? fmt.date(setup.certificateExpiresAt) : '';
-  const testMode = setup.environment === 'HOMOLOGATION';
+  const testMode = showsTestEnvironment(setup.environment);
 
   return (
     <Card className="gap-y-4">

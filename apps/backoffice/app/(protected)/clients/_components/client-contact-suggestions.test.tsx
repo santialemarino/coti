@@ -11,17 +11,27 @@ vi.mock('@/app/(protected)/rfqs/_components/rfq-list-context', () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 
-function renderSuggestions(compact = false) {
+function renderSuggestions(compact = false, initialItems?: []) {
   return render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <ClientContactSuggestions compact={compact} />
+      <ClientContactSuggestions compact={compact} initialItems={initialItems} />
     </NextIntlClientProvider>,
   );
 }
+
+it('shows a server-resolved empty rail immediately while refreshing in the background', () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  );
+  renderSuggestions(true, []);
+  expect(screen.getByText(messages.clientContactSuggestions.empty)).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /0 coincidencias/ })).toBeNull();
+});
 
 it('keeps pending suggestions reachable from the contextual column', async () => {
   vi.stubGlobal(

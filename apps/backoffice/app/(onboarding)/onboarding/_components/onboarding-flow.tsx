@@ -132,7 +132,13 @@ export function OnboardingFlow({
 
   function run(task: () => Promise<void>) {
     setError(null);
-    startTransition(task);
+    startTransition(async () => {
+      try {
+        await task();
+      } catch {
+        setError(message('INTERNAL'));
+      }
+    });
   }
 
   function submitBrand(values: OnboardingBrandValues, logo?: File | null) {
@@ -281,7 +287,12 @@ export function OnboardingFlow({
               headingRef.current?.focus();
             }}
           >
-            <header className="flex flex-col gap-y-2">
+            <header
+              className={cn(
+                'flex flex-col gap-y-2',
+                step === 'COMPLETE' && 'items-center text-center',
+              )}
+            >
               <h1 ref={headingRef} tabIndex={-1} className="text-heading-2 outline-none">
                 {t(`${screen}.title`)}
               </h1>
@@ -478,7 +489,7 @@ export function OnboardingFlow({
         }));
         const allDone = outcomes.every((item) => item.done);
         return (
-          <div className="flex flex-1 flex-col gap-y-8">
+          <div className="flex flex-1 flex-col items-center gap-y-8">
             <StatusScreen
               icon={allDone ? CheckCircle2Icon : ListTodoIcon}
               tone={allDone ? 'success' : 'info'}
@@ -486,16 +497,21 @@ export function OnboardingFlow({
               description={t(allDone ? 'complete.readyDescription' : 'complete.partialDescription')}
             />
             <div className="grid w-full max-w-3xl gap-4 sm:grid-cols-2">
-              {outcomes.map((item) => (
+              {outcomes.map((item, index) => (
                 <ReadyItem
                   key={item.key}
+                  className={
+                    index === outcomes.length - 1 && outcomes.length % 2 === 1
+                      ? 'sm:col-span-2'
+                      : undefined
+                  }
                   icon={item.done ? item.icon : CircleDashedIcon}
                   done={item.done}
                   text={t(`complete.${item.done ? 'items' : 'pending'}.${item.key}`)}
                 />
               ))}
             </div>
-            <Button asChild size="lg" className="mt-auto w-full sm:ml-auto sm:w-auto">
+            <Button asChild size="lg" className="mt-auto w-full sm:w-auto">
               <Link href={ROUTES.home}>{t('complete.action')}</Link>
             </Button>
           </div>
@@ -593,13 +609,20 @@ function ReadyItem({
   icon: Icon,
   text,
   done,
+  className,
 }: {
   icon: typeof UsersIcon;
   text: string;
   done: boolean;
+  className?: string;
 }) {
   return (
-    <Card className="min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1 text-center">
+    <Card
+      className={cn(
+        'min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1 text-center',
+        className,
+      )}
+    >
       <Icon
         aria-hidden="true"
         className={cn('size-8', done ? 'text-primary' : 'text-foreground-subtle')}

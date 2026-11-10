@@ -289,7 +289,7 @@ stored value back.
 
 `invoicing_enabled` says whether the corralón invoices with Coti, and `has_invoices` whether ARCA ever
 authorized a voucher for it — an issued invoice or credit note, test-environment ones included,
-since «Comprobantes» lists those too with their «Prueba» mark; a pending or refused attempt is no
+since invoice history includes those too; a pending or refused attempt is no
 fiscal record and does not count. Both are read-only on the record, so every member — sellers
 included — reads them from `GET /v1/account`. `PUT /v1/invoicing/enabled` (`{"enabled": bool}`, admin-only) is
 the one write. It is not part of `PUT /v1/account`, which replaces the whole record, so flipping a
@@ -307,6 +307,10 @@ switch would otherwise have to resend the name and the brand.
 The migration that added it started it on for accounts with an `arca_setup` row or any invoice, and
 off for every other account. A new account starts off. `INVOICING_DISABLED` is a different thing: the
 server has no ARCA encryption key, whatever the account chose.
+
+Production web builds omit the informational test-environment badges and notes in settings,
+invoice cards and invoice history. This presentation rule does not change the API's ARCA
+environment, authorization, certificate setup steps, or the fiscal markings in generated documents.
 
 The backoffice hides everything invoicing-related while it is off: the invoice card on an accepted
 order, «Facturar también» and «No requiere factura» when closing a sale, a product's IVA rate, the

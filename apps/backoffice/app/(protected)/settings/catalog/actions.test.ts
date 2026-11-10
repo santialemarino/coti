@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createProduct,
   deactivateProduct,
+  getProductPrice,
   listProductRecommendations,
   removeProductRecommendation,
+  setProductPrice,
   setProductRecommendation,
   updateProduct,
   uploadProductImage,
@@ -33,6 +35,99 @@ const VALUES: ProductValues = {
 };
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('catalog branch prices', () => {
+  const values = {
+    branchId: 'b0000000-0000-4000-8000-000000000002',
+    price: '5000.25',
+    minPrice: '4800',
+    currency: 'ARS',
+  };
+
+  it('reads the current period for the explicitly selected branch and maps decimal strings', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      items: [
+        {
+          price: '6000',
+          min_price: null,
+          currency: 'ARS',
+          valid_from: '2099-01-01T00:00:00Z',
+          valid_to: null,
+        },
+        {
+          price: '5000.25',
+          min_price: '4800.00',
+          currency: 'ARS',
+          valid_from: '2020-01-01T00:00:00Z',
+          valid_to: null,
+        },
+        {
+          price: '4000',
+          min_price: null,
+          currency: 'ARS',
+          valid_from: '2019-01-01T00:00:00Z',
+          valid_to: '2020-01-01T00:00:00Z',
+        },
+      ],
+    });
+    await expect(getProductPrice('product-1', values.branchId)).resolves.toEqual({
+      ok: true,
+      current: { price: '5000.25', minPrice: '4800.00', currency: 'ARS' },
+    });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/products/product-1/prices',
+      branchId: values.branchId,
+    });
+  });
+
+  it('creates a new validity period without converting amounts or inferring the branch', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({});
+    await expect(setProductPrice('product-1', values)).resolves.toEqual({
+      ok: true,
+      productId: 'product-1',
+    });
+    expect(apiRequest).toHaveBeenCalledWith({
+      path: '/v1/products/product-1/prices',
+      method: 'POST',
+      branchId: values.branchId,
+      body: { price: '5000.25', min_price: '4800', currency: 'ARS' },
+    });
+  });
+
+  it('clears an optional floor explicitly', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({});
+    await setProductPrice('product-1', { ...values, minPrice: '' });
+    expect(apiRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { price: '5000.25', min_price: null, currency: 'ARS' } }),
+    );
+  });
+
+  it.each([
+    { branchId: '' },
+    { price: '' },
+    { price: '-1' },
+    { price: '1.234' },
+    { price: 'NaN' },
+    { minPrice: '5000.26' },
+  ])('rejects invalid price input before writing (%j)', async (invalid) => {
+    await expect(setProductPrice('product-1', { ...values, ...invalid })).resolves.toEqual({
+      error: 'INVALID_BODY',
+    });
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed load distinct from an unpriced product', async () => {
+    vi.mocked(apiRequest).mockRejectedValueOnce(new Error('offline'));
+    await expect(getProductPrice('product-1', values.branchId)).resolves.toEqual({
+      error: 'INTERNAL',
+    });
+    vi.mocked(apiRequest).mockResolvedValueOnce({ items: [] });
+    await expect(getProductPrice('product-1', values.branchId)).resolves.toEqual({
+      ok: true,
+      current: null,
+    });
+  });
+});
 
 describe('catalog product actions', () => {
   it('maps the create form to the API contract', async () => {

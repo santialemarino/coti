@@ -347,7 +347,8 @@ func (s *QuoteService) SetRecommendationAlternative(
 		}
 		price, ok := prices[productID]
 		if !ok {
-			return fmt.Errorf("%w: the alternative is not active and priced at this branch", domain.ErrInvalidInput)
+			return domain.WithCode(domain.CodeRecommendationPriceUnavailable,
+				fmt.Errorf("%w: the alternative is not active and priced at this branch", domain.ErrInvalidInput))
 		}
 		currency := version.Currency
 		if currency == "" {

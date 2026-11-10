@@ -5,6 +5,12 @@ const DEFAULT_REFRESH_SKEW_SECONDS = 60;
 const DEFAULT_REMEMBERED_SESSION_DAYS = 30;
 const DEFAULT_RESEND_COOLDOWN_SECONDS = 30;
 const DEFAULT_ARCA_CERTIFICATE_RENEWAL_DAYS = 30;
+const DEFAULT_CATALOG_PREVIEW_PAGE_SIZE = 25;
+
+export const CATALOG_PREVIEW_PAGE_SIZE = Math.max(
+  1,
+  readInt(process.env.NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE, DEFAULT_CATALOG_PREVIEW_PAGE_SIZE),
+);
 
 // URLs returned to the browser must stay public, while server-side fetches may use the compose network.
 export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_PUBLIC_API_URL;

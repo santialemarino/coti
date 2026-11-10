@@ -89,6 +89,10 @@ customer's own proof merged them).
 
 ## Seller actions on provisional profiles
 
+The shell reads pending contact suggestions on the server, like the order queue. An empty clients
+rail therefore renders the shared empty state immediately; its background refresh can still report
+and retry a failed request. The full suggestions page uses the same server read.
+
 A provisional profile (no CUIT) is the seller's to tidy; a registered one belongs to its customer.
 
 - **Rename.** `PUT /v1/clients/{id}/name` sets the name of a provisional profile, for one that kept a
@@ -142,12 +146,26 @@ whole profile, which keeps its earlier name until the customer changes it.
 
 ## Order history
 
+When the portal history is empty and the customer's profile or contacts are still unproved,
+the page links to contact verification in **Mis datos**. Sending a quotation does not grant
+profile ownership: the customer must prove a contact under the rules below before earlier
+seller-entered requests appear.
+
 GET /orders lists a request when any of these holds:
 
 - the customer authored it in the portal;
 - it belongs to a profile the customer proved (`includes_profile_history`), with its whole past;
 - it belonged to a provisional profile merged into theirs on proof, which the merge snapshots;
-- it arrived from a contact the customer proved, at or after that proof.
+- it arrived from a contact the customer proved, at or after that proof;
+- an immutable quotation was successfully sent to that customer's verified email or WhatsApp
+  at or after the customer's contact proof.
+
+Outgoing delivery grants only the matching send and its paired web publication (same supplier,
+branch, immutable version and idempotency operation). It does not prove ownership of the whole
+commercial profile or unlock older sends. The history chooses the latest publication that this
+customer can access; a later send to someone else does not replace it. Failed or pending external
+deliveries cannot grant access through a web publication alone. Token reads and actions use the
+same recipient checks as the order list and detail.
 
 The last rule compares the inbound message's `provider_received_at`, the provider's arrival time,
 with `customer_contact_ownership.verified_at`. A phone or email that changes hands therefore opens

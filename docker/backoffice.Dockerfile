@@ -21,6 +21,10 @@ RUN pnpm install --frozen-lockfile
 FROM base AS builder
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG SERVER_ACTION_BODY_SIZE_LIMIT=16mb
+ENV SERVER_ACTION_BODY_SIZE_LIMIT=${SERVER_ACTION_BODY_SIZE_LIMIT}
+ARG NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE=25
+ENV NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE=${NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE}
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/backoffice/node_modules ./apps/backoffice/node_modules
 COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
@@ -40,6 +44,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG SERVER_ACTION_BODY_SIZE_LIMIT=16mb
+ENV SERVER_ACTION_BODY_SIZE_LIMIT=${SERVER_ACTION_BODY_SIZE_LIMIT}
 COPY --from=builder /app/apps/backoffice/.next ./.next
 COPY --from=builder /app/apps/backoffice/public ./public
 COPY --from=builder /app/apps/backoffice/package.json ./

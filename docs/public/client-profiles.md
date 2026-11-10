@@ -12,6 +12,9 @@ email. Each supplier keeps one profile per CUIT, and that identifier cannot subs
 or removed. Customers manage their name, multiple contacts and optional fiscal details in My data.
 They add phones and emails one field at a time and choose a primary destination for each kind.
 
+The customer portal keeps the same account navigation across requests, order history and My data.
+Order history offers a clear next action when no requests have been submitted yet.
+
 New contacts require ownership verification through an email link or WhatsApp code. After proof,
 previous provisional requests from that contact move to the registered profile. The registered name
 prevails, and Coti preserves the original information. A contact already belonging to another

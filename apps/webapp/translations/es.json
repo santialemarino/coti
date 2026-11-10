@@ -210,6 +210,7 @@
     "goHome": "Ir al inicio"
   },
   "customerAuth": {
+    "portalLabel": "Portal de clientes",
     "titles": {
       "welcome": "Ingresá a tu cuenta",
       "login": "Ingresar con CUIT/CUIL",
@@ -299,10 +300,17 @@
     }
   },
   "customerOrders": {
+    "navigation": "Tu cuenta",
+    "description": "Seguí tus pedidos y revisá las cotizaciones del corralón.",
+    "emptyTitle": "Tu próximo proyecto empieza acá",
     "title": "Mis pedidos",
     "newRequest": "Nuevo pedido",
     "logout": "Cerrar sesión",
     "empty": "Todavía no tenés pedidos",
+    "emptyUnverified": "Todavía no hay pedidos visibles en tu cuenta.",
+    "proveEarlierContact": "Si el corralón ya te envió una cotización, verificá desde Mis datos un email o WhatsApp que ya figuraba en tu ficha para ver tus pedidos anteriores.",
+    "verifyContactHint": "Si el corralón ya te envió una cotización, verificá el email o WhatsApp asociado a tu pedido desde Mis datos.",
+    "verifyContacts": "Verificar contactos",
     "received": "Pedido recibido",
     "preparing": "El corralón está preparando tu cotización.",
     "original": "Pedido original",

@@ -108,6 +108,7 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
         // disappear, and the account needing one active branch is a fact about the whole account.
         setClosing(null);
         setError(message(result.error));
+        toast.error(message(result.error));
         return;
       }
       toast.success(t('closed', { name: target.name }));
