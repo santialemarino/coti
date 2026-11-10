@@ -66,6 +66,15 @@ services:
       - key: WHATSAPP_APP_SECRET
         scope: RUN_TIME
         type: SECRET
+      - key: CUSTOMER_GOOGLE_CLIENT_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: CUSTOMER_GOOGLE_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: ARCA_SETUP_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
       - key: AI_ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET
@@ -142,6 +151,9 @@ services:
       - key: NEXT_PUBLIC_API_URL
         scope: RUN_AND_BUILD_TIME
         value: https://replace-with-core-host.invalid/api
+      - key: API_INTERNAL_URL
+        scope: RUN_TIME
+        value: ${api.PRIVATE_URL}
       - key: WEB_TRUSTED_PROXY_HOPS
         scope: RUN_TIME
         value: '0'

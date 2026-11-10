@@ -16,6 +16,10 @@ const environment = {
   DIGITALOCEAN_PORTAL_APP_ID: portalId,
   DO_DEPLOY_TIMEOUT_SECONDS: '2',
   DO_DEPLOY_POLL_SECONDS: '1',
+  DO_TEMPLATE_ENVS: JSON.stringify({
+    'coti-core': { api: ['DATABASE_URL'], migrate: [] },
+    'coti-portal': { webapp: [] },
+  }),
 };
 
 function fixture({ failure, mismatch, stuck, healthStatus = 200 } = {}) {
@@ -26,9 +30,9 @@ function fixture({ failure, mismatch, stuck, healthStatus = 200 } = {}) {
       {
         spec: {
           name: 'coti-core',
-          services: [{ name: 'api', git: source }],
+          services: [{ name: 'api', git: source, envs: [{ key: 'DATABASE_URL', type: 'SECRET' }] }],
           jobs: [{ name: 'migrate', kind: 'PRE_DEPLOY', git: source }],
-          envs: [{ key: 'DATABASE_URL', type: 'SECRET', value: 'private-database' }],
+          envs: [{ key: 'AUTH_JWT_SECRET', type: 'SECRET', value: 'private-database' }],
         },
         active_deployment: { id: 'core-old', phase: 'ACTIVE' },
         default_ingress: 'https://core.test',
@@ -175,4 +179,38 @@ test('a provider error does not reveal its response body or credentials', async 
     }),
     (error) => error.message.includes('HTTP 403') && !error.message.includes('private-'),
   );
+});
+
+test('refuses to deploy before the live apps carry every setting the templates declare', async () => {
+  for (const templates of [
+    { 'coti-core': { api: ['DATABASE_URL', 'API_INTERNAL_URL'] }, 'coti-portal': {} },
+    { 'coti-core': { api: [], 'catalog-embedding': [] }, 'coti-portal': {} },
+  ]) {
+    const { calls, options } = fixture();
+    options.env.DO_TEMPLATE_ENVS = JSON.stringify(templates);
+    await assert.rejects(
+      deployProduction(options),
+      /lacks settings its committed template declares/,
+    );
+    assert(!calls.some((c) => c.method === 'PUT'));
+  }
+});
+
+test('accepts a template setting the live app declares for every component', async () => {
+  const { calls, options } = fixture();
+  options.env.DO_TEMPLATE_ENVS = JSON.stringify({
+    'coti-core': { api: ['AUTH_JWT_SECRET'] },
+    'coti-portal': {},
+  });
+  await deployProduction({ ...options, checkOnly: true });
+  assert.equal(calls.length, 2);
+});
+
+test('a production run without the template settings never reaches DigitalOcean', async () => {
+  for (const value of [undefined, '{', JSON.stringify({ 'coti-core': {} })]) {
+    const { calls, options } = fixture();
+    options.env.DO_TEMPLATE_ENVS = value;
+    await assert.rejects(deployProduction(options), /DO_TEMPLATE_ENVS/);
+    assert.equal(calls.length, 0);
+  }
 });

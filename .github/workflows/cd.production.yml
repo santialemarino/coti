@@ -8,6 +8,9 @@ on:
     paths:
       - '.github/workflows/cd.production.yml'
       - 'scripts/deploy-digitalocean*'
+      - '.github/scripts/template-envs.sh'
+      - '.do/app.neon.yaml'
+      - '.do/portal.yaml'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,12 @@ jobs:
         with:
           node-version: '22'
       - run: node --test scripts/deploy-digitalocean.test.mjs
+      - name: Template settings read for the release
+        run: |
+          .github/scripts/template-envs.sh > "$RUNNER_TEMP/template-envs.json"
+          jq -e '.["coti-core"].api | index("DATABASE_URL")' "$RUNNER_TEMP/template-envs.json" > /dev/null
+          jq -e '.["coti-core"].backoffice | index("API_INTERNAL_URL")' "$RUNNER_TEMP/template-envs.json" > /dev/null
+          jq -e '.["coti-core"].migrate and (.["coti-portal"].webapp | length > 0)' "$RUNNER_TEMP/template-envs.json" > /dev/null
 
   api:
     if: github.ref == 'refs/heads/main'
@@ -56,6 +65,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [deployment-tests, api, backoffice, webapp, ui, scripts, docker, deploy-spec, skills]
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +84,9 @@ jobs:
           else
             echo 'A newer main release is queued; skipping this commit.'
           fi
+      - name: Read the committed templates' settings
+        if: steps.latest.outputs.current == 'true'
+        run: echo "DO_TEMPLATE_ENVS=$(.github/scripts/template-envs.sh)" >> "$GITHUB_ENV"
       - name: Deploy core, migrations and customer portal
         if: steps.latest.outputs.current == 'true'
         env:

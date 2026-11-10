@@ -55,6 +55,16 @@ uses the freshly read live spec with `update_all_source_versions`, preserving ru
 domains, routing, schedules and instance sizes. Committed `.do/` templates are not applied over
 the live configuration. Infrastructure changes still require an explicit configuration update.
 
+The templates still bound the release. The deploy job reads every component's setting names from
+`.do/app.neon.yaml` and `.do/portal.yaml` (`.github/scripts/template-envs.sh`) and refuses to touch
+either app when a live component, or a setting the template declares on it, is missing. Adding a
+variable is therefore two steps: declare it in the template, and set it on the live app before the
+release reaches `main`. Read the live spec with `doctl apps spec get <app-id>` when bringing a
+template up to date; never commit its values.
+
+The `deploy` job runs in the `production` GitHub environment, so required reviewers or a wait timer
+can be added there without changing the workflow.
+
 Core and its migrations deploy first, then the customer portal. The script waits for each release
 to become active, checks every source component's commit, and probes core readiness and the portal
 manifest. These probes do not replace authenticated integration tests. Deployments are serialized
@@ -64,7 +74,14 @@ a commit mismatch failure; the queued newer release must complete its own checks
 A failure stops the release and is visible in GitHub Actions and DigitalOcean Activity. This is
 not an atomic two-app transaction: a portal failure can leave core on the new version. Automatic
 database rollback is never attempted. To retry, run Production Release from main after checking
-Activity. `--check` validates live configuration without deploying and can be run locally with the
+Activity.
+
+Because migrations run before the new containers start, a failed release leaves the previous code
+serving against the new schema. Every migration must therefore keep the previous release working:
+add columns, tables and indexes in one release, and drop or rename only in a later one, once no
+deployed code reads the old shape. Data that a release damaged is recovered from Neon, not from the
+migration chain: restore a branch to a point in time inside the project's history retention window
+(Neon console, project settings), verify it, then promote it or copy the rows back. `--check` validates live configuration without deploying and can be run locally with the
 same repository variables and token. The normal deployment command refuses local shells and non-main runs.
 
 Each web service uses a fixed 1 GiB instance. At the published price of USD 10 per service per month,
@@ -332,8 +349,11 @@ Dockerfiles, so on App Platform it must be scoped **`RUN_AND_BUILD_TIME`**. Set 
 the deployed frontends call `http://localhost:8000` from the visitor's browser and there is no
 server-side error to find.
 
-`API_INTERNAL_URL` is runtime-only and used by the webapp server for its own API requests. In
-Docker Compose it is `http://api:8000`; on App Platform it is `${APP_URL}/api`.
+`API_INTERNAL_URL` is runtime-only and used by a web server for its own API requests. In
+Docker Compose it is `http://api:8000`; in the single-app spec it is `${APP_URL}/api`. In
+`coti-core` the backoffice uses `${api.PRIVATE_URL}`, which stays inside the app instead of leaving
+through the public edge. The separate portal app has no private route to core and falls back to
+`NEXT_PUBLIC_API_URL`.
 
 There is an ordering problem behind it: the frontends need the API's public URL at build time, and
 that URL does not exist until the app does. **`${APP_URL}` does not get you out of it** — under a
