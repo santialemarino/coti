@@ -102,8 +102,9 @@ function renderItems(
   onItemsChange: (items: QuoteItemResponse[]) => void = vi.fn(),
   readOnly = false,
   discounts: QuoteDiscountResponse[] = [],
+  expandAlternatives = true,
 ) {
-  return render(
+  const view = render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
@@ -129,6 +130,9 @@ function renderItems(
       </RfqListProvider>
     </NextIntlClientProvider>,
   );
+  const toggle = view.queryByRole('button', { name: copy.detail.items.alternatives.title });
+  if (expandAlternatives && toggle) fireEvent.click(toggle);
+  return view;
 }
 
 beforeEach(() => {
@@ -168,12 +172,78 @@ describe('RfqItemsTable action errors', () => {
 });
 
 describe('RfqItemsTable customer alternatives', () => {
+  it('starts collapsed and lets the seller show and hide all customer options', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], vi.fn(), false, [], false);
+    expect(
+      view.queryByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeNull();
+    const toggle = view.getByRole('button', { name: copy.detail.items.alternatives.title });
+    const description = view.getByText(copy.detail.items.alternatives.description);
+    expect(toggle.contains(description)).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(description);
+    expect(
+      view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(toggle);
+    expect(
+      view.queryByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
+    ).toBeNull();
+  });
+
+  it.each(['replace', 'premium'] as const)(
+    'keeps the %s picker open after a missing-price refusal and allows another choice',
+    async (action) => {
+      vi.mocked(searchCatalog).mockResolvedValue([
+        { id: 'unpriced', code: 'NO-PRICE', name: 'Sin precio', unit: 'unidad' },
+        { id: 'priced', code: 'PRICED', name: 'Con precio', unit: 'unidad' },
+      ]);
+      vi.mocked(setQuoteItemRecommendation)
+        .mockRejectedValueOnce(new ApiError('RECOMMENDATION_PRICE_UNAVAILABLE', 422))
+        .mockResolvedValueOnce({ ...ECONOMY_ALTERNATIVE, product_id: 'priced' });
+      const onItemsChange = vi.fn();
+      const view = renderItems(
+        BRANCH_ID,
+        'QUOTED',
+        [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+        onItemsChange,
+      );
+      fireEvent.click(
+        view.getByRole('button', {
+          name:
+            action === 'replace'
+              ? copy.detail.items.alternatives.replace
+              : copy.detail.items.alternatives.addType.PREMIUM,
+        }),
+      );
+      fireEvent.click(await view.findByText('Sin precio'));
+      await vi.waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(messages.errors.RECOMMENDATION_PRICE_UNAVAILABLE),
+      );
+      expect(view.queryByRole('alert')).toBeNull();
+      expect(view.getByRole('dialog')).toBeTruthy();
+      expect(onItemsChange).not.toHaveBeenCalled();
+      fireEvent.click(view.getByText('Con precio'));
+      await vi.waitFor(() => expect(onItemsChange).toHaveBeenCalled());
+      expect(setQuoteItemRecommendation).toHaveBeenLastCalledWith(
+        QUOTE_ID,
+        ITEM_ID,
+        action === 'replace' ? 'ECONOMY' : 'PREMIUM',
+        BRANCH_ID,
+        { product_id: 'priced', save_to_catalog: false },
+      );
+      await vi.waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    },
+  );
+
   it('shows existing and manual alternatives without a search recommendations button', () => {
     const view = renderItems(BRANCH_ID, 'QUOTED', [
       { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
     ]);
 
     expect(view.queryByRole('button', { name: 'Buscar recomendaciones' })).toBeNull();
+    expect(view.queryByText(copy.detail.items.alternatives.compatibilityNotice)).toBeNull();
     expect(view.getByText(ECONOMY_ALTERNATIVE.canonical_name!)).toBeTruthy();
     expect(view.getByRole('button', { name: copy.detail.items.alternatives.include })).toBeTruthy();
     expect(view.getByRole('button', { name: copy.detail.items.alternatives.replace })).toBeTruthy();

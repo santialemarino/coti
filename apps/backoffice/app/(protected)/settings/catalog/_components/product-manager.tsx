@@ -50,6 +50,7 @@ import {
 } from '@/app/(protected)/settings/catalog/actions';
 import type { ProductValues } from '@/app/(protected)/settings/catalog/form-schema';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import type { Branch } from '@/lib/api/branches';
 import type { Product, ProductFamily, ProductPage } from '@/lib/api/products';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 
@@ -63,6 +64,8 @@ interface ProductManagerProps {
   invoicingEnabled: boolean;
   // The bulk-edit section's id, present only while there is a branch to import into.
   bulkEditTargetId?: string;
+  branches?: Branch[];
+  activeBranchId?: string;
 }
 
 export function ProductManager({
@@ -71,6 +74,8 @@ export function ProductManager({
   query,
   invoicingEnabled,
   bulkEditTargetId,
+  branches,
+  activeBranchId,
 }: ProductManagerProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -363,6 +368,8 @@ export function ProductManager({
         invoicingEnabled={invoicingEnabled}
         pending={saving}
         onSubmit={onSubmit}
+        branches={branches}
+        activeBranchId={activeBranchId}
       />
 
       <ProductRecommendationsDialog

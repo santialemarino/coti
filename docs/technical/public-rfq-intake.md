@@ -137,3 +137,6 @@ Outgoing signup, contact verification and quotation links resolve the supplier h
 uses that hostname too. WEB_WEBAPP_URL remains a compatibility fallback only for services instantiated
 without supplier routing; the API wires supplier routing and never directs a supplier without a
 hostname to another account's shared portal. Customer sessions stay separate from staff JWTs.
+In development, a registered bare `localhost` hostname keeps HTTP and the configured local port.
+Supplier `.localhost` hostnames use `/c/<supplier>` on the configured shared origin. The webapp
+preserves that supplier prefix when an old quotation link redirects to history or contact guidance.

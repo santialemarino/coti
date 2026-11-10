@@ -7,6 +7,10 @@ import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients
 import messages from '@/translations/es.json';
 import { SendClientForm } from './send-client-form';
 
+vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+
+const { toast } = await import('sonner');
+
 vi.mock('@/lib/api/clients-client', () => ({
   getClientDirectory: vi.fn(),
   getQuoteClientAssociation: vi.fn(),
@@ -104,9 +108,17 @@ describe('send client selection', () => {
     await waitFor(() => expect(view.onChange).toHaveBeenLastCalledWith(null));
   });
   it('leaves sending unavailable when client context cannot be read', async () => {
-    vi.mocked(getQuoteClientAssociation).mockRejectedValue(new Error('offline'));
+    vi.mocked(getQuoteClientAssociation).mockRejectedValueOnce(new Error('offline'));
     const view = renderForm();
-    await view.findByText(copy.clientLoadFailed);
+    await view.findByRole('button', { name: copy.clientRetry });
+    expect(toast.error).toHaveBeenCalledWith(copy.clientLoadFailed);
+    expect(view.queryByRole('alert')).toBeNull();
     expect(view.onChange).toHaveBeenLastCalledWith(null);
+    fireEvent.click(view.getByRole('button', { name: copy.clientRetry }));
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ newClient: expect.anything() }),
+      ),
+    );
   });
 });

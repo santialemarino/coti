@@ -1,20 +1,25 @@
 package services
 
 import (
+	"testing"
+
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
-	"testing"
 )
 
 func TestCustomerSiteOriginKeepsLocalSuppliersSeparated(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ host, local, want string }{
+		{"localhost", "http://localhost:3001", "http://localhost:3001"},
+		{"localhost", "http://127.0.0.1:3118", "http://localhost:3118"},
 		{"sanmartin.localhost", "http://localhost:3001", "http://localhost:3001/c/sanmartin"},
 		{"otro.localhost", "http://localhost:3001", "http://localhost:3001/c/otro"},
 		{"otro.localhost", "http://127.0.0.1:3118", "http://otro.localhost:3118"},
 		{"supplier.example.com", "", "https://supplier.example.com"},
 		{"supplier.example.com", "http://localhost:3001/", "https://supplier.example.com"},
 		{"marko.coti-portal-8zcrm.ondigitalocean.app", "https://coti-portal-8zcrm.ondigitalocean.app", "https://coti-portal-8zcrm.ondigitalocean.app/c/marko"},
+		{"localhost", "", "https://localhost"},
+		{"supplier.localhost.example.com", "http://localhost:3001", "https://supplier.localhost.example.com"},
 	} {
 		if got := customerSiteOrigin(tc.host, tc.local); got != tc.want {
 			t.Errorf("origin(%q,%q)=%q, want %q", tc.host, tc.local, got, tc.want)

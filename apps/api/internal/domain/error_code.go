@@ -44,6 +44,7 @@ const (
 	CodeRecommendationBasePriceMissing    ErrorCode = "RECOMMENDATION_BASE_PRICE_MISSING"
 	CodeRecommendationEconomyPriceInvalid ErrorCode = "RECOMMENDATION_ECONOMY_PRICE_INVALID"
 	CodeRecommendationPremiumPriceInvalid ErrorCode = "RECOMMENDATION_PREMIUM_PRICE_INVALID"
+	CodeRecommendationPriceUnavailable    ErrorCode = "RECOMMENDATION_PRICE_UNAVAILABLE"
 	// CodeNoAIChanges refuses discarding the AI's changes on a draft that has none pending.
 	CodeNoAIChanges ErrorCode = "NO_AI_CHANGES"
 	// CodeBatchNotRetryable refuses retrying a batch that did not run out of attempts, or whose
