@@ -116,9 +116,10 @@ describe('ContextColumn', () => {
     const { column, navigate } = renderAt(ROUTES.clients);
     expect(column().dataset.open).toBe('true');
     expect(column().dataset.root).toBe('false');
-    expect(screen.getByTestId('client-suggestions')).toBeDefined();
+    const panel = () => screen.getByTestId('client-suggestions').parentElement as HTMLElement;
+    expect(panel().classList.contains('hidden')).toBe(false);
     navigate(ROUTES.home);
-    expect(screen.queryByTestId('client-suggestions')).toBeNull();
+    expect(panel().classList.contains('hidden')).toBe(true);
   });
   it.each([ROUTES.home, ROUTES.rfqsDetail('r1')])('is open on the queue screen %s', (path) => {
     const { column } = renderAt(path);
