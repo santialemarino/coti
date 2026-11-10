@@ -245,7 +245,7 @@ export function CustomerPortalEditor({
         <form
           id={formId}
           noValidate
-          className="flex max-w-md flex-col gap-y-4"
+          className="flex w-full flex-col gap-y-4"
           onSubmit={form.handleSubmit(({ subdomain: value }) =>
             disabled ? undefined : save(value, false),
           )}

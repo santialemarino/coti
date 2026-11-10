@@ -1,7 +1,8 @@
+import { ArrowRightIcon, ClipboardListIcon, PlusIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Badge, Button, Card } from '@repo/ui/components';
-import { signOutCustomer } from '@/app/login/actions';
+import { Badge, Button, Card, EmptyState } from '@repo/ui/components';
+import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerOrders } from '@/lib/api/customer-orders';
@@ -28,80 +29,83 @@ export default async function OrdersPage({
     profile !== null &&
     (profile.ownershipUnproved || !profile.contacts.some((contact) => contact.verified));
   return (
-    <main className="flex min-h-dvh flex-col items-center px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex w-full max-w-3xl flex-col gap-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-heading-4">{t('title')}</h1>
-          <div className="flex items-center gap-x-2">
-            <Button asChild variant="outline">
-              <Link href={ROUTES.profile}>{t('profile')}</Link>
-            </Button>
+    <>
+      <CustomerHeader section="orders" />
+      <main className="flex min-h-[calc(100dvh-4rem)] flex-col items-center px-4 py-8 sm:px-6 sm:py-12">
+        <div className="flex w-full max-w-4xl flex-col gap-y-8">
+          <header className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col gap-y-2">
+              <h1 className="text-heading-3">{t('title')}</h1>
+              <p className="text-paragraph-sm text-foreground-muted">{t('description')}</p>
+            </div>
             <Button asChild>
-              <Link href={ROUTES.newRequest}>{t('newRequest')}</Link>
+              <Link href={ROUTES.newRequest}>
+                <PlusIcon aria-hidden="true" />
+                {t('newRequest')}
+              </Link>
             </Button>
-            <form action={signOutCustomer}>
-              <Button type="submit" variant="ghost">
-                {t('logout')}
-              </Button>
-            </form>
-          </div>
-        </header>
-        {orders.length === 0 ? (
-          <Card className="px-6 gap-y-3">
-            <p className="text-paragraph-sm text-foreground-muted">
-              {t(needsContactProof ? 'emptyUnverified' : 'empty')}
-            </p>
-            {needsContactProof && (
-              <>
-                <p className="text-paragraph-sm text-foreground-muted">
-                  {t(profile?.ownershipUnproved ? 'proveEarlierContact' : 'verifyContactHint')}
-                </p>
-                <Button variant="outline" className="self-start" asChild>
-                  <Link href={ROUTES.profile}>{t('verifyContacts')}</Link>
+          </header>
+          {orders.length === 0 ? (
+            <Card className="px-6">
+              <EmptyState
+                icon={ClipboardListIcon}
+                title={t(needsContactProof ? 'title' : 'emptyTitle')}
+                description={t(needsContactProof ? 'proveEarlierContact' : 'empty')}
+              >
+                <Button asChild variant="outline">
+                  <Link href={needsContactProof ? ROUTES.profile : ROUTES.newRequest}>
+                    {t(needsContactProof ? 'verifyContacts' : 'newRequest')}
+                  </Link>
                 </Button>
-              </>
-            )}
-          </Card>
-        ) : (
-          <ul className="flex flex-col gap-y-3">
-            {orders.map((order) => (
-              <li key={order.id}>
-                <Link
-                  href={ROUTES.order(order.id)}
-                  className="group block rounded-1.5xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
-                >
-                  <Card
-                    interactive
-                    className="flex-row flex-wrap items-center justify-between px-5 gap-3 group-active:bg-sunken"
-                  >
-                    <div className="flex flex-col gap-y-1">
-                      <span className="text-paragraph-sm-medium">{order.branchName}</span>
-                      <span className="text-paragraph-xs text-foreground-muted">
-                        {fmt.timestamp(order.receivedAt)}
-                      </span>
-                    </div>
-                    <Badge>{t(`statuses.${order.status}`)}</Badge>
-                  </Card>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        <nav className="flex justify-between" aria-label={t('pagination')}>
-          {page > 1 ? (
-            <Button variant="outline" asChild>
-              <Link href={`${ROUTES.orders}?page=${page - 1}`}>{t('previous')}</Link>
-            </Button>
+              </EmptyState>
+            </Card>
           ) : (
-            <span />
+            <ul className="flex flex-col gap-y-3">
+              {orders.map((order) => (
+                <li key={order.id}>
+                  <Link
+                    href={ROUTES.order(order.id)}
+                    className="group block rounded-1.5xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+                  >
+                    <Card
+                      interactive
+                      className="flex-row flex-wrap items-center justify-between px-5 gap-3 group-active:bg-sunken"
+                    >
+                      <div className="flex flex-col gap-y-1">
+                        <span className="text-paragraph-sm-medium">{order.branchName}</span>
+                        <span className="text-paragraph-xs text-foreground-muted">
+                          {fmt.timestamp(order.receivedAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-x-3">
+                        <Badge>{t(`statuses.${order.status}`)}</Badge>
+                        <ArrowRightIcon
+                          aria-hidden="true"
+                          className="size-4 text-foreground-subtle"
+                        />
+                      </div>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-          {orders.length > 0 ? (
-            <Button variant="outline" asChild>
-              <Link href={`${ROUTES.orders}?page=${page + 1}`}>{t('next')}</Link>
-            </Button>
-          ) : null}
-        </nav>
-      </div>
-    </main>
+          <nav className="flex justify-between" aria-label={t('pagination')}>
+            {page > 1 ? (
+              <Button variant="outline" asChild>
+                <Link href={`${ROUTES.orders}?page=${page - 1}`}>{t('previous')}</Link>
+              </Button>
+            ) : (
+              <span />
+            )}
+            {orders.length > 0 ? (
+              <Button variant="outline" asChild>
+                <Link href={`${ROUTES.orders}?page=${page + 1}`}>{t('next')}</Link>
+              </Button>
+            ) : null}
+          </nav>
+        </div>
+      </main>
+    </>
   );
 }

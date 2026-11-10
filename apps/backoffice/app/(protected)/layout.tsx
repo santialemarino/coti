@@ -10,6 +10,7 @@ import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-p
 import { ROUTES } from '@/config/routes';
 import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
+import { getContactSuggestions } from '@/lib/api/client-contact-suggestions-server';
 import { getOnboarding } from '@/lib/api/onboarding';
 import { getSelectedBranchId } from '@/lib/auth/branch';
 import { getSession, mustVerifyEmail } from '@/lib/auth/session';
@@ -26,10 +27,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (mustVerifyEmail(session)) redirect(ROUTES.verifyEmail);
 
   const isAdmin = session.role === ADMIN_ROLE;
-  const [branches, onboarding, account] = await Promise.all([
+  const [branches, onboarding, account, suggestions] = await Promise.all([
     getBranches(),
     isAdmin ? getOnboarding() : null,
     getAccount(),
+    getContactSuggestions(),
   ]);
   // A cookie naming a branch the caller no longer reaches makes every scoped read answer 403; a
   // layout cannot write cookies, so a route handler drops it.
@@ -61,6 +63,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
         <div className="flex flex-1 items-stretch max-lg:pb-16">
           <ContextColumn
             settingsNav={settingsNav}
+            suggestions={suggestions}
             onboarding={onboarding && showsChecklistOnHome(onboarding) ? onboarding : null}
           />
           <ScreenFade>{children}</ScreenFade>

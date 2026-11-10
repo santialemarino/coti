@@ -28,6 +28,7 @@ import {
 } from '@/app/(protected)/_actions/catalog-import';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
+import { CATALOG_PREVIEW_PAGE_SIZE } from '@/lib/config';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface CatalogUploadProps {
@@ -158,6 +159,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
   const message = useApiErrorMessage('catalogImport');
   const [error, setError] = useState<string | null>(null);
   const [confirming, startConfirm] = useTransition();
+  const [visibleRows, setVisibleRows] = useState(CATALOG_PREVIEW_PAGE_SIZE);
 
   function onConfirm() {
     setError(null);
@@ -198,7 +200,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
             </TableRow>
           </TableHeader>
           <TableBody>
-            {preview.rows.map((row) => (
+            {preview.rows.slice(0, visibleRows).map((row) => (
               <TableRow
                 key={`${row.rowNumber}-${row.code}`}
                 className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
@@ -236,6 +238,17 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
           </TableBody>
         </Table>
       </div>
+
+      {visibleRows < preview.rows.length ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-center"
+          onClick={() => setVisibleRows((count) => count + CATALOG_PREVIEW_PAGE_SIZE)}
+        >
+          {t('showMore', { remaining: preview.rows.length - visibleRows })}
+        </Button>
+      ) : null}
 
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button type="button" variant="outline" disabled={confirming} onClick={onBack}>

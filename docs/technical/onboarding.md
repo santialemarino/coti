@@ -42,10 +42,16 @@ the same account-logo path Cuenta uses, and its stored URL is saved on the accou
 
 The first-branch screen edits the branch already created during registration. Default expiry days are
 the suggested validity period for new quotes, not a branch expiry date, and remain editable per quote.
+Name, address, email and default expiry use a two-column form on wider screens, with full-width
+controls in each column. The optional portal editor uses the available content width, including
+when the deployment has no portal base URL.
 
 Catalog upload uses the production preview and confirmation endpoints. Nothing is written during
 preview, and invalid rows are never silently imported. The same import component remains available at
 `/settings/catalog`, so dismissing onboarding cannot make the initial catalog operation unreachable.
+The review initially shows 25 rows and reveals another batch with each Show more action;
+`NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE` configures the batch size at build time. Confirmation always
+submits the complete preview, including valid rows that have not been revealed.
 
 The team screen reuses account user creation, with the same two ways in: an invitation by mail, the
 default, or an initial password the administrator shares — the only way offered while mail only
@@ -76,6 +82,9 @@ same checklist. "No mostrar más" stamps `account_onboarding.checklist_hidden_at
 card; the rail entry stays as the place to see it again or bring the card back, and disappears when
 every step is done. Each item links to the settings screen that does the work; "Retomar asistente"
 is offered only for a dismissed wizard.
+The settings entry follows a separator after the permanent sections. On the home screen, a pending
+checklist aligns the greeting and checklist toward the top of the detail pane so more steps fit
+within the viewport.
 
 User preferences are intentionally absent from version 1. They can be introduced as another stable
 step without coupling them to registration or rewriting existing progress.

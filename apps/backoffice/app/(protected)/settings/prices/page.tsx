@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { Callout } from '@repo/ui/components';
+import { Button, Callout } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PriceImport } from '@/app/(protected)/settings/prices/_components/price-import';
+import { ROUTES } from '@/config/routes';
 import { getBranches } from '@/lib/api/branches';
 import { getEffectiveBranchId } from '@/lib/auth/branch';
 import { requireAdmin } from '@/lib/auth/session';
@@ -20,6 +22,12 @@ export default async function PriceSettingsPage() {
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} />
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-paragraph-sm text-foreground-muted">{t('individualHint')}</p>
+        <Button asChild variant="outline">
+          <Link href={ROUTES.catalogSettings}>{t('individualAction')}</Link>
+        </Button>
+      </div>
       {branch ? (
         <PriceImport branch={branch} />
       ) : (

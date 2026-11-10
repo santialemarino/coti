@@ -89,6 +89,10 @@ customer's own proof merged them).
 
 ## Seller actions on provisional profiles
 
+The shell reads pending contact suggestions on the server, like the order queue. An empty clients
+rail therefore renders the shared empty state immediately; its background refresh can still report
+and retry a failed request. The full suggestions page uses the same server read.
+
 A provisional profile (no CUIT) is the seller's to tidy; a registered one belongs to its customer.
 
 - **Rename.** `PUT /v1/clients/{id}/name` sets the name of a provisional profile, for one that kept a
