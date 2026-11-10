@@ -1,3 +1,4 @@
+import process from 'node:process';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin();
@@ -5,7 +6,10 @@ const withNextIntl = createNextIntlPlugin();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // React's <ViewTransition> on navigation: the screen fades out as the next one fades in.
-  experimental: { viewTransition: true },
+  experimental: {
+    viewTransition: true,
+    serverActions: { bodySizeLimit: process.env.SERVER_ACTION_BODY_SIZE_LIMIT ?? '16mb' },
+  },
   // Security headers applied to every route. Tighten/extend per project.
   async headers() {
     return [

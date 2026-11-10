@@ -5,6 +5,7 @@ import { InboxIcon, TableIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Button, EmptyState } from '@repo/ui/components';
+import { cn } from '@repo/ui/lib';
 import { OnboardingChecklist } from '@/app/(protected)/_components/onboarding-checklist';
 import { RfqCreateButton } from '@/app/(protected)/rfqs/_components/rfq-create-button';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
@@ -26,11 +27,17 @@ export function RfqQueueEmpty({ onboarding }: RfqQueueEmptyProps) {
   const { userName } = useRfqList();
 
   return (
-    <div className="flex h-full flex-col items-center justify-center pb-8 gap-y-2">
+    <div
+      className={cn(
+        'flex min-h-full flex-col items-center pb-8 gap-y-2',
+        onboarding ? 'justify-start pt-4' : 'justify-center',
+      )}
+    >
       {/* Beside the setup card the pane is no longer empty, so the greeting takes the smaller size. */}
       <EmptyState
         icon={InboxIcon}
         size={onboarding ? 'sm' : 'lg'}
+        className={onboarding ? 'py-6' : undefined}
         title={tRfqs('greeting', { name: userName })}
         description={t('queueHint')}
       >

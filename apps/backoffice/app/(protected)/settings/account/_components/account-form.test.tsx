@@ -81,6 +81,23 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AccountForm', () => {
+  it('announces an action transport failure and releases the submit button', async () => {
+    vi.mocked(updateAccount).mockRejectedValue(new Error('Upload request refused'));
+    const view = renderForm();
+    submit(view);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.any(String)));
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: copy.submit }).hasAttribute('disabled')).toBe(false),
+    );
+  });
+
+  it('announces validation failures before a save is attempted', async () => {
+    const view = renderForm();
+    fireEvent.change(field(view, 'taxId'), { target: { value: '30712345679' } });
+    submit(view);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.taxId.checkDigit));
+    expect(updateAccount).not.toHaveBeenCalled();
+  });
   it('opens on the values the account already has', () => {
     const view = renderForm();
 

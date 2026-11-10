@@ -18,6 +18,7 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
   getFormatters: async () => ({ timestamp: () => 'Date' }),
 }));
 vi.mock('@/app/login/actions', () => ({ signOutCustomer: vi.fn() }));
+vi.mock('@/components/customer-header', () => ({ CustomerHeader: () => null }));
 
 beforeEach(() => {
   vi.clearAllMocks();

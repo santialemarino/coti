@@ -131,8 +131,8 @@ export function CustomerAuthScreen({
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10 gap-y-8 sm:px-6">
-      <div className="flex w-full max-w-sm flex-col gap-y-7">
+    <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10 gap-y-8 sm:px-6 sm:py-16">
+      <div className="flex w-full max-w-md flex-col gap-y-8">
         <header className="flex items-center justify-center gap-x-3">
           {logoUrl ? (
             <Image
@@ -148,7 +148,10 @@ export function CustomerAuthScreen({
               <Building2Icon className="size-5" aria-hidden="true" />
             </span>
           )}
-          <p className="break-words text-heading-5">{supplierName}</p>
+          <div className="flex min-w-0 flex-col gap-y-1">
+            <p className="break-words text-heading-5">{supplierName}</p>
+            <p className="text-paragraph-xs text-foreground-muted">{t('portalLabel')}</p>
+          </div>
         </header>
         {mode === 'forgot' ? (
           <AccountRecovery minimum={minimum} next={next} />

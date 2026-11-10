@@ -123,6 +123,12 @@ read arrives with its `extracted_text` already set and closes at `DONE`.
 
 ## What uses it: account logos
 
+Backoffice multipart Server Actions accept up to `SERVER_ACTION_BODY_SIZE_LIMIT` (default `16mb`),
+including the action envelope. The API independently enforces `STORAGE_MAX_FILE_SIZE_BYTES` on
+each uploaded file. The transport limit is configured in `apps/backoffice/.env.example` and is also
+a Docker build argument. Account settings and onboarding surface action transport failures so a
+rejected upload does not leave the save control without feedback.
+
 `POST /v1/account/logo` stores a logo for the authenticated administrator's account. The upload
 must be a PNG or JPEG, its declared content type must match the detected bytes, and its size is
 limited by `STORAGE_MAX_FILE_SIZE_BYTES`. The response contains a stable public API path; the

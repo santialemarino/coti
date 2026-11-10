@@ -50,6 +50,7 @@ import {
 import { getInvoicePreview, issueCreditNote } from '@/lib/api/invoicing-client';
 import { setInvoiceWaived } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { showsTestEnvironment } from '@/lib/utils/invoicing-environment';
 import { isSetupIssue } from '@/lib/utils/setup-issues';
 
 const RECEIVER_ISSUES = new Set([
@@ -210,7 +211,7 @@ export function InvoiceCard({
   // The dialog outlives the invoice it cancels, so its exit still plays once the card reloads.
   const creditNoteTarget = useHeldWhileClosed(issued, confirmingCreditNote);
   // An invoice keeps the environment it was made in; a draft follows the server's.
-  const testInvoice = (issued ?? preview?.invoice ?? preview)?.environment === 'HOMOLOGATION';
+  const testInvoice = showsTestEnvironment((issued ?? preview?.invoice ?? preview)?.environment);
 
   return (
     <Card>
@@ -523,7 +524,7 @@ function CreditedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: st
       })}
     >
       <div className="flex flex-col items-start gap-y-3">
-        {note.environment === 'HOMOLOGATION' ? (
+        {showsTestEnvironment(note.environment) ? (
           <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
         ) : null}
         <p>{t('body')}</p>
@@ -564,10 +565,12 @@ function OtherEnvironmentInvoice({ invoice, branchId }: { invoice: Invoice; bran
       }
     >
       <span className="flex flex-col items-start gap-y-1.5">
-        {invoice.environment === 'HOMOLOGATION' ? (
+        {showsTestEnvironment(invoice.environment) ? (
           <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
         ) : null}
-        {t(`${invoice.environment}.body`, { date: fmt.date(invoice.issuedOn) })}
+        {t(process.env.NODE_ENV === 'production' ? 'body' : `${invoice.environment}.body`, {
+          date: fmt.date(invoice.issuedOn),
+        })}
       </span>
     </Callout>
   );

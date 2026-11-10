@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ARCAConnectionCard } from '@/app/(protected)/settings/invoicing/_components/arca-connection-card';
 import { ROUTES } from '@/config/routes';
@@ -19,6 +19,8 @@ const NONE: ARCASetup = {
   certificate: '',
   certificateExpiresAt: null,
 };
+
+afterEach(() => vi.unstubAllEnvs());
 const INSTALLED: ARCASetup = {
   ...NONE,
   taxId: '30712345671',
@@ -97,5 +99,13 @@ describe('ARCAConnectionCard', () => {
     const live = card(INSTALLED, 'connected');
     expect(live.queryByText(copy.testMode)).toBeNull();
     expect(live.queryByText(copy.testModeNote)).toBeNull();
+  });
+
+  it('omits the environment badge in a production build without changing the connection state', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const view = card({ ...INSTALLED, environment: 'HOMOLOGATION' }, 'connected');
+    expect(view.queryByText(copy.testMode)).toBeNull();
+    expect(view.queryByText(copy.testModeNote)).toBeNull();
+    expect(view.getByText(copy.states.connected)).toBeTruthy();
   });
 });

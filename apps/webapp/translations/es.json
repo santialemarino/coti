@@ -210,6 +210,7 @@
     "goHome": "Ir al inicio"
   },
   "customerAuth": {
+    "portalLabel": "Portal de clientes",
     "titles": {
       "welcome": "Ingresá a tu cuenta",
       "login": "Ingresar con CUIT/CUIL",
@@ -299,6 +300,9 @@
     }
   },
   "customerOrders": {
+    "navigation": "Tu cuenta",
+    "description": "Seguí tus pedidos y revisá las cotizaciones del corralón.",
+    "emptyTitle": "Tu próximo proyecto empieza acá",
     "title": "Mis pedidos",
     "newRequest": "Nuevo pedido",
     "logout": "Cerrar sesión",

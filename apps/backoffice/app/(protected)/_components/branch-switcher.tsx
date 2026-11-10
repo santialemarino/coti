@@ -61,7 +61,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
 
   if (sole) {
     return (
-      <p className="flex shrink h-9 w-44 min-w-0 sm:w-56 items-center px-3 gap-x-2 text-paragraph-sm text-foreground">
+      <p className="flex h-9 min-w-0 max-w-44 shrink items-center px-3 gap-x-2 bg-background border border-border rounded-lg text-paragraph-sm text-foreground sm:max-w-56">
         <StoreIcon aria-hidden="true" className="size-4 shrink-0 text-foreground-muted" />
         <span className="sr-only">{t('label')}: </span>
         <span className="truncate">{sole.name}</span>

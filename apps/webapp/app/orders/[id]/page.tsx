@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { Card, InlineLink } from '@repo/ui/components';
 import { PublicQuoteView } from '@/app/quotes/_components/public-quote-view';
+import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { getCustomerOrder, getCustomerOrderByToken } from '@/lib/api/customer-orders';
@@ -29,6 +30,7 @@ export default async function CustomerOrderPage({
   const quote = token ? await getPublicQuoteByToken(token) : null;
   return (
     <>
+      <CustomerHeader section="orders" />
       <nav className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6">
         <InlineLink asChild>
           <Link href={ROUTES.orders}>{t('back')}</Link>

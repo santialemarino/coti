@@ -18,18 +18,28 @@ import {
 
 interface ClientContactSuggestionsProps {
   compact?: boolean;
+  initialItems?: ContactSuggestion[] | null;
 }
 
-export function ClientContactSuggestions({ compact = false }: ClientContactSuggestionsProps) {
+export function ClientContactSuggestions({
+  compact = false,
+  initialItems,
+}: ClientContactSuggestionsProps) {
   const { activeBranchId } = useRfqList();
-  return <ScopedSuggestions key={activeBranchId ?? 'all'} compact={compact} />;
+  return (
+    <ScopedSuggestions
+      key={activeBranchId ?? 'all'}
+      compact={compact}
+      initialItems={initialItems}
+    />
+  );
 }
 
-function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
+function ScopedSuggestions({ compact = false, initialItems }: ClientContactSuggestionsProps) {
   const t = useTranslations('clientContactSuggestions');
   const pathname = usePathname();
   const { activeBranchId } = useRfqList();
-  const [items, setItems] = useState<ContactSuggestion[] | null>(null);
+  const [items, setItems] = useState<ContactSuggestion[] | null>(initialItems ?? null);
   const [error, setError] = useState(false);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<ContactSuggestion | null>(null);
@@ -82,6 +92,7 @@ function ScopedSuggestions({ compact = false }: ClientContactSuggestionsProps) {
         <Skeleton className="w-full h-16" />
       </div>
     );
+  if (compact && items.length === 0) return <EmptyState icon={UsersIcon} title={t('empty')} />;
   if (compact)
     return (
       <div className="flex flex-col px-6 pb-6 gap-y-3">

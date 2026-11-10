@@ -33,6 +33,7 @@ import { getSession } from '@/lib/auth/session';
 import type { AdministrationView } from '@/lib/constants/administration';
 import { ADMIN_ROLE } from '@/lib/constants/auth';
 import { getFormatters } from '@/lib/i18n/formatters-server';
+import { showsTestEnvironment } from '@/lib/utils/invoicing-environment';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 // The API pages both views up to here; anything past it reads as the first page.
@@ -163,7 +164,7 @@ export default async function AdministrationPage({
                     <TableCell kind="status">
                       <span className="flex flex-wrap gap-1">
                         <Badge tone={STATUS_TONE[status]}>{t(`statuses.${status}`)}</Badge>
-                        {invoice.environment === 'HOMOLOGATION' ? (
+                        {showsTestEnvironment(invoice.environment) ? (
                           <Badge tone="outline">{tInvoicing('testBadge')}</Badge>
                         ) : null}
                       </span>

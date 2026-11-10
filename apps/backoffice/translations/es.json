@@ -2076,7 +2076,7 @@
       "required": "Ingresá el nombre del cliente.",
       "edit": "Corregir nombre",
       "unnamed": "Sin nombre",
-      "registered": "Lo administra el cliente desde su cuenta.",
+      "registered": "El cliente administra esta ficha desde su cuenta. Para incorporar otra ficha, tiene que agregar y verificar su WhatsApp o correo.",
       "submit": "Guardar",
       "submitting": "Guardando…",
       "cancel": "Cancelar",
@@ -2786,6 +2786,7 @@
     }
   },
   "catalogImport": {
+    "showMore": "Ver más ({remaining} filas restantes)",
     "title": "Catálogo",
     "bulk": {
       "title": "Edición masiva"
@@ -3061,6 +3062,8 @@
     }
   },
   "priceImport": {
+    "individualHint": "También podés editar el precio de cada producto desde el catálogo y elegir su sucursal.",
+    "individualAction": "Editar precios en el catálogo",
     "title": "Precios",
     "targetBranch": "Los cambios se aplican en la sucursal {name}. Cambiala desde el selector del encabezado.",
     "noBranch": {
@@ -3376,6 +3379,7 @@
       "receiverAddress": "Domicilio fiscal",
       "testNote": "Comprobante de prueba: no tiene validez fiscal.",
       "otherInvoice": {
+        "body": "Comprobante emitido el {date}, conservado en el historial de esta venta.",
         "title": "Factura {type} {number}",
         "HOMOLOGATION": {
           "body": "Es una factura de prueba, emitida el {date}: no tiene validez fiscal. La factura real de esta venta se emite abajo."
