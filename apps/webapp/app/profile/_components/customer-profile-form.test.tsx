@@ -37,10 +37,10 @@ function renderForm(
 
 it('adds fields one at a time and saves partial optional contact data', async () => {
   renderForm();
-  expect(screen.getByLabelText('Emails 1')).toBeDefined();
+  expect(screen.getByLabelText('Correos 1')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: messages.customerProfile.addEmail }));
-  fireEvent.change(screen.getByLabelText('Emails 1'), { target: { value: 'one@example.test' } });
-  expect(screen.getByLabelText('Emails 2')).toBeDefined();
+  fireEvent.change(screen.getByLabelText('Correos 1'), { target: { value: 'one@example.test' } });
+  expect(screen.getByLabelText('Correos 2')).toBeDefined();
   fireEvent.click(screen.getByRole('button', { name: messages.customerProfile.save }));
   await waitFor(() => expect(saveCustomerProfile).toHaveBeenCalledTimes(1));
   expect(

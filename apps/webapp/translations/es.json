@@ -337,7 +337,7 @@
     "name": "Nombre y apellido",
     "namePlaceholder": "Ingresá tu nombre y apellido",
     "whatsapp": "WhatsApp",
-    "email": "Emails",
+    "email": "Correos",
     "phonePlaceholder": "Ingresá tu teléfono",
     "emailPlaceholder": "Ingresá tu correo",
     "contactNumber": "{kind} {number}",
