@@ -81,7 +81,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   }
   if (profile.client.id !== id) redirect(ROUTES.clientDetail(profile.client.id));
   const name = clientDisplayName(profile.client, t('unnamed'));
-  const registered = Boolean(profile.client.taxId);
+  const { registered } = profile;
 
   return (
     <PageShell>

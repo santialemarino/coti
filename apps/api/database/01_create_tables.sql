@@ -1336,7 +1336,6 @@ CREATE INDEX idx_product_price_product ON product_price(product_id, branch_id);
 CREATE INDEX idx_branch_combo_branch ON branch_combo(branch_id) WHERE is_active = TRUE;
 
 CREATE INDEX idx_client_account ON client(account_id);
-CREATE INDEX idx_client_account_tax_id ON client(account_id,tax_id) WHERE tax_id IS NOT NULL;
 CREATE UNIQUE INDEX uq_client_account_tax_id ON client(account_id, tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
@@ -1730,7 +1729,8 @@ CREATE TABLE client_contact (
  is_main BOOLEAN NOT NULL DEFAULT FALSE,
  source client_contact_source NOT NULL,
  original_value VARCHAR(255),
- verified_at TIMESTAMPTZ DEFAULT now(),
+ -- Set only on proof: the channel a message came from, or the customer's own verification.
+ verified_at TIMESTAMPTZ,
  retired_at TIMESTAMPTZ,
  declared_by UUID,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

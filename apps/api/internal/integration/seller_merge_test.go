@@ -42,12 +42,26 @@ func (m *sellerMerge) profile(t *testing.T, name, email string, taxID *string) u
 	t.Helper()
 	ctx := context.Background()
 	var id uuid.UUID
-	if err := m.e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client(account_id,name,email,tax_id) VALUES($1,$2,$3,$4) RETURNING id`, m.account, name, email, taxID).Scan(&id); err != nil {
+	if err := m.e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client(account_id,name,tax_id) VALUES($1,$2,$3) RETURNING id`, m.account, name, taxID).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
-		return repository.NewClientContactRepository().Save(ctx, q, m.account, id, []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: email, Primary: true}}, "CHANNEL")
+		contacts := repository.NewClientContactRepository()
+		if err := contacts.Save(ctx, q, m.account, id, []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: email, Primary: true}}, "CHANNEL"); err != nil {
+			return err
+		}
+		return contacts.ProjectPrimaries(ctx, q, m.account, id)
 	}); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// registered seeds a profile whose CUIT has a customer account.
+func (m *sellerMerge) registered(t *testing.T, name, email, taxID string) uuid.UUID {
+	t.Helper()
+	id := m.profile(t, name, email, &taxID)
+	if _, err := m.e.db.CrossAccount().Exec(context.Background(), `INSERT INTO customer_identity(account_id,tax_id,password_hash,name) VALUES($1,$2,'unused',$3)`, m.account, taxID, name); err != nil {
 		t.Fatal(err)
 	}
 	return id
@@ -93,12 +107,13 @@ func (m *sellerMerge) audits(t *testing.T, source, target uuid.UUID) (count int,
 	return count, by
 }
 
-func TestSellerMerge_RenameOnlyAProfileWithoutCUIT(t *testing.T) {
+func TestSellerMerge_RenameOnlyAProfileWithoutCustomerAccount(t *testing.T) {
 	e := newEnv(t)
 	m := e.sellerMerge(t)
-	cuit := "20123456786"
+	cuit, cuit2 := "20123456786", "27111111110"
 	dumb := m.profile(t, "🔨 Juanchi", "juanchi@example.test", nil)
-	registered := m.profile(t, "Registered Buyer", "registered@example.test", &cuit)
+	registered := m.registered(t, "Registered Buyer", "registered@example.test", cuit)
+	fiscalOnly := m.profile(t, "CUIT sin cuenta", "fiscal-only@example.test", &cuit2)
 	rename := func(id uuid.UUID, name string) *http.Response {
 		rec := e.do(t, request{method: http.MethodPut, path: "/v1/clients/" + id.String() + "/name", token: m.token, body: map[string]any{"name": name}})
 		return rec.Result()
@@ -118,6 +133,10 @@ func TestSellerMerge_RenameOnlyAProfileWithoutCUIT(t *testing.T) {
 	}
 	if got := e.profileNameOf(t, registered); got != "Registered Buyer" {
 		t.Fatalf("a refused rename changed the registered name to %q", got)
+	}
+	// A CUIT a seller recorded without a customer account is still the seller's to correct.
+	if res := rename(fiscalOnly, "CUIT corregido"); res.StatusCode != http.StatusOK {
+		t.Fatalf("rename a profile whose CUIT has no account: status = %d, want 200", res.StatusCode)
 	}
 
 	foreignAccount, _ := e.seedAccount(t, "Seller merge vecino")
@@ -215,7 +234,7 @@ func TestSellerMerge_RefusesWhatNoSellerMerges(t *testing.T) {
 	m := e.sellerMerge(t)
 	cuit := "20123456786"
 	target := m.profile(t, "Target", "target@example.test", nil)
-	registered := m.profile(t, "Registered", "registered@example.test", &cuit)
+	registered := m.registered(t, "Registered", "registered@example.test", cuit)
 	elsewhere := m.profile(t, "Other branch buyer", "elsewhere@example.test", nil)
 	m.order(t, elsewhere, m.other)
 	merged := m.profile(t, "Already merged", "merged@example.test", nil)
@@ -347,18 +366,17 @@ func TestSellerMerge_ResolvesPendingObservations(t *testing.T) {
 		t.Fatalf("a survivor merged into itself %d times", n)
 	}
 
-	// A side whose survivor now has a CUIT belongs to its customer: the seller cannot merge it.
+	// A side whose survivor now has a customer account joins it only on a contact its customer proved.
 	provisional := m.profile(t, "Still provisional", "still-provisional@example.test", nil)
 	adopted := m.profile(t, "Adopted", "adopted@example.test", nil)
-	cuit := "20123456786"
-	registered := m.profile(t, "Registered", "registered@example.test", &cuit)
+	registered := m.registered(t, "Registered", "registered@example.test", "20123456786")
 	refused := observe(provisional, adopted, "adopted@example.test")
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client SET merged_into=$2 WHERE id=$1`, adopted, registered); err != nil {
 		t.Fatal(err)
 	}
 	rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + refused.String(), token: m.token, body: map[string]any{"action": "MERGE"}})
-	if rec.Code != http.StatusForbidden || errorCode(t, rec) != string(domain.CodeClientRegistered) {
-		t.Fatalf("resolve MERGE into a registered survivor: %d %s, want 403 %s", rec.Code, rec.Body, domain.CodeClientRegistered)
+	if rec.Code != http.StatusConflict || errorCode(t, rec) != string(domain.CodeClientContactUnproved) {
+		t.Fatalf("resolve MERGE into a registered survivor: %d %s, want 409 %s", rec.Code, rec.Body, domain.CodeClientContactUnproved)
 	}
 	if s, _ := status(refused); s != "PENDING" || m.mergedInto(t, provisional) != nil {
 		t.Fatalf("refused case: observation %s, provisional merged into %v; want PENDING and live", s, m.mergedInto(t, provisional))

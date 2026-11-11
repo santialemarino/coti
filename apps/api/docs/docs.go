@@ -10994,6 +10994,10 @@ const docTemplate = `{
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
+                "registered": {
+                    "description": "Registered is true when a customer account manages the profile; no seller renames or merges it.",
+                    "type": "boolean"
+                },
                 "sales": {
                     "type": "array",
                     "items": {
@@ -11226,6 +11230,10 @@ const docTemplate = `{
         "dto.ContactSuggestionResponse": {
             "type": "object",
             "properties": {
+                "account_join_ready": {
+                    "description": "AccountJoinReady is true when the registered side's customer proved the contact, so MERGE joins\nthe other profile into that account.",
+                    "type": "boolean"
+                },
                 "candidate_client_id": {
                     "type": "string"
                 },
@@ -11257,7 +11265,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "source_registered": {
-                    "description": "SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.",
+                    "description": "SourceRegistered and CandidateRegistered mark a profile with a customer account, which no seller merges.",
                     "type": "boolean"
                 },
                 "tax_id": {

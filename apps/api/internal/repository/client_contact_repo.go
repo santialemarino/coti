@@ -78,7 +78,12 @@ func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querie
 
 // ListObservations reads pending suggestions within the staff caller's branch reach.
 func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
-	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,s.name,s.tax_id IS NOT NULL,c.tax_id IS NOT NULL,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
+	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,s.name,`+registered("s")+`,`+registered("c")+`,
+ (`+registered("s")+`)<>(`+registered("c")+`) AND EXISTS(SELECT 1 FROM client r JOIN client_contact v ON v.account_id=r.account_id AND v.client_id=r.id
+   JOIN customer_contact_ownership w ON w.account_id=v.account_id AND w.contact_id=v.id
+   WHERE r.account_id=o.account_id AND r.id IN (o.source_client_id,o.candidate_client_id) AND `+registered("r")+`
+     AND v.kind=o.kind AND v.value=o.value AND v.verified_at IS NOT NULL AND v.retired_at IS NULL),
+ o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
  FROM client_contact_observation o
  LEFT JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id
  LEFT JOIN client s ON s.account_id=o.account_id AND s.id=o.source_client_id
@@ -90,7 +95,7 @@ func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querie
 	result := make([]domain.ContactObservation, 0)
 	for rows.Next() {
 		var o domain.ContactObservation
-		if err := rows.Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.CandidateName, &o.SourceName, &o.SourceRegistered, &o.CandidateRegistered, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.BranchID, &o.SourceClientID, &o.CandidateClientID, &o.CandidateName, &o.SourceName, &o.SourceRegistered, &o.CandidateRegistered, &o.AccountJoinReady, &o.TaxID, &o.Kind, &o.Value, &o.Name, &o.Original, &o.Status, &o.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, o)
@@ -153,6 +158,38 @@ func (r *ClientContactRepository) FindMergedRoute(ctx context.Context, q Querier
 	return result, rows.Err()
 }
 
+// GetConversationClient returns the live profile whose quote the inbound message joined, when that
+// profile holds the sender's contact: the quote went there, so the reply proves the contact.
+func (r *ClientContactRepository) GetConversationClient(ctx context.Context, q Querier, accountID, messageID uuid.UUID, kind domain.ChannelType, value string) (*domain.Client, error) {
+	client, err := scanClient(q.QueryRow(ctx, `SELECT `+clientColumns+` FROM client WHERE account_id=$1 AND merged_into IS NULL AND id=(
+   SELECT qt.client_id FROM inbound_channel_message m
+   JOIN quote_message qm ON qm.account_id=m.account_id AND qm.id=m.quote_message_id
+   JOIN quote qt ON qt.account_id=qm.account_id AND qt.id=qm.quote_id
+   WHERE m.account_id=$1 AND m.id=$2)
+ AND EXISTS(SELECT 1 FROM client_contact c WHERE c.account_id=$1 AND c.client_id=client.id AND c.kind=$3 AND c.value=$4 AND c.retired_at IS NULL)`, accountID, messageID, kind, value))
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	return client, err
+}
+
+// GetContactOwner returns the active customer who proved the profile's live contact, or nil.
+func (r *ClientContactRepository) GetContactOwner(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) (*uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.QueryRow(ctx, `SELECT w.customer_id FROM client_contact c
+ JOIN customer_contact_ownership w ON w.account_id=c.account_id AND w.contact_id=c.id
+ JOIN customer_identity i ON i.account_id=w.account_id AND i.id=w.customer_id AND i.disabled_at IS NULL
+ WHERE c.account_id=$1 AND c.client_id=$2 AND c.kind=$3 AND c.value=$4 AND c.verified_at IS NOT NULL AND c.retired_at IS NULL
+ ORDER BY w.verified_at,w.id LIMIT 1`, accountID, clientID, kind, value).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
 // HasObservation prevents a replay from restoring a contact the customer later removed.
 func (r *ClientContactRepository) HasObservation(ctx context.Context, q Querier, accountID, messageID uuid.UUID) (bool, error) {
 	var found bool
@@ -172,7 +209,70 @@ func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Queri
 	return err
 }
 
+// CreateMatchObservations raises a PENDING case between profile source and every other live profile
+// holding the contact, verified or not, unless one is already pending for that pair on any contact.
+func (r *ClientContactRepository) CreateMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	return createMatchObservations(ctx, q, accountID, branchID, source, kind, value, original)
+}
+
+// CreateMatchObservations raises the seller's review of a contact a new profile shares with others.
+func (r *ClientRepository) CreateMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	return createMatchObservations(ctx, q, accountID, branchID, source, kind, value, original)
+}
+
+func createMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,original_text,status)
+ SELECT DISTINCT $1::uuid,$2::uuid,$3::uuid,c.client_id,$4::channel_type,$5::varchar(255),$6::text,'PENDING'::client_contact_review_status
+ FROM client_contact c JOIN client p ON p.account_id=c.account_id AND p.id=c.client_id
+ WHERE c.account_id=$1 AND c.kind=$4 AND c.value=$5 AND c.retired_at IS NULL AND c.client_id<>$3 AND p.merged_into IS NULL
+   AND NOT EXISTS(SELECT 1 FROM client_contact_observation o WHERE o.account_id=$1 AND o.status='PENDING'
+     AND ((o.source_client_id=$3 AND o.candidate_client_id=c.client_id) OR (o.source_client_id=c.client_id AND o.candidate_client_id=$3)))`,
+		accountID, branchID, source, kind, value, original)
+	return err
+}
+
+// CreateProofMatchObservations raises a PENDING case from every live profile without a customer
+// account that holds the contact unverified to the registered profile whose customer just proved it,
+// filed under the branch that last served the provisional profile.
+func (r *ClientContactRepository) CreateProofMatchObservations(ctx context.Context, q Querier, accountID, registeredID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,original_text,status)
+ SELECT $1::uuid,branch_id,id,$2::uuid,$3::channel_type,$4::varchar(255),$4::text,'PENDING'::client_contact_review_status FROM (
+  SELECT p.id,COALESCE(
+   (SELECT branch_id FROM rfq WHERE account_id=$1 AND client_id=p.id ORDER BY created_at DESC,id DESC LIMIT 1),
+   (SELECT branch_id FROM quote WHERE account_id=$1 AND client_id=p.id ORDER BY created_at DESC,id DESC LIMIT 1),
+   (SELECT id FROM branch WHERE account_id=$1 ORDER BY created_at,id LIMIT 1)) AS branch_id
+  FROM client p WHERE p.account_id=$1 AND p.id<>$2 AND p.merged_into IS NULL AND NOT `+registered("p")+`
+   AND EXISTS(SELECT 1 FROM client_contact c WHERE c.account_id=$1 AND c.client_id=p.id AND c.kind=$3 AND c.value=$4 AND c.verified_at IS NULL AND c.retired_at IS NULL)
+   AND NOT EXISTS(SELECT 1 FROM client_contact_observation o WHERE o.account_id=$1 AND o.status='PENDING'
+     AND ((o.source_client_id=p.id AND o.candidate_client_id=$2) OR (o.source_client_id=$2 AND o.candidate_client_id=p.id)))
+ ) provisional WHERE branch_id IS NOT NULL`, accountID, registeredID, kind, value)
+	return err
+}
+
+// HasInboundOrigin reports whether the profile's live contact came from the sender writing in
+// (source CHANNEL) rather than from a seller, whatever later verified it.
+func (r *ClientContactRepository) HasInboundOrigin(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL AND source='CHANNEL')`, accountID, clientID, kind, value).Scan(&found)
+	return found, err
+}
+
+// UnverifyContact clears the verification of a profile's live contact, so another profile's proof
+// can hold it.
+func (r *ClientContactRepository) UnverifyContact(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=NULL,is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, accountID, clientID, kind, value)
+	return err
+}
+
+// MarkChannelVerified verifies a profile's live contact that a message from it just proved, keeping
+// its source, which says where the contact came from.
+func (r *ClientContactRepository) MarkChannelVerified(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL AND verified_at IS NULL`, accountID, clientID, kind, value)
+	return err
+}
+
 // Save replaces a contact collection; ProjectPrimaries then copies its primaries to client.phone/email.
+// Only a CHANNEL contact, the sender a message arrived from, is saved verified.
 func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID, clientID uuid.UUID, contacts []domain.ClientContact, source string) error {
 	payload, err := contactPayload(contacts)
 	if err != nil {
@@ -185,7 +285,7 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 		return err
 	}
 	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at)
- SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END
+ SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CHANNEL' THEN now() END
  FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean)
  ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source)
 	return err
@@ -319,7 +419,8 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 		return err
 	}
 	// The DNI and fiscal data fill only what the target lacks; nothing it already holds is overwritten.
-	if _, err = q.Exec(ctx, `UPDATE client t SET dni=COALESCE(t.dni,s.dni),legal_name=COALESCE(t.legal_name,s.legal_name),iva_condition=COALESCE(t.iva_condition,s.iva_condition),fiscal_address=COALESCE(t.fiscal_address,s.fiscal_address)
+	// Both profiles' notes are kept, the source's after the target's, within the column's 512.
+	if _, err = q.Exec(ctx, `UPDATE client t SET notes=left(NULLIF(concat_ws(E'\n\n',NULLIF(btrim(t.notes),''),NULLIF(btrim(s.notes),'')),''),512),dni=COALESCE(t.dni,s.dni),legal_name=COALESCE(t.legal_name,s.legal_name),iva_condition=COALESCE(t.iva_condition,s.iva_condition),fiscal_address=COALESCE(t.fiscal_address,s.fiscal_address)
  FROM client s WHERE t.account_id=$1 AND t.id=$3 AND s.account_id=$1 AND s.id=$2`, tenant.AccountID, source, target); err != nil {
 		return err
 	}

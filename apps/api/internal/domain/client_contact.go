@@ -13,6 +13,9 @@ import (
 
 var contactPhonePattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
 
+// argentineNationalNumber is a ten-digit Argentine number: area 11, 2xx or 3xx plus the subscriber.
+var argentineNationalNumber = regexp.MustCompile(`^(11[0-9]{8}|[23][0-9]{9})$`)
+
 // ContactReviewStatus is the persisted outcome of an inbound commercial declaration.
 type ContactReviewStatus string
 
@@ -74,26 +77,42 @@ type ContactObservation struct {
 	CandidateClientID *uuid.UUID
 	CandidateName     *string
 	SourceName        *string
-	// SourceRegistered and CandidateRegistered report a CUIT on that profile, which no seller merges.
+	// SourceRegistered and CandidateRegistered report a customer account on that profile, which no
+	// seller merges.
 	SourceRegistered    bool
 	CandidateRegistered bool
-	TaxID               *string
-	Kind                ChannelType
-	Value               string
-	Name                *string
-	Original            string
-	Status              ContactReviewStatus
-	CreatedAt           time.Time
+	// AccountJoinReady is true when exactly one side is registered and its customer has proved the
+	// observed contact, so a seller may join the other profile into that account.
+	AccountJoinReady bool
+	TaxID            *string
+	Kind             ChannelType
+	Value            string
+	Name             *string
+	Original         string
+	Status           ContactReviewStatus
+	CreatedAt        time.Time
 }
 
 // MergeProfile is what a seller merge checks on one profile before moving anything.
 type MergeProfile struct {
-	ID         uuid.UUID
-	TaxID      *string
+	ID    uuid.UUID
+	TaxID *string
+	// Registered is true when a customer account holds the profile's CUIT.
+	Registered bool
 	MergedInto *uuid.UUID
 	// InReach is true when every order of the profile is in the caller's branches and, for a seller,
 	// no quote is another seller's.
 	InReach bool
+}
+
+// CanonicalPhone strips a phone's separators and writes an Argentine number in the +549 form WhatsApp
+// reports, so +54 11… and +54 9 11… are one contact. Any other number keeps its digits.
+func CanonicalPhone(phone string) string {
+	phone = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "").Replace(strings.TrimSpace(phone))
+	if national, ok := strings.CutPrefix(phone, "+54"); ok && argentineNationalNumber.MatchString(national) {
+		return "+549" + national
+	}
+	return phone
 }
 
 // NormalizeClientContact validates one destination without inferring ownership.
@@ -104,7 +123,7 @@ func NormalizeClientContact(kind ChannelType, value string) (string, error) {
 	}
 	switch kind {
 	case ChannelTypeWhatsApp:
-		value = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "").Replace(value)
+		value = CanonicalPhone(value)
 		if !contactPhonePattern.MatchString(value) {
 			return "", fmt.Errorf("%w: phone must use E.164 format", ErrInvalidInput)
 		}

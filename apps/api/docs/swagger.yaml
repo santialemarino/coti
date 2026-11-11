@@ -517,6 +517,10 @@ definitions:
     properties:
       client:
         $ref: '#/definitions/dto.ClientResponse'
+      registered:
+        description: Registered is true when a customer account manages the profile;
+          no seller renames or merges it.
+        type: boolean
       sales:
         items:
           $ref: '#/definitions/dto.ClientSaleResponse'
@@ -672,6 +676,11 @@ definitions:
     type: object
   dto.ContactSuggestionResponse:
     properties:
+      account_join_ready:
+        description: |-
+          AccountJoinReady is true when the registered side's customer proved the contact, so MERGE joins
+          the other profile into that account.
+        type: boolean
       candidate_client_id:
         type: string
       candidate_name:
@@ -694,7 +703,7 @@ definitions:
         type: string
       source_registered:
         description: SourceRegistered and CandidateRegistered mark a profile with
-          a CUIT, which no seller merges.
+          a customer account, which no seller merges.
         type: boolean
       tax_id:
         type: string

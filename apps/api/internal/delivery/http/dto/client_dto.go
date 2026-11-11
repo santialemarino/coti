@@ -55,9 +55,11 @@ type ClientSaleResponse struct {
 
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.
 type ClientProfileResponse struct {
-	Client ClientResponse       `json:"client"`
-	Tags   []ClientTagResponse  `json:"tags"`
-	Sales  []ClientSaleResponse `json:"sales"`
+	Client ClientResponse `json:"client"`
+	// Registered is true when a customer account manages the profile; no seller renames or merges it.
+	Registered bool                 `json:"registered"`
+	Tags       []ClientTagResponse  `json:"tags"`
+	Sales      []ClientSaleResponse `json:"sales"`
 }
 
 // ClientTagListResponse is returned by tag list and replacement endpoints.

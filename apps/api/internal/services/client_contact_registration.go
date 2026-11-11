@@ -41,10 +41,9 @@ func (s *ClientContactService) RegisterProfile(ctx context.Context, q repository
 		if err != nil {
 			return err
 		}
+		// The contacts stay off client.phone/email, where the seller quotes, until the customer proves
+		// one or saves the profile again.
 		if err := s.contacts.Save(ctx, q, p.AccountID, profile.ID, contacts, "CUSTOMER"); err != nil {
-			return err
-		}
-		if err := s.contacts.ProjectPrimaries(ctx, q, p.AccountID, profile.ID); err != nil {
 			return err
 		}
 		return s.contacts.Declare(ctx, q, p, profile.ID, contacts)

@@ -230,10 +230,21 @@ func (e *env) seedMergeProfiles(t *testing.T, account uuid.UUID, tax, legacyEmai
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact SET verified_at=NULL WHERE account_id=$1 AND client_id=$2`, account, legacy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(account_id,name,email,phone) VALUES($1,'Provisorio',$2,$3)`, account, dumbEmail, dumbPhone); err != nil {
+	var dumb uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client(account_id,name,email,phone) VALUES($1,'Provisorio',$2,$3) RETURNING id`, account, dumbEmail, dumbPhone).Scan(&dumb); err != nil {
 		t.Fatal(err)
 	}
+	e.channelVerify(t, account, dumb)
 	return legacy
+}
+
+// channelVerify makes a profile's contacts the channel senders it was opened from, the proof that
+// verifies a provisional profile's contact; a contact a seller typed proves nothing.
+func (e *env) channelVerify(t *testing.T, account, clientID uuid.UUID) {
+	t.Helper()
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE client_contact SET source='CHANNEL',verified_at=now() WHERE account_id=$1 AND client_id=$2`, account, clientID); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func (e *env) profileProjection(t *testing.T, account, clientID uuid.UUID) string {

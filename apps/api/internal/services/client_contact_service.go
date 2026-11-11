@@ -14,6 +14,7 @@ import (
 type contactProfiles interface {
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
 	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.Client, error)
+	IsRegistered(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
 	GetSurvivor(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.NewClient) (*domain.Client, error)
 }
@@ -34,6 +35,14 @@ type contactStore interface {
 	ListObservations(context.Context, repository.Querier, domain.Tenant) ([]domain.ContactObservation, error)
 	GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error)
 	CreateObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ContactObservation) error
+	CreateMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType, string, string) error
+	CreateProofMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error)
+	GetContactOwner(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*uuid.UUID, error)
+	MarkChannelVerified(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	HasInboundOrigin(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (bool, error)
+	UnverifyContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	GrantProvisionalHistory(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
 	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
@@ -272,6 +281,19 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 	if err != nil {
 		return err
 	}
+	if len(profiles) == 0 {
+		// A reply to a quote proves the contact the quote went to, typed or not.
+		conversation, err := s.contacts.GetConversationClient(ctx, q, route.AccountID, messageID, kind, value)
+		if err != nil {
+			return err
+		}
+		if conversation != nil {
+			if err := s.contacts.MarkChannelVerified(ctx, q, route.AccountID, conversation.ID, kind, value); err != nil {
+				return err
+			}
+			profiles = []domain.Client{*conversation}
+		}
+	}
 	observation := domain.ContactObservation{BranchID: route.BranchID, Kind: kind, Value: value, Original: original, TaxID: declared.TaxID, Status: domain.ContactReviewRecorded}
 	if declared.Name != nil {
 		name := strings.TrimSpace(*declared.Name)
@@ -304,6 +326,10 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 			return err
 		}
 		if err := s.contacts.ProjectPrimaries(ctx, q, route.AccountID, profile.ID); err != nil {
+			return err
+		}
+		// A declared contact that matched no verified one is the seller's to review, never routed to.
+		if err := s.contacts.CreateMatchObservations(ctx, q, route.AccountID, route.BranchID, profile.ID, kind, value, original); err != nil {
 			return err
 		}
 		observation.SourceClientID = &profile.ID
