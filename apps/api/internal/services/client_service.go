@@ -21,6 +21,8 @@ const (
 type clientProfileRepository interface {
 	GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error)
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
+	IsRegistered(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
+	CreateMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType, string, string) error
 	ListSummaries(ctx context.Context, q repository.Querier,
 		tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID,
@@ -137,6 +139,10 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
+		registered, err := s.clients.IsRegistered(ctx, q, tenant.AccountID, clientID)
+		if err != nil {
+			return err
+		}
 		byClient, err := s.tags.ListByClientIDs(ctx, q, tenant.AccountID, []uuid.UUID{clientID})
 		if err != nil {
 			return err
@@ -145,7 +151,7 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
-		profile = &domain.ClientProfile{Client: *client, Tags: nonNilTags(byClient[clientID]),
+		profile = &domain.ClientProfile{Client: *client, Registered: registered, Tags: nonNilTags(byClient[clientID]),
 			Sales: sales}
 		return nil
 	})
@@ -193,7 +199,8 @@ func (s *ClientService) GetQuoteAssociation(
 			}
 			hints.TaxID, hints.Name = request.TaxID, request.Name
 			if request.Phone != nil {
-				hints.Phone = request.Phone
+				phone := domain.CanonicalPhone(*request.Phone)
+				hints.Phone = &phone
 			}
 			if request.Email != nil {
 				hints.Email = request.Email
@@ -319,7 +326,7 @@ func normalizeNewClient(client *domain.NewClient) error {
 			maxClientNameLength)
 	}
 	if client.Phone != nil {
-		phone := normalizePhone(*client.Phone)
+		phone := domain.CanonicalPhone(*client.Phone)
 		if !e164PhonePattern.MatchString(phone) {
 			return fmt.Errorf("%w: client phone must use E.164 format", domain.ErrInvalidInput)
 		}
@@ -365,7 +372,7 @@ func contactHints(sends []domain.QuoteSend) domain.ClientContactHints {
 		switch sends[i].ChannelType {
 		case domain.ChannelTypeWhatsApp:
 			if hints.Phone == nil {
-				phone := normalizePhone(destination)
+				phone := domain.CanonicalPhone(destination)
 				hints.Phone = &phone
 			}
 		case domain.ChannelTypeEmail:
@@ -376,11 +383,6 @@ func contactHints(sends []domain.QuoteSend) domain.ClientContactHints {
 		}
 	}
 	return hints
-}
-
-func normalizePhone(phone string) string {
-	replacer := strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "")
-	return replacer.Replace(strings.TrimSpace(phone))
 }
 
 func normalizedOptional(value *string) *string {

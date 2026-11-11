@@ -21,6 +21,23 @@ type fakeClientProfiles struct {
 	findEmail      *string
 	summaries      []domain.ClientSummary
 	acceptedSales  []domain.ClientSale
+	registered     bool
+	matched        []contactMatch
+}
+
+type contactMatch struct {
+	source uuid.UUID
+	kind   domain.ChannelType
+	value  string
+}
+
+func (f *fakeClientProfiles) IsRegistered(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error) {
+	return f.registered, nil
+}
+
+func (f *fakeClientProfiles) CreateMatchObservations(_ context.Context, _ repository.Querier, _, _, source uuid.UUID, kind domain.ChannelType, value, _ string) error {
+	f.matched = append(f.matched, contactMatch{source, kind, value})
+	return nil
 }
 
 func (f *fakeClientProfiles) GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error) {
@@ -318,5 +335,53 @@ func TestClientService_CreateTag_NormalizesReusableName(t *testing.T) {
 	}
 	if h.tags.created != "Obra grande" || tag.Name != "Obra grande" {
 		t.Errorf("created tag = %q/%q, want normalized name", h.tags.created, tag.Name)
+	}
+}
+
+func TestClientService_ConfirmForSend_NewProfileRaisesContactMatches(t *testing.T) {
+	h := newClientServiceHarness()
+	name, phone, email := "Obra San Martin", "+54 11 5555-0000", "compras@cliente.test"
+
+	err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+		&domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone, Email: &email}})
+	if err != nil {
+		t.Fatalf("ConfirmForSend() = %v, want no error", err)
+	}
+	source := *h.quotes.setClient
+	want := []contactMatch{{source, domain.ChannelTypeWhatsApp, "+5491155550000"}, {source, domain.ChannelTypeEmail, email}}
+	if len(h.clients.matched) != len(want) || h.clients.matched[0] != want[0] || h.clients.matched[1] != want[1] {
+		t.Fatalf("matches = %v, want %v", h.clients.matched, want)
+	}
+}
+
+func TestClientService_ConfirmForSend_ExistingProfileRaisesNoMatches(t *testing.T) {
+	h := newClientServiceHarness()
+	clientID := uuid.New()
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID}
+
+	if err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+		&domain.AssociateQuoteClientInput{ClientID: &clientID}); err != nil {
+		t.Fatalf("ConfirmForSend() = %v, want no error", err)
+	}
+	if len(h.clients.matched) != 0 {
+		t.Fatalf("selecting an existing profile raised matches %v", h.clients.matched)
+	}
+}
+
+func TestClientService_GetClient_ReportsCustomerAccount(t *testing.T) {
+	for _, registered := range []bool{false, true} {
+		h := newClientServiceHarness()
+		clientID := uuid.New()
+		cuit := "20123456786"
+		h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID, TaxID: &cuit}
+		h.clients.registered = registered
+
+		profile, err := h.service.GetClient(context.Background(), branchTenant(), clientID)
+		if err != nil {
+			t.Fatalf("GetClient() = %v, want no error", err)
+		}
+		if profile.Registered != registered {
+			t.Fatalf("a CUIT profile with account=%v reads registered=%v", registered, profile.Registered)
+		}
 	}
 }

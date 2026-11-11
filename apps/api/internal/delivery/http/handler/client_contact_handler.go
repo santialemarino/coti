@@ -265,7 +265,7 @@ func (h *ClientContactHandler) ListSuggestions(c *gin.Context) {
 	}
 	result := make([]dto.ContactSuggestionResponse, 0, len(items))
 	for _, o := range items {
-		result = append(result, dto.ContactSuggestionResponse{ID: o.ID, SourceClientID: o.SourceClientID, CandidateClientID: o.CandidateClientID, CandidateName: o.CandidateName, SourceName: o.SourceName, SourceRegistered: o.SourceRegistered, CandidateRegistered: o.CandidateRegistered, TaxID: o.TaxID, Kind: string(o.Kind), Value: o.Value, DeclaredName: o.Name, OriginalText: o.Original, CreatedAt: o.CreatedAt})
+		result = append(result, dto.ContactSuggestionResponse{ID: o.ID, SourceClientID: o.SourceClientID, CandidateClientID: o.CandidateClientID, CandidateName: o.CandidateName, SourceName: o.SourceName, SourceRegistered: o.SourceRegistered, CandidateRegistered: o.CandidateRegistered, AccountJoinReady: o.AccountJoinReady, TaxID: o.TaxID, Kind: string(o.Kind), Value: o.Value, DeclaredName: o.Name, OriginalText: o.Original, CreatedAt: o.CreatedAt})
 	}
 	c.JSON(http.StatusOK, result)
 }

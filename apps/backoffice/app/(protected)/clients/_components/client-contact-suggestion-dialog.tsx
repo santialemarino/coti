@@ -28,6 +28,7 @@ import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import {
   isMergeable,
+  joinableAccountId,
   resolveContactSuggestion,
   type ContactSuggestion,
 } from '@/lib/api/client-contact-suggestions';
@@ -46,7 +47,8 @@ interface DecisionValues {
 
 /*
  * Two profiles found sharing one contact. Between two provisional profiles the seller merges them or
- * dismisses the case; with a CUIT on either side only the customer can merge, so dismissing is all.
+ * dismisses the case. With a customer account on one side the seller joins the other profile into it
+ * once the customer proved the contact from the portal; until then dismissing is all.
  */
 export function ClientContactSuggestionDialog({
   suggestion,
@@ -73,16 +75,19 @@ export function ClientContactSuggestionDialog({
     if (!shown || pending) return;
     setPending(action);
     form.clearErrors('root');
+    // The customer account always survives a join, whatever the radio last held.
+    const account = joinableAccountId(shown);
+    const keep = account ?? keepClientId;
     try {
       await resolveContactSuggestion(
         shown.id,
-        action === 'MERGE' ? { action, keepClientId } : { action },
+        action === 'MERGE' ? { action, keepClientId: keep } : { action },
         branchId,
       );
-      const kept = keepClientId === shown.sourceClientId ? shown.sourceName : shown.candidateName;
+      const kept = keep === shown.sourceClientId ? shown.sourceName : shown.candidateName;
       toast.success(
         action === 'MERGE'
-          ? t('merged', { name: kept ?? t('unknown') })
+          ? t(account ? 'joined' : 'merged', { name: kept ?? t('unknown') })
           : t('separated', { value: shown.value }),
       );
       onResolved();
@@ -93,6 +98,8 @@ export function ClientContactSuggestionDialog({
     }
   }
 
+  const mergeable = shown ? isMergeable(shown) : false;
+  const joinable = shown ? joinableAccountId(shown) !== null : false;
   const profiles = shown
     ? [
         { id: shown.candidateClientId, name: shown.candidateName, label: t('candidate') },
@@ -135,7 +142,7 @@ export function ClientContactSuggestionDialog({
                   <ProfileRow key={profile.label} {...profile} fallback={t('unknown')} />
                 ))}
               </dl>
-              {isMergeable(shown) ? (
+              {mergeable ? (
                 <div className="flex flex-col gap-y-2">
                   <Label id={`${fieldId}-keep`}>{t('keep')}</Label>
                   <RadioGroup
@@ -160,6 +167,8 @@ export function ClientContactSuggestionDialog({
                   </RadioGroup>
                   <Hint>{t('keepHint')}</Hint>
                 </div>
+              ) : joinable ? (
+                <Hint>{t('joinHint')}</Hint>
               ) : (
                 <Callout>{t('registered')}</Callout>
               )}
@@ -174,14 +183,14 @@ export function ClientContactSuggestionDialog({
                 >
                   {t('separate')}
                 </PendingButton>
-                {isMergeable(shown) ? (
+                {mergeable || joinable ? (
                   <PendingButton
                     type="submit"
                     pending={pending === 'MERGE'}
                     pendingLabel={t('merging')}
                     disabled={pending === 'SEPARATE'}
                   >
-                    {t('merge')}
+                    {t(joinable ? 'join' : 'merge')}
                   </PendingButton>
                 ) : null}
               </DialogFooter>

@@ -70,6 +70,7 @@ func TestCustomerHistory_MergedProfileKeepsItsEarlierOrders(t *testing.T) {
 	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client(account_id,name,email) VALUES($1,'Provisional','`+email+`') RETURNING id`, account).Scan(&source); err != nil {
 		t.Fatal(err)
 	}
+	e.channelVerify(t, account, source)
 	channel := e.historyChannel(t, account, branch, "EMAIL")
 	order := e.observedOrder(t, account, branch, channel, email, time.Now().Add(-24*time.Hour), nil)
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND id=$2`, account, order, source); err != nil {

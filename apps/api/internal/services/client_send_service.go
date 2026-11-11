@@ -110,6 +110,9 @@ func (s *ClientService) ConfirmForSend(ctx context.Context, q repository.Querier
 			return err
 		}
 		clientID = client.ID
+		if err := s.recordContactMatches(ctx, q, tenant, clientID, in.New); err != nil {
+			return err
+		}
 	}
 	if err := s.tags.ReplaceClientTags(ctx, q, tenant.AccountID, clientID, in.TagIDs); err != nil {
 		return err
@@ -118,6 +121,20 @@ func (s *ClientService) ConfirmForSend(ctx context.Context, q repository.Querier
 		return err
 	}
 	return s.rfqs.SetClient(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID, clientID)
+}
+
+// recordContactMatches raises a «Coincidencias» case for each other profile already holding a contact
+// the seller typed for a new profile, since the typed contact proves nothing and joins no profile.
+func (s *ClientService) recordContactMatches(ctx context.Context, q repository.Querier, tenant domain.Tenant, clientID uuid.UUID, in *domain.NewClient) error {
+	if in.Phone != nil {
+		if err := s.clients.CreateMatchObservations(ctx, q, tenant.AccountID, tenant.BranchID, clientID, domain.ChannelTypeWhatsApp, *in.Phone, *in.Phone); err != nil {
+			return err
+		}
+	}
+	if in.Email == nil {
+		return nil
+	}
+	return s.clients.CreateMatchObservations(ctx, q, tenant.AccountID, tenant.BranchID, clientID, domain.ChannelTypeEmail, *in.Email, *in.Email)
 }
 
 func normalizeSendClient(in *domain.AssociateQuoteClientInput) error {

@@ -63,7 +63,8 @@ reaching the first list would let a session pin itself to a branch every subsequ
 `DELETE` deactivates rather than removes, so the quotes and prices that reference the branch
 stay explainable. **Closing the account's last active branch is refused** — an account with no
 branch cannot take an order. The count runs inside the caller's transaction, so two concurrent
-closes cannot both pass the check.
+closes cannot both pass the check. The branch list offers no close on the only active branch and
+says why beneath the table; a refusal that still happens arrives as a toast.
 
 **Reopening is a `PUT` with `is_active` back to true.** Since `PUT` replaces the record it also
 carries the name and expiry, and the last-active guard does not apply — it only runs when the flag

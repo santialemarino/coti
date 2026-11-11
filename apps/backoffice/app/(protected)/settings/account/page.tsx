@@ -23,7 +23,7 @@ export default async function AccountSettingsPage() {
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('title')} />
       <AccountForm account={account} arcaConnection={arcaConnection} />
-      <section className="flex flex-col max-w-md gap-y-4 lg:max-w-none">
+      <section className="flex w-full max-w-xl flex-col gap-y-4">
         <Separator />
         {/* The actions follow the title on its own line, and drop below it only when they no longer fit. */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4">

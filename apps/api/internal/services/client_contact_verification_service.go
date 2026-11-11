@@ -213,7 +213,7 @@ func (s *ClientContactVerificationService) ProveRegisteredContact(ctx context.Co
 }
 
 // applyProof verifies a proved contact on the customer's profile, merging the dumb profile that
-// already holds it verified, inside the caller's transaction.
+// already holds it channel-verified, inside the caller's transaction.
 func (s *ClientContactVerificationService) applyProof(ctx context.Context, q repository.Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
 	candidates, err := s.contacts.contacts.FindProfiles(ctx, q, p.AccountID, "", kind, value)
 	if err != nil {
@@ -229,16 +229,37 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 	if profile.TaxID == nil || *profile.TaxID != p.TaxID {
 		return domain.ErrForbidden
 	}
+	// Only a profile the sender opened by writing in merges on the proof. One where a seller typed the
+	// contact, even if a reply later verified it, loses the verification to the customer and waits for
+	// the seller's confirmation in «Coincidencias», raised below.
+	inbound := make([]domain.Client, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.ID != clientID && candidate.TaxID != nil {
+		if candidate.ID == clientID {
+			continue
+		}
+		origin, err := s.contacts.contacts.HasInboundOrigin(ctx, q, p.AccountID, candidate.ID, kind, value)
+		if err != nil {
+			return err
+		}
+		registered, err := s.contacts.profiles.IsRegistered(ctx, q, p.AccountID, candidate.ID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !origin && !registered:
+			if err := s.contacts.contacts.UnverifyContact(ctx, q, p.AccountID, candidate.ID, kind, value); err != nil {
+				return err
+			}
+		case candidate.TaxID != nil:
 			return domain.ErrConflict
+		default:
+			inbound = append(inbound, candidate)
 		}
 	}
+	candidates = inbound
 	ids := []uuid.UUID{clientID}
 	for _, candidate := range candidates {
-		if candidate.ID != clientID {
-			ids = append(ids, candidate.ID)
-		}
+		ids = append(ids, candidate.ID)
 	}
 	collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, ids)
 	if err != nil {
@@ -257,12 +278,10 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 	var sourceID *uuid.UUID
 	var merged []domain.ClientContact
 	for i := range candidates {
-		if candidates[i].ID != clientID {
-			if sourceID != nil {
-				return domain.ErrConflict
-			}
-			sourceID = &candidates[i].ID
+		if sourceID != nil {
+			return domain.ErrConflict
 		}
+		sourceID = &candidates[i].ID
 	}
 	if sourceID != nil {
 		if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, kind, value); err != nil {
@@ -309,7 +328,9 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 			return err
 		}
 	}
-	return nil
+	// A profile that holds the contact only because a seller typed it joins the account on the
+	// seller's confirmation, never on the proof alone.
+	return s.contacts.contacts.CreateProofMatchObservations(ctx, q, p.AccountID, clientID, kind, value)
 }
 
 // checkDestination applies the destination caps; the caller holds its lock. The daily cap and the

@@ -13,6 +13,49 @@ function positiveInteger(value, fallback) {
   return result;
 }
 
+function parseTemplateSettings(value) {
+  let settings;
+  try {
+    settings = JSON.parse(value);
+  } catch {
+    throw new Error('DO_TEMPLATE_ENVS is not valid JSON');
+  }
+  for (const [name] of applications) {
+    const components = settings?.[name];
+    if (
+      !components ||
+      typeof components !== 'object' ||
+      Object.values(components).some((keys) => !Array.isArray(keys))
+    ) {
+      throw new Error(`DO_TEMPLATE_ENVS does not describe ${name}`);
+    }
+  }
+  return settings;
+}
+
+// The live spec is what deploys, so a setting the committed template gained must already exist there.
+export function missingTemplateSettings(app, expected) {
+  const shared = new Set((app.spec.envs ?? []).map((env) => env.key));
+  const live = new Map(
+    [...(app.spec.services ?? []), ...(app.spec.jobs ?? [])].map((component) => [
+      component.name,
+      new Set((component.envs ?? []).map((env) => env.key)),
+    ]),
+  );
+  const missing = [];
+  for (const [component, keys] of Object.entries(expected)) {
+    const declared = live.get(component);
+    if (!declared) {
+      missing.push(component);
+      continue;
+    }
+    for (const key of keys) {
+      if (!declared.has(key) && !shared.has(key)) missing.push(`${component}.${key}`);
+    }
+  }
+  return missing;
+}
+
 export function validateApplication(app, name, repository) {
   if (app.spec?.name !== name) throw new Error(`Unexpected application for ${name}`);
   if (app.in_progress_deployment) throw new Error(`${name} already has a deployment in progress`);
@@ -56,6 +99,8 @@ export async function deployProduction({
   if (!env.DIGITALOCEAN_ACCESS_TOKEN || !/^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPOSITORY ?? '')) {
     throw new Error('Missing deployment credentials or repository');
   }
+  if (!checkOnly && !env.DO_TEMPLATE_ENVS) throw new Error('Missing DO_TEMPLATE_ENVS');
+  const templates = env.DO_TEMPLATE_ENVS ? parseTemplateSettings(env.DO_TEMPLATE_ENVS) : null;
   const timeout = positiveInteger(env.DO_DEPLOY_TIMEOUT_SECONDS, 1800) * 1000;
   const interval = positiveInteger(env.DO_DEPLOY_POLL_SECONDS, 10) * 1000;
   async function api(path, options = {}) {
@@ -80,6 +125,11 @@ export async function deployProduction({
     if (!/^[a-f0-9-]{36}$/.test(id ?? '')) throw new Error(`Missing or invalid ${key}`);
     const { app } = await api(`/apps/${id}`);
     validateApplication(app, name, env.GITHUB_REPOSITORY);
+    const missing = templates ? missingTemplateSettings(app, templates[name]) : [];
+    if (missing.length)
+      throw new Error(
+        `${name} lacks settings its committed template declares: ${missing.join(', ')}`,
+      );
     apps.push({ id, name, app });
   }
   if (checkOnly) {

@@ -19,6 +19,14 @@ vi.mock('@/lib/i18n/formatters-server', () => ({
 }));
 vi.mock('@/app/login/actions', () => ({ signOutCustomer: vi.fn() }));
 vi.mock('@/components/customer-header', () => ({ CustomerHeader: () => null }));
+vi.mock('@/components/customer-footer', () => ({ CustomerFooter: () => null }));
+vi.mock('@/lib/api/customer-auth-options', () => ({
+  getCustomerAuthOptions: async () => ({
+    supplierName: 'Corralón',
+    passwordMinLength: 12,
+    googleClientId: '',
+  }),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -39,6 +47,20 @@ it('explains how to unlock an earlier profile instead of claiming it has no orde
   expect(
     screen.getByRole('link', { name: messages.customerOrders.verifyContacts }).getAttribute('href'),
   ).toBe('/profile');
+});
+
+it('asks a customer with no verified contact to verify the one on the order', async () => {
+  vi.mocked(getCustomerProfile).mockResolvedValue({
+    clientId: 'profile',
+    taxId: '20123456786',
+    name: 'Customer',
+    ownershipUnproved: false,
+    contacts: [{ kind: 'EMAIL', value: 'customer@example.test', primary: true, verified: false }],
+  });
+  render(await OrdersPage({ searchParams: Promise.resolve({}) }));
+  expect(screen.getByText(messages.customerOrders.emptyUnverified)).toBeDefined();
+  expect(screen.getByText(messages.customerOrders.verifyContactHint)).toBeDefined();
+  expect(screen.queryByText(messages.customerOrders.proveEarlierContact)).toBeNull();
 });
 
 it('keeps the regular empty state after profile and contact verification', async () => {

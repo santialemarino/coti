@@ -31,7 +31,7 @@ func TestClientContactService_MergeClients_RefusesWhatNoSellerMerges(t *testing.
 		want   error
 		code   domain.ErrorCode
 	}{
-		{name: "registered", source: domain.MergeProfile{TaxID: &cuit, InReach: true}, want: domain.ErrForbidden, code: domain.CodeClientRegistered},
+		{name: "registered", source: domain.MergeProfile{TaxID: &cuit, Registered: true, InReach: true}, want: domain.ErrForbidden, code: domain.CodeClientRegistered},
 		{name: "already merged", source: domain.MergeProfile{MergedInto: &other, InReach: true}, want: domain.ErrConflict, code: domain.CodeClientMerged},
 		{name: "outside the branches", source: domain.MergeProfile{}, want: domain.ErrForbidden, code: domain.CodeClientOutOfReach},
 		{name: "another account", absent: true, want: domain.ErrNotFound, code: domain.CodeNotFound},
@@ -74,5 +74,49 @@ func TestClientContactService_MergeClients_MergesSourceIntoPathProfile(t *testin
 	}
 	if err := service.MergeClients(context.Background(), domain.Tenant{AccountID: uuid.New()}, target, target); !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("merging a profile into itself = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestClientContactService_MergeClients_KeepsTheCUITOnTheSurvivor(t *testing.T) {
+	t.Parallel()
+	cuit, otherCUIT := "20123456786", "27111111110"
+	cases := []struct {
+		name               string
+		sourceTax, target  *string
+		wantSwap, conflict bool
+	}{
+		{name: "CUIT only on the source", sourceTax: &cuit, wantSwap: true},
+		{name: "CUIT only on the target", target: &cuit},
+		{name: "two CUITs", sourceTax: &cuit, target: &otherCUIT, conflict: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, profiles, store := newContactHarness()
+			recorder := &mergeRecorder{fakeContactStore: store}
+			service := NewClientContactService(&fakeDB{}, profiles, recorder)
+			source, target := uuid.New(), uuid.New()
+			store.mergeProfiles = map[uuid.UUID]domain.MergeProfile{
+				source: {ID: source, TaxID: tc.sourceTax, InReach: true},
+				target: {ID: target, TaxID: tc.target, InReach: true},
+			}
+			err := service.MergeClients(context.Background(), domain.Tenant{AccountID: uuid.New()}, target, source)
+			if tc.conflict {
+				if !errors.Is(err, domain.ErrConflict) || domain.CodeOf(err) != domain.CodeClientTaxIDConflict || len(recorder.merged) != 0 {
+					t.Fatalf("MergeClients() = %v (%s), merges %v; want CLIENT_TAX_ID_CONFLICT and none", err, domain.CodeOf(err), recorder.merged)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := [2]uuid.UUID{source, target}
+			if tc.wantSwap {
+				want = [2]uuid.UUID{target, source}
+			}
+			if len(recorder.merged) != 1 || recorder.merged[0] != want {
+				t.Fatalf("merged %v, want %v so the CUIT profile survives", recorder.merged, want)
+			}
+		})
 	}
 }

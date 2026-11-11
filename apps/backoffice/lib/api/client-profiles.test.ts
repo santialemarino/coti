@@ -73,10 +73,19 @@ describe('client profile API mapping', () => {
     });
   });
 
+  it('maps whether a customer account manages the profile', () => {
+    for (const registered of [false, true]) {
+      expect(mapClientProfile({ client: CLIENT, registered, tags: [], sales: [] }).registered).toBe(
+        registered,
+      );
+    }
+  });
+
   it('maps profile sale identifiers and decimal totals without coercion', () => {
     expect(
       mapClientProfile({
         client: CLIENT,
+        registered: false,
         tags: [TAG],
         sales: [
           {

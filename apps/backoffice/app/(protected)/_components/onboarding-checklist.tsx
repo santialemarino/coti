@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   CheckIcon,
   FileSpreadsheetIcon,
+  GlobeIcon,
   PaletteIcon,
   UsersIcon,
   type LucideIcon,
@@ -34,7 +35,7 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Onboarding, OnboardingChecklistStep } from '@/lib/api/onboarding';
 
 const ITEMS: Record<OnboardingChecklistStep, { href: string; icon: LucideIcon }> = {
-  PORTAL: { href: ROUTES.accountSettings, icon: PaletteIcon },
+  PORTAL: { href: ROUTES.accountSettings, icon: GlobeIcon },
   BRAND: { href: ROUTES.accountSettings, icon: PaletteIcon },
   CATALOG_UPLOAD: { href: ROUTES.catalogSettings, icon: FileSpreadsheetIcon },
   TEAM: { href: ROUTES.userSettings, icon: UsersIcon },
@@ -66,6 +67,10 @@ export function OnboardingChecklist({
   const done = onboarding.checklist.filter((item) => item.done).length;
   const total = onboarding.checklist.length;
   const hidden = onboarding.checklistHiddenAt !== null;
+  // On the home pane the done steps live in the progress bar, so the card stays short enough to
+  // sit under the greeting without scrolling; the settings page keeps the full record.
+  const items =
+    placement === 'home' ? onboarding.checklist.filter((item) => !item.done) : onboarding.checklist;
 
   function resume() {
     startResume(async () => {
@@ -105,7 +110,7 @@ export function OnboardingChecklist({
 
       <CardContent>
         <ul className="flex flex-col gap-y-2">
-          {onboarding.checklist.map(({ step, done: itemDone }) => {
+          {items.map(({ step, done: itemDone }) => {
             const { href, icon: Icon } = ITEMS[step];
             return (
               <li

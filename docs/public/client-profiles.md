@@ -13,12 +13,22 @@ or removed. Customers manage their name, multiple contacts and optional fiscal d
 They add phones and emails one field at a time and choose a primary destination for each kind.
 
 The customer portal keeps the same account navigation across requests, order history and My data.
+Its header and browser tab carry the supplier's name and logo; Coti appears only in a small footer.
 Order history offers a clear next action when no requests have been submitted yet.
 
 New contacts require ownership verification through an email link or WhatsApp code. After proof,
-previous provisional requests from that contact move to the registered profile. The registered name
-prevails, and Coti preserves the original information. A contact already belonging to another
-registered client cannot be claimed by another account.
+previous provisional requests that arrived from that contact move to the registered profile. The
+registered name prevails, and Coti preserves the original information. A contact already belonging to
+another registered client cannot be claimed by another account. A phone or email a seller typed
+proves nothing on its own: a customer who proves it does not get that profile's history until the
+seller confirms the join, so a typo alone cannot expose another client's orders. A reply to a quote
+does prove the contact the quote went to.
+
+When two profiles share a phone or email without proof, Coti does not join them on its own: it lists
+the pair under «Coincidencias» for the seller to join or dismiss. A profile with a customer account is
+managed by that customer; once the customer verifies the shared contact in the portal, the seller
+joins the other profile into the account from «Coincidencias».
+Argentine mobile numbers are matched whether or not they were written with the 9.
 
 Receiving requests, preparing quotations and sending them work with a full name and one contact.
 Only invoicing requires registration and the necessary fiscal details. The seller can send a link

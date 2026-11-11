@@ -43,7 +43,8 @@ func (s *ClientContactService) SendRegistrationLink(ctx context.Context, tenant 
 			return err
 		}
 		for _, contact := range collections[clientID] {
-			if contact.Kind == kind && contact.Primary && contact.Verified {
+			// The link carries no credential, so a seller-typed primary is enough, as it is for a quote.
+			if contact.Kind == kind && contact.Primary {
 				destination = contact.Value
 			}
 		}

@@ -63,3 +63,25 @@ it('confirms every row even when some have not been revealed', async () => {
   fireEvent.click(view.getByRole('button', { name: 'Aplicar 3 cambios' }));
   await waitFor(() => expect(confirmCatalogImport).toHaveBeenCalledWith(preview));
 });
+
+it('lists rows with errors before the valid ones', () => {
+  const [first, second, last] = preview.rows;
+  if (!first || !second || !last) throw new Error('fixture has three rows');
+  const failing = { ...last, errors: ['El precio no es válido.'] };
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <CatalogReview
+        preview={{
+          ...preview,
+          validRows: 2,
+          invalidRows: 1,
+          rows: [first, second, failing],
+        }}
+        onBack={() => {}}
+        onConfirmed={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByText('Last product')).toBeTruthy();
+  expect(view.queryByText('Second product')).toBeNull();
+});

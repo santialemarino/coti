@@ -85,7 +85,8 @@ describe('AccountForm', () => {
     vi.mocked(updateAccount).mockRejectedValue(new Error('Upload request refused'));
     const view = renderForm();
     submit(view);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.any(String)));
+    await waitFor(() => expect(view.getByText(copy.errors.INTERNAL)).toBeTruthy());
+    expect(toast.error).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(view.getByRole('button', { name: copy.submit }).hasAttribute('disabled')).toBe(false),
     );
@@ -95,7 +96,8 @@ describe('AccountForm', () => {
     const view = renderForm();
     fireEvent.change(field(view, 'taxId'), { target: { value: '30712345679' } });
     submit(view);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(copy.taxId.checkDigit));
+    await waitFor(() => expect(view.getByText(copy.taxId.checkDigit)).toBeTruthy());
+    expect(toast.error).not.toHaveBeenCalled();
     expect(updateAccount).not.toHaveBeenCalled();
   });
   it('opens on the values the account already has', () => {

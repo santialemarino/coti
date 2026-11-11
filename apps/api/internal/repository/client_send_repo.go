@@ -27,6 +27,16 @@ func (r *ClientRepository) FindByTaxID(ctx context.Context, q Querier, accountID
 	return result, rows.Err()
 }
 
+// IsRegistered reports whether the profile has a customer account: an active identity with its CUIT.
+func (r *ClientRepository) IsRegistered(ctx context.Context, q Querier, accountID, clientID uuid.UUID) (bool, error) {
+	var result bool
+	err := q.QueryRow(ctx, `SELECT `+registered("c")+` FROM client c WHERE c.account_id=$1 AND c.id=$2`, accountID, clientID).Scan(&result)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, domain.ErrNotFound
+	}
+	return result, err
+}
+
 // GetRequestContact reads the original request's declared data within its account and branch.
 func (r *ClientRepository) GetRequestContact(ctx context.Context, q Querier, accountID, branchID, rfqID uuid.UUID) (*domain.ClientContactHints, error) {
 	var hints domain.ClientContactHints

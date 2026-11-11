@@ -294,7 +294,7 @@ func toClientProfileResponse(profile domain.ClientProfile) dto.ClientProfileResp
 			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt,
 			InvoiceStatus: string(domain.InvoiceStatusOf(sale.Closure))})
 	}
-	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client),
+	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client), Registered: profile.Registered,
 		Tags: toClientTagResponses(profile.Tags), Sales: sales}
 }
 

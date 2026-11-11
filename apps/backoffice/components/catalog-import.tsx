@@ -160,6 +160,11 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
   const [error, setError] = useState<string | null>(null);
   const [confirming, startConfirm] = useTransition();
   const [visibleRows, setVisibleRows] = useState(CATALOG_PREVIEW_PAGE_SIZE);
+  // Rows with errors lead, so none of them waits behind "Ver más" while the rest are confirmed.
+  const rows = [
+    ...preview.rows.filter((row) => row.errors.length > 0),
+    ...preview.rows.filter((row) => row.errors.length === 0),
+  ];
 
   function onConfirm() {
     setError(null);
@@ -200,7 +205,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
             </TableRow>
           </TableHeader>
           <TableBody>
-            {preview.rows.slice(0, visibleRows).map((row) => (
+            {rows.slice(0, visibleRows).map((row) => (
               <TableRow
                 key={`${row.rowNumber}-${row.code}`}
                 className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}

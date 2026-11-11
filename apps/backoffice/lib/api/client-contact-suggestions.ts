@@ -8,6 +8,7 @@ export interface ContactSuggestionRaw {
   source_name: string | null;
   source_registered: boolean;
   candidate_registered: boolean;
+  account_join_ready: boolean;
   tax_id: string | null;
   kind: 'WHATSAPP' | 'EMAIL';
   value: string;
@@ -23,6 +24,8 @@ export interface ContactSuggestion {
   sourceName: string | null;
   sourceRegistered: boolean;
   candidateRegistered: boolean;
+  // The registered side's customer proved the contact, so the seller may join the other profile in.
+  accountJoinReady: boolean;
   taxId: string | null;
   kind: 'WHATSAPP' | 'EMAIL';
   value: string;
@@ -39,6 +42,7 @@ export function mapContactSuggestion(raw: ContactSuggestionRaw): ContactSuggesti
     sourceName: raw.source_name,
     sourceRegistered: raw.source_registered,
     candidateRegistered: raw.candidate_registered,
+    accountJoinReady: raw.account_join_ready,
     taxId: raw.tax_id,
     kind: raw.kind,
     value: raw.value,
@@ -48,7 +52,7 @@ export function mapContactSuggestion(raw: ContactSuggestionRaw): ContactSuggesti
   };
 }
 
-// A seller merges only two profiles without a CUIT; a registered one belongs to its customer.
+// A seller merges only two profiles without a customer account; a registered one belongs to its customer.
 export function isMergeable(suggestion: ContactSuggestion): boolean {
   return (
     suggestion.sourceClientId !== null &&
@@ -56,6 +60,16 @@ export function isMergeable(suggestion: ContactSuggestion): boolean {
     !suggestion.sourceRegistered &&
     !suggestion.candidateRegistered
   );
+}
+
+// The customer account a seller may join the case's other profile into, once its customer proved
+// the contact; null when the case offers no such join.
+export function joinableAccountId(suggestion: ContactSuggestion): string | null {
+  if (!suggestion.accountJoinReady || !suggestion.sourceClientId || !suggestion.candidateClientId) {
+    return null;
+  }
+  if (suggestion.sourceRegistered === suggestion.candidateRegistered) return null;
+  return suggestion.sourceRegistered ? suggestion.sourceClientId : suggestion.candidateClientId;
 }
 
 export async function resolveContactSuggestion(

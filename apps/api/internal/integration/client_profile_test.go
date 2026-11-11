@@ -42,17 +42,26 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 	if clientID != requestClientID || taxID != nil || status != "SENT" || len(result.Deliveries) != 2 {
 		t.Fatalf("association at publication: %s %s %v %s", clientID, requestClientID, taxID, status)
 	}
+	// The phone the seller typed proves nothing on its own: the customer's proof raises a case and
+	// opens nothing until the seller confirms the join, so a typo alone hands over no history.
 	host, token := e.registerCustomer(t, seed.tenant.AccountID, "30712345671")
 	e.verifyCustomerContact(t, seed.tenant.AccountID, "30712345671", domain.ChannelTypeWhatsApp, phone)
-	response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String(), token: token})
-	var order struct {
-		Token *string `json:"delivery_token"`
+	order := "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String()
+	response := e.do(t, request{method: http.MethodGet, path: order, token: token})
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("a proof of the seller-typed phone opened the order: %d %s", response.Code, response.Body)
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &order); err != nil {
+	var merged *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT merged_into FROM client WHERE id=$1`, clientID).Scan(&merged); err != nil || merged != nil {
+		t.Fatalf("the seller's profile merged into %v (%v), want it left alone", merged, err)
+	}
+	var registered uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT id FROM client WHERE account_id=$1 AND tax_id='30712345671'`, seed.tenant.AccountID).Scan(&registered); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != 200 || order.Token == nil {
-		t.Fatalf("pre-acceptance history: %d %s", response.Code, response.Body)
+	cases := e.pendingMatches(t, seed.tenant.AccountID, phone)
+	if len(cases) != 1 || cases[0] != [2]uuid.UUID{clientID, registered} {
+		t.Fatalf("pending cases after the proof = %v, want one from the seller's profile %s to the account %s", cases, clientID, registered)
 	}
 	if _, err = delivery.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err != nil {
 		t.Fatal(err)
@@ -73,6 +82,27 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 	response = e.do(t, request{method: http.MethodPut, path: "/v1/quotes/" + seed.draft.Quote.ID.String() + "/client-association", token: seller, branch: seed.tenant.BranchID.String(), body: map[string]any{"client_id": clientID}})
 	if response.Code != http.StatusConflict {
 		t.Fatalf("retired standalone association: %d %s", response.Code, response.Body)
+	}
+
+	// The seller confirms: the profile joins the customer's account, which survives and shows the order.
+	caseID := e.pendingCaseID(t, seed.tenant.AccountID, clientID, registered)
+	response = e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + caseID.String(), token: seller, branch: seed.tenant.BranchID.String(), body: map[string]any{"action": "MERGE"}})
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("join into the account: %d %s", response.Code, response.Body)
+	}
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT merged_into FROM client WHERE id=$1`, clientID).Scan(&merged); err != nil || merged == nil || *merged != registered {
+		t.Fatalf("the seller's profile merged into %v (%v), want the account %s", merged, err, registered)
+	}
+	var audits int
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT count(*) FROM client_merge_audit WHERE source_client_id=$1 AND target_client_id=$2 AND merged_by=$3`, clientID, registered, seed.tenant.UserID).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("audit rows by the seller = %d (%v), want 1", audits, err)
+	}
+	response = e.do(t, request{method: http.MethodGet, path: order, token: token})
+	var visible struct {
+		Token *string `json:"delivery_token"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &visible) != nil || visible.Token == nil {
+		t.Fatalf("the joined order: %d %s, want it in the customer's history", response.Code, response.Body)
 	}
 }
 
