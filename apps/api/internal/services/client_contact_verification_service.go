@@ -229,16 +229,37 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 	if profile.TaxID == nil || *profile.TaxID != p.TaxID {
 		return domain.ErrForbidden
 	}
+	// Only a profile the sender opened by writing in merges on the proof. One where a seller typed the
+	// contact, even if a reply later verified it, loses the verification to the customer and waits for
+	// the seller's confirmation in «Coincidencias», raised below.
+	inbound := make([]domain.Client, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.ID != clientID && candidate.TaxID != nil {
+		if candidate.ID == clientID {
+			continue
+		}
+		origin, err := s.contacts.contacts.HasInboundOrigin(ctx, q, p.AccountID, candidate.ID, kind, value)
+		if err != nil {
+			return err
+		}
+		registered, err := s.contacts.profiles.IsRegistered(ctx, q, p.AccountID, candidate.ID)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !origin && !registered:
+			if err := s.contacts.contacts.UnverifyContact(ctx, q, p.AccountID, candidate.ID, kind, value); err != nil {
+				return err
+			}
+		case candidate.TaxID != nil:
 			return domain.ErrConflict
+		default:
+			inbound = append(inbound, candidate)
 		}
 	}
+	candidates = inbound
 	ids := []uuid.UUID{clientID}
 	for _, candidate := range candidates {
-		if candidate.ID != clientID {
-			ids = append(ids, candidate.ID)
-		}
+		ids = append(ids, candidate.ID)
 	}
 	collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, ids)
 	if err != nil {
@@ -257,12 +278,10 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 	var sourceID *uuid.UUID
 	var merged []domain.ClientContact
 	for i := range candidates {
-		if candidates[i].ID != clientID {
-			if sourceID != nil {
-				return domain.ErrConflict
-			}
-			sourceID = &candidates[i].ID
+		if sourceID != nil {
+			return domain.ErrConflict
 		}
+		sourceID = &candidates[i].ID
 	}
 	if sourceID != nil {
 		if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, kind, value); err != nil {

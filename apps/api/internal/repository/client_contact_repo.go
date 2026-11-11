@@ -249,7 +249,23 @@ func (r *ClientContactRepository) CreateProofMatchObservations(ctx context.Conte
 	return err
 }
 
-// MarkChannelVerified verifies a profile's live contact that a message from it just proved.
+// HasInboundOrigin reports whether the profile's live contact came from the sender writing in
+// (source CHANNEL) rather than from a seller, whatever later verified it.
+func (r *ClientContactRepository) HasInboundOrigin(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL AND source='CHANNEL')`, accountID, clientID, kind, value).Scan(&found)
+	return found, err
+}
+
+// UnverifyContact clears the verification of a profile's live contact, so another profile's proof
+// can hold it.
+func (r *ClientContactRepository) UnverifyContact(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=NULL,is_main=FALSE WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL`, accountID, clientID, kind, value)
+	return err
+}
+
+// MarkChannelVerified verifies a profile's live contact that a message from it just proved, keeping
+// its source, which says where the contact came from.
 func (r *ClientContactRepository) MarkChannelVerified(ctx context.Context, q Querier, accountID, clientID uuid.UUID, kind domain.ChannelType, value string) error {
 	_, err := q.Exec(ctx, `UPDATE client_contact SET verified_at=now() WHERE account_id=$1 AND client_id=$2 AND kind=$3 AND value=$4 AND retired_at IS NULL AND verified_at IS NULL`, accountID, clientID, kind, value)
 	return err

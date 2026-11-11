@@ -265,7 +265,7 @@ func (e *env) joinReady(t *testing.T, token string, branch, caseID uuid.UUID) bo
 	return false
 }
 
-func TestClientContactMatching_AQuoteReplyProvesTheTypedContact(t *testing.T) {
+func TestClientContactMatching_AQuoteReplyProvesTheTypedContactButNotForAnAccount(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	account, branch := e.seedAccount(t, "Reply proves contact")
@@ -310,6 +310,34 @@ func TestClientContactMatching_AQuoteReplyProvesTheTypedContact(t *testing.T) {
 	}
 	if got := e.pendingMatches(t, account, "+5491155550707"); len(got) != 0 {
 		t.Fatalf("the reply raised cases %v, want none", got)
+	}
+
+	// The number was typed, so a reply plus a customer's proof is still not enough: if the seller
+	// typed a stranger's number, the stranger must not get the profile without the seller's word.
+	const tax = "30712345671"
+	e.registerCustomer(t, account, tax)
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeWhatsApp, "+5491155550707")
+	var registered uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM client WHERE account_id=$1 AND tax_id=$2`, account, tax).Scan(&registered); err != nil {
+		t.Fatal(err)
+	}
+	var into *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT merged_into FROM client WHERE id=$1`, typed).Scan(&into); err != nil || into != nil {
+		t.Fatalf("the proof merged the typed profile into %v (%v), want it left for the seller", into, err)
+	}
+	if got := e.pendingMatches(t, account, "+5491155550707"); len(got) != 1 || got[0] != [2]uuid.UUID{typed, registered} {
+		t.Fatalf("pending cases after the proof = %v, want one from the typed profile to the account", got)
+	}
+	if got := e.contactsOf(t, typed); len(got) != 1 || got[0] != (contactState{"+5491155550707", "SELLER", false}) {
+		t.Fatalf("typed contact after the proof = %+v, want its verification handed to the customer", got)
+	}
+	seller := e.seedUser(t, account, domain.UserRoleAdmin)
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + e.pendingCaseID(t, account, typed, registered).String(), token: e.tokenFor(t, seller), branch: branch.String(), body: map[string]any{"action": "MERGE"}})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("seller confirms the join: %d %s", rec.Code, rec.Body)
+	}
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT merged_into FROM client WHERE id=$1`, typed).Scan(&into); err != nil || into == nil || *into != registered {
+		t.Fatalf("after the seller's confirmation the typed profile merged into %v (%v), want %s", into, err, registered)
 	}
 }
 

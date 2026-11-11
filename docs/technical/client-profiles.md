@@ -81,11 +81,15 @@ resend cooldown and count failed attempts. Invalid attempts commit their count w
 history. A proof for a destination owned by another fiscal profile is refused. A verified destination
 can belong to only one live profile per supplier. Pending claims do not establish ownership.
 
-Successful proof absorbs the provisional profile that holds the contact channel-verified: the
-channel and the customer are two independent signals. A provisional profile that holds it only
-because a seller typed it is not merged; the proof raises a PENDING «Coincidencias» case from it to
-the customer's profile, and the seller joins them from there (see
-[Seller actions](#seller-actions-on-provisional-profiles)). An automatic merge retains the source
+Successful proof absorbs a provisional profile only when that profile's contact originated from an
+inbound message: the sender opened it by writing in (`source` CHANNEL from creation). Verification
+never changes `source`, so the origin stays answerable. Where a seller typed the contact (`source`
+SELLER or LEGACY), even if a reply to a quote later verified it, the profile is not merged: its
+verification passes to the customer's profile, the proof raises a PENDING «Coincidencias» case from
+it to the customer's profile, and the seller joins them from there (see
+[Seller actions](#seller-actions-on-provisional-profiles)). Otherwise a mistyped number, a stranger's
+reply and that stranger's registration would hand over the seller's history with no one confirming
+it. An automatic merge retains the source
 profile and its provenance, sets merged_into, retires its old contacts, unions commercial contacts
 and tags, and moves RFQ, quotation and notification history to the fiscal profile. The registered
 name prevails. Only the proved contact becomes verified; other newly imported contacts remain

@@ -40,6 +40,8 @@ type contactStore interface {
 	GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error)
 	GetContactOwner(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*uuid.UUID, error)
 	MarkChannelVerified(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	HasInboundOrigin(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (bool, error)
+	UnverifyContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
 	GrantProvisionalHistory(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
 	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
