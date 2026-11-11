@@ -46,6 +46,7 @@ export interface ClientSaleRaw {
 
 export interface ClientProfileRaw {
   client: ClientRaw;
+  registered: boolean;
   tags: ClientTagRaw[];
   sales: ClientSaleRaw[];
 }
@@ -104,6 +105,8 @@ export interface ClientSale {
 
 export interface ClientProfile {
   client: Client;
+  // A customer account manages the profile, so the seller neither renames nor merges it.
+  registered: boolean;
   tags: ClientTag[];
   sales: ClientSale[];
 }
@@ -172,6 +175,7 @@ export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
 export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
   return {
     client: mapClient(raw.client),
+    registered: raw.registered,
     tags: raw.tags.map(mapClientTag),
     sales: raw.sales.map((sale) => ({
       quoteId: sale.quote_id,

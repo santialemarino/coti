@@ -62,6 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getClient).mockResolvedValue({
     client: { id: 'c1', name: 'Obra Norte', phone: null, email: null },
+    registered: false,
     tags: [],
     sales: [],
   } as never);
@@ -118,6 +119,7 @@ describe('ClientProfilePage accepted sales', () => {
   beforeEach(() => {
     vi.mocked(getClient).mockResolvedValue({
       client: { id: 'c1', name: 'Obra Norte', phone: null, email: null },
+      registered: false,
       tags: [],
       sales: SALES,
     } as never);
@@ -164,7 +166,7 @@ describe('ClientProfilePage seller actions', () => {
     vi.mocked(getAccount).mockResolvedValue({ invoicingEnabled: true } as never);
   });
 
-  it('offers rename and merge on a profile without a CUIT', async () => {
+  it('offers rename and merge on a profile without a customer account', async () => {
     const view = await renderPage();
 
     expect(view.getByTestId('name-editor').dataset.registered).toBe('false');
@@ -175,6 +177,7 @@ describe('ClientProfilePage seller actions', () => {
   it('offers neither on a registered profile', async () => {
     vi.mocked(getClient).mockResolvedValue({
       client: { id: 'c1', name: 'Obra Norte', phone: null, email: null, taxId: '20123456786' },
+      registered: true,
       tags: [],
       sales: [],
     } as never);
@@ -183,6 +186,21 @@ describe('ClientProfilePage seller actions', () => {
 
     expect(view.getByTestId('name-editor').dataset.registered).toBe('true');
     expect(view.queryByTestId('merge-dialog')).toBeNull();
+  });
+
+  // A CUIT a seller recorded is not an account: the profile stays the seller's to tidy.
+  it('offers both on a profile whose CUIT has no customer account', async () => {
+    vi.mocked(getClient).mockResolvedValue({
+      client: { id: 'c1', name: 'Obra Norte', phone: null, email: null, taxId: '20123456786' },
+      registered: false,
+      tags: [],
+      sales: [],
+    } as never);
+
+    const view = await renderPage();
+
+    expect(view.getByTestId('name-editor').dataset.registered).toBe('false');
+    expect(view.getByTestId('merge-dialog')).toBeTruthy();
   });
 
   // An old link to a merged profile lands on the profile it was merged into.
