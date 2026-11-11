@@ -7,6 +7,19 @@ identifier; its verified phone or email identifies its channel history. There is
 boolean. New profiles require a full name and at least one phone or email. Seller-created profiles
 and unknown channel senders never receive a CUIT from seller input or message declarations.
 
+A contact is verified only by proof: the channel a message arrived from (`source` CHANNEL), or the
+customer's own proof (a code, a registration proof or a Google-proven address), which also leaves a
+`customer_contact_ownership` row. A contact a seller typed is stored unverified (`verified_at` has no
+default), so it never routes a message and a customer who later proves it neither absorbs the
+seller's profile nor sees its orders: a typo cannot hand one customer's history to another.
+
+A **registered** profile is one with a customer account: an active `customer_identity` holding its
+CUIT. A CUIT alone, such as one recorded on a legacy profile, does not make a profile registered.
+
+Phones are stored in E.164 by `domain.CanonicalPhone`, which writes a ten-digit Argentine number
+(area 11, 2xx or 3xx) in the `+549` form WhatsApp reports, so `+54 11 …` and `+54 9 11 …` are one
+contact everywhere: seller entry, customer profiles, inbound senders and suggestions.
+
 Customer registration requires a checksum-valid CUIT/CUIL, full name, credentials and at least one
 contact. Registration creates or adopts (see below) the supplier's unique fiscal profile in the same transaction
 as the identity and session. Only registration assigns the CUIT. Subsequent profile, quotation-send
@@ -48,7 +61,9 @@ there is no declared quantity or multiple-contact switch.
 The contact array contains kind, value and primary. Supported kinds are WHATSAPP and EMAIL. Phones
 use E.164 and emails are trimmed and lowercased. Duplicate normalized entries are rejected. Each
 populated kind has exactly one primary. Removing its primary requires a replacement unless the
-whole kind is removed. Scalar client.phone and client.email project those primaries for compatibility.
+whole kind is removed. Scalar client.phone and client.email project those primaries for compatibility,
+except at registration: a new account's contacts stay off them until the customer proves one or saves
+the profile again.
 
 New customer-managed contacts remain unverified. Requesting a proof uses POST
 /profile/contacts/verification; confirming uses POST /profile/contacts/verification/confirm under
@@ -93,31 +108,41 @@ The shell reads pending contact suggestions on the server, like the order queue.
 rail therefore renders the shared empty state immediately; its background refresh can still report
 and retry a failed request. The full suggestions page uses the same server read.
 
-A provisional profile (no CUIT) is the seller's to tidy; a registered one belongs to its customer.
+A profile without a customer account is the seller's to tidy, CUIT or not; a registered one belongs to
+its customer.
 
-- **Rename.** `PUT /v1/clients/{id}/name` sets the name of a provisional profile, for one that kept a
-  WhatsApp display name, and settles any open name question to its contacts so a late reply cannot
-  overwrite the correction. A registered profile answers **403** `CLIENT_REGISTERED`. The client detail
-  shows the name with an inline editor, or, on a registered profile, a line saying the customer
-  manages it.
+- **Rename.** `PUT /v1/clients/{id}/name` sets the name of a profile without a customer account, for
+  one that kept a WhatsApp display name, and settles any open name question to its contacts so a late
+  reply cannot overwrite the correction. A registered profile answers **403** `CLIENT_REGISTERED`.
+  `GET /v1/clients/{id}` returns `registered`; the client detail shows the name with an inline
+  editor, or, on a registered profile, a line saying the customer manages it and can join another
+  profile by verifying its contact from the portal.
 - **Merge.** `POST /v1/clients/{id}/merge` with `source_client_id` merges the source into the path
   profile, which survives. `GET /v1/clients/{id}/merge-candidates` lists the profiles a merge would
-  accept. Both profiles must be live, have no CUIT (**403** `CLIENT_REGISTERED`), and be within the
-  caller's reach: every order in the caller's branches and, for a seller, no quote of another seller
-  (**403** `CLIENT_OUT_OF_REACH`). An already merged profile is **409** `CLIENT_MERGED`, and another
-  account's is **404**. The source's orders, tags and notifications move; its live contacts retire
+  accept. Both profiles must be live, have no customer account (**403** `CLIENT_REGISTERED`), and be
+  within the caller's reach: every order in the caller's branches and, for a seller, no quote of
+  another seller (**403** `CLIENT_OUT_OF_REACH`). An already merged profile is **409**
+  `CLIENT_MERGED`, and another account's is **404**. A CUIT never ends up on a merged profile: when
+  only the source carries one the source survives instead, and two different CUITs are **409**
+  `CLIENT_TAX_ID_CONFLICT` (the candidates list leaves them out). The source's notes are appended to
+  the target's. The source's orders, tags and notifications move; its live contacts retire
   and the target gets a copy of each that keeps its channel verification, so they route to the
   target directly and a customer who later proves one brings the whole merged history in. Both profiles
   are locked with the same per-profile key inbound routing takes, so a message arriving mid-merge
   routes to the survivor.
 - **Coincidencias.** `GET /v1/client-contact-suggestions` lists the PENDING observations in the
-  caller's branches, such as the duplicate legacy contacts migration 00062 raised, with both
-  profiles' names and whether either is registered. `PUT /v1/client-contact-suggestions/{id}` takes
+  caller's branches, with both profiles' names and whether either is registered. Besides the shared
+  contacts migrations 00062 and 00077 raised, a case opens when a seller types, for a new profile, a
+  contact another live profile holds (verified or not), and when an inbound sender matches only
+  unverified contacts: the sender gets its own provisional profile and the case links it to each
+  profile holding the contact. One pending case per pair of profiles, whichever contact raised it,
+  filed under the branch that saw it. `PUT /v1/client-contact-suggestions/{id}` takes
   `MERGE`, which runs the same merge into the candidate (or into the source when `keep_client_id`
   names it; any other id is **422**), or `SEPARATE`, which dismisses the case; either marks the
   observation decided with the seller and time. A side merged since the case was raised is settled on
   the profile it ended up in, and a case whose two sides already share one survivor is just marked
-  merged. With a CUIT on either side the backoffice offers only the dismissal.
+  merged. With a customer account on either side the backoffice offers only the dismissal, and tells the seller
+  to send the customer the portal link: verifying that contact there joins the profiles.
 - **Old links.** `GET /v1/clients/{id}` on a merged profile answers with the profile it ended up in,
   and the backoffice redirects the old URL there.
 
@@ -255,7 +280,8 @@ invoice checks still validate legal name, IVA condition and fiscal address as ap
 receiving requests and sending quotations do not require the optional fiscal fields.
 
 The seller can explicitly send a registration/profile completion link from the client detail through
-a verified primary channel. POST /v1/clients/{clientId}/registration-link requires the active branch.
+the primary contact of that channel, which may be one the seller typed: the link carries no
+credential. POST /v1/clients/{clientId}/registration-link requires the active branch.
 The link opens login with a destination of /profile, where the customer can register or access an
 existing account and complete data. It carries no credentials or claimed CUIT. Customers with an
 existing CUIT add and verify the provisional contact from their existing account.
@@ -392,6 +418,15 @@ Migration 00069 makes `contact_destination_activity` answer only for the current
 each observation to its message by a composite tenant foreign key (an observation whose message is
 gone or belongs to another account keeps its review and loses the link), and stops the application
 role deleting a client that has a CUIT.
+Migration 00077 drops the `verified_at` default and keeps a contact verified only where there is
+proof (a CHANNEL contact, or one with a customer ownership row); seller-typed and legacy contacts
+become unverified. It rewrites Argentine phones to the `+549` form in contacts, `client.phone`,
+observations, the name-question outbox, challenges and contact history. Two rows of one profile that
+become the same value fold into the `+549` row, which keeps the other's proof, flags and ownership;
+two live verified rows of different profiles keep one verified (the customer-proved one, else the
+first), and profiles that now share a value raise a PENDING observation, as 00062 did. It also drops
+`idx_client_account_tax_id`, which duplicated the unique index. Its Down restores the default and
+the index; the data rewrite stays, valid under the previous schema.
 Migrations are executable; the
 consolidated database schema is a reference only.
 
@@ -433,8 +468,8 @@ shared form controls, phone input, validation states, and semantic design tokens
 A profile's CUIT or CUIL comes from the customer, when they create their account on the supplier's
 webapp; neither the seller nor the AI loads, changes or deletes it. It lives in `client.tax_id`
 (11 digits). A consumidor final's DNI lives apart in `client.dni` (7 or 8 digits, not unique: one
-person may have several profiles). A DNI never makes a client registered — registered means a CUIT
-— and never substitutes for the CUIT an invoice A requires.
+person may have several profiles). A DNI never makes a client registered — registered means a
+customer account with the CUIT — and never substitutes for the CUIT an invoice A requires.
 
 `PUT /v1/clients/{id}/fiscal` replaces the legal name, fiscal address, IVA condition and DNI, and an
 omitted field clears. It never writes `tax_id`:
