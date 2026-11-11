@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OnboardingFlow } from '@/app/(onboarding)/onboarding/_components/onboarding-flow';
+import type { Account } from '@/lib/api/account';
 import type { Onboarding } from '@/lib/api/onboarding';
 import type { AccountUser } from '@/lib/api/users';
 import messages from '@/translations/es.json';
@@ -26,7 +27,8 @@ vi.mock('@/app/(onboarding)/onboarding/actions', () => ({
   updateOnboardingBrand: vi.fn(),
 }));
 
-const { saveOnboardingStep } = await import('@/app/(onboarding)/onboarding/actions');
+const { saveOnboardingStep, updateOnboardingBrand } =
+  await import('@/app/(onboarding)/onboarding/actions');
 
 const copy = messages.onboarding;
 const ADMIN_ID = 'u-admin';
@@ -60,7 +62,12 @@ function onboarding(overrides: Partial<Onboarding>): Onboarding {
   };
 }
 
-function renderFlow(state: Onboarding, users: AccountUser[] = [ADMIN], catalog = messages) {
+function renderFlow(
+  state: Onboarding,
+  users: AccountUser[] = [ADMIN],
+  catalog = messages,
+  account: Partial<Account> = {},
+) {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -69,7 +76,7 @@ function renderFlow(state: Onboarding, users: AccountUser[] = [ADMIN], catalog =
     >
       <OnboardingFlow
         onboarding={state}
-        account={{} as never}
+        account={account as Account}
         branch={{ id: 'b1', name: 'Centro' } as never}
         branches={[]}
         users={users}
@@ -139,6 +146,32 @@ describe('OnboardingFlow team step', () => {
 
     expect(view.getByText(ADMIN.name)).toBeTruthy();
     expect(view.getByText(copy.team.you)).toBeTruthy();
+  });
+
+  it('skips the brand step when it is left without a logo or a colour', async () => {
+    vi.mocked(updateOnboardingBrand).mockResolvedValue({ ok: true });
+    const view = renderFlow(onboarding({ currentStep: 'BRAND' }), [ADMIN], messages, {
+      brandLogoUrl: null,
+      brandColor: null,
+    });
+    fireEvent.click(view.getByRole('button', { name: copy.continue }));
+
+    await waitFor(() =>
+      expect(saveOnboardingStep).toHaveBeenCalledWith('BRAND', 'SKIPPED', 'PORTAL'),
+    );
+  });
+
+  it('completes the brand step when the account already has a logo', async () => {
+    vi.mocked(updateOnboardingBrand).mockResolvedValue({ ok: true });
+    const view = renderFlow(onboarding({ currentStep: 'BRAND' }), [ADMIN], messages, {
+      brandLogoUrl: 'https://api.coti.test/v1/public/account-logos/logo',
+      brandColor: null,
+    });
+    fireEvent.click(view.getByRole('button', { name: copy.continue }));
+
+    await waitFor(() =>
+      expect(saveOnboardingStep).toHaveBeenCalledWith('BRAND', 'COMPLETED', 'PORTAL'),
+    );
   });
 
   it('resolves the step as skipped when nobody was added', async () => {

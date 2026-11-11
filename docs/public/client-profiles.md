@@ -13,6 +13,7 @@ or removed. Customers manage their name, multiple contacts and optional fiscal d
 They add phones and emails one field at a time and choose a primary destination for each kind.
 
 The customer portal keeps the same account navigation across requests, order history and My data.
+Its header and browser tab carry the supplier's name and logo; Coti appears only in a small footer.
 Order history offers a clear next action when no requests have been submitted yet.
 
 New contacts require ownership verification through an email link or WhatsApp code. After proof,

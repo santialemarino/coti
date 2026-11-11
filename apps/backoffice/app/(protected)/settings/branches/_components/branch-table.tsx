@@ -62,6 +62,8 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
   const [reopening, startReopen] = useTransition();
   const [connecting, startConnect] = useTransition();
   const busy = saving || removing || reopening || connecting;
+  // The account needs one active branch, so the last one offers no close; the note says why.
+  const soleActive = branches.filter((branch) => branch.isActive).length === 1;
 
   function onConnectGmail(branch: Branch) {
     const address = branch.email;
@@ -104,10 +106,9 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
     startRemove(async () => {
       const result = await closeBranch(target.id);
       if (!result.ok) {
-        // Closed either way: the refusal belongs to the list, not to a dialog that is about to
-        // disappear, and the account needing one active branch is a fact about the whole account.
+        // The dialog closes either way, so the refusal is a toast rather than a note on a dialog
+        // that is about to disappear.
         setClosing(null);
-        setError(message(result.error));
         toast.error(message(result.error));
         return;
       }
@@ -206,7 +207,7 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
                       disabled={busy}
                       onClick={() => setForm({ mode: 'edit', branch })}
                     />
-                    {branch.isActive ? (
+                    {branch.isActive && soleActive ? null : branch.isActive ? (
                       <RowActionButton
                         icon={XCircleIcon}
                         label={t('close.action')}
@@ -229,6 +230,9 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
           )}
         </TableBody>
       </Table>
+      {soleActive ? (
+        <p className="text-paragraph-xs text-foreground-muted">{t('close.soleActive')}</p>
+      ) : null}
 
       <BranchFormDialog
         open={form !== null}

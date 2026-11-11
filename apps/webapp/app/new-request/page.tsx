@@ -3,23 +3,32 @@ import { getTranslations } from 'next-intl/server';
 
 import { InlineLink } from '@repo/ui/components';
 import { PublicRfqSiteForm } from '@/app/_components/public-rfq-site-form';
+import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
+import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { getPublicRfqSite } from '@/lib/api/public-rfqs';
 import { requireCustomer } from '@/lib/auth/customer-flow';
 import { getCustomerHostname } from '@/lib/auth/customer-session';
 
+export const generateMetadata = () => customerPageMetadata('newRequest');
+
 export default async function NewRequestPage() {
   const session = await requireCustomer(ROUTES.newRequest);
+  const portal = await getCustomerAuthOptions();
   const site = await getPublicRfqSite(await getCustomerHostname());
   const profile = await getCustomerProfile();
   if (!site) notFound();
   const t = await getTranslations('customerOrders');
   return (
     <>
-      <CustomerHeader section="orders" />
+      <CustomerHeader
+        section="orders"
+        supplierName={portal.supplierName}
+        logoUrl={portal.logoUrl}
+      />
       <nav className="mx-auto w-full max-w-xl px-4 pt-6 sm:px-6">
         <InlineLink asChild>
           <Link href={ROUTES.orders}>{t('back')}</Link>
@@ -38,6 +47,7 @@ export default async function NewRequestPage() {
               ?.value ?? '',
         }}
       />
+      <CustomerFooter />
     </>
   );
 }

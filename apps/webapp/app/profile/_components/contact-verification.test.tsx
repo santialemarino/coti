@@ -63,7 +63,12 @@ it('keeps a failed verification available for retry', async () => {
       messages.customerProfile.errors.verificationUnavailable,
     ),
   );
-  expect(
-    screen.getByRole('button', { name: messages.customerProfile.verify }).hasAttribute('disabled'),
-  ).toBe(false);
+  // The toast fires before the pending label clears, so the button is awaited, not read at once.
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole('button', { name: messages.customerProfile.verify })
+        .hasAttribute('disabled'),
+    ).toBe(false),
+  );
 });

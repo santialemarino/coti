@@ -2,13 +2,17 @@ import { ArrowRightIcon, ClipboardListIcon, PlusIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { Badge, Button, Card, EmptyState } from '@repo/ui/components';
+import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
+import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerOrders } from '@/lib/api/customer-orders';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { requireCustomer } from '@/lib/auth/customer-flow';
 import { getFormatters } from '@/lib/i18n/formatters-server';
+
+export const generateMetadata = () => customerPageMetadata('title');
 
 export default async function OrdersPage({
   searchParams,
@@ -16,6 +20,7 @@ export default async function OrdersPage({
   searchParams: Promise<{ page?: string }>;
 }) {
   await requireCustomer(ROUTES.orders);
+  const portal = await getCustomerAuthOptions();
   const query = await searchParams;
   const parsed = Number(query.page || 1);
   const page = Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
@@ -30,7 +35,11 @@ export default async function OrdersPage({
     (profile.ownershipUnproved || !profile.contacts.some((contact) => contact.verified));
   return (
     <>
-      <CustomerHeader section="orders" />
+      <CustomerHeader
+        section="orders"
+        supplierName={portal.supplierName}
+        logoUrl={portal.logoUrl}
+      />
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col items-center px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex w-full max-w-4xl flex-col gap-y-8">
           <header className="flex flex-wrap items-center justify-between gap-4">
@@ -49,8 +58,14 @@ export default async function OrdersPage({
             <Card className="px-6">
               <EmptyState
                 icon={ClipboardListIcon}
-                title={t(needsContactProof ? 'title' : 'emptyTitle')}
-                description={t(needsContactProof ? 'proveEarlierContact' : 'empty')}
+                title={t(needsContactProof ? 'emptyUnverified' : 'emptyTitle')}
+                description={t(
+                  !needsContactProof
+                    ? 'empty'
+                    : profile?.ownershipUnproved
+                      ? 'proveEarlierContact'
+                      : 'verifyContactHint',
+                )}
               >
                 <Button asChild variant="outline">
                   <Link href={needsContactProof ? ROUTES.profile : ROUTES.newRequest}>
@@ -106,6 +121,7 @@ export default async function OrdersPage({
           </nav>
         </div>
       </main>
+      <CustomerFooter />
     </>
   );
 }
