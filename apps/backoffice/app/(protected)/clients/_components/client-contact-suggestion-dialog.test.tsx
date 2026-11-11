@@ -18,6 +18,7 @@ const CASE: ContactSuggestion = {
   sourceName: 'Loser',
   sourceRegistered: false,
   candidateRegistered: false,
+  accountJoinReady: false,
   taxId: null,
   kind: 'EMAIL',
   value: 'shared@example.test',
@@ -55,8 +56,24 @@ describe('ClientContactSuggestionDialog', () => {
     expect(JSON.parse(init.body as string)).toEqual({ action: 'MERGE', keep_client_id: 'loser' });
   });
 
-  // A profile with a CUIT is merged only by its customer, so the seller can only dismiss the case.
-  it('offers only a dismissal when either profile is registered', async () => {
+  // Once the customer proved the contact the seller joins the provisional profile into the account.
+  it('joins into the customer account once the contact is proved', async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetcher);
+    const onResolved = vi.fn();
+    const view = show({ ...CASE, candidateRegistered: true, accountJoinReady: true }, onResolved);
+
+    expect(view.queryByRole('radio')).toBeNull();
+    expect(view.getByText(t.joinHint)).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: t.join }));
+
+    await waitFor(() => expect(onResolved).toHaveBeenCalled());
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ action: 'MERGE', keep_client_id: 'owner' });
+  });
+
+  // Until the customer proves the contact, a registered side leaves the seller only a dismissal.
+  it('offers only a dismissal while the customer has not proved the contact', async () => {
     const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetcher);
     const view = show({ ...CASE, candidateRegistered: true });
