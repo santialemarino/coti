@@ -7,18 +7,23 @@ identifier; its verified phone or email identifies its channel history. There is
 boolean. New profiles require a full name and at least one phone or email. Seller-created profiles
 and unknown channel senders never receive a CUIT from seller input or message declarations.
 
-A contact is verified only by proof: the channel a message arrived from (`source` CHANNEL), or the
-customer's own proof (a code, a registration proof or a Google-proven address), which also leaves a
-`customer_contact_ownership` row. A contact a seller typed is stored unverified (`verified_at` has no
-default), so it never routes a message and a customer who later proves it neither absorbs the
-seller's profile nor sees its orders: a typo cannot hand one customer's history to another.
+A contact is verified only by proof: the channel a message arrived from (`source` CHANNEL, or a
+reply that joined a quote sent to that contact, which verifies the contact on the quote's profile),
+or the customer's own proof (a code, a registration proof or a Google-proven address), which also
+leaves a `customer_contact_ownership` row. A contact a seller typed is stored unverified
+(`verified_at` has no default), so it routes no new order, and a customer who later proves it gets
+the seller's profile only when the seller confirms the join: a typo alone cannot hand one customer's
+history to another.
 
 A **registered** profile is one with a customer account: an active `customer_identity` holding its
 CUIT. A CUIT alone, such as one recorded on a legacy profile, does not make a profile registered.
 
 Phones are stored in E.164 by `domain.CanonicalPhone`, which writes a ten-digit Argentine number
 (area 11, 2xx or 3xx) in the `+549` form WhatsApp reports, so `+54 11 …` and `+54 9 11 …` are one
-contact everywhere: seller entry, customer profiles, inbound senders and suggestions.
+contact everywhere: seller entry, customer profiles, inbound senders and suggestions. The rule
+cannot tell a landline from a mobile: in E.164 `+54 11 …` without the 9 is a landline, so a WhatsApp
+Business account on a landline is stored with the 9 too. Its own messages, which Meta reports without
+the 9, go through the same rewrite and still match; a send to the stored form may not reach it.
 
 Customer registration requires a checksum-valid CUIT/CUIL, full name, credentials and at least one
 contact. Registration creates or adopts (see below) the supplier's unique fiscal profile in the same transaction
@@ -76,14 +81,17 @@ resend cooldown and count failed attempts. Invalid attempts commit their count w
 history. A proof for a destination owned by another fiscal profile is refused. A verified destination
 can belong to only one live profile per supplier. Pending claims do not establish ownership.
 
-Successful proof can absorb the matching provisional profile. The transaction retains the source
+Successful proof absorbs the provisional profile that holds the contact channel-verified: the
+channel and the customer are two independent signals. A provisional profile that holds it only
+because a seller typed it is not merged; the proof raises a PENDING «Coincidencias» case from it to
+the customer's profile, and the seller joins them from there (see
+[Seller actions](#seller-actions-on-provisional-profiles)). An automatic merge retains the source
 profile and its provenance, sets merged_into, retires its old contacts, unions commercial contacts
 and tags, and moves RFQ, quotation and notification history to the fiscal profile. The registered
 name prevails. Only the proved contact becomes verified; other newly imported contacts remain
 pending. Successful proof also records customer-specific contact ownership and snapshots access
 to the source orders before the merge. Delivery destinations already recorded on sends remain
-immutable. No staff route merges into a registered profile: the seller merges only provisional
-profiles (see [Seller actions on provisional profiles](#seller-actions-on-provisional-profiles)).
+immutable. The only staff route into a registered profile is that confirmed join.
 
 The source's other contacts keep routing. An inbound message from one of them attaches to the fiscal
 profile, with no new provisional profile and no name question. The marker is the source's retired,
@@ -141,8 +149,14 @@ its customer.
   names it; any other id is **422**), or `SEPARATE`, which dismisses the case; either marks the
   observation decided with the seller and time. A side merged since the case was raised is settled on
   the profile it ended up in, and a case whose two sides already share one survivor is just marked
-  merged. With a customer account on either side the backoffice offers only the dismissal, and tells the seller
-  to send the customer the portal link: verifying that contact there joins the profiles.
+  merged. With a customer account on one side, `MERGE` joins the other, provisional profile into the
+  account, which always survives (a `keep_client_id` naming the provisional side is **403**
+  `CLIENT_REGISTERED`): only once the account's customer has proved the case's contact (else **409**
+  `CLIENT_CONTACT_UNPROVED`), with the provisional profile's orders in the caller's reach and no CUIT
+  of its own. The join snapshots the provisional orders for that customer, as a proof merge does, and
+  writes the audit row with the seller. The list's `account_join_ready` says when it is allowed: the
+  backoffice then offers «Unir a la cuenta del cliente», otherwise only the dismissal and a hint that
+  the customer verifies the contact from the portal first. Accounts on both sides are **403**.
 - **Old links.** `GET /v1/clients/{id}` on a merged profile answers with the profile it ended up in,
   and the backoffice redirects the old URL there.
 
@@ -419,8 +433,9 @@ each observation to its message by a composite tenant foreign key (an observatio
 gone or belongs to another account keeps its review and loses the link), and stops the application
 role deleting a client that has a CUIT.
 Migration 00077 drops the `verified_at` default and keeps a contact verified only where there is
-proof (a CHANNEL contact, or one with a customer ownership row); seller-typed and legacy contacts
-become unverified. It rewrites Argentine phones to the `+549` form in contacts, `client.phone`,
+proof (a CHANNEL contact, one with a customer ownership row, or one an inbound message from either
+Argentine form of it was already routed to, per its observation); other seller-typed and legacy
+contacts become unverified. It rewrites Argentine phones to the `+549` form in contacts, `client.phone`,
 observations, the name-question outbox, challenges and contact history. Two rows of one profile that
 become the same value fold into the `+549` row, which keeps the other's proof, flags and ownership;
 two live verified rows of different profiles keep one verified (the customer-proved one, else the
