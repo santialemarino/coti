@@ -79,7 +79,6 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       result = await updateAccount(values, logo, disconnectARCA);
     } catch {
       form.setError('root', { message: message('INTERNAL') });
-      toast.error(message('INTERNAL'));
       return;
     }
     if (result.ok) {
@@ -119,15 +118,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(
-          (values) => save(values, false),
-          (errors) => {
-            const first = Object.values(errors).find((error) => typeof error?.message === 'string');
-            toast.error(
-              typeof first?.message === 'string' ? first.message : message('INVALID_BODY'),
-            );
-          },
-        )}
+        onSubmit={form.handleSubmit((values) => save(values, false))}
         noValidate
         className="flex flex-col w-full gap-y-6 lg:gap-y-8"
       >

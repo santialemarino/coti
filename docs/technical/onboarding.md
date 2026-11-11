@@ -39,6 +39,8 @@ the existing order.
 The brand screen does not ask for the account data collected at registration. It shows that data as
 read-only context and updates the optional brand colour and logo. A chosen logo is uploaded through
 the same account-logo path Cuenta uses, and its stored URL is saved on the account with the colour.
+Continuing with neither a logo nor a colour resolves the step as skipped, so the checklist never
+reports a brand that does not exist.
 
 The first-branch screen edits the branch already created during registration. Default expiry days are
 the suggested validity period for new quotes, not a branch expiry date, and remain editable per quote.
@@ -82,9 +84,10 @@ same checklist. "No mostrar más" stamps `account_onboarding.checklist_hidden_at
 card; the rail entry stays as the place to see it again or bring the card back, and disappears when
 every step is done. Each item links to the settings screen that does the work; "Retomar asistente"
 is offered only for a dismissed wizard.
-The settings entry follows a separator after the permanent sections. On the home screen, a pending
-checklist aligns the greeting and checklist toward the top of the detail pane so more steps fit
-within the viewport.
+The settings entry follows a separator after the permanent sections. On the home screen the card
+lists only the pending steps, the done ones counted in its progress bar, and the greeting above it
+drops its icon, so greeting and checklist fit a laptop viewport without scrolling. The settings page
+keeps every step.
 
 User preferences are intentionally absent from version 1. They can be introduced as another stable
 step without coupling them to registration or rewriting existing progress.

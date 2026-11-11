@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { updateOnboardingBrand } from '@/app/(onboarding)/onboarding/actions';
+import {
+  updateOnboardingBranch,
+  updateOnboardingBrand,
+} from '@/app/(onboarding)/onboarding/actions';
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/api/account-logo', () => ({ uploadAccountLogo: vi.fn() }));
@@ -23,6 +26,26 @@ const { apiRequest } = await import('@/lib/api/client');
 const { uploadAccountLogo } = await import('@/lib/api/account-logo');
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('updateOnboardingBranch', () => {
+  it('saves the branch mailbox typed in the branch step', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+
+    await updateOnboardingBranch('branch-1', {
+      name: 'Centro',
+      address: '',
+      email: 'ventas@corralon.test',
+      defaultExpiryDays: '7',
+    });
+
+    expect(apiRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/v1/branches/branch-1',
+        body: expect.objectContaining({ email: 'ventas@corralon.test' }),
+      }),
+    );
+  });
+});
 
 describe('updateOnboardingBrand', () => {
   it('adds the fixed hash prefix at the API boundary', async () => {

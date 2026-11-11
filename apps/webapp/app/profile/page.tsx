@@ -2,20 +2,29 @@ import { getTranslations } from 'next-intl/server';
 
 import { CustomerProfileForm } from '@/app/profile/_components/customer-profile-form';
 import { MainContactCard } from '@/app/profile/_components/main-contact-card';
+import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
 import { ROUTES } from '@/config/routes';
+import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
 import { requireCustomer } from '@/lib/auth/customer-flow';
 
+export const generateMetadata = () => customerPageMetadata('profile');
+
 export default async function CustomerProfilePage() {
   await requireCustomer(ROUTES.profile);
+  const portal = await getCustomerAuthOptions();
   const [profile, t] = await Promise.all([
     getCustomerProfile(),
     getTranslations('customerProfile'),
   ]);
   return (
     <>
-      <CustomerHeader section="profile" />
+      <CustomerHeader
+        section="profile"
+        supplierName={portal.supplierName}
+        logoUrl={portal.logoUrl}
+      />
       <main className="flex min-h-[calc(100dvh-4rem)] flex-col items-center px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex w-full max-w-3xl flex-col gap-y-6">
           <header className="flex items-center justify-between gap-4">
@@ -32,6 +41,7 @@ export default async function CustomerProfilePage() {
           />
         </div>
       </main>
+      <CustomerFooter />
     </>
   );
 }

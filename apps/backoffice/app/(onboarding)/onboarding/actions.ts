@@ -80,6 +80,7 @@ export async function updateOnboardingBranch(
   return write(`/v1/branches/${branchId}`, 'PUT', {
     name: parsed.data.name,
     address: parsed.data.address || undefined,
+    email: parsed.data.email,
     default_expiry_days: Number(parsed.data.defaultExpiryDays),
   });
 }

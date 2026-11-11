@@ -3,12 +3,16 @@ import { getTranslations } from 'next-intl/server';
 
 import { Card, InlineLink } from '@repo/ui/components';
 import { PublicQuoteView } from '@/app/quotes/_components/public-quote-view';
+import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
+import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerOrder, getCustomerOrderByToken } from '@/lib/api/customer-orders';
 import { getPublicQuoteByToken } from '@/lib/api/public-quotes';
 import { requireCustomer } from '@/lib/auth/customer-flow';
+
+export const generateMetadata = () => customerPageMetadata('title');
 
 export default async function CustomerOrderPage({
   params,
@@ -23,6 +27,7 @@ export default async function CustomerOrderPage({
     `${ROUTES.order(id)}${delivery ? `?delivery=${encodeURIComponent(delivery)}` : ''}`,
   );
   const order = await getCustomerOrder(id);
+  const portal = await getCustomerAuthOptions();
   if (!order) notFound();
   const t = await getTranslations('customerOrders');
   const token = delivery || order.deliveryToken;
@@ -30,7 +35,11 @@ export default async function CustomerOrderPage({
   const quote = token ? await getPublicQuoteByToken(token) : null;
   return (
     <>
-      <CustomerHeader section="orders" />
+      <CustomerHeader
+        section="orders"
+        supplierName={portal.supplierName}
+        logoUrl={portal.logoUrl}
+      />
       <nav className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6">
         <InlineLink asChild>
           <Link href={ROUTES.orders}>{t('back')}</Link>
@@ -50,6 +59,7 @@ export default async function CustomerOrderPage({
           </Card>
         </main>
       )}
+      <CustomerFooter />
     </>
   );
 }

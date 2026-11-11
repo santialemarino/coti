@@ -249,15 +249,27 @@ describe('BranchTable closing a branch', () => {
    * one active branch is a fact about the whole account, and a message inside a closing overlay is
    * gone before it can be read.
    */
-  it('puts the last-active refusal on the page and shuts the dialog', async () => {
-    vi.mocked(closeBranch).mockResolvedValue({ error: 'LAST_ACTIVE_BRANCH' });
+  it('offers no close on the only active branch and says why', () => {
     const view = renderTable([CENTRAL]);
 
-    fireEvent.click(rowActions(view, CENTRAL.name).close);
+    expect(
+      within(rowOf(view, CENTRAL.name)).queryByRole('button', { name: copy.close.action }),
+    ).toBeNull();
+    expect(view.getByText(copy.close.soleActive)).toBeTruthy();
+  });
+
+  it('toasts a refusal once and shuts the dialog', async () => {
+    vi.mocked(closeBranch).mockResolvedValue({ error: 'LAST_ACTIVE_BRANCH' });
+    const view = renderTable();
+
+    fireEvent.click(rowActions(view, MORON.name).close);
     await waitFor(() => expect(dialog(view)).toBeTruthy());
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.close.confirm }));
 
-    await waitFor(() => expect(view.getByText(messages.errors.LAST_ACTIVE_BRANCH)).toBeTruthy());
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(messages.errors.LAST_ACTIVE_BRANCH),
+    );
+    expect(view.queryByText(messages.errors.LAST_ACTIVE_BRANCH)).toBeNull();
     await waitFor(() => expect(view.baseElement.querySelector('[role="dialog"]')).toBeNull());
   });
 
@@ -270,8 +282,7 @@ describe('BranchTable closing a branch', () => {
     fireEvent.click(within(dialog(view)).getByRole('button', { name: copy.close.confirm }));
 
     await waitFor(() => expect(closeBranch).toHaveBeenCalledWith(MORON.id));
-    // A confirmation of something just done is transient, so it is a toast rather than a standing
-    // Callout on the list — which is what the refusal above is — and it names the branch it closed.
+    // A confirmation of something just done is transient, so it is a toast that names the branch.
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(expect.stringContaining(MORON.name)),
     );
@@ -317,7 +328,7 @@ describe('BranchTable closed branches', () => {
    * would let an admin close a branch that is already closed and read the result as a change.
    */
   it('offers reopening on a closed row and closing on an active one, never both', () => {
-    const view = renderTable([MORON, CLOSED]);
+    const view = renderTable([CENTRAL, MORON, CLOSED]);
 
     const active = within(rowOf(view, MORON.name));
     expect(active.getByRole('button', { name: copy.close.action })).toBeTruthy();

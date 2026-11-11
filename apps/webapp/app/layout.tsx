@@ -13,7 +13,7 @@ import './globals.css';
 // A quote link belongs to one customer, so nothing here is ever indexed.
 export const metadata: Metadata = {
   title: 'Coti',
-  description: 'Review and respond to your quote.',
+  description: 'Revisá y respondé tu cotización.',
   applicationName: 'Coti',
   referrer: 'no-referrer',
   robots: { index: false, follow: false },
