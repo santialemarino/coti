@@ -111,8 +111,10 @@ const (
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"
 	// A customer profile holds a bounded number of contacts.
 	CodeContactLimit ErrorCode = "CONTACT_LIMIT"
-	// A profile with a CUIT belongs to its customer: no seller renames or merges it.
+	// A profile with a customer account belongs to its customer: no seller renames or merges it.
 	CodeClientRegistered ErrorCode = "CLIENT_REGISTERED"
+	// Two profiles carrying different CUITs are different customers, so no merge joins them.
+	CodeClientTaxIDConflict ErrorCode = "CLIENT_TAX_ID_CONFLICT"
 	// A profile already merged into another one takes no further merge.
 	CodeClientMerged ErrorCode = "CLIENT_MERGED"
 	// A seller merges only profiles whose orders all sit in their own branches.

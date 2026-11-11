@@ -11,15 +11,19 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// ListMergeCandidates returns the profiles without a CUIT a seller could merge with clientID.
+// ListMergeCandidates returns the profiles without a customer account a seller could merge with
+// clientID.
 func (s *ClientContactService) ListMergeCandidates(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID) ([]domain.Client, error) {
 	var result []domain.Client
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		client, err := s.profiles.GetByID(ctx, q, tenant.AccountID, clientID)
+		if _, err := s.profiles.GetByID(ctx, q, tenant.AccountID, clientID); err != nil {
+			return err
+		}
+		registered, err := s.profiles.IsRegistered(ctx, q, tenant.AccountID, clientID)
 		if err != nil {
 			return err
 		}
-		if client.TaxID != nil {
+		if registered {
 			return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
 		}
 		result, err = s.contacts.ListMergeCandidates(ctx, q, tenant, clientID)
@@ -28,8 +32,8 @@ func (s *ClientContactService) ListMergeCandidates(ctx context.Context, tenant d
 	return result, err
 }
 
-// RenameClient lets a seller correct the name of a profile without a CUIT, such as one that kept a
-// WhatsApp display name. A registered profile's name is its customer's.
+// RenameClient lets a seller correct the name of a profile without a customer account, such as one
+// that kept a WhatsApp display name. A registered profile's name is its customer's.
 func (s *ClientContactService) RenameClient(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, name string) (*domain.Client, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > maxClientNameLength || strings.ContainsFunc(name, unicode.IsControl) {
@@ -45,7 +49,7 @@ func (s *ClientContactService) RenameClient(ctx context.Context, tenant domain.T
 		if !ok || profile.MergedInto != nil {
 			return domain.ErrNotFound
 		}
-		if profile.TaxID != nil {
+		if profile.Registered {
 			return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
 		}
 		if err := s.contacts.UpdateName(ctx, q, tenant.AccountID, clientID, name); err != nil {
@@ -60,8 +64,9 @@ func (s *ClientContactService) RenameClient(ctx context.Context, tenant domain.T
 	return client, err
 }
 
-// MergeClients merges source into target on a seller's word: both without a CUIT, live, and with
-// every order in the caller's reach. Source's orders move and its contacts keep routing to target.
+// MergeClients merges source into target on a seller's word: both without a customer account, live,
+// and with every order in the caller's reach. Source's orders move and its contacts keep routing to
+// target. A CUIT never ends up on a merged profile: when only source carries one, source survives.
 func (s *ClientContactService) MergeClients(ctx context.Context, tenant domain.Tenant, target, source uuid.UUID) error {
 	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		return s.mergeProvisional(ctx, q, tenant, source, target)
@@ -127,13 +132,19 @@ func (s *ClientContactService) mergeProvisional(ctx context.Context, q repositor
 		switch {
 		case !ok:
 			return domain.ErrNotFound
-		case profile.TaxID != nil:
+		case profile.Registered:
 			return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
 		case profile.MergedInto != nil:
 			return domain.WithCode(domain.CodeClientMerged, domain.ErrConflict)
 		case !profile.InReach:
 			return domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
 		}
+	}
+	if profiles[source].TaxID != nil {
+		if profiles[target].TaxID != nil {
+			return domain.WithCode(domain.CodeClientTaxIDConflict, domain.ErrConflict)
+		}
+		source, target = target, source
 	}
 	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, source, target); err != nil {
 		return err

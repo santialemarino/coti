@@ -73,8 +73,10 @@ type ClientSale struct {
 // ClientProfile joins a client, their tags, and accepted sales visible to the caller.
 type ClientProfile struct {
 	Client Client
-	Tags   []ClientTag
-	Sales  []ClientSale
+	// Registered is true when a customer account holds the client's CUIT and manages the profile.
+	Registered bool
+	Tags       []ClientTag
+	Sales      []ClientSale
 }
 
 // ClientContactHints retains contact declarations and provider display metadata.

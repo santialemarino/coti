@@ -251,6 +251,7 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.channelVerify(t, account, source)
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote SET client_id=$2 WHERE account_id=$3 AND id=$1`, seed.draft.Quote.ID, source, account); err != nil {
 		t.Fatal(err)
 	}

@@ -517,6 +517,10 @@ definitions:
     properties:
       client:
         $ref: '#/definitions/dto.ClientResponse'
+      registered:
+        description: Registered is true when a customer account manages the profile;
+          no seller renames or merges it.
+        type: boolean
       sales:
         items:
           $ref: '#/definitions/dto.ClientSaleResponse'
@@ -694,7 +698,7 @@ definitions:
         type: string
       source_registered:
         description: SourceRegistered and CandidateRegistered mark a profile with
-          a CUIT, which no seller merges.
+          a customer account, which no seller merges.
         type: boolean
       tax_id:
         type: string

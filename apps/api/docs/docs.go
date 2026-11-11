@@ -10994,6 +10994,10 @@ const docTemplate = `{
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
+                "registered": {
+                    "description": "Registered is true when a customer account manages the profile; no seller renames or merges it.",
+                    "type": "boolean"
+                },
                 "sales": {
                     "type": "array",
                     "items": {
@@ -11257,7 +11261,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "source_registered": {
-                    "description": "SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.",
+                    "description": "SourceRegistered and CandidateRegistered mark a profile with a customer account, which no seller merges.",
                     "type": "boolean"
                 },
                 "tax_id": {

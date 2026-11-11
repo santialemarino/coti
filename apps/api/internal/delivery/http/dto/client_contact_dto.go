@@ -82,7 +82,7 @@ type ContactSuggestionResponse struct {
 	CandidateClientID *uuid.UUID `json:"candidate_client_id"`
 	CandidateName     *string    `json:"candidate_name"`
 	SourceName        *string    `json:"source_name"`
-	// SourceRegistered and CandidateRegistered mark a profile with a CUIT, which no seller merges.
+	// SourceRegistered and CandidateRegistered mark a profile with a customer account, which no seller merges.
 	SourceRegistered    bool      `json:"source_registered"`
 	CandidateRegistered bool      `json:"candidate_registered"`
 	TaxID               *string   `json:"tax_id"`

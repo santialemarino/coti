@@ -60,3 +60,37 @@ func TestNormalizeClientContacts(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalPhone(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, phone, want string }{
+		{"buenos aires without the 9", "+54 11 5555-0101", "+5491155550101"},
+		{"buenos aires with the 9", "+54 9 11 5555-0101", "+5491155550101"},
+		{"interior area without the 9", "+54 (221) 555.0303", "+5492215550303"},
+		{"interior area with the 9", "+549 221 555 0303", "+5492215550303"},
+		{"too short to be argentine", "+54 11 5555", "+54115555"},
+		{"another country", "+1 212 555 0100", "+12125550100"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := CanonicalPhone(tc.phone); got != tc.want {
+				t.Fatalf("CanonicalPhone(%q) = %q, want %q", tc.phone, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeClientContact_ArgentineMobileFormsMatch(t *testing.T) {
+	t.Parallel()
+	without, err := NormalizeClientContact(ChannelTypeWhatsApp, "+54 11 5555-0101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	with, err := NormalizeClientContact(ChannelTypeWhatsApp, "+54 9 11 5555-0101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if without != with || with != "+5491155550101" {
+		t.Fatalf("+54 11… normalized to %q and +54 9 11… to %q, want both +5491155550101", without, with)
+	}
+}

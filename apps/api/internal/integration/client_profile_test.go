@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -42,17 +41,17 @@ func TestClientProfile_AssociatesOnSendBeforeCustomerAcceptance(t *testing.T) {
 	if clientID != requestClientID || taxID != nil || status != "SENT" || len(result.Deliveries) != 2 {
 		t.Fatalf("association at publication: %s %s %v %s", clientID, requestClientID, taxID, status)
 	}
+	// The phone the seller typed proves nothing: a customer who later proves it gets neither the
+	// seller's profile nor its order, so a typo cannot hand one customer's history to another.
 	host, token := e.registerCustomer(t, seed.tenant.AccountID, "30712345671")
 	e.verifyCustomerContact(t, seed.tenant.AccountID, "30712345671", domain.ChannelTypeWhatsApp, phone)
 	response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String(), token: token})
-	var order struct {
-		Token *string `json:"delivery_token"`
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("a proof of the seller-typed phone opened the order: %d %s", response.Code, response.Body)
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &order); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != 200 || order.Token == nil {
-		t.Fatalf("pre-acceptance history: %d %s", response.Code, response.Body)
+	var merged *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT merged_into FROM client WHERE id=$1`, clientID).Scan(&merged); err != nil || merged != nil {
+		t.Fatalf("the seller's profile merged into %v (%v), want it left alone", merged, err)
 	}
 	if _, err = delivery.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err != nil {
 		t.Fatal(err)

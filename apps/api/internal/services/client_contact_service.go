@@ -14,6 +14,7 @@ import (
 type contactProfiles interface {
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
 	GetByID(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.Client, error)
+	IsRegistered(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
 	GetSurvivor(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (uuid.UUID, error)
 	Create(context.Context, repository.Querier, uuid.UUID, domain.NewClient) (*domain.Client, error)
 }
@@ -34,6 +35,7 @@ type contactStore interface {
 	ListObservations(context.Context, repository.Querier, domain.Tenant) ([]domain.ContactObservation, error)
 	GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error)
 	CreateObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ContactObservation) error
+	CreateMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType, string, string) error
 	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
 	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
@@ -304,6 +306,10 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 			return err
 		}
 		if err := s.contacts.ProjectPrimaries(ctx, q, route.AccountID, profile.ID); err != nil {
+			return err
+		}
+		// A declared contact that matched no verified one is the seller's to review, never routed to.
+		if err := s.contacts.CreateMatchObservations(ctx, q, route.AccountID, route.BranchID, profile.ID, kind, value, original); err != nil {
 			return err
 		}
 		observation.SourceClientID = &profile.ID

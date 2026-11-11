@@ -20,6 +20,12 @@ type fakeContactStore struct {
 	mergeProfiles map[uuid.UUID]domain.MergeProfile
 	writes        int
 	lockKeys      []string
+	matched       []contactMatch
+}
+
+func (f *fakeContactStore) CreateMatchObservations(_ context.Context, _ repository.Querier, _, _, source uuid.UUID, kind domain.ChannelType, value, _ string) error {
+	f.matched = append(f.matched, contactMatch{source, kind, value})
+	return nil
 }
 
 func (f *fakeContactStore) GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error) {
@@ -134,6 +140,30 @@ func TestClientContactService_RecordInbound_UsesOnlyContactIdentity(t *testing.T
 	err := service.RecordInbound(context.Background(), nil, domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID}, uuid.New(), domain.ChannelTypeEmail, "unknown@example.test", "An order without a name", domain.ClientContactHints{})
 	if err != nil || profiles.created == nil || contacts.writes != 1 {
 		t.Fatalf("unnamed sender did not receive a provisional profile: %v", err)
+	}
+}
+
+func TestClientContactService_RecordInbound_RaisesMatchesOnlyForANewProfile(t *testing.T) {
+	t.Parallel()
+	for _, known := range []bool{false, true} {
+		service, _, contacts := newContactHarness()
+		if known {
+			contacts.profiles = []domain.Client{{ID: uuid.New(), AccountID: testAccountID}}
+		}
+		route := domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID}
+		if err := service.RecordInbound(context.Background(), nil, route, uuid.New(), domain.ChannelTypeWhatsApp, "+54 11 5555-0101", "Hola", domain.ClientContactHints{}); err != nil {
+			t.Fatal(err)
+		}
+		var source uuid.UUID
+		for _, o := range contacts.observations {
+			source = *o.SourceClientID
+		}
+		switch {
+		case known && len(contacts.matched) != 0:
+			t.Fatalf("a sender with a verified contact raised matches %v", contacts.matched)
+		case !known && (len(contacts.matched) != 1 || contacts.matched[0] != contactMatch{source, domain.ChannelTypeWhatsApp, "+5491155550101"}):
+			t.Fatalf("a new sender's profile raised %v, want one match for %s on +5491155550101", contacts.matched, source)
+		}
 	}
 }
 

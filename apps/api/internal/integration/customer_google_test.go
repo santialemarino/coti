@@ -176,6 +176,7 @@ func TestCustomerGoogle_ChosenEmailMergesTheDumbProfileThatOwnsIt(t *testing.T) 
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,email,dni,legal_name) VALUES($1,$2,'Mostrador','dumb@example.test','28123456','Mostrador SA')`, dumb, account); err != nil {
 		t.Fatal(err)
 	}
+	e.channelVerify(t, account, dumb)
 	// A profile a seller had already merged into the dumb one follows it into the registered profile.
 	earlier := uuid.New()
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,merged_into) VALUES($1,$2,'Mostrador viejo',$3)`, earlier, account, dumb); err != nil {
@@ -338,6 +339,7 @@ func TestCustomerGoogle_ChosenEmailBringsTheDumbHistoryIntoAnUnprovedLegacyProfi
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,email) VALUES($1,$2,'Mostrador','walkin@example.test')`, dumb, account); err != nil {
 		t.Fatal(err)
 	}
+	e.channelVerify(t, account, dumb)
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel(id,account_id,branch_id,type) VALUES ($1,$2,$3,'MANUAL_ENTRY')`, channel, account, branch); err != nil {
 		t.Fatal(err)
 	}

@@ -78,7 +78,7 @@ func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querie
 
 // ListObservations reads pending suggestions within the staff caller's branch reach.
 func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
-	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,s.name,s.tax_id IS NOT NULL,c.tax_id IS NOT NULL,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
+	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,o.source_client_id,o.candidate_client_id,c.name,s.name,`+registered("s")+`,`+registered("c")+`,o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
  FROM client_contact_observation o
  LEFT JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id
  LEFT JOIN client s ON s.account_id=o.account_id AND s.id=o.source_client_id
@@ -172,7 +172,30 @@ func (r *ClientContactRepository) CreateObservation(ctx context.Context, q Queri
 	return err
 }
 
+// CreateMatchObservations raises a PENDING case between profile source and every other live profile
+// holding the contact, verified or not, unless one is already pending for that pair on any contact.
+func (r *ClientContactRepository) CreateMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	return createMatchObservations(ctx, q, accountID, branchID, source, kind, value, original)
+}
+
+// CreateMatchObservations raises the seller's review of a contact a new profile shares with others.
+func (r *ClientRepository) CreateMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	return createMatchObservations(ctx, q, accountID, branchID, source, kind, value, original)
+}
+
+func createMatchObservations(ctx context.Context, q Querier, accountID, branchID, source uuid.UUID, kind domain.ChannelType, value, original string) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,original_text,status)
+ SELECT DISTINCT $1::uuid,$2::uuid,$3::uuid,c.client_id,$4::channel_type,$5::varchar(255),$6::text,'PENDING'::client_contact_review_status
+ FROM client_contact c JOIN client p ON p.account_id=c.account_id AND p.id=c.client_id
+ WHERE c.account_id=$1 AND c.kind=$4 AND c.value=$5 AND c.retired_at IS NULL AND c.client_id<>$3 AND p.merged_into IS NULL
+   AND NOT EXISTS(SELECT 1 FROM client_contact_observation o WHERE o.account_id=$1 AND o.status='PENDING'
+     AND ((o.source_client_id=$3 AND o.candidate_client_id=c.client_id) OR (o.source_client_id=c.client_id AND o.candidate_client_id=$3)))`,
+		accountID, branchID, source, kind, value, original)
+	return err
+}
+
 // Save replaces a contact collection; ProjectPrimaries then copies its primaries to client.phone/email.
+// Only a CHANNEL contact, the sender a message arrived from, is saved verified.
 func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID, clientID uuid.UUID, contacts []domain.ClientContact, source string) error {
 	payload, err := contactPayload(contacts)
 	if err != nil {
@@ -185,7 +208,7 @@ func (r *ClientContactRepository) Save(ctx context.Context, q Querier, accountID
 		return err
 	}
 	_, err = q.Exec(ctx, `INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at)
- SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CUSTOMER' THEN NULL ELSE now() END
+ SELECT $1,$2,x.kind::channel_type,x.value,x."primary",$4,CASE WHEN $4::client_contact_source='CHANNEL' THEN now() END
  FROM jsonb_to_recordset($3::jsonb) AS x(kind text,value text,"primary" boolean)
  ON CONFLICT(account_id,client_id,kind,value) DO UPDATE SET is_primary=excluded.is_primary`, accountID, clientID, payload, source)
 	return err
@@ -319,7 +342,8 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 		return err
 	}
 	// The DNI and fiscal data fill only what the target lacks; nothing it already holds is overwritten.
-	if _, err = q.Exec(ctx, `UPDATE client t SET dni=COALESCE(t.dni,s.dni),legal_name=COALESCE(t.legal_name,s.legal_name),iva_condition=COALESCE(t.iva_condition,s.iva_condition),fiscal_address=COALESCE(t.fiscal_address,s.fiscal_address)
+	// Both profiles' notes are kept, the source's after the target's, within the column's 512.
+	if _, err = q.Exec(ctx, `UPDATE client t SET notes=left(NULLIF(concat_ws(E'\n\n',NULLIF(btrim(t.notes),''),NULLIF(btrim(s.notes),'')),''),512),dni=COALESCE(t.dni,s.dni),legal_name=COALESCE(t.legal_name,s.legal_name),iva_condition=COALESCE(t.iva_condition,s.iva_condition),fiscal_address=COALESCE(t.fiscal_address,s.fiscal_address)
  FROM client s WHERE t.account_id=$1 AND t.id=$3 AND s.account_id=$1 AND s.id=$2`, tenant.AccountID, source, target); err != nil {
 		return err
 	}

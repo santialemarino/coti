@@ -12,11 +12,17 @@ import (
 const mergeReach = `NOT EXISTS(SELECT 1 FROM rfq WHERE rfq.account_id=$1 AND rfq.client_id=c.id AND $2::uuid[] IS NOT NULL AND NOT(rfq.branch_id=ANY($2)))
  AND NOT EXISTS(SELECT 1 FROM quote WHERE quote.account_id=$1 AND quote.client_id=c.id AND (($2::uuid[] IS NOT NULL AND NOT(quote.branch_id=ANY($2))) OR ($3::uuid IS NOT NULL AND quote.seller_id IS NOT NULL AND quote.seller_id<>$3)))`
 
-// ListMergeCandidates returns the live profiles without a CUIT, other than clientID, that the caller
-// could merge.
+// registered is true when profile alias has a customer account: an active identity with its CUIT.
+func registered(alias string) string {
+	return `EXISTS(SELECT 1 FROM customer_identity i WHERE i.account_id=` + alias + `.account_id AND i.tax_id=` + alias + `.tax_id AND i.disabled_at IS NULL)`
+}
+
+// ListMergeCandidates returns the live profiles without a customer account, other than clientID, that
+// the caller could merge; a profile carrying another CUIT than clientID's is not one.
 func (r *ClientContactRepository) ListMergeCandidates(ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID) ([]domain.Client, error) {
 	rows, err := q.Query(ctx, `SELECT `+clientColumns+` FROM client c
- WHERE c.account_id=$1 AND c.id<>$4 AND c.merged_into IS NULL AND c.tax_id IS NULL AND `+mergeReach+`
+ WHERE c.account_id=$1 AND c.id<>$4 AND c.merged_into IS NULL AND NOT `+registered("c")+`
+   AND (c.tax_id IS NULL OR NOT EXISTS(SELECT 1 FROM client p WHERE p.account_id=$1 AND p.id=$4 AND p.tax_id IS NOT NULL)) AND `+mergeReach+`
  ORDER BY lower(COALESCE(c.name,c.email,c.phone,'')),c.id`, tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), clientID)
 	if err != nil {
 		return nil, err
@@ -35,8 +41,8 @@ func (r *ClientContactRepository) ListMergeCandidates(ctx context.Context, q Que
 
 // LockMergeProfiles locks the given profiles of the caller's account and reports what a merge checks.
 func (r *ClientContactRepository) LockMergeProfiles(ctx context.Context, q Querier, tenant domain.Tenant, ids []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error) {
-	rows, err := q.Query(ctx, `SELECT c.id,c.tax_id,c.merged_into,`+mergeReach+` FROM client c
- WHERE c.account_id=$1 AND c.id=ANY($4) ORDER BY c.id FOR UPDATE`, tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), ids)
+	rows, err := q.Query(ctx, `SELECT c.id,c.tax_id,`+registered("c")+`,c.merged_into,`+mergeReach+` FROM client c
+ WHERE c.account_id=$1 AND c.id=ANY($4) ORDER BY c.id FOR UPDATE OF c`, tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), ids)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +50,7 @@ func (r *ClientContactRepository) LockMergeProfiles(ctx context.Context, q Queri
 	result := make(map[uuid.UUID]domain.MergeProfile, len(ids))
 	for rows.Next() {
 		var p domain.MergeProfile
-		if err := rows.Scan(&p.ID, &p.TaxID, &p.MergedInto, &p.InReach); err != nil {
+		if err := rows.Scan(&p.ID, &p.TaxID, &p.Registered, &p.MergedInto, &p.InReach); err != nil {
 			return nil, err
 		}
 		result[p.ID] = p
