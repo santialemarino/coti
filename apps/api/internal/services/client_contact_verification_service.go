@@ -213,7 +213,7 @@ func (s *ClientContactVerificationService) ProveRegisteredContact(ctx context.Co
 }
 
 // applyProof verifies a proved contact on the customer's profile, merging the dumb profile that
-// already holds it verified, inside the caller's transaction.
+// already holds it channel-verified, inside the caller's transaction.
 func (s *ClientContactVerificationService) applyProof(ctx context.Context, q repository.Querier, p domain.CustomerPrincipal, clientID uuid.UUID, kind domain.ChannelType, value string) error {
 	candidates, err := s.contacts.contacts.FindProfiles(ctx, q, p.AccountID, "", kind, value)
 	if err != nil {
@@ -309,7 +309,9 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 			return err
 		}
 	}
-	return nil
+	// A profile that holds the contact only because a seller typed it joins the account on the
+	// seller's confirmation, never on the proof alone.
+	return s.contacts.contacts.CreateProofMatchObservations(ctx, q, p.AccountID, clientID, kind, value)
 }
 
 // checkDestination applies the destination caps; the caller holds its lock. The daily cap and the

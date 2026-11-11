@@ -11230,6 +11230,10 @@ const docTemplate = `{
         "dto.ContactSuggestionResponse": {
             "type": "object",
             "properties": {
+                "account_join_ready": {
+                    "description": "AccountJoinReady is true when the registered side's customer proved the contact, so MERGE joins\nthe other profile into that account.",
+                    "type": "boolean"
+                },
                 "candidate_client_id": {
                     "type": "string"
                 },

@@ -3,11 +3,14 @@ SELECT assert_migration_sees_all_rows('client','client_contact','client_contact_
  'client_contact_outbox','client_contact_challenge','client_contact_challenge_failure','customer_contact_history','rfq','quote','branch');
 
 -- A contact is verified only by proof: the channel a message arrived from, or a customer's own proof,
--- which always leaves an ownership row. A contact a seller typed proves nothing.
+-- which always leaves an ownership row. A contact a seller typed proves nothing, unless a message from
+-- it, in either Argentine form, was already routed to its profile.
 ALTER TABLE client_contact ALTER COLUMN verified_at DROP DEFAULT;
 UPDATE client_contact c SET verified_at=NULL,is_main=FALSE
  WHERE c.verified_at IS NOT NULL AND c.source<>'CHANNEL'
-   AND NOT EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.contact_id=c.id);
+   AND NOT EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.contact_id=c.id)
+   AND NOT EXISTS(SELECT 1 FROM client_contact_observation o WHERE o.account_id=c.account_id AND o.message_id IS NOT NULL
+     AND o.source_client_id=c.client_id AND o.kind=c.kind AND o.value IN (c.value,'+549'||substr(c.value,4),'+54'||substr(c.value,5)));
 
 -- An Argentine number written without the 9 (+54 11…, +54 2xx…, +54 3xx…) takes the +549 form WhatsApp
 -- reports, as domain.CanonicalPhone writes it.

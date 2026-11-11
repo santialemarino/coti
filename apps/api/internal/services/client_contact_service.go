@@ -36,6 +36,11 @@ type contactStore interface {
 	GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error)
 	CreateObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ContactObservation) error
 	CreateMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType, string, string) error
+	CreateProofMatchObservations(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error)
+	GetContactOwner(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*uuid.UUID, error)
+	MarkChannelVerified(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
+	GrantProvisionalHistory(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	Save(context.Context, repository.Querier, uuid.UUID, uuid.UUID, []domain.ClientContact, string) error
 	UpdateName(context.Context, repository.Querier, uuid.UUID, uuid.UUID, string) error
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
@@ -273,6 +278,19 @@ func (s *ClientContactService) RecordInbound(ctx context.Context, q repository.Q
 	profiles, err = s.findSender(ctx, q, route.AccountID, kind, value)
 	if err != nil {
 		return err
+	}
+	if len(profiles) == 0 {
+		// A reply to a quote proves the contact the quote went to, typed or not.
+		conversation, err := s.contacts.GetConversationClient(ctx, q, route.AccountID, messageID, kind, value)
+		if err != nil {
+			return err
+		}
+		if conversation != nil {
+			if err := s.contacts.MarkChannelVerified(ctx, q, route.AccountID, conversation.ID, kind, value); err != nil {
+				return err
+			}
+			profiles = []domain.Client{*conversation}
+		}
 	}
 	observation := domain.ContactObservation{BranchID: route.BranchID, Kind: kind, Value: value, Original: original, TaxID: declared.TaxID, Status: domain.ContactReviewRecorded}
 	if declared.Name != nil {

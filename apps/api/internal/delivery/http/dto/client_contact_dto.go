@@ -83,14 +83,17 @@ type ContactSuggestionResponse struct {
 	CandidateName     *string    `json:"candidate_name"`
 	SourceName        *string    `json:"source_name"`
 	// SourceRegistered and CandidateRegistered mark a profile with a customer account, which no seller merges.
-	SourceRegistered    bool      `json:"source_registered"`
-	CandidateRegistered bool      `json:"candidate_registered"`
-	TaxID               *string   `json:"tax_id"`
-	Kind                string    `json:"kind"`
-	Value               string    `json:"value"`
-	DeclaredName        *string   `json:"declared_name"`
-	OriginalText        string    `json:"original_text"`
-	CreatedAt           time.Time `json:"created_at"`
+	SourceRegistered    bool `json:"source_registered"`
+	CandidateRegistered bool `json:"candidate_registered"`
+	// AccountJoinReady is true when the registered side's customer proved the contact, so MERGE joins
+	// the other profile into that account.
+	AccountJoinReady bool      `json:"account_join_ready"`
+	TaxID            *string   `json:"tax_id"`
+	Kind             string    `json:"kind"`
+	Value            string    `json:"value"`
+	DeclaredName     *string   `json:"declared_name"`
+	OriginalText     string    `json:"original_text"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // ResolveContactSuggestionRequest is the body for PUT /v1/client-contact-suggestions/:id. MERGE keeps

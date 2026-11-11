@@ -81,13 +81,16 @@ type ContactObservation struct {
 	// seller merges.
 	SourceRegistered    bool
 	CandidateRegistered bool
-	TaxID               *string
-	Kind                ChannelType
-	Value               string
-	Name                *string
-	Original            string
-	Status              ContactReviewStatus
-	CreatedAt           time.Time
+	// AccountJoinReady is true when exactly one side is registered and its customer has proved the
+	// observed contact, so a seller may join the other profile into that account.
+	AccountJoinReady bool
+	TaxID            *string
+	Kind             ChannelType
+	Value            string
+	Name             *string
+	Original         string
+	Status           ContactReviewStatus
+	CreatedAt        time.Time
 }
 
 // MergeProfile is what a seller merge checks on one profile before moving anything.

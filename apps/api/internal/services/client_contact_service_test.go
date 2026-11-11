@@ -23,6 +23,10 @@ type fakeContactStore struct {
 	matched       []contactMatch
 }
 
+func (f *fakeContactStore) GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error) {
+	return nil, nil
+}
+
 func (f *fakeContactStore) CreateMatchObservations(_ context.Context, _ repository.Querier, _, _, source uuid.UUID, kind domain.ChannelType, value, _ string) error {
 	f.matched = append(f.matched, contactMatch{source, kind, value})
 	return nil

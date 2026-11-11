@@ -107,6 +107,34 @@ test(
         "INSERT INTO client_contact_outbox(account_id,branch_id,channel_id,kind,value,purpose) VALUES($1,$2,$3,'WHATSAPP','+541155550404','REQUEST_NAME')",
         [account, branch, channel],
       );
+      // A seller typed this one, but a WhatsApp message from it was already routed to the profile.
+      const routed = randomUUID();
+      await insertClient(routed, { name: 'Routed', phone: '+54 11 5555-0505' });
+      const rfq = (
+        await client.query(
+          "INSERT INTO rfq(account_id,branch_id,channel_id,raw_text,client_id) VALUES($1,$2,$3,'Pedido',$4) RETURNING id",
+          [account, branch, channel, routed],
+        )
+      ).rows[0].id;
+      const message = (
+        await client.query(
+          "INSERT INTO inbound_channel_message(account_id,branch_id,channel_id,rfq_id,external_message_id,sender_id,body,payload,provider_received_at) VALUES($1,$2,$3,$4,'wamid.1','5491155550505','Pedido','{}',now()) RETURNING id",
+          [account, branch, channel, rfq],
+        )
+      ).rows[0].id;
+      await client.query(
+        "INSERT INTO client_contact_observation(account_id,branch_id,message_id,source_client_id,kind,value,original_text,status) VALUES($1,$2,$3,$4,'WHATSAPP','+5491155550505','Pedido','RECORDED')",
+        [account, branch, message, routed],
+      );
+      // Two profiles each verified one form of a number: the first verified keeps it.
+      const firstForm = randomUUID(),
+        secondForm = randomUUID();
+      await insertClient(firstForm, { name: 'First form' });
+      await insertClient(secondForm, { name: 'Second form' });
+      await client.query(
+        "INSERT INTO client_contact(account_id,client_id,kind,value,is_primary,source,verified_at) VALUES($1,$2,'WHATSAPP','+541155550606',TRUE,'CHANNEL','2026-01-01'),($1,$3,'WHATSAPP','+5491155550606',TRUE,'CHANNEL','2026-02-01')",
+        [account, firstForm, secondForm],
+      );
 
       result = goose('up-to', 77);
       assert.equal(result.status, 0, stderr(result));
@@ -131,6 +159,15 @@ test(
       assert.deepEqual(await contacts(registered), [
         { value: 'proved@example.test', source: 'CUSTOMER', is_primary: true, verified: true },
       ]);
+      assert.deepEqual(await contacts(routed), [
+        { value: '+5491155550505', source: 'SELLER', is_primary: true, verified: true },
+      ]);
+      assert.deepEqual(await contacts(firstForm), [
+        { value: '+5491155550606', source: 'CHANNEL', is_primary: true, verified: true },
+      ]);
+      assert.deepEqual(await contacts(secondForm), [
+        { value: '+5491155550606', source: 'CHANNEL', is_primary: true, verified: false },
+      ]);
       assert.equal(
         (await client.query('SELECT phone FROM client WHERE id=$1', [typedOld])).rows[0].phone,
         '+5491155550202',
@@ -138,7 +175,7 @@ test(
       assert.deepEqual(
         (
           await client.query(
-            "SELECT branch_id,source_client_id,candidate_client_id,value FROM client_contact_observation WHERE account_id=$1 AND status='PENDING'",
+            "SELECT branch_id,source_client_id,candidate_client_id,value FROM client_contact_observation WHERE account_id=$1 AND status='PENDING' ORDER BY value",
             [account],
           )
         ).rows,
@@ -148,6 +185,12 @@ test(
             source_client_id: typedOld,
             candidate_client_id: channelNew,
             value: '+5491155550202',
+          },
+          {
+            branch_id: branch,
+            source_client_id: secondForm,
+            candidate_client_id: firstForm,
+            value: '+5491155550606',
           },
         ],
       );

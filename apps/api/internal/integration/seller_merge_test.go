@@ -366,7 +366,7 @@ func TestSellerMerge_ResolvesPendingObservations(t *testing.T) {
 		t.Fatalf("a survivor merged into itself %d times", n)
 	}
 
-	// A side whose survivor now has a customer account belongs to it: the seller cannot merge it.
+	// A side whose survivor now has a customer account joins it only on a contact its customer proved.
 	provisional := m.profile(t, "Still provisional", "still-provisional@example.test", nil)
 	adopted := m.profile(t, "Adopted", "adopted@example.test", nil)
 	registered := m.registered(t, "Registered", "registered@example.test", "20123456786")
@@ -375,8 +375,8 @@ func TestSellerMerge_ResolvesPendingObservations(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + refused.String(), token: m.token, body: map[string]any{"action": "MERGE"}})
-	if rec.Code != http.StatusForbidden || errorCode(t, rec) != string(domain.CodeClientRegistered) {
-		t.Fatalf("resolve MERGE into a registered survivor: %d %s, want 403 %s", rec.Code, rec.Body, domain.CodeClientRegistered)
+	if rec.Code != http.StatusConflict || errorCode(t, rec) != string(domain.CodeClientContactUnproved) {
+		t.Fatalf("resolve MERGE into a registered survivor: %d %s, want 409 %s", rec.Code, rec.Body, domain.CodeClientContactUnproved)
 	}
 	if s, _ := status(refused); s != "PENDING" || m.mergedInto(t, provisional) != nil {
 		t.Fatalf("refused case: observation %s, provisional merged into %v; want PENDING and live", s, m.mergedInto(t, provisional))

@@ -74,7 +74,8 @@ func (s *ClientContactService) MergeClients(ctx context.Context, tenant domain.T
 }
 
 // ResolveSuggestion settles one pending observation: MERGE joins its two profiles into the candidate,
-// or into keep when the seller picked the source, and SEPARATE dismisses it without merging.
+// a provisional profile into the customer account on the other side, or into keep when the seller
+// picked the source; SEPARATE dismisses it without merging.
 func (s *ClientContactService) ResolveSuggestion(ctx context.Context, tenant domain.Tenant, id uuid.UUID, action domain.ContactReviewStatus, keep *uuid.UUID) error {
 	if action != domain.ContactReviewMerged && action != domain.ContactReviewSeparate {
 		return domain.ErrInvalidInput
@@ -105,13 +106,80 @@ func (s *ClientContactService) ResolveSuggestion(ctx context.Context, tenant dom
 				return err
 			}
 			if source != target {
-				if err := s.mergeProvisional(ctx, q, tenant, source, target); err != nil {
+				if err := s.mergeResolved(ctx, q, tenant, source, target, keep != nil, *o); err != nil {
 					return err
 				}
 			}
 		}
 		return s.contacts.Decide(ctx, q, tenant, id, string(action))
 	})
+}
+
+// mergeResolved merges the two survivors of a case: two provisional profiles as a seller merge, or a
+// provisional one into the customer's account, which always survives, when kept names no other side.
+func (s *ClientContactService) mergeResolved(ctx context.Context, q repository.Querier, tenant domain.Tenant, source, target uuid.UUID, kept bool, o domain.ContactObservation) error {
+	sourceRegistered, err := s.profiles.IsRegistered(ctx, q, tenant.AccountID, source)
+	if err != nil {
+		return err
+	}
+	targetRegistered, err := s.profiles.IsRegistered(ctx, q, tenant.AccountID, target)
+	if err != nil {
+		return err
+	}
+	switch {
+	case !sourceRegistered && !targetRegistered:
+		return s.mergeProvisional(ctx, q, tenant, source, target)
+	case sourceRegistered && targetRegistered, sourceRegistered && kept:
+		return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
+	case sourceRegistered:
+		return s.joinAccount(ctx, q, tenant, target, source, o.Kind, o.Value)
+	default:
+		return s.joinAccount(ctx, q, tenant, source, target, o.Kind, o.Value)
+	}
+}
+
+// joinAccount merges a provisional profile into a registered one on the seller's confirmation, once
+// the account's customer has proved the shared contact: the customer's proof and the seller's word
+// are the two signals a typo alone never gives. The customer keeps the provisional orders.
+func (s *ClientContactService) joinAccount(ctx context.Context, q repository.Querier, tenant domain.Tenant, provisional, account uuid.UUID, kind domain.ChannelType, value string) error {
+	if err := s.lockContactProfiles(ctx, q, tenant.AccountID, "", []domain.Client{{ID: provisional}, {ID: account}}); err != nil {
+		return err
+	}
+	profiles, err := s.contacts.LockMergeProfiles(ctx, q, tenant, []uuid.UUID{provisional, account})
+	if err != nil {
+		return err
+	}
+	source, sourceFound := profiles[provisional]
+	target, targetFound := profiles[account]
+	switch {
+	case !sourceFound || !targetFound:
+		return domain.ErrNotFound
+	case source.Registered || !target.Registered:
+		return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
+	case source.MergedInto != nil || target.MergedInto != nil:
+		return domain.WithCode(domain.CodeClientMerged, domain.ErrConflict)
+	case !source.InReach:
+		return domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
+	case source.TaxID != nil:
+		return domain.WithCode(domain.CodeClientTaxIDConflict, domain.ErrConflict)
+	}
+	owner, err := s.contacts.GetContactOwner(ctx, q, tenant.AccountID, account, kind, value)
+	if err != nil {
+		return err
+	}
+	if owner == nil {
+		return domain.WithCode(domain.CodeClientContactUnproved, domain.ErrConflict)
+	}
+	if err := s.contacts.GrantProvisionalHistory(ctx, q, domain.CustomerPrincipal{AccountID: tenant.AccountID, CustomerID: *owner}, provisional, kind, value); err != nil {
+		return err
+	}
+	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, provisional, account); err != nil {
+		return err
+	}
+	if err := s.contacts.Merge(ctx, q, tenant, provisional, account); err != nil {
+		return err
+	}
+	return s.contacts.ProjectPrimaries(ctx, q, tenant.AccountID, account)
 }
 
 // mergeProvisional runs one seller merge inside the caller's transaction, after locking both profiles

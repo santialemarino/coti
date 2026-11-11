@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -204,6 +205,173 @@ func TestClientContactMatching_SellerEntryClashingWithARegisteredProfileRaisesAC
 	}
 	if !found {
 		t.Fatalf("suggestions = %s, want the registered profile as a registered candidate", rec.Body)
+	}
+
+	// The customer proved another contact but not the case's phone: the seller cannot join yet.
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeEmail, "customer"+tax+"@example.test", true)
+	caseID := e.pendingCaseID(t, account, typed, registered)
+	resolve := func() *httptest.ResponseRecorder {
+		return e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + caseID.String(), token: seller, branch: seed.tenant.BranchID.String(), body: map[string]any{"action": "MERGE"}})
+	}
+	if rec := resolve(); rec.Code != http.StatusConflict || errorCode(t, rec) != string(domain.CodeClientContactUnproved) {
+		t.Fatalf("join before the proof: %d %s, want 409 %s", rec.Code, rec.Body, domain.CodeClientContactUnproved)
+	}
+	if e.joinReady(t, seller, seed.tenant.BranchID, caseID) {
+		t.Fatal("the case reads ready to join before the customer proved the contact")
+	}
+	e.verifyCustomerContact(t, account, tax, domain.ChannelTypeWhatsApp, "+5492215550303", true)
+	if got := e.pendingMatches(t, account, "+5492215550303"); len(got) != 1 {
+		t.Fatalf("the proof raised %v beside the pending case, want still one", got)
+	}
+	if !e.joinReady(t, seller, seed.tenant.BranchID, caseID) {
+		t.Fatal("the case does not read ready to join after the customer proved the contact")
+	}
+	if rec := resolve(); rec.Code != http.StatusNoContent {
+		t.Fatalf("join after the proof: %d %s, want 204", rec.Code, rec.Body)
+	}
+	var into *uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT merged_into FROM client WHERE id=$1`, typed).Scan(&into); err != nil || into == nil || *into != registered {
+		t.Fatalf("typed profile merged into %v (%v), want the account %s", into, err, registered)
+	}
+}
+
+// pendingCaseID returns the pending case from source to candidate.
+func (e *env) pendingCaseID(t *testing.T, account, source, candidate uuid.UUID) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT id FROM client_contact_observation WHERE account_id=$1 AND source_client_id=$2 AND candidate_client_id=$3 AND status='PENDING'`, account, source, candidate).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// joinReady reads whether the suggestion list offers joining the case into the customer's account.
+func (e *env) joinReady(t *testing.T, token string, branch, caseID uuid.UUID) bool {
+	t.Helper()
+	rec := e.do(t, request{method: http.MethodGet, path: "/v1/client-contact-suggestions", token: token, branch: branch.String()})
+	var list []struct {
+		ID    uuid.UUID `json:"id"`
+		Ready bool      `json:"account_join_ready"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &list) != nil {
+		t.Fatalf("suggestions: %d %s", rec.Code, rec.Body)
+	}
+	for _, item := range list {
+		if item.ID == caseID {
+			return item.Ready
+		}
+	}
+	t.Fatalf("suggestions = %s, want case %s", rec.Body, caseID)
+	return false
+}
+
+func TestClientContactMatching_AQuoteReplyProvesTheTypedContact(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	account, branch := e.seedAccount(t, "Reply proves contact")
+	channel := e.seedWhatsAppInbox(t, account, branch)
+	name, phone := "Obra Palermo", domain.CanonicalPhone("+54 11 5555-0707")
+	var typed uuid.UUID
+	if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: account}, func(q repository.Querier) error {
+		c, err := repository.NewClientRepository().Create(ctx, q, account, domain.NewClient{Name: &name, Phone: &phone})
+		if err == nil {
+			typed = c.ID
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	quote := e.seedSentQuote(t, sentQuote{accountID: account, branchID: branch, channel: channel, destination: "+541155550707",
+		status: domain.QuoteStatusSent, sentAgo: time.Hour, expiresIn: 24 * time.Hour})
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote SET client_id=$2 WHERE id=$1`, quote, typed); err != nil {
+		t.Fatal(err)
+	}
+	profiles := func() int {
+		var n int
+		if err := e.db.CrossAccount().QueryRow(ctx, `SELECT count(*) FROM client WHERE account_id=$1`, account).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := profiles()
+
+	if err := e.inboundService(t, &recordingInboundRFQs{}).Ingest(ctx, []domain.InboundTextMessage{
+		whatsAppReply(channel, "wamid."+uuid.NewString(), "5491155550707", "sumale 5 bolsas")}); err != nil {
+		t.Fatal(err)
+	}
+	if messages, _ := e.conversationOf(t, quote); messages != 1 {
+		t.Fatalf("quote messages = %d, want the reply in the conversation", messages)
+	}
+	if got := e.contactsOf(t, typed); len(got) != 1 || got[0] != (contactState{"+5491155550707", "SELLER", true}) {
+		t.Fatalf("typed contact after the reply = %+v, want it verified by the channel", got)
+	}
+	if after := profiles(); after != before {
+		t.Fatalf("profiles %d -> %d: the reply opened a provisional profile", before, after)
+	}
+	if got := e.pendingMatches(t, account, "+5491155550707"); len(got) != 0 {
+		t.Fatalf("the reply raised cases %v, want none", got)
+	}
+}
+
+func TestClientContactMatching_AccountJoinKeepsToTheSellersReach(t *testing.T) {
+	e := newEnv(t)
+	m := e.sellerMerge(t)
+	ctx := context.Background()
+	const tax, shared = "20123456786", "shared-join@example.test"
+	account := m.registered(t, "Cuenta", "cuenta@example.test", tax)
+	var customer uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, m.account, tax).Scan(&customer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `WITH proved AS (INSERT INTO client_contact(account_id,client_id,kind,value,source,verified_at) VALUES($1,$2,'EMAIL',$3,'CUSTOMER',now()) RETURNING id)
+ INSERT INTO customer_contact_ownership(account_id,customer_id,contact_id,includes_profile_history) SELECT $1,$4,id,TRUE FROM proved`, m.account, account, shared, customer); err != nil {
+		t.Fatal(err)
+	}
+	observe := func(provisional, branch uuid.UUID) uuid.UUID {
+		var id uuid.UUID
+		if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,original_text,status) VALUES($1,$2,$3,$4,'EMAIL',$5::varchar,$5::text,'PENDING') RETURNING id`, m.account, branch, provisional, account, shared).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	resolve := func(id uuid.UUID) (int, string) {
+		rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + id.String(), token: m.token, body: map[string]any{"action": "MERGE"}})
+		if rec.Code == http.StatusNoContent {
+			return rec.Code, ""
+		}
+		return rec.Code, errorCode(t, rec)
+	}
+
+	elsewhere := m.profile(t, "Pedidos en otra sucursal", "elsewhere-join@example.test", nil)
+	m.order(t, elsewhere, m.other)
+	if status, code := resolve(observe(elsewhere, m.branch)); status != http.StatusForbidden || code != string(domain.CodeClientOutOfReach) {
+		t.Fatalf("join a profile with orders in another branch: %d %s, want 403 %s", status, code, domain.CodeClientOutOfReach)
+	}
+	hidden := m.profile(t, "Caso de otra sucursal", "hidden-join@example.test", nil)
+	if status, _ := resolve(observe(hidden, m.other)); status != http.StatusNotFound {
+		t.Fatalf("resolve another branch's case: %d, want 404", status)
+	}
+	reachable := m.profile(t, "Mostrador", "reachable-join@example.test", nil)
+	m.order(t, reachable, m.branch)
+	reachableCase := observe(reachable, m.branch)
+	// The account always survives: keeping the provisional side is refused.
+	rec := e.do(t, request{method: http.MethodPut, path: "/v1/client-contact-suggestions/" + reachableCase.String(), token: m.token, body: map[string]any{"action": "MERGE", "keep_client_id": reachable}})
+	if rec.Code != http.StatusForbidden || errorCode(t, rec) != string(domain.CodeClientRegistered) {
+		t.Fatalf("keep the provisional side: %d %s, want 403 %s", rec.Code, rec.Body, domain.CodeClientRegistered)
+	}
+	if status, code := resolve(reachableCase); status != http.StatusNoContent {
+		t.Fatalf("join a reachable profile: %d %s, want 204", status, code)
+	}
+	if into := m.mergedInto(t, reachable); into == nil || *into != account {
+		t.Fatalf("reachable merged into %v, want the account %s", into, account)
+	}
+	if count, by := m.audits(t, reachable, account); count != 1 || by == nil || *by != m.seller.ID {
+		t.Fatalf("audit = %d by %v, want one by the seller", count, by)
+	}
+	for _, id := range []uuid.UUID{elsewhere, hidden} {
+		if into := m.mergedInto(t, id); into != nil {
+			t.Fatalf("refused profile %s merged into %s", id, *into)
+		}
 	}
 }
 
