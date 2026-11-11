@@ -51,7 +51,7 @@ function renderChecklist(state: Onboarding, placement: 'home' | 'settings' = 'ho
 describe('OnboardingChecklist', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('counts what is done and sends each pending step to the screen that does it', () => {
+  it('counts what is done in the bar and lists only the pending steps on the home card', () => {
     renderChecklist(onboarding());
 
     expect(screen.getByText('1 de 3')).toBeTruthy();
@@ -60,6 +60,13 @@ describe('OnboardingChecklist', () => {
       ROUTES.catalogSettings,
       ROUTES.userSettings,
     ]);
+    expect(screen.queryByText('Listo')).toBeNull();
+  });
+
+  it('keeps the done steps listed on the settings page', () => {
+    renderChecklist(onboarding(), 'settings');
+
+    expect(screen.getByText('1 de 3')).toBeTruthy();
     expect(screen.getByText('Listo')).toBeTruthy();
   });
 

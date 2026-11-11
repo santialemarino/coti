@@ -148,7 +148,12 @@ export function OnboardingFlow({
         setError(message(result.error));
         return;
       }
-      await resolveStep('BRAND', 'COMPLETED', 'PORTAL');
+      // A step left without a logo or a colour is skipped, so the checklist does not call it done.
+      const branded =
+        Boolean(values.brandColor) ||
+        logo instanceof File ||
+        (logo === undefined && Boolean(account.brandLogoUrl));
+      await resolveStep('BRAND', branded ? 'COMPLETED' : 'SKIPPED', 'PORTAL');
     });
   }
 
@@ -618,16 +623,13 @@ function ReadyItem({
 }) {
   return (
     <Card
-      className={cn(
-        'min-h-36 items-center justify-center p-6 gap-y-4 bg-muted shadow-e1 text-center',
-        className,
-      )}
+      className={cn('flex-row items-center p-4 gap-x-3 bg-muted shadow-e1 text-left', className)}
     >
       <Icon
         aria-hidden="true"
-        className={cn('size-8', done ? 'text-primary' : 'text-foreground-subtle')}
+        className={cn('size-5 shrink-0', done ? 'text-primary' : 'text-foreground-subtle')}
       />
-      <span className={done ? 'text-heading-6' : 'text-paragraph-medium text-foreground-muted'}>
+      <span className={done ? 'text-paragraph-medium' : 'text-paragraph-sm text-foreground-muted'}>
         {text}
       </span>
     </Card>

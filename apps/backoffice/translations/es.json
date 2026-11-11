@@ -2374,7 +2374,8 @@
       "title": "Cerrar la sucursal",
       "description": "Se va a cerrar «{name}». Nadie va a poder operar en ella y sus cotizaciones quedan como están. Podés reabrirla cuando quieras.",
       "confirm": "Cerrar sucursal",
-      "confirming": "Cerrando…"
+      "confirming": "Cerrando…",
+      "soleActive": "La única sucursal activa no se puede cerrar: la cuenta necesita al menos una para operar."
     },
     "name": {
       "label": "Nombre",
@@ -2900,8 +2901,8 @@
       }
     },
     "skipAll": {
-      "action": "Omitir Configuración",
-      "title": "Omitir la Configuración Inicial",
+      "action": "Omitir configuración",
+      "title": "Omitir la configuración inicial",
       "description": "Vas a ingresar al sistema con lo que ya está cargado. Podés completar la cuenta, importar el catálogo inicial y agregar usuarios más tarde desde Configuración.",
       "confirm": "Omitir por ahora",
       "dismissing": "Omitiendo…",
@@ -2915,20 +2916,20 @@
       "resuming": "Retomando…"
     },
     "welcome": {
-      "title": "Preparemos tu Corralón para Cotizar",
+      "title": "Preparemos tu corralón para cotizar",
       "description": "En solo unos minutos, completá tu información y cargá el catálogo de la sucursal. Cada cambio se guarda al avanzar.",
       "start": "Empezar",
       "checklist": {
         "brand": {
-          "title": "Personalizá la Marca",
+          "title": "Personalizá la marca",
           "description": "Color y logo."
         },
         "branch": {
-          "title": "Revisá la Sucursal",
+          "title": "Revisá la sucursal",
           "description": "Dirección y vencimiento de cotizaciones."
         },
         "catalog": {
-          "title": "Cargá el Catálogo",
+          "title": "Cargá el catálogo",
           "description": "Importación masiva de productos."
         },
         "team": {
@@ -2938,7 +2939,7 @@
       }
     },
     "brand": {
-      "title": "Dale Identidad a tus Cotizaciones",
+      "title": "Dale identidad a tus cotizaciones",
       "description": "Configurá la presentación de tu marca.",
       "accountSummary": "Datos ya registrados",
       "noLegalData": "Sin razón social ni CUIT cargados",
@@ -2953,17 +2954,17 @@
       }
     },
     "branch": {
-      "title": "Registrá tu Sucursal",
+      "title": "Registrá tu sucursal",
       "description": "La sucursal se creó junto con la cuenta. Verificá la dirección y definí el plazo habitual de tus cotizaciones.",
       "expiryHint": "Cantidad de días que una cotización queda vigente por defecto."
     },
     "catalog": {
-      "title": "Cargá tu Catálogo",
+      "title": "Cargá tu catálogo",
       "description": "Completá el archivo con los datos correspondientes a los productos disponibles en la sucursal.",
       "later": "Cargar más tarde"
     },
     "review": {
-      "title": "Revisá Productos y Precios",
+      "title": "Revisá productos y precios",
       "description": "Confirmá las filas válidas. Las filas con errores se muestran y quedan fuera de la importación.",
       "returnToUpload": "Volver a cargar el archivo"
     },
