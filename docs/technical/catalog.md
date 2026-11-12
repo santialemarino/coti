@@ -137,6 +137,23 @@ currency before discounts, without converting package sizes. The seller checks p
 suitability. Discounts are recalculated for the selected combination, so a lower unit price does not
 guarantee a lower final total.
 
+## Combos
+
+A combo is a named set of the account's products sold together: at least two distinct products, each
+with the quantity the combo carries, and the branches that sell it (`branch_combo`, switched off rather
+than deleted when a branch is left out). It has no price of its own. Administrators manage combos under
+`/v1/combos` (list, get, create, replace), and a product or branch from another account is refused.
+
+A combo never becomes a quote line. On a priced (`QUOTED`) quote,
+`GET /v1/quotes/{quoteId}/combo-suggestions` lists the active combos the quote's branch sells that the
+quote holds at least one product of and lacks at least one, with what is present and what is missing.
+A combo is left out when a missing product is inactive or has no price at the branch, so completing it
+can never add an unpriced line. `POST /v1/quotes/{quoteId}/combo-suggestions/{comboId}/add` adds the
+missing products as ordinary lines, at the combo's quantities and the branch's current prices, in one
+transaction, and settles the total and promotions once. A combo the quote no longer qualifies for
+answers **409**. A bundle discount is an `ITEM_SET` promotion over the same products: the engine applies
+it to the completed lines like any other promotion.
+
 ## The check the database does not do
 
 Before writing a synonym or an alternative, the service **reads the product inside the tenant
