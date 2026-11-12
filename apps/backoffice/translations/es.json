@@ -1513,6 +1513,13 @@
         "alternatives": {
           "title": "Opciones para el cliente",
           "compatibilityNotice": "La económica debe tener un precio unitario menor y la premium, mayor al cotizado. Al enviar, se excluyen las opciones que no cumplan esta regla o cuya familia, subgrupo o unidad ya no coincidan. Revisá también que la presentación sea adecuada.",
+          "fill": {
+            "action": "Completar desde el catálogo",
+            "pending": "Completando…",
+            "hint": "Agrega las alternativas del catálogo que falten, sin aprobar; no reemplaza las que ya elegiste.",
+            "done": "{count, plural, one {Agregamos # alternativa del catálogo. Revisala antes de incluirla.} other {Agregamos # alternativas del catálogo. Revisalas antes de incluirlas.}}",
+            "nothing": "El catálogo no tiene alternativas compatibles para completar los lugares vacíos."
+          },
           "priceUnavailable": "Precio no disponible",
           "invalidPrice": "Esta alternativa no cumple la regla de precio y no se enviará. Podés reemplazarla o quitarla.",
           "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",

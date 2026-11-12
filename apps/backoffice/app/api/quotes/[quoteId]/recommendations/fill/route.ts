@@ -7,7 +7,7 @@ interface RouteContext {
 export async function POST(request: Request, { params }: RouteContext) {
   const { quoteId } = await params;
   return forwardToApi(request, {
-    path: `/v1/quotes/${quoteId}/recommendations/search`,
+    path: `/v1/quotes/${quoteId}/recommendations/fill`,
     method: 'POST',
     body: await request.text(),
   });
