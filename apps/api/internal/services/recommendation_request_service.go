@@ -122,6 +122,71 @@ func (s *RecommendationRequestService) AddIfVacant(ctx context.Context, tenant d
 	return added, err
 }
 
+// FillVacant adds every still-eligible catalog proposal to its empty slot, unapproved, in one
+// transaction. Slots the seller already decided are never touched.
+func (s *RecommendationRequestService) FillVacant(ctx context.Context, tenant domain.Tenant,
+	quoteID uuid.UUID,
+) ([]domain.FilledRecommendation, error) {
+	if err := requireBranch(tenant, "quote recommendations"); err != nil {
+		return nil, err
+	}
+	filled := []domain.FilledRecommendation{}
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.ClaimForEdit(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		version, err := s.editableVersion(ctx, q, tenant, quote)
+		if err != nil {
+			return err
+		}
+		proposals, err := s.findProposals(ctx, q, tenant.AccountID, quote.BranchID, *version)
+		if err != nil || len(proposals) == 0 {
+			return err
+		}
+		productIDs := make([]uuid.UUID, 0, len(proposals))
+		itemIDs := make([]uuid.UUID, 0, len(proposals))
+		for _, proposal := range proposals {
+			productIDs = append(productIDs, proposal.ProductID)
+			itemIDs = append(itemIDs, proposal.ItemID)
+		}
+		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID, productIDs)
+		if err != nil {
+			return err
+		}
+		offers, err := s.quotes.ListAlternativesByItemIDs(ctx, q, tenant.AccountID, itemIDs)
+		if err != nil {
+			return err
+		}
+		for _, proposal := range proposals {
+			price, ok := prices[proposal.ProductID]
+			matcherID, reusable := reusableMatcherCandidate(offers[proposal.ItemID], proposal.ProductID)
+			if !ok || !reusable || recommendationSlotOccupied(offers[proposal.ItemID], proposal.RecommendationType) {
+				continue
+			}
+			var added *domain.QuoteItemAlternative
+			if matcherID != nil {
+				added, err = s.quotes.PromoteMatcherRecommendation(ctx, q, tenant.AccountID, version.ID,
+					proposal.ItemID, *matcherID, proposal.ProductID, proposal.RecommendationType,
+					decimal.NewNullDecimal(price.Price), price.MinPrice)
+			} else {
+				added, err = s.quotes.SetRecommendationAlternative(ctx, q, tenant.AccountID, version.ID,
+					proposal.ItemID, proposal.ProductID, proposal.RecommendationType,
+					decimal.NewNullDecimal(price.Price), price.MinPrice)
+			}
+			if err != nil {
+				return err
+			}
+			filled = append(filled, domain.FilledRecommendation{ItemID: proposal.ItemID, Alternative: *added})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return filled, nil
+}
+
 func (s *RecommendationRequestService) editableVersion(ctx context.Context, q repository.Querier, tenant domain.Tenant, quote *domain.Quote) (*domain.QuoteVersion, error) {
 	if err := requireUnarchived(*quote); err != nil {
 		return nil, err

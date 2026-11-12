@@ -253,6 +253,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes := verified.Group("/quotes")
 	quotes.POST("/:quoteId/accept-materials", h.Quote.AcceptMaterials)
 	quotes.POST("/:quoteId/recommendations/search", h.RecommendationRequest.Search)
+	quotes.POST("/:quoteId/recommendations/fill", h.RecommendationRequest.FillVacant)
 	quotes.POST("/:quoteId/items/:itemId/recommendations/:recommendationType/add", h.RecommendationRequest.AddIfVacant)
 	quotes.POST("/:quoteId/representations", h.Quote.GenerateRepresentation)
 	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
