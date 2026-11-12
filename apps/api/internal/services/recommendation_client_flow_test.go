@@ -17,7 +17,8 @@ func TestSelectedAlternatives_RejectsChoicesOutsideTheSentItem(t *testing.T) {
 	option := domain.QuoteItemAlternative{
 		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
-		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+		RecommendationType: alternativeType(domain.ProductAlternativeEconomy),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.NewFromInt(50)),
 	}
 	items := []domain.QuoteItem{{ID: itemID}, {ID: otherItemID}}
 	cases := []struct {
@@ -48,7 +49,8 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 	valid := domain.QuoteItemAlternative{
 		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
-		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+		RecommendationType: alternativeType(domain.ProductAlternativeEconomy),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.NewFromInt(50)),
 	}
 	cases := []struct {
 		name   string
@@ -59,6 +61,10 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 		{"missing product", func(option *domain.QuoteItemAlternative) { option.ProductID = nil }, domain.ErrNotFound},
 		{"missing price", func(option *domain.QuoteItemAlternative) { option.PriceSnapshot = decimal.NullDecimal{} }, domain.ErrNotFound},
 		{"combo", func(option *domain.QuoteItemAlternative) { option.Type = domain.QuoteItemAlternativeTypeCombo }, domain.ErrNotFound},
+		{"untyped candidate", func(option *domain.QuoteItemAlternative) { option.RecommendationType = nil }, domain.ErrNotFound},
+		{"equivalent", func(option *domain.QuoteItemAlternative) {
+			option.RecommendationType = alternativeType(domain.ProductAlternativeEquivalent)
+		}, domain.ErrNotFound},
 		{"negative price", func(option *domain.QuoteItemAlternative) {
 			option.PriceSnapshot = decimal.NewNullDecimal(decimal.NewFromInt(-1))
 		}, domain.ErrInvalidInput},

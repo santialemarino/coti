@@ -90,7 +90,9 @@ pair: repeating it returns **409**, and changing the type means deleting and rec
 of each. `PUT /v1/products/{productId}/recommendations/{type}` replaces the existing slot in
 one transaction, so configuring a new premium or economical product cannot leave competing
 recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
-recommendation slot.
+recommendation slot. It is a tool for the seller, shown when choosing a line's product, and never an
+option for the customer: only an `ECONOMY` or `PREMIUM` option can be approved, and only those reach
+the sent offer or can be chosen in it.
 
 Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
 non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote

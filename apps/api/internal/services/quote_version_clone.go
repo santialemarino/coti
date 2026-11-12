@@ -207,6 +207,7 @@ func selectedAlternatives(
 		}
 		if candidate == nil || !candidate.ApprovedBySeller ||
 			candidate.Type != domain.QuoteItemAlternativeTypeProduct || candidate.ProductID == nil ||
+			candidate.RecommendationType == nil || !isQuoteRecommendationType(*candidate.RecommendationType) ||
 			!candidate.PriceSnapshot.Valid {
 			return nil, domain.ErrNotFound
 		}
