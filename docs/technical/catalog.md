@@ -125,10 +125,14 @@ If a selected replacement has no active branch price, the API returns
 `RECOMMENDATION_PRICE_UNAVAILABLE`. A toast explains the missing price and the selector stays open
 so the seller can choose another product or have its branch price configured.
 
-The API also exposes catalog recommendation search on a mutable `QUOTED` version. Search is
-read-only; a separate API action adds a still-valid proposal to an empty line slot without approving
-it or replacing a seller's existing choice. The backoffice does not expose this search. Generation-time
-catalog proposals remain in place, and the seller separately chooses which options to offer.
+On a mutable `QUOTED` version the seller can also fill the empty slots on demand, with
+**Completar desde el catálogo** (`POST /v1/quotes/{quoteId}/recommendations/fill`). In one transaction,
+with the quote claimed for the edit, it adds every still-eligible catalog `ECONOMY` or `PREMIUM`
+alternative to a line whose slot of that type is empty: unapproved, priced at the quote branch, and
+never replacing a seller's existing choice, so running it again after editing lines is safe. A matcher
+candidate for the same product is promoted in place rather than duplicated. The API keeps the
+read-only search (`POST /v1/quotes/{quoteId}/recommendations/search`) and the single-slot add beside
+it; the backoffice uses only the fill.
 
 Catalog slots do not encode branch prices. In a quote, an economy alternative's unit price must be
 strictly lower than the quoted line's unit price, and a premium alternative's must be strictly higher;
