@@ -106,6 +106,7 @@ func run() error {
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
 	promotionRepo := repository.NewPromotionRepository()
+	comboRepo := repository.NewComboRepository()
 	authTokenRepo := repository.NewAuthTokenRepository()
 	notificationRepo := repository.NewNotificationRepository()
 	limiter := ratelimit.NewMemory(nil)
@@ -202,6 +203,7 @@ func run() error {
 		WithPromotions(promotionRepo).
 		WithPrices(productPriceRepo).
 		WithProductAlternatives(productAlternativeRepo).
+		WithCombos(comboRepo).
 		WithClientActions(clientActionRepo).
 		WithInboundMessages(inboundChannelMessageRepo).
 		WithPublicContacts(repository.NewPublicRFQRepository(), rfqAttachmentService).
@@ -357,6 +359,8 @@ func run() error {
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
 			Invoice:   handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Promotion: handler.NewPromotionHandler(services.NewPromotionService(db, promotionRepo)),
+			Combo: handler.NewComboHandler(services.NewComboService(db, comboRepo), rfqService,
+				highConfidence),
 			Report: handler.NewSellerReportHandler(services.NewSellerReportService(db,
 				repository.NewSellerReportRepository(), quotePDF.NewSellerReportRenderer(),
 				services.SellerReportSettings{
