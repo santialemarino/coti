@@ -359,3 +359,115 @@ func TestCatalogImportRepository_ApplyImport_SerializesARacingImport(t *testing.
 		t.Errorf("price history = %v, want %v", history, want)
 	}
 }
+
+func TestCatalogImportRepository_RecommendationSlots_SetClearAndExport(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Catalog import slots")
+	branchID := branchOf(t, db, accountID)
+	userID := seedUser(t, db, accountID, "ADMIN")
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: userID}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product_alternative WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product_price WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM branch_product WHERE account_id = $1`, accountID)
+		mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE account_id = $1`, accountID)
+	})
+	var familyID, subgroupID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT f.id, s.id FROM product_family f JOIN product_subgroup s ON s.family_id = f.id
+		 WHERE f.name = 'MATERIALES DE CONSTRUCCION' AND s.name = 'ARIDOS'`,
+	).Scan(&familyID, &subgroupID); err != nil {
+		t.Fatal(err)
+	}
+	row := func(code, price string) domain.CatalogImportRow {
+		return domain.CatalogImportRow{
+			Code: code, Name: code, Unit: "m3", FamilyID: familyID, Family: "MATERIALES DE CONSTRUCCION",
+			SubgroupID: &subgroupID, Price: price, IsActive: true,
+		}
+	}
+	repo := NewCatalogImportRepository()
+	effectiveAt := time.Date(2026, 11, 12, 12, 0, 0, 0, time.UTC)
+	apply := func(changes []domain.CatalogSlotChange) error {
+		return db.InTenantTx(ctx, tenant, func(q Querier) error {
+			return repo.ApplyRecommendationSlots(ctx, q, accountID, changes)
+		})
+	}
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		return repo.ApplyImport(ctx, q, tenant, effectiveAt,
+			[]domain.CatalogImportRow{row("BASE", "100"), row("ECO", "80"), row("ECO2", "70"), row("PRE", "130")})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// An EQUIVALENT link between the same pair gives way to the slot, the way the single endpoint does.
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO product_alternative
+		(account_id, base_product_id, alternative_product_id, type)
+		SELECT $1, b.id, a.id, 'EQUIVALENT' FROM product b, product a
+		WHERE b.account_id = $1 AND a.account_id = $1 AND b.code = 'BASE' AND a.code = 'ECO'`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	if err := apply([]domain.CatalogSlotChange{
+		{BaseCode: "BASE", Type: domain.ProductAlternativeEconomy, AlternativeCode: "ECO"},
+		{BaseCode: "BASE", Type: domain.ProductAlternativePremium, AlternativeCode: "PRE"},
+	}); err != nil {
+		t.Fatalf("set slots: %v", err)
+	}
+	slots := func() map[string]string {
+		t.Helper()
+		got := map[string]string{}
+		rows, err := db.CrossAccount().Query(ctx, `SELECT pa.type::text, a.code
+			FROM product_alternative pa JOIN product b ON b.id = pa.base_product_id
+			JOIN product a ON a.id = pa.alternative_product_id
+			WHERE pa.account_id = $1 AND b.code = 'BASE'`, accountID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var kind, code string
+			if err := rows.Scan(&kind, &code); err != nil {
+				t.Fatal(err)
+			}
+			got[kind] = code
+		}
+		return got
+	}
+	if got := slots(); len(got) != 2 || got["ECONOMY"] != "ECO" || got["PREMIUM"] != "PRE" {
+		t.Fatalf("slots = %v, want ECONOMY=ECO and PREMIUM=PRE only", got)
+	}
+
+	// Replacing one slot and clearing the other leaves no stale link behind.
+	if err := apply([]domain.CatalogSlotChange{
+		{BaseCode: "BASE", Type: domain.ProductAlternativeEconomy, AlternativeCode: "ECO2"},
+		{BaseCode: "BASE", Type: domain.ProductAlternativePremium, AlternativeCode: ""},
+	}); err != nil {
+		t.Fatalf("replace and clear: %v", err)
+	}
+	if got := slots(); len(got) != 1 || got["ECONOMY"] != "ECO2" {
+		t.Fatalf("slots = %v, want ECONOMY=ECO2 only", got)
+	}
+
+	var export *domain.CatalogExport
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		export, err = repo.ListForExport(ctx, q, accountID, branchID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, exported := range export.Rows {
+		if exported.Code != "BASE" {
+			continue
+		}
+		if exported.EconomyAlternative == nil || *exported.EconomyAlternative != "ECO2" || exported.PremiumAlternative != nil {
+			t.Fatalf("exported slots = %v, %v; want ECO2 and none", exported.EconomyAlternative, exported.PremiumAlternative)
+		}
+	}
+
+	// A code the account does not own refuses the whole write.
+	if err := apply([]domain.CatalogSlotChange{
+		{BaseCode: "BASE", Type: domain.ProductAlternativePremium, AlternativeCode: "NOPE"},
+	}); err == nil {
+		t.Fatal("unknown alternative code was accepted")
+	}
+}

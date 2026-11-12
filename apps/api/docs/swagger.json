@@ -10610,6 +10610,10 @@
                 "description": {
                     "type": "string"
                 },
+                "economy_alternative": {
+                    "description": "Null keeps the recommendation slot, an empty string clears it, a product code sets it.",
+                    "type": "string"
+                },
                 "family": {
                     "type": "string"
                 },
@@ -10620,6 +10624,9 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "premium_alternative": {
                     "type": "string"
                 },
                 "price": {
@@ -10668,6 +10675,10 @@
                 "description": {
                     "type": "string"
                 },
+                "economy_alternative": {
+                    "description": "Null keeps the recommendation slot, an empty string clears it, a product code sets it.",
+                    "type": "string"
+                },
                 "errors": {
                     "type": "array",
                     "items": {
@@ -10684,6 +10695,9 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "premium_alternative": {
                     "type": "string"
                 },
                 "price": {

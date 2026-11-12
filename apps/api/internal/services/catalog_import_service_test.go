@@ -25,7 +25,28 @@ func (catalogImportTestDB) InTenantTx(
 
 type catalogImportTestRepository struct {
 	existing map[string]struct{}
+	stored   map[string]domain.CatalogProductRef
 	applied  []domain.CatalogImportRow
+	slots    []domain.CatalogSlotChange
+}
+
+func (r *catalogImportTestRepository) ListProductsByCodes(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, codes []string,
+) (map[string]domain.CatalogProductRef, error) {
+	refs := map[string]domain.CatalogProductRef{}
+	for _, code := range codes {
+		if ref, ok := r.stored[code]; ok {
+			refs[code] = ref
+		}
+	}
+	return refs, nil
+}
+
+func (r *catalogImportTestRepository) ApplyRecommendationSlots(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, changes []domain.CatalogSlotChange,
+) error {
+	r.slots = changes
+	return nil
 }
 
 func (r *catalogImportTestRepository) ListForExport(
@@ -257,4 +278,152 @@ func readTestZIPEntry(entry *zip.File) ([]byte, error) {
 	}
 	defer reader.Close()
 	return io.ReadAll(reader)
+}
+
+var (
+	testFamilyID   = uuid.MustParse("f0000000-0000-4000-8000-000000000001")
+	testSubgroupID = uuid.MustParse("e0000000-0000-4000-8000-000000000001")
+)
+
+const catalogAlternativeHeader = "codigo;nombre;unidad;familia;subgrupo;precio;activo;alternativa_economica;alternativa_premium\n"
+
+func previewAlternatives(t *testing.T, repo *catalogImportTestRepository, rows string) *domain.CatalogImportPreview {
+	t.Helper()
+	service := NewCatalogImportService(catalogImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	preview, err := service.Preview(context.Background(), tenant, strings.NewReader(catalogAlternativeHeader+rows))
+	if err != nil {
+		t.Fatalf("Preview() = %v", err)
+	}
+	return preview
+}
+
+func TestCatalogImportService_Preview_ReadsAlternativeSlots(t *testing.T) {
+	t.Parallel()
+	repo := &catalogImportTestRepository{stored: map[string]domain.CatalogProductRef{
+		"STORED": {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "M3", IsActive: true},
+	}}
+	preview := previewAlternatives(t, repo,
+		"BASE;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5000;SI;FINA;STORED\n"+
+			"FINA;Arena fina;m3;MATERIALES DE CONSTRUCCION;ARIDOS;4000;SI;;NINGUNA\n")
+
+	base, fine := preview.Rows[0], preview.Rows[1]
+	if len(base.Errors) != 0 || len(fine.Errors) != 0 {
+		t.Fatalf("errors = %v, %v; want a product of the same file and a stored one accepted", base.Errors, fine.Errors)
+	}
+	if base.EconomyAlternative == nil || *base.EconomyAlternative != "FINA" ||
+		base.PremiumAlternative == nil || *base.PremiumAlternative != "STORED" {
+		t.Fatalf("base slots = %v, %v", base.EconomyAlternative, base.PremiumAlternative)
+	}
+	// Blank keeps the slot; the clear word empties it.
+	if fine.EconomyAlternative != nil || fine.PremiumAlternative == nil || *fine.PremiumAlternative != "" {
+		t.Fatalf("fine slots = %v, %v; want kept and cleared", fine.EconomyAlternative, fine.PremiumAlternative)
+	}
+}
+
+func TestCatalogImportService_Preview_RefusesAlternativesThatCannotFillTheSlot(t *testing.T) {
+	t.Parallel()
+	otherSubgroup := uuid.New()
+	repo := &catalogImportTestRepository{stored: map[string]domain.CatalogProductRef{
+		"OFF":   {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: false},
+		"OTHER": {FamilyID: &testFamilyID, SubgroupID: &otherSubgroup, Unit: "m3", IsActive: true},
+		"BAG":   {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "bolsa", IsActive: true},
+		"OK":    {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: true},
+	}}
+	cases := []struct {
+		economy, premium, want string
+	}{
+		{"A", "", "economy_alternative_self"},
+		{"MISSING", "", "economy_alternative_not_found"},
+		{"", "OFF", "premium_alternative_inactive"},
+		{"OTHER", "", "economy_alternative_incompatible"},
+		{"", "BAG", "premium_alternative_incompatible"},
+		{"OK", "OK", "alternative_repeated"},
+	}
+	for _, tc := range cases {
+		preview := previewAlternatives(t, repo,
+			"A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5000;SI;"+tc.economy+";"+tc.premium+"\n")
+		if !containsError(preview.Rows[0].Errors, tc.want) {
+			t.Errorf("economy %q premium %q: errors = %v, want %s", tc.economy, tc.premium, preview.Rows[0].Errors, tc.want)
+		}
+	}
+	// A base without a subgroup can never be matched.
+	preview := previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;;5000;SI;OK;\n")
+	if !containsError(preview.Rows[0].Errors, "economy_alternative_incompatible") {
+		t.Errorf("errors = %v, want incompatible without a subgroup", preview.Rows[0].Errors)
+	}
+}
+
+func TestCatalogImportService_Preview_RefusesAnAlternativeTheImportSkips(t *testing.T) {
+	t.Parallel()
+	repo := &catalogImportTestRepository{}
+	// NEW is refused for its own bad alternative, so it will not exist for A to point at.
+	preview := previewAlternatives(t, repo,
+		"A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5000;SI;NEW;\n"+
+			"NEW;Arena fina;m3;MATERIALES DE CONSTRUCCION;ARIDOS;4000;SI;MISSING;\n")
+	if !containsError(preview.Rows[1].Errors, "economy_alternative_not_found") ||
+		!containsError(preview.Rows[0].Errors, "economy_alternative_not_found") {
+		t.Fatalf("errors = %v, %v; want both refused", preview.Rows[0].Errors, preview.Rows[1].Errors)
+	}
+	if preview.ValidRows != 0 || preview.InvalidRows != 2 {
+		t.Fatalf("valid, invalid = %d, %d; want 0, 2", preview.ValidRows, preview.InvalidRows)
+	}
+}
+
+func TestCatalogImportService_Confirm_WritesOnlyTheSlotsItChanges(t *testing.T) {
+	t.Parallel()
+	repo := &catalogImportTestRepository{stored: map[string]domain.CatalogProductRef{
+		"OK": {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: true},
+	}}
+	service := NewCatalogImportService(catalogImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	subgroup := "ARIDOS"
+	cleared := ""
+	_, err := service.Confirm(context.Background(), tenant, []domain.CatalogImportInput{{
+		Code: "A", Name: "Arena", Unit: "m3", Family: "MATERIALES DE CONSTRUCCION", Subgroup: &subgroup,
+		Price: "5000", IsActive: true, EconomyAlternative: ptr(" OK "), PremiumAlternative: &cleared,
+	}, {
+		Code: "B", Name: "Arena fina", Unit: "m3", Family: "MATERIALES DE CONSTRUCCION", Subgroup: &subgroup,
+		Price: "4000", IsActive: true,
+	}})
+	if err != nil {
+		t.Fatalf("Confirm() = %v", err)
+	}
+	want := []domain.CatalogSlotChange{
+		{BaseCode: "A", Type: domain.ProductAlternativeEconomy, AlternativeCode: "OK"},
+		{BaseCode: "A", Type: domain.ProductAlternativePremium, AlternativeCode: ""},
+	}
+	if len(repo.slots) != len(want) || repo.slots[0] != want[0] || repo.slots[1] != want[1] {
+		t.Fatalf("slot changes = %+v, want %+v", repo.slots, want)
+	}
+}
+
+func TestBuildCatalogImportXLSX_WritesTheCurrentSlots(t *testing.T) {
+	t.Parallel()
+	content, err := buildCatalogImportXLSX(domain.CatalogExport{Rows: []domain.CatalogExportRow{{
+		Code: "A", Name: "Arena", Unit: "m3", Family: "MATERIALES DE CONSTRUCCION",
+		IsActive: true, EconomyAlternative: ptr("FINA-ECO"), PremiumAlternative: ptr("GRUESA-PRE"),
+	}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sheet string
+	for _, entry := range archive.File {
+		if entry.Name == "xl/worksheets/sheet1.xml" {
+			raw, readErr := readTestZIPEntry(entry)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			sheet = string(raw)
+		}
+	}
+	for _, text := range []string{"alternativa_economica", "alternativa_premium", "FINA-ECO", "GRUESA-PRE"} {
+		if !strings.Contains(sheet, text) {
+			t.Errorf("workbook has no %q", text)
+		}
+	}
 }

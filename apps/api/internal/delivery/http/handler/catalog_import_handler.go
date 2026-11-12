@@ -125,7 +125,8 @@ func (h *CatalogImportHandler) Confirm(c *gin.Context) {
 		inputs[i] = domain.CatalogImportInput{
 			Code: row.Code, Name: row.Name, Description: row.Description, Unit: row.Unit,
 			Family: row.Family, Subgroup: row.Subgroup, Price: row.Price, MinPrice: row.MinPrice,
-			IsActive: row.IsActive,
+			IsActive: row.IsActive, EconomyAlternative: row.EconomyAlternative,
+			PremiumAlternative: row.PremiumAlternative,
 		}
 	}
 	result, err := h.imports.Confirm(c.Request.Context(), tenant, inputs)
@@ -176,7 +177,8 @@ func toCatalogImportPreviewResponse(preview *domain.CatalogImportPreview) dto.Ca
 			RowNumber: row.RowNumber, Code: row.Code, Name: row.Name,
 			Description: row.Description, Unit: row.Unit, Family: row.Family,
 			Subgroup: row.Subgroup, Price: row.Price, MinPrice: row.MinPrice,
-			IsActive: row.IsActive, Action: row.Action, Errors: row.Errors,
+			IsActive: row.IsActive, EconomyAlternative: row.EconomyAlternative,
+			PremiumAlternative: row.PremiumAlternative, Action: row.Action, Errors: row.Errors,
 		}
 	}
 	return dto.CatalogImportPreviewResponse{
