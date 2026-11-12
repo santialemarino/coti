@@ -25,6 +25,7 @@ import {
   downloadCatalogTemplate,
   previewCatalogImport,
   type CatalogImportPreview,
+  type CatalogImportRow,
 } from '@/app/(protected)/_actions/catalog-import';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
@@ -165,6 +166,10 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
     ...preview.rows.filter((row) => row.errors.length > 0),
     ...preview.rows.filter((row) => row.errors.length === 0),
   ];
+  // A file without the alternative columns changes no slot, so the column would only say so.
+  const showAlternatives = preview.rows.some(
+    (row) => row.economyAlternative !== null || row.premiumAlternative !== null,
+  );
 
   function onConfirm() {
     setError(null);
@@ -200,6 +205,9 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
               <TableHead kind="text">{t('table.product')}</TableHead>
               <TableHead kind="text">{t('table.family')}</TableHead>
               <TableHead kind="money">{t('table.price')}</TableHead>
+              {showAlternatives ? (
+                <TableHead kind="text">{t('table.alternatives')}</TableHead>
+              ) : null}
               <TableHead kind="status">{t('table.status')}</TableHead>
               <TableHead kind="text">{t('table.result')}</TableHead>
             </TableRow>
@@ -219,6 +227,11 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
                 <TableCell>{row.name || '—'}</TableCell>
                 <TableCell>{row.family || '—'}</TableCell>
                 <TableCell kind="money">{row.price ? fmt.currency(row.price) : '—'}</TableCell>
+                {showAlternatives ? (
+                  <TableCell className="text-paragraph-xs">
+                    <AlternativeChanges row={row} />
+                  </TableCell>
+                ) : null}
                 <TableCell kind="status">
                   <Badge tone={row.isActive ? 'success' : 'neutral'}>
                     {t(row.isActive ? 'status.active' : 'status.inactive')}
@@ -359,4 +372,23 @@ function downloadBase64(filename: string, contentBase64: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+// What an import row does to the product's recommendation slots: set, cleared, or nothing.
+function AlternativeChanges({ row }: { row: CatalogImportRow }) {
+  const t = useTranslations('catalogImport.alternatives');
+  const changes = (
+    [
+      ['economy', row.economyAlternative],
+      ['premium', row.premiumAlternative],
+    ] as const
+  ).filter(([, code]) => code !== null);
+  if (changes.length === 0) return <span className="text-foreground-subtle">—</span>;
+  return (
+    <ul className="flex flex-col gap-y-0.5">
+      {changes.map(([slot, code]) => (
+        <li key={slot}>{code ? t(slot, { code }) : t(`${slot}Cleared`)}</li>
+      ))}
+    </ul>
+  );
 }

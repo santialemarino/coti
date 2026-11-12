@@ -2836,8 +2836,15 @@
       "product": "Producto",
       "family": "Rubro",
       "price": "Precio",
+      "alternatives": "Alternativas",
       "status": "Estado",
       "result": "Validación"
+    },
+    "alternatives": {
+      "economy": "Económica: {code}",
+      "premium": "Premium: {code}",
+      "economyCleared": "Económica: se quita",
+      "premiumCleared": "Premium: se quita"
     },
     "status": {
       "active": "Activo",
@@ -2875,7 +2882,16 @@
       "invalid_subgroup": "El subgrupo no corresponde al rubro.",
       "invalid_price": "El precio debe ser mayor a cero y tener hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser mayor a cero y tener hasta 2 decimales.",
-      "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
+      "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
+      "alternative_repeated": "La alternativa económica y la premium no pueden ser el mismo producto.",
+      "economy_alternative_self": "La alternativa económica no puede ser el mismo producto.",
+      "economy_alternative_not_found": "No hay ningún producto con el código de la alternativa económica, ni en el catálogo ni en las filas válidas del archivo.",
+      "economy_alternative_inactive": "La alternativa económica está desactivada.",
+      "economy_alternative_incompatible": "La alternativa económica tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo.",
+      "premium_alternative_self": "La alternativa premium no puede ser el mismo producto.",
+      "premium_alternative_not_found": "No hay ningún producto con el código de la alternativa premium, ni en el catálogo ni en las filas válidas del archivo.",
+      "premium_alternative_inactive": "La alternativa premium está desactivada.",
+      "premium_alternative_incompatible": "La alternativa premium tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo."
     }
   },
   "onboarding": {
