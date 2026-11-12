@@ -10,7 +10,10 @@ import { ROUTES } from '@/config/routes';
 const OWN_PAGES: readonly string[] = [ROUTES.changePassword, ROUTES.emailSettings];
 
 // A page opened from inside a section leads back to that section, at every width.
-type ParentSection = { href: string; labelKey: 'backToInvoicing' | 'backToPromotions' };
+type ParentSection = {
+  href: string;
+  labelKey: 'backToInvoicing' | 'backToPromotions' | 'backToCombos';
+};
 const PARENT_SECTIONS: Readonly<Record<string, ParentSection>> = {
   [ROUTES.arcaSettings]: { href: ROUTES.invoicingSettings, labelKey: 'backToInvoicing' },
 };
@@ -18,6 +21,7 @@ const PARENT_SECTIONS: Readonly<Record<string, ParentSection>> = {
 // A section whose pages sit under its own path, such as a rule opened from the promotions list.
 const NESTED_SECTIONS: readonly ParentSection[] = [
   { href: ROUTES.promotionSettings, labelKey: 'backToPromotions' },
+  { href: ROUTES.comboSettings, labelKey: 'backToCombos' },
 ];
 
 function parentOf(pathname: string): ParentSection | undefined {
