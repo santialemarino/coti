@@ -284,7 +284,7 @@ function DateRangePicker({
                 value={shown.from}
                 empty={openStart ?? labels.pick}
                 active={editing === 'from'}
-                clearLabel={openStart !== undefined ? labels.clearFrom : undefined}
+                clearLabel={openStart !== undefined && draft.from ? labels.clearFrom : undefined}
                 onChoose={chooseEnd}
                 onClear={clearEnd}
               />
@@ -294,45 +294,52 @@ function DateRangePicker({
                 value={shown.to}
                 empty={openEnd ?? labels.pick}
                 active={editing === 'to'}
-                clearLabel={openEnd !== undefined ? labels.clearTo : undefined}
+                clearLabel={openEnd !== undefined && draft.to ? labels.clearTo : undefined}
                 onChoose={chooseEnd}
                 onClear={clearEnd}
               />
             </div>
-            <Calendar
-              mode="range"
-              autoFocus
-              numberOfMonths={twoMonths ? 2 : 1}
-              month={month}
-              onMonthChange={setMonth}
-              selected={selected}
-              onDayClick={pickDay}
-              onDayMouseEnter={(date, modifiers) => {
-                if (!modifiers.disabled) setHovered(toDay(date));
+            {/* A day focused from the keyboard previews like a hovered one, until focus leaves the grid. */}
+            <div
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setHovered(undefined);
               }}
-              onDayMouseLeave={() => setHovered(undefined)}
-              onDayFocus={(date, modifiers) => {
-                if (!modifiers.disabled) setHovered(toDay(date));
-              }}
-              disabled={bounds}
-              startMonth={minDate}
-              endMonth={maxDate}
-              modifiers={{
-                range_from: from ?? false,
-                range_to: to ?? false,
-                in_range: preview ? false : between,
-                preview: preview ? between : false,
-              }}
-              modifiersClassNames={{
-                // Half a band behind each end, so the range reads as one stretch between them.
-                range_from: spans
-                  ? cn('bg-linear-to-r from-transparent from-50% to-50%', bandTo)
-                  : '',
-                range_to: spans
-                  ? cn('bg-linear-to-l from-transparent from-50% to-50%', bandTo)
-                  : '',
-              }}
-            />
+            >
+              <Calendar
+                mode="range"
+                autoFocus
+                numberOfMonths={twoMonths ? 2 : 1}
+                month={month}
+                onMonthChange={setMonth}
+                selected={selected}
+                onDayClick={pickDay}
+                onDayMouseEnter={(date, modifiers) => {
+                  if (!modifiers.disabled) setHovered(toDay(date));
+                }}
+                onDayMouseLeave={() => setHovered(undefined)}
+                onDayFocus={(date, modifiers) => {
+                  if (!modifiers.disabled) setHovered(toDay(date));
+                }}
+                disabled={bounds}
+                startMonth={minDate}
+                endMonth={maxDate}
+                modifiers={{
+                  range_from: from ?? false,
+                  range_to: to ?? false,
+                  in_range: preview ? false : between,
+                  preview: preview ? between : false,
+                }}
+                modifiersClassNames={{
+                  // Half a band behind each end, so the range reads as one stretch between them.
+                  range_from: spans
+                    ? cn('bg-linear-to-r from-transparent from-50% to-50%', bandTo)
+                    : '',
+                  range_to: spans
+                    ? cn('bg-linear-to-l from-transparent from-50% to-50%', bandTo)
+                    : '',
+                }}
+              />
+            </div>
             <div className="flex justify-end">
               <Button size="sm" disabled={!complete} onClick={() => commit(draft)}>
                 {labels.done}
@@ -357,6 +364,7 @@ interface RangeEndTabProps {
   value: string;
   empty: string;
   active: boolean;
+  // Names the clear button, which shows only while the end holds a day it may drop.
   clearLabel?: string;
   onChoose: (end: RangeEnd) => void;
   onClear: (end: RangeEnd) => void;
@@ -373,7 +381,7 @@ function RangeEndTab({
   onChoose,
   onClear,
 }: RangeEndTabProps) {
-  const clearable = clearLabel !== undefined && value !== '';
+  const clearable = clearLabel !== undefined;
   return (
     <div className="relative">
       <button

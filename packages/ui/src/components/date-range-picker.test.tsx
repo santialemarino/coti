@@ -204,6 +204,8 @@ describe('DateRangePicker', () => {
     // The ends follow the preview, so the earlier day reads as the start whichever came first.
     expect(endTab('Desde').textContent).toContain('11/10/2026');
     expect(endTab('Hasta').textContent).toContain('15/10/2026');
+    // A previewed band is the lighter tint of a committed one.
+    expect(day('11 de octubre de 2026').closest('td')?.className).toContain('to-accent/60');
     expect(panel().querySelectorAll('button[data-in-range]')).toHaveLength(0);
   });
 
@@ -221,6 +223,22 @@ describe('DateRangePicker', () => {
     fireEvent.click(day('20 de octubre de 2026'));
     fireEvent.click(day('3 de octubre de 2026'));
     expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-10-03', to: '2026-10-20' });
+  });
+
+  // «Listo» commits the draft, so a preview must not outlive the focus that drew it.
+  it('drops a keyboard preview once focus leaves the grid', () => {
+    const { onValueChange } = renderPicker({ from: '2026-10-05', to: '2026-10-12' });
+    fireEvent.click(trigger());
+
+    fireEvent.click(endTab('Hasta'));
+    fireEvent.focus(day('20 de octubre de 2026'));
+    expect(endTab('Hasta').textContent).toContain('20/10/2026');
+
+    const done = within(panel()).getByRole('button', { name: 'Listo' });
+    fireEvent.blur(day('20 de octubre de 2026'), { relatedTarget: done });
+    expect(endTab('Hasta').textContent).toContain('12/10/2026');
+    fireEvent.click(done);
+    expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-10-05', to: '2026-10-12' });
   });
 
   // A closing panel stays on screen for its exit; it must show the range just committed.
@@ -290,6 +308,7 @@ describe('DateRangePicker', () => {
 
     fireEvent.click(within(panel()).getByRole('button', { name: 'Quitar fin' }));
     expect(endTab('Hasta').textContent).toContain('Sin vencimiento');
+    expect(within(panel()).queryByRole('button', { name: 'Quitar fin' })).toBeNull();
     fireEvent.click(within(panel()).getByRole('button', { name: 'Listo' }));
 
     expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-10-01', to: '' });
