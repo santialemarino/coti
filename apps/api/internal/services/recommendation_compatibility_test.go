@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -186,5 +187,40 @@ func TestRepresentation_ExcludesIncompatibleApprovedRecommendations(t *testing.T
 	}
 	if len(quotes.unapproved) != 1 || quotes.unapproved[0] != invalidAltID {
 		t.Fatalf("unapproved = %v, want incompatible option", quotes.unapproved)
+	}
+}
+
+func alternativeType(kind domain.ProductAlternativeType) *domain.ProductAlternativeType {
+	return &kind
+}
+
+func TestQuoteService_ApprovesOnlyEconomyAndPremiumOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind *domain.ProductAlternativeType
+	}{
+		{"matcher candidate", nil},
+		{"equivalent", alternativeType(domain.ProductAlternativeEquivalent)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, candidate := uuid.New(), uuid.New()
+			item := pricedLine(base, "10")
+			f := newQuoteFixture([]domain.QuoteItem{item}, nil)
+			f.quotes.quote.CurrentStatus = domain.QuoteStatusQuoted
+			name, altID := "Alternative", uuid.New()
+			f.quotes.alternatives = map[uuid.UUID][]domain.QuoteItemAlternative{item.ID: {{
+				ID: altID, ProductID: &candidate, CanonicalName: &name, RecommendationType: tc.kind,
+				PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(90)),
+			}}}
+			_, err := f.service.ApproveAlternative(context.Background(), f.tenant, f.quoteID, item.ID, altID, true)
+			// The type refusal itself, not a price or compatibility error further down.
+			if !errors.Is(err, domain.ErrInvalidInput) || !strings.Contains(err.Error(), "economy or premium") {
+				t.Fatalf("ApproveAlternative() = %v, want the economy-or-premium refusal", err)
+			}
+			// Withdrawing an approval is always allowed, so an old one can still be taken back.
+			if _, err := f.service.ApproveAlternative(context.Background(), f.tenant, f.quoteID, item.ID, altID, false); err != nil {
+				t.Fatalf("withdrawing = %v, want no error", err)
+			}
+		})
 	}
 }

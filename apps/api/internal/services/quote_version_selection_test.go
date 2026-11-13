@@ -18,7 +18,8 @@ func TestSelectedAlternatives_AcceptsOnlyOneApprovedProductPerSentLine(t *testin
 	options := map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {{
 		ID: alternativeID, QuoteItemID: itemID, ProductID: &productID,
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
-		PriceSnapshot: decimal.NewNullDecimal(decimal.RequireFromString("900.00")),
+		RecommendationType: alternativeType(domain.ProductAlternativePremium),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.RequireFromString("900.00")),
 	}}}
 
 	selected, err := selectedAlternatives(items, options, []domain.ClientAlternativeSelection{{

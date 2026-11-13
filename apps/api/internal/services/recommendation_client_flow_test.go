@@ -17,7 +17,8 @@ func TestSelectedAlternatives_RejectsChoicesOutsideTheSentItem(t *testing.T) {
 	option := domain.QuoteItemAlternative{
 		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
-		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+		RecommendationType: alternativeType(domain.ProductAlternativeEconomy),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.NewFromInt(50)),
 	}
 	items := []domain.QuoteItem{{ID: itemID}, {ID: otherItemID}}
 	cases := []struct {
@@ -48,7 +49,8 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 	valid := domain.QuoteItemAlternative{
 		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
-		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+		RecommendationType: alternativeType(domain.ProductAlternativeEconomy),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.NewFromInt(50)),
 	}
 	cases := []struct {
 		name   string
@@ -122,5 +124,23 @@ func TestPreviewSelectionPricing_ReplacesOnlyChosenLineAndReevaluatesPromotions(
 	discounts := previewSelectionDiscounts(nil, snapshot, result)
 	if len(discounts) != 1 || discounts[0].Description != "Alternative promotion" || discounts[0].Amount != "20.00" {
 		t.Fatalf("discounts = %+v, want only the alternative promotion", discounts)
+	}
+}
+
+// An offer sent before options had to be economy or premium may hold an approved untyped one. The
+// customer can only choose what their offer showed, so accepting it keeps working.
+func TestSelectedAlternatives_AcceptsAnOptionAnEarlierOfferShowed(t *testing.T) {
+	t.Parallel()
+	itemID, productID := uuid.New(), uuid.New()
+	legacy := domain.QuoteItemAlternative{
+		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
+		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
+		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+	}
+	selected, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
+		map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {legacy}},
+		[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: legacy.ID}})
+	if err != nil || selected[itemID].ID != legacy.ID {
+		t.Fatalf("selectedAlternatives() = %+v, %v; want the legacy option accepted", selected, err)
 	}
 }
