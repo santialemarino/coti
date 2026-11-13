@@ -2,25 +2,72 @@ name: CI API
 
 run-name: 'CI API by @${{ github.actor }}'
 
+# No `on.paths` filter: the workflow reports on every PR, so `ci-api-required` can be a required
+# check. The `changes` job decides which jobs run from the PR's changed files; outside a PR (a push,
+# a manual run, the release) every job runs.
 on:
   workflow_call:
   push:
     branches:
       - dev
-    paths:
-      - 'apps/api/**'
-      - '.github/workflows/ci.api.yml'
   pull_request:
     branches:
       - main
       - dev
-    paths:
-      - 'apps/api/**'
-      - '.github/workflows/ci.api.yml'
   workflow_dispatch:
 
+# A newer push to the same PR supersedes the older run; pushes and the release never cancel.
+concurrency:
+  group: ci-api-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      api: ${{ steps.areas.outputs.api }}
+      scripts: ${{ steps.areas.outputs.scripts }}
+    steps:
+      # A renamed file counts under both names.
+      - name: List the changed files
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed-files.txt"
+          cat "$RUNNER_TEMP/changed-files.txt"
+      # First match wins. A root file no rule names runs everything.
+      - name: Flag the changed areas
+        id: areas
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            api=true scripts=true
+          else
+            api=false scripts=false
+            while IFS= read -r path; do
+              case "$path" in
+                apps/api/migrations/*) api=true scripts=true ;;
+                apps/api/*) api=true ;;
+                scripts/* | package.json | pnpm-lock.yaml) scripts=true ;;
+                .github/workflows/ci.api.yml) api=true scripts=true ;;
+                apps/* | packages/* | docs/* | docker/* | .do/* | .claude/* | .agents/* | .github/* \
+                  | *.md | turbo.json | pnpm-workspace.yaml | .dockerignore) ;;
+                *) api=true scripts=true ;;
+              esac
+            done < "$RUNNER_TEMP/changed-files.txt"
+          fi
+          echo "api=$api scripts=$scripts"
+          {
+            echo "api=$api"
+            echo "scripts=$scripts"
+          } >> "$GITHUB_OUTPUT"
+
   ci-api:
+    needs: changes
+    if: always() && !cancelled() && needs.changes.outputs.api != 'false'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,6 +117,8 @@ jobs:
   # migration chain applied. It is what guards tenant isolation, so it belongs in CI even
   # though it is slower than the unit suite.
   ci-api-integration:
+    needs: changes
+    if: always() && !cancelled() && needs.changes.outputs.api != 'false'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -150,3 +199,94 @@ jobs:
                                END {for (k in s) printf "%-38s %5.1f%%\n", k, s[k]/c[k]}' | sort
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  ci-scripts:
+    needs: changes
+    if: always() && !cancelled() && needs.changes.outputs.scripts != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format check
+        run: pnpm prettier --check 'scripts/**' package.json
+      # The database-backed tests skip themselves without a connection string, so this job
+      # covers the half that needs nothing — argument parsing, which is what a mistyped
+      # command line hits first.
+      - name: Tests
+        run: pnpm test:scripts
+
+  # Separate job: exercising the commands for real needs a PostgreSQL with the migration chain
+  # applied, the same setup the API integration suite uses.
+  ci-scripts-integration:
+    needs: changes
+    if: always() && !cancelled() && needs.changes.outputs.scripts != 'false'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: coti
+          POSTGRES_PASSWORD: coti
+          POSTGRES_DB: coti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: apps/api/go.sum
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply migrations
+        env:
+          DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
+        run: node scripts/goose.mjs up
+      - name: Tests
+        env:
+          TEST_DATABASE_ADMIN_URL: postgres://coti:coti@127.0.0.1:5432/coti?sslmode=disable
+        run: pnpm test:scripts
+
+  # The check to mark required. It always runs, and passes only when every job of a flagged area
+  # succeeded and every other job was skipped; a failure, a cancellation or a skipped flagged job fails it.
+  ci-api-required:
+    needs: [changes, ci-api, ci-api-integration, ci-scripts, ci-scripts-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # `always()` on the step too: the default `success()` is false on a cancelled run, and the job
+      # would pass on a skipped step.
+      - name: Require every flagged job
+        if: always()
+        env:
+          API: ${{ needs.changes.outputs.api }}
+          SCRIPTS: ${{ needs.changes.outputs.scripts }}
+          CI_API: ${{ needs.ci-api.result }}
+          CI_API_INTEGRATION: ${{ needs.ci-api-integration.result }}
+          CI_SCRIPTS: ${{ needs.ci-scripts.result }}
+          CI_SCRIPTS_INTEGRATION: ${{ needs.ci-scripts-integration.result }}
+        run: |
+          fail=0
+          check() {
+            if [ "$1" = false ]; then want=skipped; else want=success; fi
+            echo "$3: $2 (expected $want)"
+            [ "$2" = "$want" ] || fail=1
+          }
+          check "$API" "$CI_API" ci-api
+          check "$API" "$CI_API_INTEGRATION" ci-api-integration
+          check "$SCRIPTS" "$CI_SCRIPTS" ci-scripts
+          check "$SCRIPTS" "$CI_SCRIPTS_INTEGRATION" ci-scripts-integration
+          exit "$fail"

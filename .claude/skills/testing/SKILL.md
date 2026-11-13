@@ -18,13 +18,12 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   `<file>.test.ts` / `<file>.test.tsx` beside the code under test. All three packages
   share one config from `@repo/vitest-config`. See [Web testing](#web-testing).
 - **CI:** `.github/workflows/ci.api.yml` runs `gofmt` check, `go vet`,
-  `golangci-lint`, `go build`, and `go test ./...` on API PRs; the web workflows run
-  lint + `check-types` + test + build, and `ci.ui.yml` does the same for the design
-  system; `ci.scripts.yml` covers `scripts/` and the root manifest; and `ci.skills.yml` covers the
-  two skill trees, where its whole job is `diff -r` — the mirrors are byte-equal by contract and
-  nothing else could catch a teammate editing one side only. `ci.docker.yml` builds all three
+  `golangci-lint`, `go build`, and `go test ./...` on API PRs, plus the `scripts/` jobs;
+  `ci.web.yml` runs lint + `check-types` + test + build for backoffice, webapp and the design
+  system, and checks the two skill trees with `diff -r` — the mirrors are byte-equal by contract
+  and nothing else could catch a teammate editing one side only. `ci.deploy.yml` builds all three
   images, asserts the api one carries every `cmd/` binary and applies the migration chain from
-  inside it, and boots each web one; `ci.deploy-spec.yml` validates the App Platform spec's schema
+  inside it, and boots each web one; it also validates the App Platform spec's schema
   offline, refuses a `type: SECRET` entry that carries a value, and fails when a component's
   `ARCA_ENVIRONMENT` differs from the api service's.
   **Three workflows stand up PostgreSQL + pgvector and apply the migration chain**: the API's
@@ -32,18 +31,21 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   commands for real, and the docker one applies the chain from inside the image the deploy will
   use. They gate merges rather than being a local-only courtesy. Run them locally too before
   pushing anything that touches SQL or tenant scoping; it is faster than waiting for CI.
-- **Every workflow is path-filtered**, so a directory nothing watches gets no checks at all —
-  a PR touching only it goes green having run nothing. Adding a top-level directory means
-  adding or widening a workflow in the same change. Each workflow also lists **itself** in its
-  `paths`, so editing one is covered by the run it configures. **None of them is a required
-  check, deliberately:** under path filters a check that never runs for a given PR stays pending
-  forever and blocks the merge instead of passing it.
-- **Each one runs on a pull request into `main`/`dev` and on a push to either**, on the same
-  paths. The push half is what checks the merge commit: a pull-request run tests a preview of the
-  merge, which goes stale the moment the base branch moves under it, and without the push run
-  nothing at all would notice a broken `dev` — the branch everyone else starts from. It is
-  deliberately **not** wired to required status checks: with path filters a check that never runs
-  for a given PR stays pending forever and blocks the merge instead of passing it.
+- **Every workflow runs on every PR, and gates its jobs by area.** Its `changes` job lists the
+  PR's files and flags each area (`api`, `scripts`; `backoffice`, `webapp`, `ui`, `skills`;
+  `docker`, `deploy_spec`) whose paths changed; a job whose area is not flagged is skipped. A
+  workflow's own file flags all of its areas, and a root file no rule names flags everything, so
+  a new top-level path is checked by default. When adding a top-level directory, add it to the
+  `case` of each workflow that should — or should not — run for it.
+- **Each workflow has one `*-required` job** (`ci-api-required`, `ci-web-required`,
+  `ci-deploy-required`) that always runs and passes only when every flagged job succeeded and
+  every other job was skipped. Those are the checks to mark required, since a skipped job never
+  leaves them pending.
+- **A push to `dev`, a manual run and the release run every job.** The push half is what checks
+  the merge commit: a pull-request run tests a preview of the merge, which goes stale the moment
+  the base branch moves under it, and without the push run nothing would notice a broken `dev` —
+  the branch everyone else starts from. `main` is covered by `cd.production.yml`, which calls all
+  three workflows before deploying.
 
 ## Running tests
 
@@ -286,9 +288,8 @@ pnpm test:scripts    # from repo root; DB-backed tests skip without TEST_DATABAS
 TEST_DATABASE_ADMIN_URL=postgres://coti:coti@127.0.0.1:5433/coti?sslmode=disable pnpm test:scripts
 ```
 
-`.github/workflows/ci.scripts.yml` watches `scripts/**`, `package.json` and `pnpm-lock.yaml`.
-It exists because every other workflow is path-filtered to an app directory: without it a
-change touching only these paths reaches `dev` with no check having run at all.
+In `.github/workflows/ci.api.yml`, the `ci-scripts` jobs run when `scripts/**`,
+`apps/api/migrations/**`, `package.json` or `pnpm-lock.yaml` change.
 
 ## Web testing
 
@@ -368,7 +369,7 @@ publishes its own number into the **job summary**, the way `ci.api.yml` does, so
 dive. No threshold anywhere, deliberately: one set before the suites are real is met by writing
 tests that assert nothing.
 
-`ci.backoffice.yml` and `ci.webapp.yml` each run their own app's suite, and **`ci.ui.yml`**
+`ci.web.yml` runs each app's suite in its own job (`ci-backoffice`, `ci-webapp`), and **`ci-ui`**
 covers the design system — which until it existed was only ever _built_ in CI, never linted,
 type-checked or tested.
 
