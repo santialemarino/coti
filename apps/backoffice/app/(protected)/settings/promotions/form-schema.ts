@@ -102,7 +102,7 @@ export function promotionSchema(t: SchemaText = rawText) {
             issue(['conditions', index, 'targetId'], 'conditions.repeated');
           }
           seen.add(entry.targetId);
-          if (entry.minQuantity !== '' && !isPositive(entry.minQuantity)) {
+          if (!tiered && entry.minQuantity !== '' && !isPositive(entry.minQuantity)) {
             issue(['conditions', index, 'minQuantity'], 'conditions.minQuantityPositive');
           }
         });

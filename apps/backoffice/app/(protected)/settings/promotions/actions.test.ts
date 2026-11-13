@@ -83,6 +83,8 @@ describe('createPromotion', () => {
       action_value: undefined,
       tiers: [{ from_quantity: '10', to_quantity: undefined, value: '5' }],
     });
+    // The form hides a target's minimum on a tiered rule, so none is sent: the engine would apply it.
+    expect((bodySent().conditions as { min_quantity?: string }[])[1]?.min_quantity).toBeUndefined();
 
     vi.mocked(apiRequest).mockClear();
     await createPromotion({ ...VALUES, conditionType: 'ON_TOTAL', minTotal: '50000' });
@@ -125,7 +127,7 @@ describe('setPromotionActive', () => {
     actionValue: '0',
     minTotal: null,
     validFrom: '2026-12-01T03:00:00Z',
-    validTo: null,
+    validTo: '2027-01-01T02:59:59Z',
     isActive: true,
     isExclusive: true,
     priority: 2,
@@ -146,7 +148,7 @@ describe('setPromotionActive', () => {
       action_value: undefined,
       min_total: undefined,
       valid_from: '2026-12-01T03:00:00Z',
-      valid_to: undefined,
+      valid_to: '2027-01-01T02:59:59Z',
       is_active: false,
       is_exclusive: true,
       priority: 2,
