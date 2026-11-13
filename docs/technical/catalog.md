@@ -302,6 +302,15 @@ strings throughout the HTTP contract; currency and price conditions are not spre
 columns. Every route requires an administrator and an active `X-Branch-Id`; the account
 always comes from the authenticated tenant.
 
+`alternativa_economica` and `alternativa_premium` are optional and fill the product's `ECONOMY` and
+`PREMIUM` recommendation slots with another product's code. The export writes the codes the slots
+hold. A blank cell keeps the slot, and `NINGUNA` (or `-`) clears it. A code must name an active
+product of the same family, subgroup and unit as the row, with a subgroup on both. It is judged as
+the catalog will stand after the import, so it can name a product created by the same file. A row
+whose alternative fails is reported and skipped like any other invalid row, and the check repeats
+until no remaining row points at a skipped one. Confirming writes the slots in the same transaction
+as the products, with the replacement rule of `PUT /v1/products/{productId}/recommendations/{type}`.
+
 Catalog declares its columns and workbook sheets on the shared contract documented in
 [Shared spreadsheet layer](spreadsheets.md); it does not own CSV, XLSX, ZIP, or cell serialization.
 

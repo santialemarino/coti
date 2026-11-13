@@ -14,6 +14,8 @@ interface CatalogImportRowRaw {
   price: string;
   min_price: string | null;
   is_active: boolean;
+  economy_alternative: string | null;
+  premium_alternative: string | null;
   action: 'CREATE' | 'UPDATE';
   errors: string[] | null;
 }
@@ -43,6 +45,9 @@ export interface CatalogImportRow {
   price: string;
   minPrice: string | null;
   isActive: boolean;
+  // A recommendation slot change: null keeps it, an empty code clears it, a code sets it.
+  economyAlternative: string | null;
+  premiumAlternative: string | null;
   action: 'CREATE' | 'UPDATE';
   errors: string[];
 }
@@ -80,6 +85,8 @@ function mapCatalogImportRow(raw: CatalogImportRowRaw): CatalogImportRow {
     price: raw.price,
     minPrice: raw.min_price,
     isActive: raw.is_active,
+    economyAlternative: raw.economy_alternative ?? null,
+    premiumAlternative: raw.premium_alternative ?? null,
     action: raw.action,
     errors: raw.errors ?? [],
   };
@@ -150,6 +157,8 @@ export async function confirmCatalogImport(
           price: row.price,
           min_price: row.minPrice,
           is_active: row.isActive,
+          economy_alternative: row.economyAlternative,
+          premium_alternative: row.premiumAlternative,
         })),
       },
     });

@@ -26,8 +26,8 @@ describe('confirmCatalogImport', () => {
     const preview: CatalogImportPreview = {
       branchId: BRANCH_ID,
       rows: [
-        row({ rowNumber: 2, code: 'CEM-001', name: 'Cemento' }),
-        row({ rowNumber: 3, code: 'ARE-001', name: 'Arena' }),
+        row({ rowNumber: 2, code: 'CEM-001', name: 'Cemento', economyAlternative: 'CEM-002' }),
+        row({ rowNumber: 3, code: 'ARE-001', name: 'Arena', premiumAlternative: '' }),
         row({
           rowNumber: 4,
           code: 'CAL-001',
@@ -60,6 +60,8 @@ describe('confirmCatalogImport', () => {
           price: '100.00',
           min_price: null,
           is_active: true,
+          economy_alternative: 'CEM-002',
+          premium_alternative: null,
         },
         {
           code: 'ARE-001',
@@ -71,6 +73,9 @@ describe('confirmCatalogImport', () => {
           price: '100.00',
           min_price: null,
           is_active: true,
+          // Null keeps the slot and an empty code clears it, so the two must reach the API apart.
+          economy_alternative: null,
+          premium_alternative: '',
         },
       ],
     });
@@ -112,6 +117,8 @@ function row(overrides: Partial<CatalogImportPreview['rows'][number]>) {
     price: '100.00',
     minPrice: null,
     isActive: true,
+    economyAlternative: null,
+    premiumAlternative: null,
     action: 'CREATE' as const,
     errors: [],
     ...overrides,

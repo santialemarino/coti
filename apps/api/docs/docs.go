@@ -11042,6 +11042,10 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "economy_alternative": {
+                    "description": "Null keeps the recommendation slot, an empty string clears it, a product code sets it.",
+                    "type": "string"
+                },
                 "family": {
                     "type": "string"
                 },
@@ -11052,6 +11056,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "premium_alternative": {
                     "type": "string"
                 },
                 "price": {
@@ -11100,6 +11107,10 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "economy_alternative": {
+                    "description": "Null keeps the recommendation slot, an empty string clears it, a product code sets it.",
+                    "type": "string"
+                },
                 "errors": {
                     "type": "array",
                     "items": {
@@ -11116,6 +11127,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "premium_alternative": {
                     "type": "string"
                 },
                 "price": {

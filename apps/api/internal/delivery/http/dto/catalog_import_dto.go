@@ -18,22 +18,28 @@ type CatalogImportInput struct {
 	Price       string  `json:"price"`
 	MinPrice    *string `json:"min_price"`
 	IsActive    bool    `json:"is_active"`
+	// Null keeps the recommendation slot, an empty string clears it, a product code sets it.
+	EconomyAlternative *string `json:"economy_alternative"`
+	PremiumAlternative *string `json:"premium_alternative"`
 }
 
 // CatalogImportRowResponse is one validated row in the catalog import preview.
 type CatalogImportRowResponse struct {
-	RowNumber   int      `json:"row_number"`
-	Code        string   `json:"code"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Unit        string   `json:"unit"`
-	Family      string   `json:"family"`
-	Subgroup    *string  `json:"subgroup"`
-	Price       string   `json:"price"`
-	MinPrice    *string  `json:"min_price"`
-	IsActive    bool     `json:"is_active"`
-	Action      string   `json:"action"`
-	Errors      []string `json:"errors"`
+	RowNumber   int     `json:"row_number"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Unit        string  `json:"unit"`
+	Family      string  `json:"family"`
+	Subgroup    *string `json:"subgroup"`
+	Price       string  `json:"price"`
+	MinPrice    *string `json:"min_price"`
+	IsActive    bool    `json:"is_active"`
+	// Null keeps the recommendation slot, an empty string clears it, a product code sets it.
+	EconomyAlternative *string  `json:"economy_alternative"`
+	PremiumAlternative *string  `json:"premium_alternative"`
+	Action             string   `json:"action"`
+	Errors             []string `json:"errors"`
 }
 
 // CatalogImportPreviewResponse is returned by POST /v1/products/import/preview.

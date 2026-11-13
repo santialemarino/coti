@@ -262,6 +262,10 @@ definitions:
         type: string
       description:
         type: string
+      economy_alternative:
+        description: Null keeps the recommendation slot, an empty string clears it,
+          a product code sets it.
+        type: string
       family:
         type: string
       is_active:
@@ -269,6 +273,8 @@ definitions:
       min_price:
         type: string
       name:
+        type: string
+      premium_alternative:
         type: string
       price:
         type: string
@@ -300,6 +306,10 @@ definitions:
         type: string
       description:
         type: string
+      economy_alternative:
+        description: Null keeps the recommendation slot, an empty string clears it,
+          a product code sets it.
+        type: string
       errors:
         items:
           type: string
@@ -311,6 +321,8 @@ definitions:
       min_price:
         type: string
       name:
+        type: string
+      premium_alternative:
         type: string
       price:
         type: string

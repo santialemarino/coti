@@ -43,6 +43,9 @@ type CatalogExportRow struct {
 	Price       *string
 	MinPrice    *string
 	IsActive    bool
+	// The codes in the product's ECONOMY and PREMIUM recommendation slots, when the slot is filled.
+	EconomyAlternative *string
+	PremiumAlternative *string
 }
 
 // CatalogImportRow is one spreadsheet row prepared for human review.
@@ -59,8 +62,11 @@ type CatalogImportRow struct {
 	Price       string
 	MinPrice    *string
 	IsActive    bool
-	Action      string
-	Errors      []string
+	// A recommendation slot change: nil keeps the slot, an empty code clears it, a code sets it.
+	EconomyAlternative *string
+	PremiumAlternative *string
+	Action             string
+	Errors             []string
 }
 
 // CatalogImportInput is one reviewed catalog row sent for confirmation.
@@ -74,6 +80,9 @@ type CatalogImportInput struct {
 	Price       string
 	MinPrice    *string
 	IsActive    bool
+	// nil keeps the slot, an empty code clears it, a code sets it.
+	EconomyAlternative *string
+	PremiumAlternative *string
 }
 
 // CatalogImportPreview summarizes a catalog spreadsheet before confirmation.
@@ -90,4 +99,26 @@ type CatalogImportResult struct {
 	CreatedRows int
 	UpdatedRows int
 	SkippedRows int
+}
+
+// CatalogProductRef is what an alternative check needs to know about a product named by code.
+type CatalogProductRef struct {
+	FamilyID   *uuid.UUID
+	SubgroupID *uuid.UUID
+	Unit       string
+	IsActive   bool
+}
+
+// CatalogSlotChange sets or clears one recommendation slot of a product, both named by code.
+type CatalogSlotChange struct {
+	BaseCode string
+	Type     ProductAlternativeType
+	// Empty clears the slot.
+	AlternativeCode string
+}
+
+// CatalogSlots are the codes a product's ECONOMY and PREMIUM slots hold, nil when empty.
+type CatalogSlots struct {
+	Economy *string
+	Premium *string
 }

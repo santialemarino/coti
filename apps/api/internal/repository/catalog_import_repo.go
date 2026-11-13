@@ -36,7 +36,7 @@ func (r *CatalogImportRepository) ListForExport(
 	rows, err := q.Query(ctx,
 		`SELECT p.code, p.canonical_name, coalesce(p.description, ''),
 		        coalesce(p.unit, ''), f.name, s.name, pp.price::text, pp.min_price::text,
-		        p.is_active
+		        p.is_active, economy.code, premium.code
 		 FROM product p
 		 JOIN product_family f ON f.id = p.family_id
 		 LEFT JOIN product_subgroup s ON s.id = p.subgroup_id AND s.family_id = p.family_id
@@ -48,6 +48,20 @@ func (r *CatalogImportRepository) ListForExport(
 		   ORDER BY valid_from DESC
 		   LIMIT 1
 		 ) pp ON TRUE
+		 LEFT JOIN LATERAL (
+		   SELECT alternative.code
+		   FROM product_alternative pa
+		   JOIN product alternative ON alternative.id = pa.alternative_product_id
+		     AND alternative.account_id = pa.account_id
+		   WHERE pa.account_id = $1 AND pa.base_product_id = p.id AND pa.type = 'ECONOMY'
+		 ) economy ON TRUE
+		 LEFT JOIN LATERAL (
+		   SELECT alternative.code
+		   FROM product_alternative pa
+		   JOIN product alternative ON alternative.id = pa.alternative_product_id
+		     AND alternative.account_id = pa.account_id
+		   WHERE pa.account_id = $1 AND pa.base_product_id = p.id AND pa.type = 'PREMIUM'
+		 ) premium ON TRUE
 		 WHERE p.account_id = $1 AND p.code IS NOT NULL
 		 ORDER BY p.code`,
 		accountID, branchID)
@@ -59,7 +73,8 @@ func (r *CatalogImportRepository) ListForExport(
 	for rows.Next() {
 		var row domain.CatalogExportRow
 		if err := rows.Scan(&row.Code, &row.Name, &row.Description, &row.Unit,
-			&row.Family, &row.Subgroup, &row.Price, &row.MinPrice, &row.IsActive); err != nil {
+			&row.Family, &row.Subgroup, &row.Price, &row.MinPrice, &row.IsActive,
+			&row.EconomyAlternative, &row.PremiumAlternative); err != nil {
 			return nil, err
 		}
 		export.Rows = append(export.Rows, row)
@@ -130,6 +145,72 @@ func (r *CatalogImportRepository) ListExistingCodes(
 		existing[code] = struct{}{}
 	}
 	return existing, rows.Err()
+}
+
+// ListProductsByCodes returns what an alternative check needs about each requested code the
+// account owns.
+func (r *CatalogImportRepository) ListProductsByCodes(
+	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
+) (map[string]domain.CatalogProductRef, error) {
+	refs := make(map[string]domain.CatalogProductRef, len(codes))
+	if len(codes) == 0 {
+		return refs, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT code, family_id, subgroup_id, coalesce(unit, ''), is_active
+		 FROM product
+		 WHERE account_id = $1 AND code = ANY($2)`,
+		accountID, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		var ref domain.CatalogProductRef
+		if err := rows.Scan(&code, &ref.FamilyID, &ref.SubgroupID, &ref.Unit, &ref.IsActive); err != nil {
+			return nil, err
+		}
+		refs[code] = ref
+	}
+	return refs, rows.Err()
+}
+
+// ListRecommendationSlots returns, per requested product code, the codes its ECONOMY and PREMIUM
+// slots hold now, whatever state those products are in.
+func (r *CatalogImportRepository) ListRecommendationSlots(
+	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
+) (map[string]domain.CatalogSlots, error) {
+	slots := make(map[string]domain.CatalogSlots, len(codes))
+	if len(codes) == 0 {
+		return slots, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT b.code, pa.type::text, a.code
+		 FROM product_alternative pa
+		 JOIN product b ON b.id = pa.base_product_id AND b.account_id = pa.account_id
+		 JOIN product a ON a.id = pa.alternative_product_id AND a.account_id = pa.account_id
+		 WHERE pa.account_id = $1 AND b.code = ANY($2) AND pa.type IN ('ECONOMY', 'PREMIUM')
+		   AND a.code IS NOT NULL`,
+		accountID, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var base, kind, alternative string
+		if err := rows.Scan(&base, &kind, &alternative); err != nil {
+			return nil, err
+		}
+		current := slots[base]
+		if kind == string(domain.ProductAlternativeEconomy) {
+			current.Economy = &alternative
+		} else {
+			current.Premium = &alternative
+		}
+		slots[base] = current
+	}
+	return slots, rows.Err()
 }
 
 // ApplyImport upserts products, branch availability and changed prices in the caller's transaction.
@@ -227,6 +308,62 @@ func (r *CatalogImportRepository) ApplyImport(
 		args...)
 	return err
 }
+
+// ApplyRecommendationSlots sets or clears ECONOMY and PREMIUM slots named by product code, in the
+// caller's transaction. Setting a slot replaces it, and any other link between the same two
+// products, the way the single-product endpoint does.
+func (r *CatalogImportRepository) ApplyRecommendationSlots(
+	ctx context.Context, q Querier, accountID uuid.UUID, changes []domain.CatalogSlotChange,
+) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	baseCodes := make([]string, len(changes))
+	types := make([]string, len(changes))
+	alternativeCodes := make([]string, len(changes))
+	for i, change := range changes {
+		baseCodes[i] = change.BaseCode
+		types[i] = string(change.Type)
+		alternativeCodes[i] = change.AlternativeCode
+	}
+	if _, err := q.Exec(ctx, slotChanges+`
+		 DELETE FROM product_alternative pa
+		 USING changes c
+		 JOIN product b ON b.account_id = $1 AND b.code = c.base_code
+		 LEFT JOIN product a ON a.account_id = $1 AND a.code = NULLIF(c.alternative_code, '')
+		 WHERE pa.account_id = $1 AND pa.base_product_id = b.id
+		   AND (pa.type = c.type::product_alternative_type OR pa.alternative_product_id = a.id)`,
+		accountID, baseCodes, types, alternativeCodes); err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx, slotChanges+`
+		 INSERT INTO product_alternative (account_id, base_product_id, alternative_product_id, type)
+		 SELECT $1, b.id, a.id, c.type::product_alternative_type
+		 FROM changes c
+		 JOIN product b ON b.account_id = $1 AND b.code = c.base_code
+		 JOIN product a ON a.account_id = $1 AND a.code = c.alternative_code
+		 WHERE c.alternative_code <> ''`,
+		accountID, baseCodes, types, alternativeCodes)
+	if err != nil {
+		return err
+	}
+	sets := 0
+	for _, change := range changes {
+		if change.AlternativeCode != "" {
+			sets++
+		}
+	}
+	if int(tag.RowsAffected()) != sets {
+		return domain.ErrConflict
+	}
+	return nil
+}
+
+// slotChanges unpacks a slot write's parallel arrays into rows.
+const slotChanges = `WITH changes AS (
+		   SELECT base_code, type, alternative_code
+		   FROM unnest($2::text[], $3::text[], $4::text[]) AS u(base_code, type, alternative_code)
+		 )`
 
 // importIncoming unpacks the import's parallel arrays into rows; each statement opens with it.
 const importIncoming = `WITH incoming AS (
