@@ -117,31 +117,44 @@ describe('ReportFilters', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  // The panel's Aplicar sets the period; only the filters' own submit reloads the report.
-  it('reloads the report only when the filters are submitted', () => {
+  // One Aplicar: applying a period runs the report through the form's own submit, once.
+  it('runs the report once with the new period when it is applied', () => {
     begin.mockClear();
     const form = renderFilters();
+    const submits = vi.fn((event: Event) => event.preventDefault());
+    form.addEventListener('submit', submits);
 
     pickRange('5 de octubre de 2026', '12 de octubre de 2026');
-    fireEvent.click(period());
-    fireEvent.click(screen.getByRole('button', { name: range.presets.lastMonth }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: range.cancel }));
-    expect(begin).not.toHaveBeenCalled();
-    expect(period().textContent).toBe('05/10/2026 – 12/10/2026');
 
-    fireEvent.submit(form);
+    expect(submits).toHaveBeenCalledTimes(1);
     expect(begin).toHaveBeenCalledExactlyOnceWith('/reports?from=2026-10-05&to=2026-10-12');
+    expect(period().textContent).toBe('05/10/2026 – 12/10/2026');
+  });
+
+  it('runs nothing when the period edit is cancelled', () => {
+    begin.mockClear();
+    const form = renderFilters();
+    const submits = vi.fn((event: Event) => event.preventDefault());
+    form.addEventListener('submit', submits);
+
+    fireEvent.click(period());
+    const panel = screen.getByRole('dialog');
+    fireEvent.click(within(panel).getByRole('button', { name: range.presets.lastMonth }));
+    fireEvent.click(within(panel).getByRole('button', { name: range.cancel }));
+
+    expect(submits).not.toHaveBeenCalled();
+    expect(begin).not.toHaveBeenCalled();
+    expect(period().textContent).toBe('01/10/2026 – 25/10/2026');
   });
 
   // next/form navigates on its own, so the shell is told where it goes and shows the bar meanwhile.
-  it('submits the picked period, and reports the navigation; none for a range it blocks', () => {
+  it('reports the navigation of an applied period, and none for a range it blocks', () => {
     begin.mockClear();
     const form = renderFilters('2026-10-20', '2026-10-10');
     fireEvent.submit(form);
     expect(begin).not.toHaveBeenCalled();
 
     pickRange('20 de octubre de 2026', '25 de octubre de 2026');
-    fireEvent.submit(form);
-    expect(begin).toHaveBeenCalledWith('/reports?from=2026-10-20&to=2026-10-25');
+    expect(begin).toHaveBeenCalledExactlyOnceWith('/reports?from=2026-10-20&to=2026-10-25');
   });
 });

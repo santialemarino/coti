@@ -373,8 +373,9 @@ Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read i
   and swaps the two when the new day crosses the other. A preset fills the draft and shows pressed.
   Aplicar stays shut while an end that must be set is empty or the draft equals the committed range.
   `openStart`/`openEnd` give the wording of an empty end and let it stay empty, with a clear button
-  beside it; `names` submits each end as a hidden input for a native form (Reportes' `next/form`,
-  which still reloads only on its own submit). Two months side by side from 768px, one below.
+  beside it; `names` submits each end as a hidden input for a native form. Reportes submits its
+  `next/form` from `onValueChange`, so applying a period runs the report at once. Two months side by
+  side from 768px, one below.
 
 The backoffice's shared copy and presets come from `useDateRangeCopy` and
 `lib/utils/date-ranges.ts`.
