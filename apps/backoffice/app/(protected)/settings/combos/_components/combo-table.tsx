@@ -41,6 +41,7 @@ export function ComboTable({ combos, branches }: ComboTableProps) {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   // With one branch every combo is sold in the same place, so the column would repeat itself.
   const showBranches = branches.length > 1;
+  const openBranchIds = branches.filter((branch) => branch.isActive).map((branch) => branch.id);
   const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
   const columnCount = showBranches ? 5 : 4;
 
@@ -97,7 +98,7 @@ export function ComboTable({ combos, branches }: ComboTableProps) {
                 <TableCell>{fmt.list(combo.items.map((item) => item.productName))}</TableCell>
                 {showBranches ? (
                   <TableCell>
-                    {combo.branchIds.length === branches.length
+                    {openBranchIds.every((id) => combo.branchIds.includes(id))
                       ? t('table.allBranches')
                       : fmt.list(combo.branchIds.map((id) => branchNames.get(id) ?? '—'))}
                   </TableCell>

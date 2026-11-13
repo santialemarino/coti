@@ -46,6 +46,8 @@ export function ComboSuggestions({ quoteId, branchId, items, onAdded }: ComboSug
   const message = useApiErrorMessage('rfqs.detail.combos');
   const [suggestions, setSuggestions] = useState<ComboSuggestion[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
+  // Bumped to ask for the suggestions again after an add was refused because the quote moved on.
+  const [reload, setReload] = useState(0);
   const productKey = [
     ...new Set(items.flatMap((item) => (item.product_id ? [item.product_id] : []))),
   ]
@@ -65,7 +67,7 @@ export function ComboSuggestions({ quoteId, branchId, items, onAdded }: ComboSug
     return () => {
       cancelled = true;
     };
-  }, [quoteId, branchId, productKey]);
+  }, [quoteId, branchId, productKey, reload]);
 
   async function onAdd(suggestion: ComboSuggestion) {
     if (adding) return;
@@ -76,6 +78,7 @@ export function ComboSuggestions({ quoteId, branchId, items, onAdded }: ComboSug
       await onAdded();
     } catch (error) {
       toast.error(message(errorCodeOf(error)));
+      setReload((count) => count + 1);
     } finally {
       setAdding(null);
     }

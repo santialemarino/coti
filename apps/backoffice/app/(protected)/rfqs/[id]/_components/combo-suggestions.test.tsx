@@ -77,3 +77,14 @@ it('stays quiet when the suggestions cannot load', async () => {
   expect(view.queryByText(messages.rfqs.detail.combos.title)).toBeNull();
   expect(toast.error).not.toHaveBeenCalled();
 });
+
+it('asks for the suggestions again after an add the quote no longer allows', async () => {
+  vi.mocked(fetchComboSuggestions).mockResolvedValueOnce([SUGGESTION]).mockResolvedValue([]);
+  vi.mocked(addComboItems).mockRejectedValue(new Error('conflict'));
+  const { view } = renderPanel();
+
+  fireEvent.click(await view.findByRole('button', { name: /Agregar el que falta/ }));
+
+  await waitFor(() => expect(fetchComboSuggestions).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(view.queryByText('Obra gruesa')).toBeNull());
+});

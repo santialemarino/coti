@@ -40,6 +40,14 @@ func TestCombo_SuggestAndCompleteOnAPricedQuote(t *testing.T) {
 		t.Fatalf("combo with another account's product: %v, want invalid input", err)
 	}
 
+	_, err = combos.Create(ctx, admin, domain.ComboInput{Name: "Sucursal ajena", IsActive: true,
+		Items: []domain.ComboItemInput{
+			{ProductID: cement, Quantity: decimal.NewFromInt(1)}, {ProductID: sand, Quantity: decimal.NewFromInt(1)},
+		}, BranchIDs: []uuid.UUID{otherBranch}})
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("combo sold at another account's branch: %v, want invalid input", err)
+	}
+
 	combo, err := combos.Create(ctx, admin, domain.ComboInput{Name: "Obra gruesa", IsActive: true,
 		Items: []domain.ComboItemInput{
 			{ProductID: cement, Quantity: decimal.NewFromInt(10)}, {ProductID: sand, Quantity: decimal.NewFromInt(2)},
