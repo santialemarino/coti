@@ -15,6 +15,18 @@ if (!globalThis.ResizeObserver) {
 }
 
 /*
+ * jsdom implements no IntersectionObserver, which JumpToButton observes its target with on mount. A
+ * stub that never reports leaves the button hidden; a test about visibility stubs its own.
+ */
+if (!globalThis.IntersectionObserver) {
+  globalThis.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+/*
  * jsdom implements no Element.scrollIntoView, and Radix menus and cmdk command lists call it the
  * moment a dropdown or combobox opens — a component test that opens either dies without this. A
  * no-op is enough: nothing under test asserts on a scroll position.

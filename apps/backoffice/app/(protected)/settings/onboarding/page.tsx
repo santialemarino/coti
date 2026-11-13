@@ -21,7 +21,7 @@ export default async function OnboardingSettingsPage() {
   return (
     <main className="flex flex-col gap-y-8">
       <PageHeader title={t('settingsTitle')} />
-      <OnboardingChecklist onboarding={onboarding} placement="settings" className="max-w-2xl" />
+      <OnboardingChecklist onboarding={onboarding} placement="settings" />
     </main>
   );
 }
