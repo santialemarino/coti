@@ -152,6 +152,20 @@ describe('AccountForm', () => {
     );
   });
 
+  // The logo URL has no input to show an error on, so the form never holds the save back over it.
+  it('sends a stored logo URL its schema would refuse and shows the refusal', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ error: 'INVALID_BODY' });
+    const view = renderForm({ ...ACCOUNT, brandLogoUrl: 'tucorralon.com/logo.png' });
+
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(vi.mocked(updateAccount).mock.calls[0]?.[0].brandLogoUrl).toBe(
+      'tucorralon.com/logo.png',
+    );
+    await waitFor(() => expect(view.getByText(messages.errors.INVALID_BODY)).toBeDefined());
+  });
+
   // The stored choice is the one selected, and picking the other is what the save sends.
   it('shows the stored lower-price strategy and sends the one picked', async () => {
     vi.mocked(updateAccount).mockResolvedValue({ ok: true });

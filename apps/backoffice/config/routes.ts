@@ -75,6 +75,14 @@ export function isOrdersPath(pathname: string): boolean {
   );
 }
 
+// The clients section, where the column lists the contact suggestions.
+export function isClientsPath(pathname: string): boolean {
+  return pathname === ROUTES.clients || pathname.startsWith(`${ROUTES.clients}/`);
+}
+
+// The request header the proxy forwards the path in: a layout has no other way to learn it.
+export const PATHNAME_HEADER = 'x-coti-pathname';
+
 /*
  * The sign-in flows, reachable without a session. Which of them send a signed-in caller away is
  * SIGNED_OUT_ONLY_ROUTES; the rest have a reason to open for one (below).

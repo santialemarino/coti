@@ -14,7 +14,7 @@ import (
 
 // CustomerOrderService is the history authorization surface used by customer routes.
 type CustomerOrderService interface {
-	List(context.Context, domain.CustomerPrincipal, int) ([]domain.CustomerOrder, error)
+	List(context.Context, domain.CustomerPrincipal, int) ([]domain.CustomerOrder, bool, error)
 	Get(context.Context, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerOrder, error)
 	GetByToken(context.Context, domain.CustomerPrincipal, string) (*domain.CustomerOrder, error)
 }
@@ -35,6 +35,7 @@ func NewCustomerOrderHandler(orders CustomerOrderService) *CustomerOrderHandler 
 // @Param hostname path string true "Registered supplier hostname"
 // @Param page query int false "Page number starting at one"
 // @Success 200 {array} dto.CustomerOrderResponse
+// @Header 200 {boolean} X-Has-More "Whether a later page exists"
 // @Failure 401 {object} dto.ErrorResponse
 // @Router /v1/customer/sites/{hostname}/orders [get]
 func (h *CustomerOrderHandler) List(c *gin.Context) {
@@ -48,11 +49,12 @@ func (h *CustomerOrderHandler) List(c *gin.Context) {
 		Respond(c, domain.ErrInvalidInput)
 		return
 	}
-	items, err := h.orders.List(c.Request.Context(), p, page)
+	items, hasMore, err := h.orders.List(c.Request.Context(), p, page)
 	if err != nil {
 		Respond(c, err)
 		return
 	}
+	c.Header("X-Has-More", strconv.FormatBool(hasMore))
 	response := make([]dto.CustomerOrderResponse, 0, len(items))
 	for _, item := range items {
 		response = append(response, toCustomerOrder(item))

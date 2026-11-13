@@ -174,6 +174,24 @@ describe('OnboardingFlow team step', () => {
     );
   });
 
+  // The stored logo would complete the step, so removing it has to count as leaving it empty.
+  it('skips the brand step when the stored logo is removed and no colour is set', async () => {
+    vi.mocked(updateOnboardingBrand).mockResolvedValue({ ok: true });
+    const view = renderFlow(onboarding({ currentStep: 'BRAND' }), [ADMIN], messages, {
+      brandLogoUrl: 'https://api.coti.test/v1/public/account-logos/logo',
+      brandColor: null,
+    });
+    fireEvent.click(view.getByRole('button', { name: messages.common.logoUpload.remove }));
+    fireEvent.click(view.getByRole('button', { name: copy.continue }));
+
+    await waitFor(() =>
+      expect(updateOnboardingBrand).toHaveBeenCalledWith(expect.anything(), null),
+    );
+    await waitFor(() =>
+      expect(saveOnboardingStep).toHaveBeenCalledWith('BRAND', 'SKIPPED', 'PORTAL'),
+    );
+  });
+
   it('resolves the step as skipped when nobody was added', async () => {
     const view = renderFlow(onboarding({}));
     fireEvent.click(view.getByRole('button', { name: copy.team.finish }));

@@ -198,7 +198,9 @@ same-unit outgoing
 `origin = 'AI'` and their source relationship in `recommendation_type`; they have no
 `confidence_score` and start unapproved, so the client cannot see them before the seller decides.
 If the matcher already offered the same product, the existing row receives the
-`recommendation_type` rather than creating a duplicate.
+`recommendation_type` rather than creating a duplicate. A line holds at most one `ECONOMY` and one `PREMIUM` option — a
+partial unique index enforces it, and a write that loses the race for a slot answers a conflict —
+while `EQUIVALENT` options are open-ended.
 
 **`rank` preserves the candidate's place in the matcher's ranking, not a renumbering.** An
 `AMBIGUOUS` line's matcher offers therefore start at two: rank one is the product on the line. The

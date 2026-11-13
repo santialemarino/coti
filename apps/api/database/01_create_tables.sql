@@ -409,7 +409,10 @@ CREATE TABLE combo_item (
   combo_id   UUID NOT NULL,
   product_id UUID NOT NULL,
   quantity   NUMERIC(14,2) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- The item's place in the combo, in the order the administrator entered it, from 0.
+  position   SMALLINT NOT NULL CHECK (position >= 0),
+  CONSTRAINT uq_combo_item_position UNIQUE (combo_id, position)
 );
 
 -- The combo's commercial availability per branch, mirroring branch_product. No price and no
@@ -1352,6 +1355,10 @@ CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, branch_id, quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
 CREATE INDEX idx_quote_item_alternative_account_item ON quote_item_alternative(account_id, quote_item_id);
+-- One economy and one premium option per line; equivalents are open-ended.
+CREATE UNIQUE INDEX uq_quote_item_alternative_recommendation
+  ON quote_item_alternative (quote_item_id, recommendation_type)
+  WHERE recommendation_type IN ('ECONOMY', 'PREMIUM');
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
 CREATE INDEX idx_quote_ai_generation_account_quote_created ON quote_ai_generation(account_id, quote_id, created_at DESC);
 CREATE INDEX idx_quote_status_change_report ON quote_status_change(account_id, new_status, changed_at, quote_id) WHERE new_status IN ('SENT', 'ACCEPTED');

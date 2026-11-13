@@ -970,15 +970,19 @@ func (r *QuoteRepository) SetRecommendationAlternative(
 	ctx context.Context, q Querier, accountID, versionID, itemID, productID uuid.UUID,
 	recommendationType domain.ProductAlternativeType, priceSnapshot, minPriceSnapshot decimal.NullDecimal,
 ) (*domain.QuoteItemAlternative, error) {
-	row := q.QueryRow(ctx, `WITH removed AS (
-		DELETE FROM quote_item_alternative alternative
+	// The slot is emptied first, in its own statement: the slot's unique index checks each row as
+	// it is inserted, before an unreferenced DELETE in the same statement has run.
+	if _, err := q.Exec(ctx, `DELETE FROM quote_item_alternative alternative
 		USING quote_item item, quote_version version
 		WHERE alternative.account_id = $1
 		  AND alternative.quote_item_id = $3
-		  AND alternative.recommendation_type = $5::product_alternative_type
+		  AND alternative.recommendation_type = $4::product_alternative_type
 		  AND item.account_id = $1 AND item.id = $3 AND item.version_id = $2
-		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE
-	), created AS (
+		  AND version.account_id = $1 AND version.id = $2 AND version.is_immutable = FALSE`,
+		accountID, versionID, itemID, recommendationType); err != nil {
+		return nil, err
+	}
+	row := q.QueryRow(ctx, `WITH created AS (
 		INSERT INTO quote_item_alternative (
 		  account_id, quote_item_id, product_id, type, recommendation_type, origin, rank,
 		  price_snapshot, min_price_snapshot
@@ -998,7 +1002,7 @@ func (r *QuoteRepository) SetRecommendationAlternative(
 	FROM created
 	LEFT JOIN product ON product.account_id = created.account_id AND product.id = created.product_id`,
 		accountID, versionID, itemID, productID, recommendationType, priceSnapshot, minPriceSnapshot)
-	return scanQuoteItemAlternative(row)
+	return recommendationSlotWrite(scanQuoteItemAlternative(row))
 }
 
 // UpdateAlternativeApproval records the seller's decision on a candidate of a mutable version.

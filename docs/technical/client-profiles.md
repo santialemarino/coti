@@ -203,6 +203,9 @@ GET /orders lists a request when any of these holds:
 - an immutable quotation was successfully sent to that customer's verified email or WhatsApp
   at or after the customer's contact proof.
 
+It pages by `CUSTOMER_ORDER_PAGE_SIZE`, newest first, and answers `X-Has-More: true` when a later
+page exists; the portal offers «Siguiente» only then.
+
 Outgoing delivery grants only the matching send and its paired web publication (same supplier,
 branch, immutable version and idempotency operation). It does not prove ownership of the whole
 commercial profile or unlock older sends. The history chooses the latest publication that this

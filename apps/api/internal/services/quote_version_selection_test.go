@@ -22,7 +22,7 @@ func TestSelectedAlternatives_AcceptsOnlyOneApprovedProductPerSentLine(t *testin
 		PriceSnapshot:      decimal.NewNullDecimal(decimal.RequireFromString("900.00")),
 	}}}
 
-	selected, err := selectedAlternatives(items, options, []domain.ClientAlternativeSelection{{
+	selected, err := selectedAlternatives(items, options, sentOffer(options), []domain.ClientAlternativeSelection{{
 		ItemID: itemID, AlternativeID: alternativeID,
 	}})
 	if err != nil {
@@ -32,7 +32,7 @@ func TestSelectedAlternatives_AcceptsOnlyOneApprovedProductPerSentLine(t *testin
 		t.Fatalf("selected = %+v, want the approved alternative", selected)
 	}
 
-	_, err = selectedAlternatives(items, options, []domain.ClientAlternativeSelection{{
+	_, err = selectedAlternatives(items, options, sentOffer(options), []domain.ClientAlternativeSelection{{
 		ItemID: itemID, AlternativeID: alternativeID,
 	}, {
 		ItemID: itemID, AlternativeID: alternativeID,
@@ -41,12 +41,11 @@ func TestSelectedAlternatives_AcceptsOnlyOneApprovedProductPerSentLine(t *testin
 		t.Fatalf("duplicated line selection = %v, want ErrInvalidInput", err)
 	}
 
-	options[itemID][0].ApprovedBySeller = false
-	_, err = selectedAlternatives(items, options, []domain.ClientAlternativeSelection{{
+	_, err = selectedAlternatives(items, options, domain.QuoteRepresentationPayload{}, []domain.ClientAlternativeSelection{{
 		ItemID: itemID, AlternativeID: alternativeID,
 	}})
 	if !errors.Is(err, domain.ErrNotFound) {
-		t.Fatalf("unapproved selection = %v, want ErrNotFound", err)
+		t.Fatalf("selection outside the sent offer = %v, want ErrNotFound", err)
 	}
 }
 
