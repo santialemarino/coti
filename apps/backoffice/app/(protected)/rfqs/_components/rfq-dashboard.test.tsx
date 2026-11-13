@@ -766,6 +766,21 @@ describe('RfqDashboard admin steering the seller', () => {
     return view;
   }
 
+  // With no seller to list, the two fixed actions keep one line between them, not two.
+  it('draws a single line between the fixed actions when the branch has no sellers', async () => {
+    vi.mocked(listSellers).mockResolvedValue([]);
+    const view = await openSellerMenu(
+      renderAs({ userName: 'Admin', userId: 'me', isAdmin: true }, [moronOrder]),
+      '2006',
+    );
+
+    await vi.waitFor(() => expect(listSellers).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(view.queryByRole('menuitem', { name: copy.list.actions.sellersLoading })).toBeNull(),
+    );
+    expect(view.getAllByRole('separator')).toHaveLength(1);
+  });
+
   it('shows only Morón sellers for a Morón order, scoped to its branch', async () => {
     const view = await openSellerMenu(
       renderAs({ userName: 'Admin', userId: 'me', isAdmin: true }, [moronOrder]),

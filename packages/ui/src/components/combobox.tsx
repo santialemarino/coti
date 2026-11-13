@@ -321,8 +321,11 @@ function Combobox({
                       <span className="truncate">{option.label}</span>
                       <SelectedMark selected={option.value === value} />
                     </CommandItem>
-                    {/* The reset is an escape from the list, not a peer of its entries. */}
-                    {option.value === resetValue ? <CommandSeparator /> : null}
+                    {/* The reset is an escape from the list, not a peer of its entries; with no
+                        entries there is nothing to set it apart from. */}
+                    {option.value === resetValue && options.length > 1 ? (
+                      <CommandSeparator />
+                    ) : null}
                   </React.Fragment>
                 ))}
               </CommandGroup>
