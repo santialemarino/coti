@@ -92,7 +92,9 @@ func draftSnapshot(ctx context.Context, q repository.Querier, quotes draftSnapsh
 	for _, item := range items {
 		approved := make([]uuid.UUID, 0)
 		for _, alternative := range alternatives[item.ID] {
-			if alternative.ApprovedBySeller && alternative.ProductID != nil {
+			// Only the economy and premium slots reach the sent offer.
+			if alternative.ApprovedBySeller && alternative.ProductID != nil &&
+				alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
 				approved = append(approved, *alternative.ProductID)
 			}
 		}

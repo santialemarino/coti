@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
@@ -7,7 +8,7 @@ import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
 import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
 import { RfqQueueProvider } from '@/app/(protected)/rfqs/_components/rfq-queue-provider';
-import { ROUTES } from '@/config/routes';
+import { isClientsPath, PATHNAME_HEADER, ROUTES } from '@/config/routes';
 import { getAccount, showsInvoiceHistory } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { getContactSuggestions } from '@/lib/api/client-contact-suggestions-server';
@@ -27,11 +28,13 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   if (mustVerifyEmail(session)) redirect(ROUTES.verifyEmail);
 
   const isAdmin = session.role === ADMIN_ROLE;
+  // Only the clients section shows the suggestions; elsewhere the column loads them on arrival.
+  const onClients = isClientsPath((await headers()).get(PATHNAME_HEADER) ?? '');
   const [branches, onboarding, account, suggestions] = await Promise.all([
     getBranches(),
     isAdmin ? getOnboarding() : null,
     getAccount(),
-    getContactSuggestions(),
+    onClients ? getContactSuggestions() : null,
   ]);
   // A cookie naming a branch the caller no longer reaches makes every scoped read answer 403; a
   // layout cannot write cookies, so a route handler drops it.

@@ -85,8 +85,9 @@ func TestCustomerHistoryRequiresContactProofAndIsolatesCustomersAndSuppliers(t *
 	if err = json.Unmarshal(rec.Body.Bytes(), &orders); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusOK || len(orders) != 1 || orders[0].ID != rfqID || orders[0].Token != nil {
-		t.Fatalf("history: %d %s", rec.Code, rec.Body)
+	if rec.Code != http.StatusOK || len(orders) != 1 || orders[0].ID != rfqID || orders[0].Token != nil ||
+		rec.Header().Get("X-Has-More") != "false" {
+		t.Fatalf("history: %d %s, X-Has-More %q", rec.Code, rec.Body, rec.Header().Get("X-Has-More"))
 	}
 	_, otherToken := e.registerCustomer(t, accountID, "30712345671")
 	if rec = e.do(t, request{method: http.MethodGet, path: base + "/orders/" + rfqID.String(), token: otherToken}); rec.Code != http.StatusNotFound {

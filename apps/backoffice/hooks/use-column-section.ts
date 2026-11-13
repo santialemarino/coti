@@ -2,7 +2,7 @@ import { usePathname } from 'next/navigation';
 
 import type { SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
-import { isSettingsPath, queueSelection, ROUTES } from '@/config/routes';
+import { isClientsPath, isSettingsPath, queueSelection, ROUTES } from '@/config/routes';
 
 export type ColumnSection = 'queue' | 'settings' | 'clients';
 
@@ -20,7 +20,7 @@ export function useColumnSection(settingsNav: SettingsNavItem[]) {
       ? 'queue'
       : settingsNav.length > 0 && isSettingsPath(pathname)
         ? 'settings'
-        : pathname === ROUTES.clients || pathname.startsWith(ROUTES.clients + '/')
+        : isClientsPath(pathname)
           ? 'clients'
           : null;
   const atRoot =

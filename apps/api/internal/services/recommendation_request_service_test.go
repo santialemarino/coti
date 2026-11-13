@@ -211,3 +211,31 @@ func TestRecommendationRequestService_FillVacant_RefusesAQuoteNotBeingPriced(t *
 		t.Fatalf("FillVacant() err = %v, offers = %+v; want a conflict and no change", err, f.quotes.alternatives)
 	}
 }
+
+// currencyChangingPrices reports one product in another currency from the second read on.
+type currencyChangingPrices struct {
+	*fakeBranchPrices
+	productID uuid.UUID
+}
+
+func (f *currencyChangingPrices) GetCurrentByProductIDs(
+	ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID,
+) (map[uuid.UUID]domain.BranchPrice, error) {
+	prices, err := f.fakeBranchPrices.GetCurrentByProductIDs(ctx, q, accountID, branchID, productIDs)
+	if err == nil && f.calls > 1 {
+		price := prices[f.productID]
+		price.Currency = "USD"
+		prices[f.productID] = price
+	}
+	return prices, err
+}
+
+func TestRecommendationRequestService_FillVacant_SkipsAPriceThatChangedCurrency(t *testing.T) {
+	f := newRecommendationRequestFixture()
+	f.service.prices = &currencyChangingPrices{fakeBranchPrices: f.prices, productID: f.economyID}
+	filled, err := f.service.FillVacant(context.Background(), f.tenant, f.quoteID)
+	if err != nil || len(filled) != 1 || filled[0].Alternative.ProductID == nil ||
+		*filled[0].Alternative.ProductID != f.premiumID {
+		t.Fatalf("FillVacant() = %+v, %v; want only the premium slot, the economy price is now in USD", filled, err)
+	}
+}

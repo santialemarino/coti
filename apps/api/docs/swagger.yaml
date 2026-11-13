@@ -5778,6 +5778,10 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            X-Has-More:
+              description: Whether a later page exists
+              type: boolean
           schema:
             items:
               $ref: '#/definitions/dto.CustomerOrderResponse'

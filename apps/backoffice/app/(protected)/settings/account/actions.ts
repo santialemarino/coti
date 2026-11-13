@@ -20,7 +20,10 @@ export async function updateAccount(
   disconnectARCA = false,
 ): Promise<AccountResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
-  const parsed = accountSchema().safeParse(values);
+  // A new logo, or none, replaces the stored URL, so only a kept one is checked.
+  const parsed = accountSchema().safeParse(
+    logo === undefined ? values : { ...values, brandLogoUrl: '' },
+  );
   if (!parsed.success) return { error: 'INVALID_BODY' };
 
   try {

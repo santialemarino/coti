@@ -55,6 +55,10 @@ func TestCombo_SuggestAndCompleteOnAPricedQuote(t *testing.T) {
 	if err != nil || len(combo.Items) != 2 || len(combo.BranchIDs) != 1 {
 		t.Fatalf("Create() = %+v, %v", combo, err)
 	}
+	// Items keep the order they were entered in, not the alphabetical one.
+	if combo.Items[0].ProductID != cement || combo.Items[1].ProductID != sand {
+		t.Fatalf("combo items = %+v, want cement then sand", combo.Items)
+	}
 
 	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{{description: "Cemento", quantity: "10", productID: &cement}})
 	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote SET current_status='QUOTED' WHERE id=$1`, seeded.quoteID); err != nil {

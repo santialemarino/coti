@@ -27,7 +27,10 @@ import {
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
-import { accountSchema, type AccountValues } from '@/app/(protected)/settings/account/form-schema';
+import {
+  accountFormSchema,
+  type AccountFormValues,
+} from '@/app/(protected)/settings/account/form-schema';
 import { BrandColorField } from '@/components/brand-color-field';
 import { CustomerPortalEditor } from '@/components/customer-portal/customer-portal-editor';
 import { LogoDropzone } from '@/components/logo-dropzone';
@@ -51,15 +54,14 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   const t = useTranslations('account');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('account');
-  const schema = useMemo(() => accountSchema({ field: t, shared: tErrors }), [t, tErrors]);
-  const form = useForm<AccountValues>({
+  const schema = useMemo(() => accountFormSchema({ field: t, shared: tErrors }), [t, tErrors]);
+  const form = useForm<AccountFormValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
     defaultValues: {
       name: account.name,
       legalName: account.legalName ?? '',
       taxId: taxIdDigits(account.taxId ?? ''),
-      brandLogoUrl: account.brandLogoUrl ?? '',
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
       lowerPriceStrategy: account.preferredLowerPriceStrategy,
     },
@@ -67,16 +69,20 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
   const strategyFieldId = useId();
   const [logo, setLogo] = useState<File | null>();
   // The values a CUIT change is waiting on while the caller decides about the ARCA connection.
-  const [confirming, setConfirming] = useState<AccountValues | null>(null);
+  const [confirming, setConfirming] = useState<AccountFormValues | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [invoicePending, setInvoicePending] = useState(false);
   const heldConnection = useHeldWhileClosed(arcaConnection, confirming !== null);
 
-  async function save(values: AccountValues, disconnectARCA: boolean) {
+  async function save(values: AccountFormValues, disconnectARCA: boolean) {
     setInvoicePending(false);
     let result;
     try {
-      result = await updateAccount(values, logo, disconnectARCA);
+      result = await updateAccount(
+        { ...values, brandLogoUrl: account.brandLogoUrl ?? '' },
+        logo,
+        disconnectARCA,
+      );
     } catch {
       form.setError('root', { message: message('INTERNAL') });
       return;
