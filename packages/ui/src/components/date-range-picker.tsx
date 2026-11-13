@@ -84,6 +84,17 @@ function useTwoMonths() {
   );
 }
 
+// The first month to show for a preset: unchanged when both its ends are already on screen.
+function presetMonth(range: DateRangeValue, current: Date, twoMonths: boolean) {
+  const from = parseDay(range.from);
+  const to = parseDay(range.to);
+  const shown = (day: Date | undefined) =>
+    !day || isSameMonth(day, current) || (twoMonths && isSameMonth(day, addMonths(current, 1)));
+  if ((from || to) && shown(from) && shown(to)) return current;
+  const anchor = to ?? from ?? new Date();
+  return twoMonths && to ? addMonths(anchor, -1) : anchor;
+}
+
 function rangeLabel(
   value: DateRangeValue,
   placeholder: string,
@@ -278,10 +289,9 @@ function DateRangePicker({
                     className="justify-start aria-pressed:bg-accent aria-pressed:text-accent-foreground text-paragraph-sm"
                     onClick={() => {
                       fill(preset.value);
-                      // A preset can land far from the months on screen; bring it into view with its end's
-                      // month last, so a range inside one month never opens on an empty one.
-                      const end = parseDay(preset.value.to) ?? new Date();
-                      setMonth(twoMonths ? addMonths(end, -1) : end);
+                      // A preset already on screen stays put; otherwise it comes into view with its end's month last
+                      // (its start's, when the end is open), so a range inside one month never opens on an empty one.
+                      setMonth((current) => presetMonth(preset.value, current, twoMonths));
                     }}
                   >
                     {preset.label}

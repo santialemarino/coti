@@ -5,6 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import {
   DayPicker,
+  labelDayButton,
   type DayButtonProps,
   type DayProps,
   type DropdownProps,
@@ -36,6 +37,8 @@ const DAY_BUTTON = cn(
   'outline-none transition-[box-shadow] duration-150 ease-out-soft',
   'focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/45',
   'disabled:pointer-events-none disabled:opacity-40',
+  // A focused disabled day keeps focus, so day-picker marks it aria-disabled instead of disabled.
+  'aria-disabled:pointer-events-none aria-disabled:opacity-40',
   'text-paragraph-sm tabular-nums data-today:text-paragraph-sm-semibold',
   // A plain day.
   'hover:bg-surface-hover active:bg-surface-active',
@@ -45,6 +48,8 @@ const DAY_BUTTON = cn(
   'data-today:not-data-selected:not-data-in-range:not-data-preview:hover:bg-accent-strong',
   'data-today:not-data-selected:not-data-in-range:not-data-preview:hover:text-accent-foreground',
   'data-today:not-data-selected:not-data-in-range:not-data-preview:active:bg-accent-stronger',
+  // Pressed without a hover (touch, or Space from the keyboard) needs the darker text on its own.
+  'data-today:not-data-selected:not-data-in-range:not-data-preview:active:text-accent-foreground',
   // Inside a range or its preview: the band shows through, and hover and press step up from it.
   'data-in-range:not-data-selected:text-accent-foreground data-preview:not-data-selected:text-accent-foreground',
   'data-in-range:not-data-selected:hover:bg-accent-strong data-in-range:not-data-selected:active:bg-accent-stronger',
@@ -89,6 +94,22 @@ const CLASS_NAMES: CalendarProps['classNames'] = {
   caption_before_enter: 'calendar-caption-enter',
   caption_after_exit: 'calendar-caption-exit',
   caption_before_exit: 'calendar-caption-exit',
+};
+
+/*
+ * Day-picker names a day ", seleccionado" from its own `selected` flag; a day from a neighbouring
+ * month carries no state here, so its name must not claim one either.
+ */
+const spanishDayLabel = es.labels?.labelDayButton;
+const dayLabel = typeof spanishDayLabel === 'function' ? spanishDayLabel : labelDayButton;
+const DAY_LABELS: CalendarProps['labels'] = {
+  labelDayButton: (date, modifiers, options, dateLib) =>
+    dayLabel(
+      date,
+      modifiers.outside ? { ...modifiers, selected: false } : modifiers,
+      options,
+      dateLib,
+    ),
 };
 
 function CalendarChevron({ orientation }: { orientation?: 'up' | 'down' | 'left' | 'right' }) {
@@ -205,6 +226,7 @@ function Calendar({ className, classNames, components, animate, ...props }: Cale
       locale={es}
       // With two months side by side, a neighbour's days would repeat the other grid's, ends included.
       showOutsideDays={(props.numberOfMonths ?? 1) === 1}
+      labels={DAY_LABELS}
       animate={animate ?? !reduced}
       className={cn('[--cell:--spacing(10)] sm:[--cell:--spacing(9)]', className)}
       classNames={{ ...CLASS_NAMES, ...classNames }}

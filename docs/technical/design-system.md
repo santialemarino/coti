@@ -357,7 +357,7 @@ an end of the range (white on `primary`, a step darker on hover and press) beats
 or its preview (`accent-foreground`, hover and press on `accent-strong`/`-stronger`), which beats
 today (`primary`, its hover and press in the same blue family), which beats a greyed day. A day from
 a neighbouring month never carries a range, drawn or announced; with two months side by side it is
-not shown at all, so no day appears twice. The range's state comes only from the picker (day-picker
+not shown at all, so no day appears twice, and its spoken name never says it is selected. The range's state comes only from the picker (day-picker
 is given an `onSelect` so its selection never drifts from the draft). Day-picker owns the
 keyboard: arrows move a day or a week, Page Up/Down a month (Shift for a year), Home/End the week's
 edges. A month change slides the new weeks a short way in from the side they lie on
@@ -378,8 +378,9 @@ Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read i
   one-day range), and a pick after a complete pair starts a new one. Until the second pick the range
   follows the pointer (or the focused day, until focus leaves the grid) from the first, in either
   direction; a lone first pick drops the other end. Choosing an end first replaces that end alone
-  and swaps the two when the new day crosses the other. A preset fills the draft, shows pressed and
-  brings the range into view with its end's month last.
+  and swaps the two when the new day crosses the other. A preset fills the draft and shows pressed;
+  if its range is not already on screen, the view moves to show it with its end's month last (its
+  start's, when the end is open).
   Aplicar stays shut while an end that must be set is empty or the draft equals the committed range.
   `openStart`/`openEnd` give the wording of an empty end and let it stay empty, with a clear button
   beside it; `names` submits each end as a hidden input for a native form. Reportes submits its

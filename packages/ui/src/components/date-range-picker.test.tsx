@@ -531,6 +531,65 @@ describe('DateRangePicker', () => {
     }
   });
 
+  it('never names a day from a neighbouring month as selected', () => {
+    renderPicker({ from: '2026-06-10', to: '2026-07-03' });
+    fireEvent.click(trigger());
+
+    const july = [...panel().querySelectorAll<HTMLElement>('button[data-outside]')].filter(
+      (button) => button.dataset.day! >= '2026-07-01',
+    );
+    expect(july.length).toBeGreaterThan(0);
+    for (const button of july) {
+      expect(button.getAttribute('aria-label')).not.toMatch(/seleccionad/);
+    }
+    // A day of the month itself still says so.
+    expect(day('10 de junio de 2026').getAttribute('aria-label')).toMatch(/seleccionad/);
+  });
+
+  it('leaves the view alone for a preset already on screen', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
+    );
+    const presets = [{ label: 'Junio', value: { from: '2026-06-01', to: '2026-06-30' } }];
+    renderPicker({ from: '2026-06-10', to: '2026-06-20' }, { presets });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Junio' }));
+
+    // June and July were on screen; moving to "end's month last" would show May and June instead.
+    const months = within(panel())
+      .getAllByRole('grid')
+      .map((grid) => grid.getAttribute('aria-label'));
+    expect(months.join(' ')).toMatch(/junio 2026.*julio 2026/i);
+  });
+
+  it('brings a preset with an open end into view on its start', () => {
+    const presets = [{ label: 'Desde marzo', value: { from: '2026-03-01', to: '' } }];
+    renderPicker({ from: '2026-06-10', to: '2026-06-20' }, { presets, openEnd: 'Sin fin' });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Desde marzo' }));
+
+    expect(within(panel()).getByRole('grid').getAttribute('aria-label')).toMatch(/marzo 2026/i);
+  });
+
+  // jsdom applies no CSS, so these pin the rules the browser check measured: a press without a
+  // hover (touch, Space) keeps today legible, and a focused disabled day still looks disabled.
+  it('styles today pressed without a hover, and a focused disabled day', () => {
+    renderPicker({ from: '', to: '' });
+    fireEvent.click(trigger());
+    const classes = panel().querySelector('[role="grid"] button')!.className;
+
+    expect(classes).toContain(
+      'data-today:not-data-selected:not-data-in-range:not-data-preview:active:text-accent-foreground',
+    );
+    expect(classes).toContain('aria-disabled:opacity-40');
+  });
+
   it('marks both ends selected and greys out days past the bounds', () => {
     renderPicker({ from: '2026-10-05', to: '2026-10-12' }, { max: '2026-10-20' });
     fireEvent.click(trigger());
