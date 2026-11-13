@@ -33,10 +33,12 @@ description: Where tests live, how to run them, and what to test in the Coti rep
   pushing anything that touches SQL or tenant scoping; it is faster than waiting for CI.
 - **Every workflow runs on every PR, and gates its jobs by area.** Its `changes` job lists the
   PR's files and flags each area (`api`, `scripts`; `backoffice`, `webapp`, `ui`, `skills`;
-  `docker`, `deploy_spec`) whose paths changed; a job whose area is not flagged is skipped. A
-  workflow's own file flags all of its areas, and a root file no rule names flags everything, so
-  a new top-level path is checked by default. When adding a top-level directory, add it to the
-  `case` of each workflow that should — or should not — run for it.
+  `docker_api`, `docker_backoffice`, `docker_webapp`, `deploy_spec`) whose paths changed; a job
+  whose area is not flagged is skipped, and each Docker image builds only for its own app. A
+  workflow's own file flags all of its areas, and a root file no rule names flags everything, so a
+  new top-level path is checked by default. The release passes `full: true` and runs every job.
+  When adding a top-level directory, add it to the `case` of each workflow that should — or should
+  not — run for it.
 - **Each workflow has one `*-required` job** (`ci-api-required`, `ci-web-required`,
   `ci-deploy-required`) that always runs and passes only when every flagged job succeeded and
   every other job was skipped. Those are the checks to mark required, since a skipped job never
