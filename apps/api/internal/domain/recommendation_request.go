@@ -16,3 +16,9 @@ type RecommendationProposal struct {
 	UnitPrice          decimal.Decimal
 	Currency           string
 }
+
+// FilledRecommendation is a catalog alternative added to an empty slot of a quote item.
+type FilledRecommendation struct {
+	ItemID      uuid.UUID
+	Alternative QuoteItemAlternative
+}

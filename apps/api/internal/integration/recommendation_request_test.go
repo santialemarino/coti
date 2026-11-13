@@ -163,3 +163,79 @@ func TestRepresentationSource_OffersOnlyEconomyAndPremium(t *testing.T) {
 		t.Fatalf("offered = %+v; want only the economy option", offered)
 	}
 }
+
+func TestRecommendationRequest_FillVacantOnceAndTenantIsolation(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Fill recommendations")
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	base := e.seedPricedProduct(t, accountID, branchID, "Base", "100.00", nil)
+	economy := e.seedPricedProduct(t, accountID, branchID, "Economy", "80.00", nil)
+	premium := e.seedPricedProduct(t, accountID, branchID, "Premium", "130.00", nil)
+	var familyID, subgroupID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT family_id, id FROM product_subgroup ORDER BY family_id, sort_order LIMIT 1`).Scan(&familyID, &subgroupID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE product SET family_id=$2, subgroup_id=$3, unit='bolsa'
+		WHERE account_id=$1 AND id = ANY($4::uuid[])`, accountID, familyID, subgroupID, []uuid.UUID{base, economy, premium}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO product_alternative
+		(account_id, base_product_id, alternative_product_id, type)
+		VALUES ($1,$2,$3,'ECONOMY'), ($1,$2,$4,'PREMIUM')`, accountID, base, economy, premium); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM product_alternative WHERE account_id=$1 AND base_product_id=$2`, accountID, base)
+	})
+	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{{description: "Base", quantity: "1", productID: &base}})
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote SET current_status='QUOTED' WHERE id=$1`, seeded.quoteID); err != nil {
+		t.Fatal(err)
+	}
+	var itemID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `UPDATE quote_item SET unit_price_snapshot=100, subtotal=100
+		WHERE version_id=$1 RETURNING id`, seeded.versionID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	service := services.NewRecommendationRequestService(e.db, repository.NewQuoteRepository(),
+		repository.NewProductAlternativeRepository(), repository.NewProductPriceRepository())
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: seller.ID}
+
+	otherAccount, foreignBranch := e.seedAccount(t, "Other account")
+	if _, err := service.FillVacant(ctx, domain.Tenant{AccountID: otherAccount, BranchID: foreignBranch}, seeded.quoteID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("different account: %v, want not found", err)
+	}
+
+	// Two sellers pressing at once still leave each slot filled exactly once.
+	results := make(chan int, 2)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			filled, err := service.FillVacant(ctx, tenant, seeded.quoteID)
+			if err != nil {
+				t.Errorf("concurrent fill: %v", err)
+			}
+			results <- len(filled)
+		}()
+	}
+	wg.Wait()
+	close(results)
+	total := 0
+	for n := range results {
+		total += n
+	}
+	var economyRows, premiumRows, approved int
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT
+		count(*) FILTER (WHERE recommendation_type='ECONOMY'),
+		count(*) FILTER (WHERE recommendation_type='PREMIUM'),
+		count(*) FILTER (WHERE approved_by_seller)
+		FROM quote_item_alternative WHERE account_id=$1 AND quote_item_id=$2`, accountID, itemID).Scan(&economyRows, &premiumRows, &approved); err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || economyRows != 1 || premiumRows != 1 || approved != 0 {
+		t.Fatalf("filled = %d, economy = %d, premium = %d, approved = %d; want each slot once, unapproved",
+			total, economyRows, premiumRows, approved)
+	}
+}

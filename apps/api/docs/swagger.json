@@ -8778,6 +8778,71 @@
                 }
             }
         },
+        "/v1/quotes/{quoteId}/recommendations/fill": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adds, for every quote item, the catalog economy and premium alternatives whose slot is still empty and that are still eligible. Existing choices are never replaced; added ones start unapproved.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Fill empty recommendation slots from the catalog",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RecommendationFillResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/recommendations/search": {
             "post": {
                 "security": [
@@ -12828,6 +12893,17 @@
                 }
             }
         },
+        "dto.FilledRecommendationResponse": {
+            "type": "object",
+            "properties": {
+                "alternative": {
+                    "$ref": "#/definitions/dto.QuoteItemAlternativeResponse"
+                },
+                "item_id": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ForgotPasswordRequest": {
             "type": "object",
             "required": [
@@ -14812,6 +14888,17 @@
                         "RESEND",
                         "EDIT"
                     ]
+                }
+            }
+        },
+        "dto.RecommendationFillResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.FilledRecommendationResponse"
+                    }
                 }
             }
         },

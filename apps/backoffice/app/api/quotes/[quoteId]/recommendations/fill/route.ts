@@ -1,13 +1,13 @@
 import { forwardToApi } from '@/lib/api/upstream';
 
 interface RouteContext {
-  params: Promise<{ quoteId: string; itemId: string; recommendationType: string }>;
+  params: Promise<{ quoteId: string }>;
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
-  const { quoteId, itemId, recommendationType } = await params;
+  const { quoteId } = await params;
   return forwardToApi(request, {
-    path: `/v1/quotes/${quoteId}/items/${itemId}/recommendations/${recommendationType}/add`,
+    path: `/v1/quotes/${quoteId}/recommendations/fill`,
     method: 'POST',
     body: await request.text(),
   });
