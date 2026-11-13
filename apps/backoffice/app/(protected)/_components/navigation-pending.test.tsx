@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- plain anchors, as a <Link> renders them, are what the shell captures. */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
