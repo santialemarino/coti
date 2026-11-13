@@ -347,33 +347,35 @@ through `--toast-lift`.
 ### Dates
 
 Every date in both apps is picked from **`Calendar`**, the design system's month grid built on
-`react-day-picker` with its own stylesheet left out: Spanish (`es`), weeks from Monday, days on
-the semantic tokens (a day is a surface and gets the ring; the chosen days are `primary`, the
-stretch between them `accent`, today a dot). Day-picker owns the keyboard: arrows move a day or a
-week, Page Up/Down a month (Shift for a year), Home/End the week's edges. A month change slides
-the new weeks a short way in from the side they lie on (`calendar-weeks-*` and
-`calendar-caption-*` in the styles, single classes because day-picker adds them with
-`classList.add`); under reduced motion the calendar turns day-picker's animation off, since it
-waits for an exit that would never end. Nobody places `Calendar` bare; two fields wrap it, and
-both take and hand back `YYYY-MM-DD` strings, so a form keeps the shape the API speaks.
-`parseDay`, `toDay` and `displayDay` (`@repo/ui/lib`) anchor a day at local midnight (a bare
-`new Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read it as
-`13/11/2026`.
+`react-day-picker` with its own stylesheet left out: Spanish (`es`), weeks from Monday, days on the
+semantic tokens (a day is a surface and gets the ring; the chosen days are `primary`, the stretch
+between them `accent`, today a dot). The stretch is painted on the day cells, half a band behind
+each end, so a day's button keeps its rounded shape and only changes colour. Day-picker owns the
+keyboard: arrows move a day or a week, Page Up/Down a month (Shift for a year), Home/End the week's
+edges. A month change slides the new weeks a short way in from the side they lie on
+(`calendar-weeks-*` and `calendar-caption-*` in the styles, single classes because day-picker adds
+them with `classList.add`); under reduced motion the calendar turns day-picker's animation off,
+since it waits for an exit that would never end. Nobody places `Calendar` bare; two fields wrap it,
+and both take and hand back `YYYY-MM-DD` strings, so a form keeps the shape the API speaks.
+`parseDay`, `toDay` and `displayDay` (`@repo/ui/lib`) anchor a day at local midnight (a bare `new
+Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read it as `13/11/2026`.
 
 - **`DatePicker`** — one day. Picking it closes the panel and returns focus to the field; pressing
   the chosen day again keeps it. The month and year are `Combobox`es, never the browser's
   `<select>`, and reach 80 years back unless `min`/`max` bound them.
 - **`DateRangePicker`** — an interval, wherever one is chosen: one field, never two inputs. The
-  panel opens with neither end chosen: two picks make the range in either order (the earlier day is
-  the start, the same day twice is a one-day range), and the second pick commits and closes. Until
-  then the range follows the pointer (or the focused day, until focus leaves the grid) from the
-  first pick, in either direction; a lone first pick drops the other end. Choosing an end first
-  replaces that end alone and swaps the two when the new day crosses the other. The panel fades out
-  showing the range it committed. Escape or a click outside drops the edit. `openStart`/`openEnd`
-  give the wording of an empty end and let it stay empty, with a clear button beside it and the done
-  button to confirm a range left open; `presets` commit at once; `names` submits each end as a
-  hidden input for a native form (Reportes' `next/form`). Two months side by side from 768px, one
-  below.
+  panel edits a draft and commits only on **Aplicar**; **Cancelar**, Escape or a click outside drop
+  the draft, and the panel fades out on what was applied or kept. It opens with neither end chosen:
+  two picks make the range in either order (the earlier day is the start, the same day twice is a
+  one-day range), and a pick after a complete pair starts a new one. Until the second pick the range
+  follows the pointer (or the focused day, until focus leaves the grid) from the first, in either
+  direction; a lone first pick drops the other end. Choosing an end first replaces that end alone
+  and swaps the two when the new day crosses the other. A preset fills the draft and shows pressed.
+  Aplicar stays shut while an end that must be set is empty or the draft equals the committed range.
+  `openStart`/`openEnd` give the wording of an empty end and let it stay empty, with a clear button
+  beside it; `names` submits each end as a hidden input for a native form. Reportes submits its
+  `next/form` from `onValueChange`, so applying a period runs the report at once. Two months side by
+  side from 768px, one below.
 
 The backoffice's shared copy and presets come from `useDateRangeCopy` and
 `lib/utils/date-ranges.ts`.
