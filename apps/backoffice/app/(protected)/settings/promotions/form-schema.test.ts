@@ -92,6 +92,17 @@ describe('promotionSchema', () => {
 
     expect(tiered([])).toMatchObject({ tiers: 'field:tiers.required' });
     expect(tiered([{ fromQuantity: '10', toQuantity: '19', value: '5' }])).toEqual({});
+    // A leftover minimum from another type is not the caller's to fix on a tiered rule.
+    expect(
+      issues(
+        valid({
+          conditionType: 'QUANTITY_TIERED',
+          actionValue: '',
+          conditions: [{ ...PRODUCT, minQuantity: '0' }],
+          tiers: [{ fromQuantity: '10', toQuantity: '19', value: '5' }],
+        }),
+      ),
+    ).toEqual({});
     expect(tiered([{ fromQuantity: '10', toQuantity: '5', value: '5' }])).toMatchObject({
       'tiers.0.toQuantity': 'field:tiers.toBelowFrom',
     });

@@ -107,7 +107,8 @@ function bodyOf(values: PromotionValues) {
           product_id: condition.kind === 'product' ? condition.targetId : undefined,
           family_id: condition.kind === 'family' ? condition.targetId : undefined,
           subgroup_id: condition.kind === 'subgroup' ? condition.targetId : undefined,
-          min_quantity: condition.minQuantity || undefined,
+          // A tiered rule's quantities are its tiers; the form shows no minimum for it.
+          min_quantity: tiered ? undefined : condition.minQuantity || undefined,
         })),
     tiers: tiered
       ? values.tiers.map((tier) => ({
