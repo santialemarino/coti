@@ -328,6 +328,20 @@ root's snapshots are dropped, which keeps the column sliding live underneath, an
 takes `pointer-events: none` so it never swallows a click. A browser without view transitions
 simply swaps.
 
+### Long lists
+
+A list too long to render whole (an import preview) shows one step at a time through
+`useProgressiveList` (`@repo/ui/hooks`) and ends in **`ShowMore`**: how much is showing, the next
+step, and everything at once, the last offered only while more than one step remains. After a
+reveal, focus moves to the first row it added, since the pressed button may have disappeared.
+Rows that need attention (errors) lead, so none waits behind a step.
+
+Its companion is **`JumpToButton`**, a floating arrow shown only while the list's action row is off
+screen. It points toward it, scrolls there with motion's `animate` (eased over `MOTION.slower`,
+held to the page's end, cancelled by any wheel or touch, instant under reduced motion), and puts
+focus on the row's last enabled control, its primary action. It sits above the phone tab bar
+through `--toast-lift`.
+
 ### Reduced motion
 
 Decorative motion collapses to nothing under `prefers-reduced-motion: reduce`:

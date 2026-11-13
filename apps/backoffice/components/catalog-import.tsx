@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2Icon, DownloadIcon, FileSpreadsheetIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -11,6 +11,7 @@ import {
   Callout,
   Card,
   Dropzone,
+  JumpToButton,
   PendingButton,
   StepList,
   Table,
@@ -20,6 +21,8 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { useProgressiveList } from '@repo/ui/hooks';
+import { cn } from '@repo/ui/lib';
 import {
   confirmCatalogImport,
   downloadCatalogTemplate,
@@ -27,6 +30,7 @@ import {
   type CatalogImportPreview,
   type CatalogImportRow,
 } from '@/app/(protected)/_actions/catalog-import';
+import { RevealControls } from '@/components/reveal-controls';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { CATALOG_PREVIEW_PAGE_SIZE } from '@/lib/config';
@@ -157,10 +161,15 @@ interface CatalogReviewProps {
 export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewProps) {
   const fmt = useFormatters();
   const t = useTranslations('catalogImport');
+  const tReveal = useTranslations('common.reveal');
   const message = useApiErrorMessage('catalogImport');
   const [error, setError] = useState<string | null>(null);
   const [confirming, startConfirm] = useTransition();
-  const [visibleRows, setVisibleRows] = useState(CATALOG_PREVIEW_PAGE_SIZE);
+  const list = useProgressiveList<HTMLTableRowElement>(
+    preview.rows.length,
+    CATALOG_PREVIEW_PAGE_SIZE,
+  );
+  const actionsRef = useRef<HTMLDivElement>(null);
   // Rows with errors lead, so none of them waits behind "Ver más" while the rest are confirmed.
   const rows = [
     ...preview.rows.filter((row) => row.errors.length > 0),
@@ -213,10 +222,12 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.slice(0, visibleRows).map((row) => (
+            {rows.slice(0, list.visible).map((row, index) => (
               <TableRow
                 key={`${row.rowNumber}-${row.code}`}
-                className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
+                ref={index === list.revealedFrom ? list.revealedRef : undefined}
+                tabIndex={index === list.revealedFrom ? -1 : undefined}
+                className={cn('outline-none', row.errors.length > 0 && 'bg-danger-subtle')}
               >
                 <TableCell kind="index" className="text-foreground-subtle">
                   {row.rowNumber}
@@ -257,18 +268,12 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         </Table>
       </div>
 
-      {visibleRows < preview.rows.length ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="self-center"
-          onClick={() => setVisibleRows((count) => count + CATALOG_PREVIEW_PAGE_SIZE)}
-        >
-          {t('showMore', { remaining: preview.rows.length - visibleRows })}
-        </Button>
-      ) : null}
+      <RevealControls list={list} />
 
-      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        ref={actionsRef}
+        className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between"
+      >
         <Button type="button" variant="outline" disabled={confirming} onClick={onBack}>
           {t('chooseAnother')}
         </Button>
@@ -285,6 +290,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
           <p className="text-paragraph-sm text-danger-foreground">{t('noValidRows')}</p>
         )}
       </div>
+      <JumpToButton target={actionsRef} label={tReveal('jumpToConfirm')} />
     </div>
   );
 }
