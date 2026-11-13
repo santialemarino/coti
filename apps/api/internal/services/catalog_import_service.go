@@ -23,6 +23,7 @@ type catalogImportRepository interface {
 	ListRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogSlots, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
 	ApplyRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, changes []domain.CatalogSlotChange) error
+	DatabaseTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 // CatalogImportService previews and confirms bulk catalog spreadsheets.
@@ -135,7 +136,12 @@ func (s *CatalogImportService) Confirm(
 		if len(validRows) == 0 {
 			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
 		}
-		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, s.now().UTC(), validRows); applyErr != nil {
+		// The database's clock, so the new prices are in force for the very next read.
+		effectiveAt, timeErr := s.catalog.DatabaseTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), validRows); applyErr != nil {
 			return applyErr
 		}
 		if slotErr := s.catalog.ApplyRecommendationSlots(ctx, q, tenant.AccountID, catalogSlotChanges(validRows)); slotErr != nil {

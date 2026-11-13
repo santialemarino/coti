@@ -115,6 +115,12 @@ func (r *CatalogImportRepository) ListTaxonomy(
 	return families, rows.Err()
 }
 
+// DatabaseTime returns the database clock now, which a price period has to start at to be in
+// force for the next read.
+func (r *CatalogImportRepository) DatabaseTime(ctx context.Context, q Querier) (time.Time, error) {
+	return databaseTime(ctx, q)
+}
+
 // ListExistingCodes returns the requested codes already owned by the account.
 func (r *CatalogImportRepository) ListExistingCodes(
 	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,

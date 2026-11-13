@@ -188,6 +188,7 @@ func (r *QuoteRepresentationRepository) listApprovedAlternatives(
 	LEFT JOIN combo ON combo.account_id = $1 AND combo.id = alternative.combo_id
 	WHERE alternative.account_id = $1 AND alternative.quote_item_id = ANY($3)
 	  AND alternative.approved_by_seller = TRUE
+	  AND alternative.recommendation_type IN ('ECONOMY', 'PREMIUM')
 	ORDER BY alternative.quote_item_id, alternative.rank`, accountID, versionID, itemIDs)
 	if err != nil {
 		return nil, err
