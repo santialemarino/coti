@@ -6,6 +6,10 @@ import { PriceImport } from '@/app/(protected)/settings/prices/_components/price
 import type { Branch } from '@/lib/api/branches';
 import messages from '@/translations/es.json';
 
+vi.mock('@/lib/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/config')>()),
+  CATALOG_PREVIEW_PAGE_SIZE: 2,
+}));
 vi.mock('@/app/(protected)/settings/prices/actions', () => ({
   confirmPriceImport: vi.fn(),
   exportPrices: vi.fn(),
@@ -183,5 +187,73 @@ describe('PriceImport partial confirmation', () => {
     );
     expect(confirm).toBeDefined();
     await waitFor(() => expect(confirm?.disabled).toBe(false));
+  });
+});
+
+describe('PriceImport preview rows', () => {
+  function row(rowNumber: number, errors: string[] = []) {
+    return {
+      rowNumber,
+      code: `P-${rowNumber}`,
+      productName: `Producto ${rowNumber}`,
+      currentPrice: null,
+      currentMinPrice: null,
+      price: '100.00',
+      minPrice: null,
+      currency: 'ARS',
+      errors,
+    };
+  }
+
+  function previewOf(rows: ReturnType<typeof row>[]) {
+    return {
+      ok: true as const,
+      preview: {
+        branchId: BRANCH.id,
+        rows,
+        validRows: rows.filter((candidate) => candidate.errors.length === 0).length,
+        invalidRows: rows.filter((candidate) => candidate.errors.length > 0).length,
+        canConfirm: true,
+        previewedAt: '2026-11-13T12:00:00Z',
+      },
+    };
+  }
+
+  it('leads with the rows that have errors and reveals the rest a step or all at once', async () => {
+    vi.mocked(previewPriceImport).mockResolvedValue(
+      previewOf([row(2), row(3), row(4), row(5), row(6, ['unknown_product'])]),
+    );
+    const view = renderImport();
+    chooseFile(view);
+    submitPreview(view.form);
+
+    await waitFor(() => expect(view.getByText('Producto 6')).toBeTruthy());
+    expect(view.getByText('Producto 2')).toBeTruthy();
+    expect(view.queryByText('Producto 3')).toBeNull();
+
+    fireEvent.click(view.getByRole('button', { name: 'Ver 2 más' }));
+    expect(view.getByText('Producto 4')).toBeTruthy();
+    expect(view.queryByText('Producto 5')).toBeNull();
+
+    fireEvent.click(view.getByRole('button', { name: 'Ver 1 más' }));
+    expect(view.getByText('Producto 5')).toBeTruthy();
+    expect(view.queryByRole('button', { name: /Ver todas/ })).toBeNull();
+  });
+
+  it('starts a new file from the first step again', async () => {
+    vi.mocked(previewPriceImport).mockResolvedValue(
+      previewOf([row(2), row(3), row(4), row(5), row(6), row(7)]),
+    );
+    const view = renderImport();
+    chooseFile(view);
+    submitPreview(view.form);
+    await waitFor(() => expect(view.getByText('Producto 2')).toBeTruthy());
+    fireEvent.click(view.getByRole('button', { name: 'Ver todas (6)' }));
+    expect(view.getByText('Producto 7')).toBeTruthy();
+
+    submitPreview(view.form);
+    await waitFor(() => expect(previewPriceImport).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(view.queryByText('Producto 7')).toBeNull());
+    expect(view.getByText('Mostrando 2 de 6 filas')).toBeTruthy();
   });
 });

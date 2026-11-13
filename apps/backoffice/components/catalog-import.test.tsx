@@ -49,9 +49,9 @@ function review() {
 it('reveals the remaining rows on request', () => {
   const view = review();
   expect(view.queryByText('Last product')).toBeNull();
-  fireEvent.click(view.getByRole('button', { name: /Ver más/ }));
+  fireEvent.click(view.getByRole('button', { name: 'Ver 1 más' }));
   expect(view.getByText('Last product')).toBeTruthy();
-  expect(view.queryByRole('button', { name: /Ver más/ })).toBeNull();
+  expect(view.queryByRole('button', { name: 'Ver 1 más' })).toBeNull();
 });
 
 it('confirms every row even when some have not been revealed', async () => {
@@ -110,4 +110,28 @@ it('shows what each row does to the recommendation slots only when some row chan
   expect(view.getByText(messages.catalogImport.table.alternatives)).toBeTruthy();
   expect(view.getByText('Económica: ARE-002')).toBeTruthy();
   expect(view.getByText(messages.catalogImport.alternatives.premiumCleared)).toBeTruthy();
+});
+
+it('reveals every row at once on request', () => {
+  const base = preview.rows[0];
+  if (!base) throw new Error('fixture has rows');
+  const rows = Array.from({ length: 6 }, (_, index) => ({
+    ...base,
+    rowNumber: index + 2,
+    code: `R-${index}`,
+    name: `Row ${index + 1}`,
+  }));
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <CatalogReview
+        preview={{ ...preview, validRows: 6, rows }}
+        onBack={() => {}}
+        onConfirmed={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByRole('status').textContent).toBe('Mostrando 2 de 6 filas');
+  fireEvent.click(view.getByRole('button', { name: 'Ver todas (6)' }));
+  expect(view.getByText('Row 6')).toBeTruthy();
+  expect(document.activeElement?.textContent).toContain('Row 3');
 });

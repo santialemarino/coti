@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
 import {
   Callout,
   Dropzone,
+  JumpToButton,
   PendingButton,
   Table,
   TableBody,
@@ -14,14 +15,18 @@ import {
   TableHeader,
   TableRow,
 } from '@repo/ui/components';
+import { useProgressiveList } from '@repo/ui/hooks';
+import { cn } from '@repo/ui/lib';
 import {
   confirmPriceImport,
   exportPrices,
   previewPriceImport,
   type ProductPriceImportPreview,
 } from '@/app/(protected)/settings/prices/actions';
+import { RevealControls } from '@/components/reveal-controls';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
+import { CATALOG_PREVIEW_PAGE_SIZE } from '@/lib/config';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface PriceImportProps {
@@ -29,7 +34,6 @@ interface PriceImportProps {
 }
 
 export function PriceImport({ branch }: PriceImportProps) {
-  const fmt = useFormatters();
   const t = useTranslations('priceImport');
   const tCommon = useTranslations('common');
   // Two resolvers: exporting words a 422 as "this branch has no prices yet", where the import
@@ -38,6 +42,9 @@ export function PriceImport({ branch }: PriceImportProps) {
   const exportMessage = useApiErrorMessage('priceImport.export');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ProductPriceImportPreview | null>(null);
+  // Bumped per preview, so a new file starts its rows from the first step again.
+  const [previewRun, setPreviewRun] = useState(0);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
   /*
@@ -67,6 +74,7 @@ export function PriceImport({ branch }: PriceImportProps) {
         return;
       }
       setPreview(result.preview);
+      setPreviewRun((run) => run + 1);
     });
   }
 
@@ -158,7 +166,7 @@ export function PriceImport({ branch }: PriceImportProps) {
 
       {preview ? (
         <section className="flex flex-col gap-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div ref={actionsRef} className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-paragraph-sm">
               {t('summary', { valid: preview.validRows, invalid: preview.invalidRows })}
             </p>
@@ -177,62 +185,83 @@ export function PriceImport({ branch }: PriceImportProps) {
               {t('invalidRowsSkipped', { count: preview.invalidRows })}
             </Callout>
           ) : null}
-          <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
-            <Table figures="end">
-              <TableHeader>
-                <TableRow>
-                  <TableHead kind="index">{t('table.row')}</TableHead>
-                  <TableHead kind="short">{t('table.code')}</TableHead>
-                  <TableHead kind="text">{t('table.product')}</TableHead>
-                  <TableHead kind="money">{t('table.currentPrice')}</TableHead>
-                  <TableHead kind="money">{t('table.newPrice')}</TableHead>
-                  <TableHead kind="money">{t('table.minPrice')}</TableHead>
-                  <TableHead kind="text">{t('table.result')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.rows.map((row) => (
-                  <TableRow
-                    key={`${row.rowNumber}-${row.code}`}
-                    className={row.errors.length > 0 ? 'bg-danger-subtle' : undefined}
-                  >
-                    <TableCell kind="index" className="text-foreground-subtle">
-                      {row.rowNumber}
-                    </TableCell>
-                    <TableCell kind="short" className="text-paragraph-sm-medium">
-                      {row.code || '—'}
-                    </TableCell>
-                    <TableCell>{row.productName || '—'}</TableCell>
-                    <TableCell kind="money">
-                      {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
-                    </TableCell>
-                    <TableCell kind="money">
-                      {row.price ? fmt.currency(row.price, row.currency) : '—'}
-                    </TableCell>
-                    <TableCell kind="money">
-                      {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {row.errors.length === 0 ? (
-                        <span>{t('valid')}</span>
-                      ) : (
-                        <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
-                          {row.errors.map((rowError) => (
-                            <li key={rowError}>{t(`rowErrors.${rowError}`)}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <PricePreviewRows key={previewRun} rows={preview.rows} />
+          <JumpToButton target={actionsRef} label={tCommon('reveal.jumpToConfirm')} />
           {!preview.canConfirm ? (
             <p className="text-paragraph-sm text-danger-foreground">{t('fixErrors')}</p>
           ) : null}
         </section>
       ) : null}
     </div>
+  );
+}
+
+// The preview's rows, a step at a time; rows with errors lead, so none waits behind "Ver más".
+function PricePreviewRows({ rows }: { rows: ProductPriceImportPreview['rows'] }) {
+  const fmt = useFormatters();
+  const t = useTranslations('priceImport');
+  const ordered = [
+    ...rows.filter((row) => row.errors.length > 0),
+    ...rows.filter((row) => row.errors.length === 0),
+  ];
+  const list = useProgressiveList<HTMLTableRowElement>(ordered.length, CATALOG_PREVIEW_PAGE_SIZE);
+
+  return (
+    <>
+      <div className="overflow-hidden border border-border rounded-1.5xl shadow-e1">
+        <Table figures="end">
+          <TableHeader>
+            <TableRow>
+              <TableHead kind="index">{t('table.row')}</TableHead>
+              <TableHead kind="short">{t('table.code')}</TableHead>
+              <TableHead kind="text">{t('table.product')}</TableHead>
+              <TableHead kind="money">{t('table.currentPrice')}</TableHead>
+              <TableHead kind="money">{t('table.newPrice')}</TableHead>
+              <TableHead kind="money">{t('table.minPrice')}</TableHead>
+              <TableHead kind="text">{t('table.result')}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {ordered.slice(0, list.visible).map((row, index) => (
+              <TableRow
+                key={`${row.rowNumber}-${row.code}`}
+                ref={index === list.revealedFrom ? list.revealedRef : undefined}
+                tabIndex={index === list.revealedFrom ? -1 : undefined}
+                className={cn('outline-none', row.errors.length > 0 && 'bg-danger-subtle')}
+              >
+                <TableCell kind="index" className="text-foreground-subtle">
+                  {row.rowNumber}
+                </TableCell>
+                <TableCell kind="short" className="text-paragraph-sm-medium">
+                  {row.code || '—'}
+                </TableCell>
+                <TableCell>{row.productName || '—'}</TableCell>
+                <TableCell kind="money">
+                  {row.currentPrice ? fmt.currency(row.currentPrice, row.currency) : '—'}
+                </TableCell>
+                <TableCell kind="money">
+                  {row.price ? fmt.currency(row.price, row.currency) : '—'}
+                </TableCell>
+                <TableCell kind="money">
+                  {row.minPrice ? fmt.currency(row.minPrice, row.currency) : '—'}
+                </TableCell>
+                <TableCell>
+                  {row.errors.length === 0 ? (
+                    <span>{t('valid')}</span>
+                  ) : (
+                    <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
+                      {row.errors.map((rowError) => (
+                        <li key={rowError}>{t(`rowErrors.${rowError}`)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>{' '}
+      <RevealControls list={list} />
+    </>
   );
 }

@@ -278,6 +278,12 @@
       "previous": "Anterior",
       "next": "Siguiente"
     },
+    "reveal": {
+      "status": "Mostrando {visible} de {total} filas",
+      "more": "Ver {count} más",
+      "all": "Ver todas ({total})",
+      "jumpToConfirm": "Ir a confirmar"
+    },
     "phone": {
       "country": "País",
       "countrySearch": "Buscá un país",
@@ -2837,7 +2843,6 @@
     }
   },
   "catalogImport": {
-    "showMore": "Ver más ({remaining} filas restantes)",
     "title": "Catálogo",
     "bulk": {
       "title": "Edición masiva"
