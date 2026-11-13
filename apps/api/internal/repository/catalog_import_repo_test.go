@@ -435,6 +435,20 @@ func TestCatalogImportRepository_RecommendationSlots_SetClearAndExport(t *testin
 	if got := slots(); len(got) != 2 || got["ECONOMY"] != "ECO" || got["PREMIUM"] != "PRE" {
 		t.Fatalf("slots = %v, want ECONOMY=ECO and PREMIUM=PRE only", got)
 	}
+	var current map[string]domain.CatalogSlots
+	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+		var err error
+		current, err = repo.ListRecommendationSlots(ctx, q, accountID, []string{"BASE", "ECO"})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if base := current["BASE"]; base.Economy == nil || *base.Economy != "ECO" || base.Premium == nil || *base.Premium != "PRE" {
+		t.Fatalf("current slots of BASE = %+v, want ECO and PRE", base)
+	}
+	if _, ok := current["ECO"]; ok {
+		t.Fatalf("ECO holds no slot but was listed: %+v", current["ECO"])
+	}
 
 	// Replacing one slot and clearing the other leaves no stale link behind.
 	if err := apply([]domain.CatalogSlotChange{

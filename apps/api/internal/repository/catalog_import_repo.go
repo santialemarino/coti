@@ -170,6 +170,43 @@ func (r *CatalogImportRepository) ListProductsByCodes(
 	return refs, rows.Err()
 }
 
+// ListRecommendationSlots returns, per requested product code, the codes its ECONOMY and PREMIUM
+// slots hold now, whatever state those products are in.
+func (r *CatalogImportRepository) ListRecommendationSlots(
+	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
+) (map[string]domain.CatalogSlots, error) {
+	slots := make(map[string]domain.CatalogSlots, len(codes))
+	if len(codes) == 0 {
+		return slots, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT b.code, pa.type::text, a.code
+		 FROM product_alternative pa
+		 JOIN product b ON b.id = pa.base_product_id AND b.account_id = pa.account_id
+		 JOIN product a ON a.id = pa.alternative_product_id AND a.account_id = pa.account_id
+		 WHERE pa.account_id = $1 AND b.code = ANY($2) AND pa.type IN ('ECONOMY', 'PREMIUM')
+		   AND a.code IS NOT NULL`,
+		accountID, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var base, kind, alternative string
+		if err := rows.Scan(&base, &kind, &alternative); err != nil {
+			return nil, err
+		}
+		current := slots[base]
+		if kind == string(domain.ProductAlternativeEconomy) {
+			current.Economy = &alternative
+		} else {
+			current.Premium = &alternative
+		}
+		slots[base] = current
+	}
+	return slots, rows.Err()
+}
+
 // ApplyImport upserts products, branch availability and changed prices in the caller's transaction.
 func (r *CatalogImportRepository) ApplyImport(
 	ctx context.Context, q Querier, tenant domain.Tenant, effectiveAt time.Time,

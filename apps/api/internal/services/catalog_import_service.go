@@ -20,6 +20,7 @@ type catalogImportRepository interface {
 	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
 	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
 	ListProductsByCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogProductRef, error)
+	ListRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogSlots, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
 	ApplyRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, changes []domain.CatalogSlotChange) error
 }
@@ -189,6 +190,11 @@ func (s *CatalogImportService) prepare(
 			}
 		}
 	}
+	current, err := s.catalog.ListRecommendationSlots(ctx, q, accountID, codes)
+	if err != nil {
+		return nil, err
+	}
+	keepUnchangedSlots(preview.Rows, current)
 	stored, err := s.catalog.ListProductsByCodes(ctx, q, accountID, alternativeCodes)
 	if err != nil {
 		return nil, err
@@ -441,4 +447,28 @@ func trimmedAlternative(code *string) *string {
 	}
 	trimmed := strings.TrimSpace(*code)
 	return &trimmed
+}
+
+/*
+ * keepUnchangedSlots reads a code equal to what the slot already holds as "keep". An exported file
+ * carries every stored slot, and one whose product was since deactivated or reclassified would
+ * otherwise refuse a row the supplier only opened to change a price.
+ */
+func keepUnchangedSlots(rows []domain.CatalogImportRow, current map[string]domain.CatalogSlots) {
+	for i := range rows {
+		slots, ok := current[rows[i].Code]
+		if !ok {
+			continue
+		}
+		if sameSlot(rows[i].EconomyAlternative, slots.Economy) {
+			rows[i].EconomyAlternative = nil
+		}
+		if sameSlot(rows[i].PremiumAlternative, slots.Premium) {
+			rows[i].PremiumAlternative = nil
+		}
+	}
+}
+
+func sameSlot(requested, stored *string) bool {
+	return requested != nil && stored != nil && *requested != "" && *requested == *stored
 }

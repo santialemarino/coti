@@ -116,3 +116,9 @@ type CatalogSlotChange struct {
 	// Empty clears the slot.
 	AlternativeCode string
 }
+
+// CatalogSlots are the codes a product's ECONOMY and PREMIUM slots hold, nil when empty.
+type CatalogSlots struct {
+	Economy *string
+	Premium *string
+}

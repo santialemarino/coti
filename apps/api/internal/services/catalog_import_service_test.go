@@ -25,6 +25,7 @@ func (catalogImportTestDB) InTenantTx(
 
 type catalogImportTestRepository struct {
 	existing map[string]struct{}
+	slotsNow map[string]domain.CatalogSlots
 	stored   map[string]domain.CatalogProductRef
 	applied  []domain.CatalogImportRow
 	slots    []domain.CatalogSlotChange
@@ -40,6 +41,12 @@ func (r *catalogImportTestRepository) ListProductsByCodes(
 		}
 	}
 	return refs, nil
+}
+
+func (r *catalogImportTestRepository) ListRecommendationSlots(
+	_ context.Context, _ repository.Querier, _ uuid.UUID, _ []string,
+) (map[string]domain.CatalogSlots, error) {
+	return r.slotsNow, nil
 }
 
 func (r *catalogImportTestRepository) ApplyRecommendationSlots(
@@ -425,5 +432,29 @@ func TestBuildCatalogImportXLSX_WritesTheCurrentSlots(t *testing.T) {
 		if !strings.Contains(sheet, text) {
 			t.Errorf("workbook has no %q", text)
 		}
+	}
+}
+
+func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing.T) {
+	t.Parallel()
+	// The economy slot points at a product deactivated since the export.
+	repo := &catalogImportTestRepository{
+		slotsNow: map[string]domain.CatalogSlots{"A": {Economy: ptr("OFF")}},
+		stored: map[string]domain.CatalogProductRef{
+			"OFF": {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: false},
+		},
+	}
+	preview := previewAlternatives(t, repo,
+		"A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OFF;\n")
+	row := preview.Rows[0]
+	if len(row.Errors) != 0 || row.EconomyAlternative != nil {
+		t.Fatalf("row = errors %v, economy %v; want the unchanged slot kept and the row valid", row.Errors, row.EconomyAlternative)
+	}
+
+	// Naming that same product for a slot that does not hold it yet is still refused.
+	repo.slotsNow = nil
+	preview = previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OFF;\n")
+	if !containsError(preview.Rows[0].Errors, "economy_alternative_inactive") {
+		t.Fatalf("errors = %v, want an inactive alternative refused when it is a change", preview.Rows[0].Errors)
 	}
 }
