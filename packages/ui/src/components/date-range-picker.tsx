@@ -329,8 +329,10 @@ function DateRangePicker({
                   in_range: preview ? false : between,
                   preview: preview ? between : false,
                 }}
+                // The band lives on the cells: whole behind the days between, half behind each end.
                 modifiersClassNames={{
-                  // Half a band behind each end, so the range reads as one stretch between them.
+                  in_range: 'bg-accent',
+                  preview: 'bg-accent/60',
                   range_from: spans
                     ? cn('bg-linear-to-r from-transparent from-50% to-50%', bandTo)
                     : '',
