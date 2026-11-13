@@ -4,9 +4,14 @@ run-name: 'CI Web by @${{ github.actor }}'
 
 # No `on.paths` filter: the workflow reports on every PR, so `ci-web-required` can be a required
 # check. The `changes` job decides which jobs run from the PR's changed files; outside a PR (a push,
-# a manual run, the release) every job runs.
+# a manual run) and under `full` (the release) every job runs.
 on:
   workflow_call:
+    inputs:
+      full:
+        description: Run every job whatever changed (the release passes true).
+        type: boolean
+        default: false
   push:
     branches:
       - dev
@@ -18,8 +23,8 @@ on:
 
 # A newer push to the same PR supersedes the older run; pushes and the release never cancel.
 concurrency:
-  group: ci-web-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-web-${{ github.event_name == 'pull_request' && !inputs.full && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !inputs.full }}
 
 jobs:
   changes:
@@ -44,8 +49,10 @@ jobs:
       # First match wins. A root file no rule names runs everything.
       - name: Flag the changed areas
         id: areas
+        env:
+          FULL: ${{ inputs.full }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || [ "$FULL" = true ]; then
             backoffice=true webapp=true ui=true skills=true
           else
             backoffice=false webapp=false ui=false skills=false

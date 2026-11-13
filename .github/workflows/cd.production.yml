@@ -37,25 +37,31 @@ jobs:
           jq -e '.["coti-core"].migrate and (.["coti-portal"].webapp | length > 0)' "$RUNNER_TEMP/template-envs.json" > /dev/null
 
   # Each called workflow's `changes` job asks for pull-requests: read, and a called workflow cannot
-  # hold more than its caller grants. Outside a PR it reads nothing and runs every job.
+  # hold more than its caller grants. `full: true` runs every job whatever triggered the release.
   api:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci.api.yml
+    with:
+      full: true
   web:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci.web.yml
+    with:
+      full: true
   deploy-checks:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci.deploy.yml
+    with:
+      full: true
 
   deploy:
     if: github.ref == 'refs/heads/main'

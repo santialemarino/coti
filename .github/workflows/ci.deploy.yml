@@ -4,9 +4,14 @@ run-name: 'CI Deploy by @${{ github.actor }}'
 
 # No `on.paths` filter: the workflow reports on every PR, so `ci-deploy-required` can be a required
 # check. The `changes` job decides which jobs run from the PR's changed files; outside a PR (a push,
-# a manual run, the release) every job runs.
+# a manual run) and under `full` (the release) every job runs.
 on:
   workflow_call:
+    inputs:
+      full:
+        description: Run every job whatever changed (the release passes true).
+        type: boolean
+        default: false
   push:
     branches:
       - dev
@@ -18,8 +23,8 @@ on:
 
 # A newer push to the same PR supersedes the older run; pushes and the release never cancel.
 concurrency:
-  group: ci-deploy-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-deploy-${{ github.event_name == 'pull_request' && !inputs.full && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !inputs.full }}
 
 env:
   DOCTL_VERSION: 1.167.0
@@ -31,7 +36,10 @@ jobs:
     permissions:
       pull-requests: read
     outputs:
-      docker: ${{ steps.areas.outputs.docker }}
+      docker_api: ${{ steps.areas.outputs.docker_api }}
+      docker_backoffice: ${{ steps.areas.outputs.docker_backoffice }}
+      docker_webapp: ${{ steps.areas.outputs.docker_webapp }}
+      docker_web_matrix: ${{ steps.areas.outputs.docker_web_matrix }}
       deploy_spec: ${{ steps.areas.outputs.deploy_spec }}
     steps:
       # A renamed file counts under both names.
@@ -46,42 +54,59 @@ jobs:
       # First match wins. A root file no rule names runs everything.
       - name: Flag the changed areas
         id: areas
+        env:
+          FULL: ${{ inputs.full }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-            docker=true deploy_spec=true
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || [ "$FULL" = true ]; then
+            docker_api=true docker_backoffice=true docker_webapp=true deploy_spec=true
           else
-            docker=false deploy_spec=false
+            docker_api=false docker_backoffice=false docker_webapp=false deploy_spec=false
+            # Both web images install from every workspace's package.json, so any of them flags both.
             while IFS= read -r path; do
               case "$path" in
-                apps/api/internal/config/* | docker/*) docker=true deploy_spec=true ;;
+                apps/api/internal/config/*) docker_api=true deploy_spec=true ;;
+                apps/api/package.json) docker_api=true docker_backoffice=true docker_webapp=true ;;
+                apps/backoffice/package.json | apps/webapp/package.json) docker_backoffice=true docker_webapp=true ;;
+                apps/api/*) docker_api=true ;;
+                apps/backoffice/*) docker_backoffice=true ;;
+                apps/webapp/*) docker_webapp=true ;;
+                docker/api.Dockerfile) docker_api=true deploy_spec=true ;;
+                docker/backoffice.Dockerfile) docker_backoffice=true deploy_spec=true ;;
+                docker/webapp.Dockerfile) docker_webapp=true deploy_spec=true ;;
                 .do/*) deploy_spec=true ;;
-                apps/* | packages/* | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | turbo.json | .dockerignore) docker=true ;;
-                .github/workflows/ci.deploy.yml) docker=true deploy_spec=true ;;
+                .dockerignore) docker_api=true docker_backoffice=true docker_webapp=true ;;
+                packages/* | package.json | pnpm-lock.yaml | pnpm-workspace.yaml | turbo.json) docker_backoffice=true docker_webapp=true ;;
+                .github/workflows/ci.deploy.yml) docker_api=true docker_backoffice=true docker_webapp=true deploy_spec=true ;;
                 scripts/* | docs/* | .claude/* | .agents/* | .github/* | *.md) ;;
-                *) docker=true deploy_spec=true ;;
+                *) docker_api=true docker_backoffice=true docker_webapp=true deploy_spec=true ;;
               esac
             done < "$RUNNER_TEMP/changed-files.txt"
           fi
-          echo "docker=$docker deploy_spec=$deploy_spec"
+          matrix=$(jq -cn --argjson b "$docker_backoffice" --argjson w "$docker_webapp" \
+            '[if $b then {app: "backoffice", port: 3000} else empty end,
+              if $w then {app: "webapp", port: 3001} else empty end]')
+          echo "docker_api=$docker_api docker_backoffice=$docker_backoffice docker_webapp=$docker_webapp deploy_spec=$deploy_spec"
           {
-            echo "docker=$docker"
+            echo "docker_api=$docker_api"
+            echo "docker_backoffice=$docker_backoffice"
+            echo "docker_webapp=$docker_webapp"
+            echo "docker_web_matrix=$matrix"
             echo "deploy_spec=$deploy_spec"
           } >> "$GITHUB_OUTPUT"
 
   # Both web images bake NEXT_PUBLIC_API_URL into the JS bundle at build time, so the build needs
   # a value even though the deploy supplies the real one.
+  # One matrix entry per flagged web image; both when `changes` produced nothing.
   ci-docker-web:
     needs: changes
-    if: always() && !cancelled() && needs.changes.outputs.docker != 'false'
+    if: >-
+      always() && !cancelled() && (needs.changes.outputs.docker_backoffice != 'false'
+      || needs.changes.outputs.docker_webapp != 'false')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - app: backoffice
-            port: 3000
-          - app: webapp
-            port: 3001
+        include: ${{ fromJSON(needs.changes.outputs.docker_web_matrix || '[{"app":"backoffice","port":3000},{"app":"webapp","port":3001}]') }}
     steps:
       - uses: actions/checkout@v4
       - name: Build
@@ -113,7 +138,7 @@ jobs:
   # migration job — so it gets a Postgres and has to prove it can migrate and then serve.
   ci-docker-api:
     needs: changes
-    if: always() && !cancelled() && needs.changes.outputs.docker != 'false'
+    if: always() && !cancelled() && needs.changes.outputs.docker_api != 'false'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -396,7 +421,8 @@ jobs:
       - name: Require every flagged job
         if: always()
         env:
-          DOCKER: ${{ needs.changes.outputs.docker }}
+          DOCKER_API: ${{ needs.changes.outputs.docker_api }}
+          DOCKER_WEB: ${{ needs.changes.outputs.docker_backoffice == 'false' && needs.changes.outputs.docker_webapp == 'false' && 'false' || 'true' }}
           DEPLOY_SPEC: ${{ needs.changes.outputs.deploy_spec }}
           CI_DOCKER_WEB: ${{ needs.ci-docker-web.result }}
           CI_DOCKER_API: ${{ needs.ci-docker-api.result }}
@@ -409,8 +435,8 @@ jobs:
             echo "$3: $2 (expected $want)"
             [ "$2" = "$want" ] || fail=1
           }
-          check "$DOCKER" "$CI_DOCKER_WEB" ci-docker-web
-          check "$DOCKER" "$CI_DOCKER_API" ci-docker-api
+          check "$DOCKER_WEB" "$CI_DOCKER_WEB" ci-docker-web
+          check "$DOCKER_API" "$CI_DOCKER_API" ci-docker-api
           check "$DEPLOY_SPEC" "$CI_DEPLOY_SPEC" ci-deploy-spec
           check "$DEPLOY_SPEC" "$CI_DEPLOY_SPEC_BOOTS" ci-deploy-spec-boots
           exit "$fail"
