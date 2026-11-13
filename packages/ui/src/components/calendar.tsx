@@ -24,13 +24,14 @@ const NAV_BUTTON = cn(
   'disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
 );
 
+// The button keeps its shape in every state; a range's band is drawn on the cell behind it.
 const DAY_BUTTON = cn(
   'relative flex size-(--cell) items-center justify-center rounded-lg text-foreground',
   'outline-none transition-[color,background-color,box-shadow] duration-150 ease-out-soft',
   'hover:bg-surface-hover active:bg-surface-active focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/45',
   'disabled:pointer-events-none disabled:opacity-40',
   'data-outside:text-foreground-subtle data-today:text-primary',
-  'data-preview:rounded-none data-preview:bg-accent/60 data-in-range:rounded-none data-in-range:bg-accent data-in-range:text-accent-foreground',
+  'data-in-range:text-accent-foreground',
   'data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary-hover data-selected:active:bg-primary-active',
   'text-paragraph-sm tabular-nums data-today:text-paragraph-sm-semibold',
 );

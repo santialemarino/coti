@@ -241,6 +241,32 @@ describe('DateRangePicker', () => {
     expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-10-05', to: '2026-10-12' });
   });
 
+  // A button that squares off as it leaves the range snaps its radius mid-transition, so the band is the cell's.
+  it('draws the band on the cells and never reshapes a day button', () => {
+    renderPicker({ from: '2026-10-05', to: '2026-10-12' });
+    fireEvent.click(trigger());
+    const cell = (label: string) => day(label).closest('td')!;
+    const buttonsKeepTheirShape = () =>
+      [...panel().querySelectorAll('td button')].every(
+        (button) => !/rounded-none|bg-accent/.test(button.className),
+      );
+
+    expect(cell('8 de octubre de 2026').className).toMatch(/(^|\s)bg-accent(\s|$)/);
+    expect(cell('5 de octubre de 2026').className).toContain('bg-linear-to-r');
+    expect(cell('12 de octubre de 2026').className).toContain('bg-linear-to-l');
+    expect(buttonsKeepTheirShape()).toBe(true);
+
+    fireEvent.click(day('20 de octubre de 2026'));
+    fireEvent.mouseEnter(day('16 de octubre de 2026'));
+    expect(cell('18 de octubre de 2026').className).toContain('bg-accent/60');
+    expect(cell('16 de octubre de 2026').className).toContain('bg-linear-to-r');
+    expect(buttonsKeepTheirShape()).toBe(true);
+
+    fireEvent.mouseEnter(day('17 de octubre de 2026'));
+    expect(cell('16 de octubre de 2026').className).not.toContain('bg-');
+    expect(buttonsKeepTheirShape()).toBe(true);
+  });
+
   // A closing panel stays on screen for its exit; it must show the range just committed.
   it('fades out showing the committed range, not the edit before it', () => {
     holdClosingPanel();

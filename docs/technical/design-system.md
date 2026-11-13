@@ -347,18 +347,18 @@ through `--toast-lift`.
 ### Dates
 
 Every date in both apps is picked from **`Calendar`**, the design system's month grid built on
-`react-day-picker` with its own stylesheet left out: Spanish (`es`), weeks from Monday, days on
-the semantic tokens (a day is a surface and gets the ring; the chosen days are `primary`, the
-stretch between them `accent`, today a dot). Day-picker owns the keyboard: arrows move a day or a
-week, Page Up/Down a month (Shift for a year), Home/End the week's edges. A month change slides
-the new weeks a short way in from the side they lie on (`calendar-weeks-*` and
-`calendar-caption-*` in the styles, single classes because day-picker adds them with
-`classList.add`); under reduced motion the calendar turns day-picker's animation off, since it
-waits for an exit that would never end. Nobody places `Calendar` bare; two fields wrap it, and
-both take and hand back `YYYY-MM-DD` strings, so a form keeps the shape the API speaks.
-`parseDay`, `toDay` and `displayDay` (`@repo/ui/lib`) anchor a day at local midnight (a bare
-`new Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read it as
-`13/11/2026`.
+`react-day-picker` with its own stylesheet left out: Spanish (`es`), weeks from Monday, days on the
+semantic tokens (a day is a surface and gets the ring; the chosen days are `primary`, the stretch
+between them `accent`, today a dot). The stretch is painted on the day cells, half a band behind
+each end, so a day's button keeps its rounded shape and only changes colour. Day-picker owns the
+keyboard: arrows move a day or a week, Page Up/Down a month (Shift for a year), Home/End the week's
+edges. A month change slides the new weeks a short way in from the side they lie on
+(`calendar-weeks-*` and `calendar-caption-*` in the styles, single classes because day-picker adds
+them with `classList.add`); under reduced motion the calendar turns day-picker's animation off,
+since it waits for an exit that would never end. Nobody places `Calendar` bare; two fields wrap it,
+and both take and hand back `YYYY-MM-DD` strings, so a form keeps the shape the API speaks.
+`parseDay`, `toDay` and `displayDay` (`@repo/ui/lib`) anchor a day at local midnight (a bare `new
+Date('2026-11-13')` is UTC midnight, the evening before in Argentina) and read it as `13/11/2026`.
 
 - **`DatePicker`** — one day. Picking it closes the panel and returns focus to the field; pressing
   the chosen day again keeps it. The month and year are `Combobox`es, never the browser's
