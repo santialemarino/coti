@@ -457,7 +457,8 @@ func trimmedAlternative(code *string) *string {
 func keepUnchangedSlots(rows []domain.CatalogImportRow, current map[string]domain.CatalogSlots) {
 	for i := range rows {
 		slots, ok := current[rows[i].Code]
-		if !ok {
+		// Both columns naming one product is refused as repeated, never read as a kept slot.
+		if !ok || sameSlot(rows[i].EconomyAlternative, rows[i].PremiumAlternative) {
 			continue
 		}
 		if sameSlot(rows[i].EconomyAlternative, slots.Economy) {

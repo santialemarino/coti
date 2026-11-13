@@ -451,6 +451,14 @@ func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing
 		t.Fatalf("row = errors %v, economy %v; want the unchanged slot kept and the row valid", row.Errors, row.EconomyAlternative)
 	}
 
+	// The same product in both columns is refused, even when one slot holds it already.
+	repo.slotsNow = map[string]domain.CatalogSlots{"A": {Economy: ptr("OK")}}
+	repo.stored["OK"] = domain.CatalogProductRef{FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: true}
+	preview = previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OK;OK\n")
+	if !containsError(preview.Rows[0].Errors, "alternative_repeated") {
+		t.Fatalf("errors = %v, want the repeated product refused", preview.Rows[0].Errors)
+	}
+
 	// Naming that same product for a slot that does not hold it yet is still refused.
 	repo.slotsNow = nil
 	preview = previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OFF;\n")
