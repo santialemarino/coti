@@ -10,9 +10,22 @@ import { ROUTES } from '@/config/routes';
 const OWN_PAGES: readonly string[] = [ROUTES.changePassword, ROUTES.emailSettings];
 
 // A page opened from inside a section leads back to that section, at every width.
-const PARENT_SECTIONS: Readonly<Record<string, { href: string; labelKey: 'backToInvoicing' }>> = {
+type ParentSection = { href: string; labelKey: 'backToInvoicing' | 'backToPromotions' };
+const PARENT_SECTIONS: Readonly<Record<string, ParentSection>> = {
   [ROUTES.arcaSettings]: { href: ROUTES.invoicingSettings, labelKey: 'backToInvoicing' },
 };
+
+// A section whose pages sit under its own path, such as a rule opened from the promotions list.
+const NESTED_SECTIONS: readonly ParentSection[] = [
+  { href: ROUTES.promotionSettings, labelKey: 'backToPromotions' },
+];
+
+function parentOf(pathname: string): ParentSection | undefined {
+  return (
+    PARENT_SECTIONS[pathname] ??
+    NESTED_SECTIONS.find((section) => pathname.startsWith(`${section.href}/`))
+  );
+}
 
 // Below lg a settings page is opened from the sections list, so it names the way back to it.
 export function SettingsBackLink() {
@@ -20,7 +33,7 @@ export function SettingsBackLink() {
   const t = useTranslations('settings');
 
   if (pathname === ROUTES.settings || OWN_PAGES.includes(pathname)) return null;
-  const parent = PARENT_SECTIONS[pathname];
+  const parent = parentOf(pathname);
   // The layout spaces its children 32px apart; the way back belongs to the title, 8px above it.
   if (parent) return <BackLink href={parent.href} label={t(parent.labelKey)} className="-mb-6" />;
   return (
