@@ -180,7 +180,8 @@ still in the table.
 - An unspecified `valid_from` means now, read from the **database** clock in the write's own
   transaction, which is the clock every in-force read compares against. The API process's clock
   can run a few milliseconds ahead, and a period stamped with it would not be in force for the next
-  request. The catalog and price-list imports start their periods the same way.
+  request. A new product's first price and the catalog and price-list imports start their periods the
+  same way.
 - A `valid_from` **before** the open period's start is rejected (**422**): it would close a
   period before it opened, and rewrite which price applied at a moment already quoted.
 - The first price for a product at a branch closes nothing.

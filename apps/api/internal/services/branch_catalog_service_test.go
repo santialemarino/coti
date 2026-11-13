@@ -37,7 +37,7 @@ type fakePrices struct {
 	filters [][]uuid.UUID
 }
 
-func (f *fakePrices) TransactionTime(_ context.Context, _ repository.Querier) (time.Time, error) {
+func (f *fakePrices) DatabaseTime(_ context.Context, _ repository.Querier) (time.Time, error) {
 	return fakeDatabaseNow, nil
 }
 

@@ -100,10 +100,10 @@ func (r *CatalogImportRepository) ListTaxonomy(
 	return families, rows.Err()
 }
 
-// TransactionTime returns the database clock for the caller's transaction, which a price period
-// has to start at to be in force for the next read.
-func (r *CatalogImportRepository) TransactionTime(ctx context.Context, q Querier) (time.Time, error) {
-	return transactionTime(ctx, q)
+// DatabaseTime returns the database clock now, which a price period has to start at to be in
+// force for the next read.
+func (r *CatalogImportRepository) DatabaseTime(ctx context.Context, q Querier) (time.Time, error) {
+	return databaseTime(ctx, q)
 }
 
 // ListExistingCodes returns the requested codes already owned by the account.
