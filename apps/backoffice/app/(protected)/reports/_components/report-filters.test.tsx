@@ -27,7 +27,7 @@ function renderFilters(from = '2026-10-01', to = '2026-10-25') {
 }
 
 function period() {
-  return screen.getByRole('button', { name: copy.period });
+  return screen.getByRole('combobox', { name: copy.period });
 }
 
 // Picks a range through the calendar the way a seller does: the start, then the end.

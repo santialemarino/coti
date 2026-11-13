@@ -2214,7 +2214,7 @@
       "openEnd": "Hasta hoy",
       "quotesHint": "Por fecha de creación. Sin fechas, se exporta todo el historial.",
       "invoicesHint": "Por fecha de emisión. Sin fechas, se exporta todo el historial.",
-      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta."
+      "invalidRange": "El período termina antes de empezar. Elegí el inicio y después el fin."
     },
     "download": {
       "label": "Descargar",
@@ -2251,7 +2251,7 @@
       "allClient": "Todos los clientes",
       "apply": "Aplicar",
       "reset": "Restablecer",
-      "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta.",
+      "invalidRange": "El período termina antes de empezar. Elegí el inicio y después el fin.",
       "invalid": "No pudimos generar el reporte con esa selección. Revisá las fechas, que el período no sea demasiado largo y los filtros elegidos."
     },
     "empty": {
@@ -3849,7 +3849,7 @@
         "hint": "Sin inicio, rige desde ya; sin fin, no vence. Incluye todo el último día."
       },
       "validTo": {
-        "beforeFrom": "No puede ser anterior a «desde»."
+        "beforeFrom": "La vigencia termina antes de empezar. Elegí el inicio y después el fin."
       },
       "priority": {
         "label": "Prioridad",

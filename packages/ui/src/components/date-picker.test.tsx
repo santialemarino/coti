@@ -32,7 +32,7 @@ function renderPicker(initial: string) {
 }
 
 function trigger() {
-  return screen.getByRole('button', { name: 'Inicio de actividades' });
+  return screen.getByRole('combobox', { name: 'Inicio de actividades' });
 }
 
 function day(label: string) {

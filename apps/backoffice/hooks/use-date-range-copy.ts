@@ -4,8 +4,10 @@ import { useTranslations } from 'next-intl';
 import type { DateRangePickerLabels, DateRangePreset } from '@repo/ui/components';
 import { dateRangePreset, type DateRangePresetKey } from '@/lib/utils/date-ranges';
 
+const NO_PRESETS: readonly DateRangePresetKey[] = [];
+
 // The words every range picker in the app shares, and the presets a screen asks for.
-export function useDateRangeCopy(presetKeys: readonly DateRangePresetKey[] = []) {
+export function useDateRangeCopy(presetKeys: readonly DateRangePresetKey[] = NO_PRESETS) {
   const t = useTranslations('common.dateRange');
 
   const labels: DateRangePickerLabels = {

@@ -23,7 +23,7 @@ function renderForm(props: Partial<Parameters<typeof DataExportForm>[0]> = {}) {
 }
 
 function period() {
-  return screen.getByRole('button', { name: copy.period.label });
+  return screen.getByRole('combobox', { name: copy.period.label });
 }
 
 function day(label: string) {
@@ -106,7 +106,7 @@ describe('DataExportForm', () => {
     renderForm();
 
     fireEvent.click(screen.getByLabelText(copy.entity.clients.label));
-    expect(screen.queryByRole('button', { name: copy.period.label })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: copy.period.label })).toBeNull();
     expect(screen.queryByRole('combobox', { name: copy.branch.label })).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: copy.format.xml }));
     fireEvent.click(screen.getByRole('button', { name: copy.download.label }));

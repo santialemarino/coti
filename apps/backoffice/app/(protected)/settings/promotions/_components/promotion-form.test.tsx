@@ -54,7 +54,7 @@ const STORED: PromotionValues = {
 };
 
 function validity() {
-  return screen.getByRole('button', { name: copy.validity.label });
+  return screen.getByRole('combobox', { name: copy.validity.label });
 }
 
 function day(label: string) {

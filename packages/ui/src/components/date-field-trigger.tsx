@@ -15,13 +15,17 @@ interface DateFieldTriggerProps extends React.ComponentProps<typeof Button> {
   label: React.ReactNode;
 }
 
-// The field a date picker opens from. It reads as an input among inputs, the way a combobox does.
+/*
+ * The field a date picker opens from. It is a combobox, as `Combobox`'s trigger is, so a screen reader
+ * reads the chosen date as its value; a button would be named by its label alone and never say it.
+ */
 const DateFieldTrigger = React.forwardRef<HTMLButtonElement, DateFieldTriggerProps>(
   ({ open, unset, invalid, label, className, ...props }, ref) => (
     <Button
       ref={ref}
       type="button"
       variant="outline"
+      role="combobox"
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-invalid={invalid || undefined}

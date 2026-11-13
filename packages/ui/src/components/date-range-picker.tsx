@@ -136,6 +136,8 @@ function DateRangePicker({
   const [active, setActive] = React.useState<RangeEnd>('from');
   const [month, setMonth] = React.useState(() => monthFor(value, 'from', false));
   const [hovered, setHovered] = React.useState<string>();
+  // The end was picked before the start, so the start is now the second pick and commits.
+  const [endPicked, setEndPicked] = React.useState(false);
   const unset = !value.from && !value.to;
 
   const from = parseDay(draft.from);
@@ -156,6 +158,7 @@ function DateRangePicker({
     if (next) {
       setDraft(value);
       setActive('from');
+      setEndPicked(false);
       setMonth(monthFor(value, 'from', twoMonths));
     }
     setHovered(undefined);
@@ -170,8 +173,12 @@ function DateRangePicker({
   function pickDay(date: Date) {
     const day = toDay(date);
     if (active === 'from') {
-      setDraft({ from: day, to: draft.to && draft.to >= day ? draft.to : '' });
-      setActive('to');
+      const next = { from: day, to: draft.to && draft.to >= day ? draft.to : '' };
+      if (endPicked && next.to) commit(next);
+      else {
+        setDraft(next);
+        setActive('to');
+      }
       return;
     }
     // An end before the start starts the range over from that day.
@@ -184,6 +191,7 @@ function DateRangePicker({
     else {
       setDraft(next);
       setActive('from');
+      setEndPicked(true);
     }
   }
 
@@ -278,10 +286,16 @@ function DateRangePicker({
               onMonthChange={setMonth}
               selected={selected}
               onDayClick={pickDay}
-              onDayMouseEnter={(date) => setHovered(toDay(date))}
+              onDayMouseEnter={(date, modifiers) => {
+                if (!modifiers.disabled) setHovered(toDay(date));
+              }}
               onDayMouseLeave={() => setHovered(undefined)}
-              onDayFocus={(date) => setHovered(toDay(date))}
+              onDayFocus={(date, modifiers) => {
+                if (!modifiers.disabled) setHovered(toDay(date));
+              }}
               disabled={bounds}
+              startMonth={minDate}
+              endMonth={maxDate}
               modifiers={{
                 range_from: from ?? false,
                 range_to: to ?? false,

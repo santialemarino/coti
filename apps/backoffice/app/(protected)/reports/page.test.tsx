@@ -176,7 +176,7 @@ describe('ReportsPage', () => {
       branchIds: [],
       tagIds: [],
     });
-    expect(screen.getByRole('button', { name: copy.filters.period }).textContent).toBe(
+    expect(screen.getByRole('combobox', { name: copy.filters.period }).textContent).toBe(
       '26/09/2026 – 25/10/2026',
     );
   });
@@ -574,7 +574,7 @@ describe('ReportsPage', () => {
     );
 
     expect(screen.getByText(copy.filters.invalid)).toBeTruthy();
-    expect(screen.getByRole('button', { name: copy.filters.period }).textContent).toBe(
+    expect(screen.getByRole('combobox', { name: copy.filters.period }).textContent).toBe(
       '01/01/2025 – 01/01/2026',
     );
     expect(screen.queryByRole('button', { name: copy.download.label })).toBeNull();

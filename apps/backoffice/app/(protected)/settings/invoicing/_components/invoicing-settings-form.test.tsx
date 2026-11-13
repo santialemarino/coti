@@ -239,7 +239,7 @@ describe('InvoicingSettingsForm fiscal identity', () => {
 describe('InvoicingSettingsForm activity start', () => {
   it('picks the day from the calendar and saves it as a calendar day', async () => {
     const view = renderForm();
-    const field = view.getByRole('button', { name: copy.profile.activityStartedOn });
+    const field = view.getByRole('combobox', { name: copy.profile.activityStartedOn });
     expect(field.textContent).toBe('02/01/2020');
 
     fireEvent.click(field);

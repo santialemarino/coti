@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DateRangePicker, type DateRangeValue } from './date-range-picker';
 
@@ -41,7 +41,7 @@ function renderPicker(initial: DateRangeValue, props: Props = {}) {
 }
 
 function trigger() {
-  return screen.getByRole('button', { name: 'Período' });
+  return screen.getByRole('combobox', { name: 'Período' });
 }
 
 function panel() {
@@ -56,6 +56,10 @@ function day(label: string) {
 function endTab(name: 'Desde' | 'Hasta') {
   return within(panel()).getByRole('button', { name: new RegExp(`^${name}`) });
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('DateRangePicker', () => {
   it('reads the range as Argentine dates, and the placeholder while it is empty', () => {
@@ -165,6 +169,29 @@ describe('DateRangePicker', () => {
     fireEvent.click(within(panel()).getByRole('button', { name: 'Listo' }));
 
     expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-10-01', to: '' });
+  });
+
+  // Named by its label like any field, it still has to say which dates it holds.
+  it('exposes the chosen range as the value of a combobox that opens a dialog', () => {
+    renderPicker({ from: '2026-10-01', to: '2026-10-25' });
+
+    expect(trigger().getAttribute('aria-haspopup')).toBe('dialog');
+    expect(trigger().textContent).toBe('01/10/2026 – 25/10/2026');
+  });
+
+  it('waits for the start when the end is picked first, then commits on the start', () => {
+    // An empty range opens on the current month.
+    vi.useFakeTimers({ now: new Date(2026, 10, 13), toFake: ['Date'] });
+    const { onValueChange } = renderPicker({ from: '', to: '' });
+    fireEvent.click(trigger());
+
+    fireEvent.click(endTab('Hasta'));
+    fireEvent.click(day('20 de noviembre de 2026'));
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(endTab('Desde').getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(day('10 de noviembre de 2026'));
+    expect(onValueChange).toHaveBeenCalledExactlyOnceWith({ from: '2026-11-10', to: '2026-11-20' });
   });
 
   it('offers no clear on an end that must be set', () => {
