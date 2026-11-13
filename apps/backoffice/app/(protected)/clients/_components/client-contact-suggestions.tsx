@@ -85,6 +85,8 @@ function ScopedSuggestions({ compact = false, initialItems }: ClientContactSugge
         </Button>
       </div>
     );
+  // The column's list has no fixed size a placeholder could match, so it waits empty.
+  if (items === null && compact) return null;
   if (items === null)
     return (
       <div className="flex flex-col p-6 gap-y-3">
