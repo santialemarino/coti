@@ -285,6 +285,50 @@ describe('RfqItemsTable customer alternatives', () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
+  it('locks the per-option actions while a fill is running', async () => {
+    let finish: (value: never[]) => void = () => {};
+    vi.mocked(fillQuoteRecommendations).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
+    ]);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    const include = view.getByRole('button', { name: copy.detail.items.alternatives.include });
+    await vi.waitFor(() => expect((include as HTMLButtonElement).disabled).toBe(true));
+    finish([]);
+    await vi.waitFor(() => expect((include as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it('replaces an option the fill promoted instead of listing it twice', async () => {
+    const onItemsChange = vi.fn();
+    const candidate: QuoteItemAlternativeResponse = {
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000009',
+      recommendation_type: null,
+      origin: 'AI',
+    };
+    const promoted = { ...candidate, recommendation_type: 'ECONOMY' as const };
+    vi.mocked(fillQuoteRecommendations).mockResolvedValue([
+      { itemId: ITEM_ID, alternative: promoted },
+    ]);
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [candidate] }],
+      onItemsChange,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    await vi.waitFor(() => expect(onItemsChange).toHaveBeenCalled());
+    expect(onItemsChange.mock.calls[0]?.[0][0].alternatives).toEqual([promoted]);
+  });
+
   it('says so when the catalog has nothing to add', async () => {
     const onItemsChange = vi.fn();
     vi.mocked(fillQuoteRecommendations).mockResolvedValue([]);

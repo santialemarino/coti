@@ -1075,6 +1075,7 @@ export function RfqItemsTable({
                                           variant="outline"
                                           size="sm"
                                           disabled={
+                                            filling ||
                                             updatingAlternativeId !== null ||
                                             updatingRecommendation !== null
                                           }
@@ -1100,6 +1101,7 @@ export function RfqItemsTable({
                                           variant="outline"
                                           size="sm"
                                           disabled={
+                                            filling ||
                                             updatingAlternativeId !== null ||
                                             updatingRecommendation !== null
                                           }
@@ -1120,6 +1122,7 @@ export function RfqItemsTable({
                                       variant={approved ? 'outline' : 'default'}
                                       size="sm"
                                       disabled={
+                                        filling ||
                                         updatingAlternativeId !== null ||
                                         updatingRecommendation !== null ||
                                         (!approved && !validPrice)
@@ -1164,6 +1167,7 @@ export function RfqItemsTable({
                                     variant="outline"
                                     size="sm"
                                     disabled={
+                                      filling ||
                                       updatingAlternativeId !== null ||
                                       updatingRecommendation !== null
                                     }

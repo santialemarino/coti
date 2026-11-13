@@ -161,7 +161,9 @@ func (s *RecommendationRequestService) FillVacant(ctx context.Context, tenant do
 		for _, proposal := range proposals {
 			price, ok := prices[proposal.ProductID]
 			matcherID, reusable := reusableMatcherCandidate(offers[proposal.ItemID], proposal.ProductID)
-			if !ok || !reusable || recommendationSlotOccupied(offers[proposal.ItemID], proposal.RecommendationType) {
+			// A price that moved since the proposal was found was never checked against the line.
+			if !ok || !price.Price.Equal(proposal.UnitPrice) || !reusable ||
+				recommendationSlotOccupied(offers[proposal.ItemID], proposal.RecommendationType) {
 				continue
 			}
 			var added *domain.QuoteItemAlternative
