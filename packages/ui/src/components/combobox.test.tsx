@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { Combobox } from './combobox';
@@ -66,5 +66,35 @@ describe('Combobox', () => {
     );
 
     expect(screen.getByRole('combobox').textContent).toBe('País');
+  });
+
+  // A reset alone in the list ("Todas" with nothing to filter by) gets no line under it.
+  it('draws the line under the reset option only when other options follow', () => {
+    const view = render(
+      <Combobox
+        options={[{ value: 'ALL', label: 'Todas' }]}
+        value="ALL"
+        resetValue="ALL"
+        onValueChange={() => {}}
+        placeholder="Sucursal"
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox'));
+    expect(document.querySelector('[data-slot="command-separator"], [cmdk-separator]')).toBeNull();
+    view.unmount();
+
+    render(
+      <Combobox
+        options={[{ value: 'ALL', label: 'Todas' }, ...OPTIONS]}
+        value="ALL"
+        resetValue="ALL"
+        onValueChange={() => {}}
+        placeholder="Sucursal"
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox'));
+    expect(
+      document.querySelector('[data-slot="command-separator"], [cmdk-separator]'),
+    ).not.toBeNull();
   });
 });

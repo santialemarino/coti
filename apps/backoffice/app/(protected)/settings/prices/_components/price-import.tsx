@@ -26,7 +26,7 @@ import {
 import { RevealControls } from '@/components/reveal-controls';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
-import { CATALOG_PREVIEW_PAGE_SIZE } from '@/lib/config';
+import { IMPORT_PREVIEW_PAGE_SIZE } from '@/lib/config';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface PriceImportProps {
@@ -204,7 +204,7 @@ function PricePreviewRows({ rows }: { rows: ProductPriceImportPreview['rows'] })
     ...rows.filter((row) => row.errors.length > 0),
     ...rows.filter((row) => row.errors.length === 0),
   ];
-  const list = useProgressiveList<HTMLTableRowElement>(ordered.length, CATALOG_PREVIEW_PAGE_SIZE);
+  const list = useProgressiveList<HTMLTableRowElement>(ordered.length, IMPORT_PREVIEW_PAGE_SIZE);
 
   return (
     <>

@@ -214,7 +214,8 @@ func selectedAlternatives(
 				break
 			}
 		}
-		if _, sent := selectable[selection]; candidate == nil || !sent ||
+		// The sent offer decides; the stored approval is a second net should the two ever disagree.
+		if _, sent := selectable[selection]; candidate == nil || !sent || !candidate.ApprovedBySeller ||
 			candidate.Type != domain.QuoteItemAlternativeTypeProduct || candidate.ProductID == nil ||
 			!candidate.PriceSnapshot.Valid {
 			return nil, domain.ErrNotFound

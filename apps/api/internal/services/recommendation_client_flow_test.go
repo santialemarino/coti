@@ -80,6 +80,26 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 	}
 }
 
+// An offer that lists an option the seller no longer approves is refused too: either record vetoes it.
+func TestSelectedAlternatives_RefusesAnOfferedOptionWithoutApproval(t *testing.T) {
+	t.Parallel()
+	itemID, productID := uuid.New(), uuid.New()
+	option := domain.QuoteItemAlternative{
+		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
+		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
+		RecommendationType: alternativeType(domain.ProductAlternativeEconomy),
+		PriceSnapshot:      decimal.NewNullDecimal(decimal.NewFromInt(50)),
+	}
+	offer := sentOffer(map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {option}})
+	option.ApprovedBySeller = false
+	_, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
+		map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {option}}, offer,
+		[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: option.ID}})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("selectedAlternatives() = %v, want %v", err, domain.ErrNotFound)
+	}
+}
+
 func TestPreviewSelectionPricing_ReplacesOnlyChosenLineAndReevaluatesPromotions(t *testing.T) {
 	t.Parallel()
 	itemID, untouchedID := uuid.New(), uuid.New()

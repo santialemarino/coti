@@ -205,20 +205,25 @@ function SellerMenuItems({
         {t('list.actions.assign')}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      {sellersLoading ? (
-        <DropdownMenuItem disabled>{t('list.actions.sellersLoading')}</DropdownMenuItem>
-      ) : (
-        sellers.map((seller) => (
-          <DropdownMenuItem
-            key={seller.id}
-            disabled={seller.id === rfq.sellerId}
-            onSelect={() => onSellerChange(rfq, seller.id)}
-          >
-            {seller.name}
-          </DropdownMenuItem>
-        ))
-      )}
-      <DropdownMenuSeparator />
+      {/* With no seller to list, one line already separates the two fixed actions. */}
+      {sellersLoading || sellers.length > 0 ? (
+        <>
+          {sellersLoading ? (
+            <DropdownMenuItem disabled>{t('list.actions.sellersLoading')}</DropdownMenuItem>
+          ) : (
+            sellers.map((seller) => (
+              <DropdownMenuItem
+                key={seller.id}
+                disabled={seller.id === rfq.sellerId}
+                onSelect={() => onSellerChange(rfq, seller.id)}
+              >
+                {seller.name}
+              </DropdownMenuItem>
+            ))
+          )}
+          <DropdownMenuSeparator />
+        </>
+      ) : null}
       <DropdownMenuItem disabled={rfq.sellerId === null} onSelect={() => onSellerChange(rfq, null)}>
         <XIcon aria-hidden="true" />
         {t('list.actions.unassignSeller')}
