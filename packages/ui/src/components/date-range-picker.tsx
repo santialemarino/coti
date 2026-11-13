@@ -104,11 +104,17 @@ function monthFor(value: DateRangeValue, end: RangeEnd, twoMonths: boolean) {
   return from ?? to ?? new Date();
 }
 
+// Two days, in whichever order they came, as a range.
+function ordered(a: string, b: string): DateRangeValue {
+  return a <= b ? { from: a, to: b } : { from: b, to: a };
+}
+
 /*
- * One field for an interval. The panel names both ends and edits one at a time: a day sets the end
- * being edited and moves on to the other, and the second pick commits and closes. To change one end
- * alone, choose it and confirm with the done button. Escape or a click outside drops the edit. A preset
- * commits at once. Days are `YYYY-MM-DD` strings in and out, so a form keeps the shape it had.
+ * One field for an interval. Two picks make the range in either order: the earlier day is the start,
+ * and the second pick commits and closes. Choosing an end first replaces only that end, swapping the
+ * two when the new day crosses the other; an end that may stay open is cleared beside it and the done
+ * button confirms. Escape or a click outside drops the edit. A preset commits at once. Days are
+ * `YYYY-MM-DD` strings in and out, so a form keeps the shape it had.
  */
 function DateRangePicker({
   value,
@@ -133,22 +139,25 @@ function DateRangePicker({
   const twoMonths = useTwoMonths();
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
-  const [active, setActive] = React.useState<RangeEnd>('from');
+  // The first of two picks, waiting for the second.
+  const [anchor, setAnchor] = React.useState<string>();
+  // The end chosen explicitly, which the next pick replaces alone.
+  const [editing, setEditing] = React.useState<RangeEnd>();
   const [month, setMonth] = React.useState(() => monthFor(value, 'from', false));
   const [hovered, setHovered] = React.useState<string>();
-  // The end was picked before the start, so the start is now the second pick and commits.
-  const [endPicked, setEndPicked] = React.useState(false);
   const unset = !value.from && !value.to;
 
-  const from = parseDay(draft.from);
-  const to = parseDay(draft.to);
   const minDate = parseDay(min);
   const maxDate = parseDay(max);
   const complete =
     (draft.from !== '' || openStart !== undefined) && (draft.to !== '' || openEnd !== undefined);
-  // While the end is next, the days between the start and the pointer show where it would land.
-  const previewTo =
-    active === 'to' && from && hovered && hovered > draft.from ? parseDay(hovered) : undefined;
+  // The day the next pick pairs with: the first pick, or the end that is not being replaced.
+  const pivot = anchor ?? (editing === 'from' ? draft.to : editing === 'to' ? draft.from : '');
+  // While a pick is pending, the range follows the pointer from the pivot, in either direction.
+  const preview = pivot && hovered && hovered !== pivot ? ordered(pivot, hovered) : undefined;
+  const shown = preview ?? draft;
+  const from = parseDay(shown.from);
+  const to = parseDay(shown.to);
 
   const bounds: Matcher[] = [];
   if (minDate) bounds.push({ before: minDate });
@@ -157,55 +166,67 @@ function DateRangePicker({
   function handleOpenChange(next: boolean) {
     if (next) {
       setDraft(value);
-      setActive('from');
-      setEndPicked(false);
+      setAnchor(undefined);
+      setEditing(undefined);
       setMonth(monthFor(value, 'from', twoMonths));
     }
     setHovered(undefined);
     setOpen(next);
   }
 
+  // The panel keeps showing what was committed while it fades out, not the edit before it.
   function commit(next: DateRangeValue) {
+    setDraft(next);
+    setAnchor(undefined);
+    setEditing(undefined);
+    setHovered(undefined);
     onValueChange(next);
     setOpen(false);
   }
 
   function pickDay(date: Date) {
     const day = toDay(date);
-    if (active === 'from') {
-      const next = { from: day, to: draft.to && draft.to >= day ? draft.to : '' };
-      if (endPicked && next.to) commit(next);
-      else {
-        setDraft(next);
-        setActive('to');
-      }
+    if (editing) {
+      const other = editing === 'from' ? draft.to : draft.from;
+      const otherMayStayOpen = (editing === 'from' ? openEnd : openStart) !== undefined;
+      if (other) commit(ordered(day, other));
+      else if (otherMayStayOpen) commit({ ...draft, [editing]: day });
+      // The other end must be set, so this day waits for it like a first pick.
+      else startRange(day);
       return;
     }
-    // An end before the start starts the range over from that day.
-    if (draft.from && day < draft.from) {
-      setDraft({ from: day, to: '' });
-      return;
-    }
-    const next = { from: draft.from, to: day };
-    if (next.from || openStart !== undefined) commit(next);
-    else {
-      setDraft(next);
-      setActive('from');
-      setEndPicked(true);
-    }
+    if (anchor) commit(ordered(anchor, day));
+    else startRange(day);
+  }
+
+  function startRange(day: string) {
+    setAnchor(day);
+    setEditing(undefined);
+    setDraft({ from: day, to: '' });
   }
 
   function chooseEnd(end: RangeEnd) {
-    setActive(end);
+    setEditing(end);
+    setAnchor(undefined);
     setMonth(monthFor(draft, end, twoMonths));
   }
 
   function clearEnd(end: RangeEnd) {
     setDraft({ ...draft, [end]: '' });
-    setActive(end);
+    setEditing(end);
+    setAnchor(undefined);
   }
 
-  const selected: DateRange = { from: from ?? to, to: from ? to : undefined };
+  const selectedFrom = parseDay(draft.from);
+  const selectedTo = parseDay(draft.to);
+  const selected: DateRange = {
+    from: selectedFrom ?? selectedTo,
+    to: selectedFrom ? selectedTo : undefined,
+  };
+  const between = from && to ? { after: from, before: to } : false;
+  // A one-day range has no stretch to draw.
+  const spans = shown.from !== '' && shown.to !== '' && shown.from < shown.to;
+  const bandTo = preview ? 'to-accent/60' : 'to-accent';
 
   return (
     <>
@@ -260,9 +281,9 @@ function DateRangePicker({
               <RangeEndTab
                 end="from"
                 label={labels.from}
-                value={draft.from}
+                value={shown.from}
                 empty={openStart ?? labels.pick}
-                active={active === 'from'}
+                active={editing === 'from'}
                 clearLabel={openStart !== undefined ? labels.clearFrom : undefined}
                 onChoose={chooseEnd}
                 onClear={clearEnd}
@@ -270,9 +291,9 @@ function DateRangePicker({
               <RangeEndTab
                 end="to"
                 label={labels.to}
-                value={draft.to}
+                value={shown.to}
                 empty={openEnd ?? labels.pick}
-                active={active === 'to'}
+                active={editing === 'to'}
                 clearLabel={openEnd !== undefined ? labels.clearTo : undefined}
                 onChoose={chooseEnd}
                 onClear={clearEnd}
@@ -299,15 +320,17 @@ function DateRangePicker({
               modifiers={{
                 range_from: from ?? false,
                 range_to: to ?? false,
-                in_range: from && to ? { after: from, before: to } : false,
-                preview: previewTo ? { after: from!, before: previewTo } : false,
+                in_range: preview ? false : between,
+                preview: preview ? between : false,
               }}
               modifiersClassNames={{
                 // Half a band behind each end, so the range reads as one stretch between them.
-                range_from:
-                  from && to ? 'bg-linear-to-r from-transparent from-50% to-accent to-50%' : '',
-                range_to:
-                  from && to ? 'bg-linear-to-l from-transparent from-50% to-accent to-50%' : '',
+                range_from: spans
+                  ? cn('bg-linear-to-r from-transparent from-50% to-50%', bandTo)
+                  : '',
+                range_to: spans
+                  ? cn('bg-linear-to-l from-transparent from-50% to-50%', bandTo)
+                  : '',
               }}
             />
             <div className="flex justify-end">
