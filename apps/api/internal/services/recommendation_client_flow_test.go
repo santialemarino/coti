@@ -61,10 +61,6 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 		{"missing product", func(option *domain.QuoteItemAlternative) { option.ProductID = nil }, domain.ErrNotFound},
 		{"missing price", func(option *domain.QuoteItemAlternative) { option.PriceSnapshot = decimal.NullDecimal{} }, domain.ErrNotFound},
 		{"combo", func(option *domain.QuoteItemAlternative) { option.Type = domain.QuoteItemAlternativeTypeCombo }, domain.ErrNotFound},
-		{"untyped candidate", func(option *domain.QuoteItemAlternative) { option.RecommendationType = nil }, domain.ErrNotFound},
-		{"equivalent", func(option *domain.QuoteItemAlternative) {
-			option.RecommendationType = alternativeType(domain.ProductAlternativeEquivalent)
-		}, domain.ErrNotFound},
 		{"negative price", func(option *domain.QuoteItemAlternative) {
 			option.PriceSnapshot = decimal.NewNullDecimal(decimal.NewFromInt(-1))
 		}, domain.ErrInvalidInput},
@@ -128,5 +124,23 @@ func TestPreviewSelectionPricing_ReplacesOnlyChosenLineAndReevaluatesPromotions(
 	discounts := previewSelectionDiscounts(nil, snapshot, result)
 	if len(discounts) != 1 || discounts[0].Description != "Alternative promotion" || discounts[0].Amount != "20.00" {
 		t.Fatalf("discounts = %+v, want only the alternative promotion", discounts)
+	}
+}
+
+// An offer sent before options had to be economy or premium may hold an approved untyped one. The
+// customer can only choose what their offer showed, so accepting it keeps working.
+func TestSelectedAlternatives_AcceptsAnOptionAnEarlierOfferShowed(t *testing.T) {
+	t.Parallel()
+	itemID, productID := uuid.New(), uuid.New()
+	legacy := domain.QuoteItemAlternative{
+		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
+		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
+		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+	}
+	selected, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
+		map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {legacy}},
+		[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: legacy.ID}})
+	if err != nil || selected[itemID].ID != legacy.ID {
+		t.Fatalf("selectedAlternatives() = %+v, %v; want the legacy option accepted", selected, err)
 	}
 }

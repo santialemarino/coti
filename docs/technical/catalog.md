@@ -92,7 +92,8 @@ one transaction, so configuring a new premium or economical product cannot leave
 recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
 recommendation slot. It is a tool for the seller, shown when choosing a line's product, and never an
 option for the customer: only an `ECONOMY` or `PREMIUM` option can be approved, and only those reach
-the sent offer or can be chosen in it.
+the sent offer. An offer sent before this rule may still show an approved untyped option; the customer
+can still choose it, since accepting only checks what the offer itself showed.
 
 Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
 non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote
