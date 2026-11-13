@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Form from 'next/form';
 import Link from 'next/link';
 import {
@@ -12,6 +12,7 @@ import {
   UsersIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { flushSync } from 'react-dom';
 
 import { Button, Combobox, DateRangePicker, Label, MultiCombobox } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
@@ -87,11 +88,13 @@ export function ReportFilters({
   const [branchValues, setBranchValues] = useState(branchIds);
   const [tagValues, setTagValues] = useState(tagIds);
   const [error, setError] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
   const { begin } = useNavigationPending();
   const rangeCopy = useDateRangeCopy(DATE_RANGE_PRESETS);
 
   return (
     <Form
+      ref={formRef}
       action={ROUTES.reports}
       className="flex flex-wrap items-end gap-4"
       onSubmit={(event) => {
@@ -113,9 +116,13 @@ export function ReportFilters({
         <DateRangePicker
           id="report-period"
           value={period}
+          // Applying a period runs the report: the hidden inputs take the new days, then the form submits.
           onValueChange={(next) => {
-            setPeriod(next);
-            setError('');
+            flushSync(() => {
+              setPeriod(next);
+              setError('');
+            });
+            formRef.current?.requestSubmit();
           }}
           placeholder={t('period')}
           labels={rangeCopy.labels}

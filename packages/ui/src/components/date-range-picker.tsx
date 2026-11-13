@@ -34,8 +34,10 @@ interface DateRangePickerLabels {
   to: string;
   // What an end reads while nothing is picked for it and it cannot stay empty.
   pick: string;
-  // Confirms a range edited without picking both ends again.
-  done: string;
+  // Commits the range being edited and closes the panel.
+  apply: string;
+  // Drops the edit and closes the panel.
+  cancel: string;
   // Names the clear button beside an end that may stay empty.
   clearFrom?: string;
   clearTo?: string;
@@ -49,7 +51,7 @@ interface DateRangePickerProps {
   // Shown on the field while neither end is set.
   placeholder: string;
   labels: DateRangePickerLabels;
-  // Ranges one press away, committed as they are.
+  // Ranges one press away; a preset fills the range being edited.
   presets?: DateRangePreset[];
   // What an empty start or end means ("Desde ya", "Sin vencimiento"). Passing it lets that end stay empty.
   openStart?: string;
@@ -110,10 +112,10 @@ function ordered(a: string, b: string): DateRangeValue {
 }
 
 /*
- * One field for an interval. Two picks make the range in either order: the earlier day is the start,
- * and the second pick commits and closes. Choosing an end first replaces only that end, swapping the
- * two when the new day crosses the other; an end that may stay open is cleared beside it and the done
- * button confirms. Escape or a click outside drops the edit. A preset commits at once. Days are
+ * One field for an interval. The panel edits a draft and commits only on the apply button. Two picks
+ * make the range in either order, the earlier day being the start; choosing an end first replaces only
+ * that end, swapping the two when the new day crosses the other; a preset fills the draft; an end that
+ * may stay open is cleared beside it. Cancel, Escape or a click outside drop the draft. Days are
  * `YYYY-MM-DD` strings in and out, so a form keeps the shape it had.
  */
 function DateRangePicker({
@@ -151,6 +153,8 @@ function DateRangePicker({
   const maxDate = parseDay(max);
   const complete =
     (draft.from !== '' || openStart !== undefined) && (draft.to !== '' || openEnd !== undefined);
+  // Applying the range already committed would change nothing, so there is nothing to apply.
+  const changed = draft.from !== value.from || draft.to !== value.to;
   // The day the next pick pairs with: the first pick, or the end that is not being replaced.
   const pivot = anchor ?? (editing === 'from' ? draft.to : editing === 'to' ? draft.from : '');
   // While a pick is pending, the range follows the pointer from the pivot, in either direction.
@@ -163,25 +167,29 @@ function DateRangePicker({
   if (minDate) bounds.push({ before: minDate });
   if (maxDate) bounds.push({ after: maxDate });
 
+  // Closing without applying drops the draft; the panel fades out on the committed range.
   function handleOpenChange(next: boolean) {
-    if (next) {
-      setDraft(value);
-      setAnchor(undefined);
-      setEditing(undefined);
-      setMonth(monthFor(value, 'from', twoMonths));
-    }
-    setHovered(undefined);
-    setOpen(next);
-  }
-
-  // The panel keeps showing what was committed while it fades out, not the edit before it.
-  function commit(next: DateRangeValue) {
-    setDraft(next);
+    setDraft(value);
     setAnchor(undefined);
     setEditing(undefined);
     setHovered(undefined);
-    onValueChange(next);
+    if (next) setMonth(monthFor(value, 'from', twoMonths));
+    setOpen(next);
+  }
+
+  // The panel keeps showing what was applied while it fades out.
+  function apply() {
+    setAnchor(undefined);
+    setEditing(undefined);
+    setHovered(undefined);
+    onValueChange(draft);
     setOpen(false);
+  }
+
+  function fill(next: DateRangeValue) {
+    setDraft(next);
+    setAnchor(undefined);
+    setEditing(undefined);
   }
 
   function pickDay(date: Date) {
@@ -189,13 +197,13 @@ function DateRangePicker({
     if (editing) {
       const other = editing === 'from' ? draft.to : draft.from;
       const otherMayStayOpen = (editing === 'from' ? openEnd : openStart) !== undefined;
-      if (other) commit(ordered(day, other));
-      else if (otherMayStayOpen) commit({ ...draft, [editing]: day });
+      if (other) fill(ordered(day, other));
+      else if (otherMayStayOpen) fill({ ...draft, [editing]: day });
       // The other end must be set, so this day waits for it like a first pick.
       else startRange(day);
       return;
     }
-    if (anchor) commit(ordered(anchor, day));
+    if (anchor) fill(ordered(anchor, day));
     else startRange(day);
   }
 
@@ -268,7 +276,7 @@ function DateRangePicker({
                     size="sm"
                     aria-pressed={pressed}
                     className="justify-start aria-pressed:bg-accent aria-pressed:text-accent-foreground text-paragraph-sm"
-                    onClick={() => commit(preset.value)}
+                    onClick={() => fill(preset.value)}
                   >
                     {preset.label}
                   </Button>
@@ -342,9 +350,12 @@ function DateRangePicker({
                 }}
               />
             </div>
-            <div className="flex justify-end">
-              <Button size="sm" disabled={!complete} onClick={() => commit(draft)}>
-                {labels.done}
+            <div className="flex justify-end gap-x-2">
+              <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
+                {labels.cancel}
+              </Button>
+              <Button size="sm" disabled={!complete || !changed} onClick={apply}>
+                {labels.apply}
               </Button>
             </div>
           </div>

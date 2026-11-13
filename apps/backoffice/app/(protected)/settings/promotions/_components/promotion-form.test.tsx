@@ -140,6 +140,7 @@ describe('PromotionForm', () => {
     fireEvent.click(validity());
     fireEvent.click(day('5 de diciembre de 2026'));
     fireEvent.click(day('20 de diciembre de 2026'));
+    fireEvent.click(screen.getByRole('button', { name: range.apply }));
 
     expect(await submittedValues()).toEqual(
       expect.objectContaining({ validFrom: '2026-12-05', validTo: '2026-12-20' }),
@@ -152,7 +153,7 @@ describe('PromotionForm', () => {
 
     fireEvent.click(validity());
     fireEvent.click(screen.getByRole('button', { name: range.clearTo }));
-    fireEvent.click(screen.getByRole('button', { name: range.done }));
+    fireEvent.click(screen.getByRole('button', { name: range.apply }));
     expect(validity().textContent).toBe(`01/12/2026 – ${copy.validity.openEnd}`);
 
     expect(await submittedValues()).toEqual(
