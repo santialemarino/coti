@@ -174,6 +174,7 @@ type RFQService struct {
 	extractor           domain.RFQExtractor
 	matcher             catalogMatcher
 	productAlternatives productAlternativeReader
+	combos              comboSuggestionReader
 	memories            interpretationMemoryFinder
 	// clientActions trails the customer responses the quote's versions received; the detail
 	// only enriches when the surface is wired, so older surfaces stay lean.

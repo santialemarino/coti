@@ -7,7 +7,9 @@ phone, WhatsApp, or another channel from the order detail screen.
 When the seller approves them, a sent quote can include one economical and one premium product
 alternative for each individual line. The seller can use recommendations configured in the catalog,
 fill any empty option from the catalog with one action after editing lines, or replace a line's option
-for that quote, then chooses which options to send. The customer keeps
+for that quote, then chooses which options to send. When a priced quote holds part of a combo the
+supplier defined, the seller sees what is missing and can add it as ordinary lines with one action;
+promotions are recalculated for the new lines. The customer keeps
 the quoted product or selects one approved alternative per line, then accepts the quote directly.
 Coti recalculates the price, promotions, and discounts for the selected combination and preserves
 the sent offer as an immutable version, so the original offer remains auditable.

@@ -65,6 +65,7 @@ type Handlers struct {
 	ARCASetup             *handler.ARCASetupHandler
 	Invoice               *handler.InvoiceHandler
 	Promotion             *handler.PromotionHandler
+	Combo                 *handler.ComboHandler
 	Report                *handler.SellerReportHandler
 	// File is nil unless the local storage adapter is bound.
 	File *handler.FileHandler
@@ -274,6 +275,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.GET("/:quoteId/client-association", h.Client.GetQuoteAssociation)
 	quotes.PUT("/:quoteId/client-association", h.Client.AssociateQuote)
 	quotes.POST("/:quoteId/items", h.Rfq.AddItem)
+	quotes.GET("/:quoteId/combo-suggestions", h.Combo.Suggestions)
+	quotes.POST("/:quoteId/combo-suggestions/:comboId/add", h.Combo.AddItems)
 	quotes.PATCH("/:quoteId/items/:itemId", h.Rfq.UpdateItem)
 	quotes.DELETE("/:quoteId/items/:itemId", h.Rfq.DeleteItem)
 	quotes.POST("/:quoteId/discounts", h.Rfq.AddDiscount)
@@ -373,6 +376,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	admin.GET("/promotions/:promotionId", h.Promotion.Get)
 	admin.POST("/promotions", h.Promotion.Create)
 	admin.PUT("/promotions/:promotionId", h.Promotion.Replace)
+	admin.GET("/combos", h.Combo.List)
+	admin.GET("/combos/:comboId", h.Combo.Get)
+	admin.POST("/combos", h.Combo.Create)
+	admin.PUT("/combos/:comboId", h.Combo.Replace)
 	admin.PUT("/invoicing/enabled", h.Account.SetInvoicingEnabled)
 	if h.Invoice != nil {
 		admin.GET("/invoicing/settings", h.Invoice.GetSettings)

@@ -618,3 +618,85 @@ export async function reactivateQuote(
   }
   return response.json() as Promise<QuoteResponse>;
 }
+
+// --- Combo suggestions ---
+
+interface ComboItemRaw {
+  product_id: string;
+  quantity: string;
+  product_code: string | null;
+  product_name: string;
+  product_unit: string | null;
+}
+
+interface ComboSuggestionRaw {
+  combo_id: string;
+  name: string;
+  description: string | null;
+  present: ComboItemRaw[];
+  missing: ComboItemRaw[];
+}
+
+export interface ComboSuggestionItem {
+  productId: string;
+  quantity: string;
+  productCode: string | null;
+  productName: string;
+  productUnit: string | null;
+}
+
+export interface ComboSuggestion {
+  comboId: string;
+  name: string;
+  description: string | null;
+  present: ComboSuggestionItem[];
+  missing: ComboSuggestionItem[];
+}
+
+function mapComboItem(raw: ComboItemRaw): ComboSuggestionItem {
+  return {
+    productId: raw.product_id,
+    quantity: raw.quantity,
+    productCode: raw.product_code,
+    productName: raw.product_name,
+    productUnit: raw.product_unit,
+  };
+}
+
+// The combos the priced quote holds part of, with what each still lacks.
+export async function fetchComboSuggestions(
+  quoteId: string,
+  branchId: string,
+): Promise<ComboSuggestion[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/combo-suggestions`, {
+    method: 'GET',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const body = (await response.json()) as { items: ComboSuggestionRaw[] };
+  return body.items.map((raw) => ({
+    comboId: raw.combo_id,
+    name: raw.name,
+    description: raw.description,
+    present: raw.present.map(mapComboItem),
+    missing: raw.missing.map(mapComboItem),
+  }));
+}
+
+// Adds a suggested combo's missing products as priced lines; returns the lines added.
+export async function addComboItems(
+  quoteId: string,
+  comboId: string,
+  branchId: string,
+): Promise<QuoteItemResponse[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/combo-suggestions/${comboId}/add`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: '{}',
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const body = (await response.json()) as { items: QuoteItemResponse[] };
+  return body.items;
+}

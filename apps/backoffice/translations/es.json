@@ -520,6 +520,18 @@
       "title": "Editar promoción",
       "description": "Edición de una regla de descuento del corralón."
     },
+    "comboSettings": {
+      "title": "Combos",
+      "description": "Conjuntos de productos que se ofrecen juntos al cotizar."
+    },
+    "comboNew": {
+      "title": "Nuevo combo",
+      "description": "Alta de un combo del catálogo."
+    },
+    "comboEdit": {
+      "title": "Editar combo",
+      "description": "Edición de un combo del catálogo."
+    },
     "onboarding": {
       "title": "Configuración inicial",
       "description": "Prepará la cuenta para crear las primeras cotizaciones."
@@ -1906,6 +1918,19 @@
         "errors": {
           "QUOTE_ARCHIVED": "La venta está archivada. Desarchivala antes de marcar el cobro."
         }
+      },
+      "combos": {
+        "title": "Combos sugeridos",
+        "description": "La cotización tiene parte de estos combos. Agregá lo que falta como líneas comunes; las promociones se recalculan solas.",
+        "missing": "Falta:",
+        "present": "Ya tiene {names}.",
+        "line": "{quantity} {name}",
+        "add": "{count, plural, one {Agregar el que falta} other {Agregar los # que faltan}}",
+        "adding": "Agregando…",
+        "added": "{count, plural, one {Agregamos # producto de «{name}».} other {Agregamos # productos de «{name}».}}",
+        "errors": {
+          "CONFLICT": "Ese combo ya no aplica a la cotización: puede que ya esté completo o que haya cambiado. Actualizá la pantalla."
+        }
       }
     }
   },
@@ -2340,12 +2365,14 @@
       "catalog": "Catálogo",
       "prices": "Precios",
       "promotions": "Promociones",
+      "combos": "Combos",
       "onboarding": "Configuración inicial · {done}/{total}",
       "invoicing": "Facturación",
       "export": "Exportación de datos"
     },
     "backToInvoicing": "Volver a Facturación",
-    "backToPromotions": "Volver a Promociones"
+    "backToPromotions": "Volver a Promociones",
+    "backToCombos": "Volver a Combos"
   },
   "branches": {
     "title": "Sucursales",
@@ -3806,6 +3833,99 @@
       "cancel": "Cancelar",
       "toast": {
         "created": "Creamos «{name}»: se aplica en las próximas cotizaciones que la cumplan.",
+        "updated": "Guardamos los cambios de «{name}»."
+      }
+    }
+  },
+  "combos": {
+    "title": "Combos",
+    "description": "Productos que se venden juntos. Cuando una cotización tiene parte de un combo, el vendedor ve lo que falta y lo agrega con un clic.",
+    "add": "Nuevo combo",
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "table": {
+      "caption": "Combos de la cuenta",
+      "name": "Nombre",
+      "products": "Productos",
+      "branches": "Sucursales",
+      "allBranches": "Todas",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "empty": {
+      "title": "Todavía no hay combos",
+      "description": "Creá el primero para que el vendedor vea qué falta cuando una cotización tiene parte de él."
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar «{name}»"
+    },
+    "new": {
+      "title": "Nuevo combo",
+      "description": "Elegí los productos que se venden juntos y en qué sucursales."
+    },
+    "toast": {
+      "activated": "Activamos «{name}»: se sugiere en las cotizaciones que tengan parte de él.",
+      "deactivated": "Desactivamos «{name}»: deja de sugerirse en las cotizaciones."
+    },
+    "errors": {
+      "INVALID_INPUT": "Revisá el combo: algún producto o sucursal ya no existe en la cuenta.",
+      "NOT_FOUND": "Ese combo ya no existe. Volvé al listado y actualizá la pantalla."
+    },
+    "form": {
+      "sections": {
+        "details": "Datos",
+        "products": "Productos",
+        "branches": "Sucursales"
+      },
+      "name": {
+        "label": "Nombre",
+        "placeholder": "Ingresá el nombre del combo",
+        "required": "Ingresá el nombre del combo."
+      },
+      "description": {
+        "label": "Descripción",
+        "placeholder": "Notas opcionales...",
+        "hint": "El vendedor la ve junto a la sugerencia."
+      },
+      "isActive": {
+        "label": "Activo",
+        "hint": "Desactivado no se sugiere, pero conserva su definición."
+      },
+      "items": {
+        "hint": "Al menos {count} productos distintos, con la cantidad que lleva el combo.",
+        "product": "Producto",
+        "pickProduct": "Buscá un producto",
+        "unknownProduct": "Producto sin nombre",
+        "dialogTitle": "Elegí un producto",
+        "quantity": "Cantidad",
+        "quantityPlaceholder": "Ingresá la cantidad",
+        "add": "Agregar producto",
+        "remove": "Quitar",
+        "tooFew": "Elegí al menos {count} productos.",
+        "productRequired": "Elegí un producto.",
+        "repeated": "Ya está en el combo.",
+        "quantityRequired": "Ingresá una cantidad mayor a cero."
+      },
+      "discountHint": "El combo no tiene precio propio: sus productos se cotizan como líneas comunes. Para darle un descuento por llevarlo junto,",
+      "discountLink": "creá una promoción de conjunto de ítems",
+      "branches": {
+        "hint": "Solo se sugiere en las cotizaciones de las sucursales marcadas.",
+        "required": "Elegí al menos una sucursal."
+      },
+      "submit": {
+        "create": "Crear combo",
+        "creating": "Creando…",
+        "update": "Guardar cambios",
+        "updating": "Guardando…"
+      },
+      "cancel": "Cancelar",
+      "toast": {
+        "created": "Creamos «{name}»: se sugiere en las cotizaciones que tengan parte de él.",
         "updated": "Guardamos los cambios de «{name}»."
       }
     }

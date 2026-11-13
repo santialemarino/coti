@@ -623,6 +623,119 @@ definitions:
       name:
         type: string
     type: object
+  dto.ComboItemRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        type: string
+    required:
+    - product_id
+    - quantity
+    type: object
+  dto.ComboItemResponse:
+    properties:
+      product_code:
+        type: string
+      product_id:
+        type: string
+      product_is_active:
+        type: boolean
+      product_name:
+        type: string
+      product_unit:
+        type: string
+      quantity:
+        type: string
+    type: object
+  dto.ComboItemsAddedResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuoteItemResponse'
+        type: array
+    type: object
+  dto.ComboListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ComboResponse'
+        type: array
+    type: object
+  dto.ComboRequest:
+    properties:
+      branch_ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      description:
+        maxLength: 512
+        type: string
+      is_active:
+        description: defaults to true.
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/dto.ComboItemRequest'
+        minItems: 2
+        type: array
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - branch_ids
+    - items
+    - name
+    type: object
+  dto.ComboResponse:
+    properties:
+      branch_ids:
+        items:
+          type: string
+        type: array
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/dto.ComboItemResponse'
+        type: array
+      name:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  dto.ComboSuggestionListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ComboSuggestionResponse'
+        type: array
+    type: object
+  dto.ComboSuggestionResponse:
+    properties:
+      combo_id:
+        type: string
+      description:
+        type: string
+      missing:
+        items:
+          $ref: '#/definitions/dto.ComboItemResponse'
+        type: array
+      name:
+        type: string
+      present:
+        items:
+          $ref: '#/definitions/dto.ComboItemResponse'
+        type: array
+    type: object
   dto.ConfirmCatalogImportRequest:
     properties:
       rows:
@@ -5057,6 +5170,155 @@ paths:
       summary: Replace a client's tags
       tags:
       - clients
+  /v1/combos:
+    get:
+      description: Returns every catalog combo of the account, inactive ones included,
+        by name.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ComboListResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List combos
+      tags:
+      - combos
+    post:
+      consumes:
+      - application/json
+      description: Adds a combo of at least two distinct products, sold in the given
+        branches.
+      parameters:
+      - description: Combo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ComboRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ComboResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a combo
+      tags:
+      - combos
+  /v1/combos/{comboId}:
+    get:
+      parameters:
+      - description: Combo id
+        in: path
+        name: comboId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ComboResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a combo
+      tags:
+      - combos
+    put:
+      consumes:
+      - application/json
+      description: Replaces the combo's name, products and branches. Leaving a branch
+        out stops selling it there.
+      parameters:
+      - description: Combo id
+        in: path
+        name: comboId
+        required: true
+        type: string
+      - description: Combo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ComboRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ComboResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace a combo
+      tags:
+      - combos
   /v1/customer/quote-sends/{token}/preview:
     post:
       consumes:
@@ -8267,6 +8529,95 @@ paths:
       summary: Reject standalone client association
       tags:
       - clients
+  /v1/quotes/{quoteId}/combo-suggestions:
+    get:
+      description: Returns the active combos the quote's branch sells that the priced
+        quote holds at least one product of and lacks at least one, every missing
+        product active and priced. Empty for any other quote.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ComboSuggestionListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List combo suggestions for a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/combo-suggestions/{comboId}/add:
+    post:
+      description: Adds the suggested combo's missing products as priced lines in
+        one transaction and re-runs the promotions. 409 when the combo is no longer
+        suggested for the quote.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: Combo id
+        in: path
+        name: comboId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ComboItemsAddedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete a combo on a quote
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/discard-ai-changes:
     post:
       description: Resets the draft to the version the customer last received and
