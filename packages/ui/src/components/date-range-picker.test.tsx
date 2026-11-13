@@ -280,8 +280,9 @@ describe('DateRangePicker', () => {
     const cell = (label: string) => day(label).closest('td')!;
     const buttonsKeepTheirShape = () =>
       [...panel().querySelectorAll('td button')].every(
-        // No state may reshape the button (a variant-prefixed radius) or paint the band on it.
-        (button) => !/:rounded-|rounded-none|bg-accent/.test(button.className),
+        // No state may reshape the button (a variant-prefixed radius) or paint the band on it. Its
+        // hover and press may step up from the band (`bg-accent-strong(er)`), never be the band.
+        (button) => !/:rounded-|rounded-none|bg-accent(\/60)?(\s|$)/.test(button.className),
       );
 
     expect(cell('8 de octubre de 2026').className).toMatch(/(^|\s)bg-accent(\s|$)/);
@@ -447,6 +448,146 @@ describe('DateRangePicker', () => {
     applyRange();
     expect(onValueChange).toHaveBeenCalledExactlyOnceWith(presets[1]!.value);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  // The grid must draw and announce the draft alone, never a copy day-picker kept of an earlier range.
+  it('selects only the draft after a preset lands outside the months on screen, and shows it', () => {
+    const presets = [{ label: 'Octubre', value: { from: '2026-10-01', to: '2026-10-31' } }];
+    renderPicker({ from: '2026-06-30', to: '2026-07-20' }, { presets });
+    fireEvent.click(trigger());
+    // One month on screen (June): only the start is in view.
+    expect(panel().querySelectorAll('button[data-selected]')).toHaveLength(1);
+
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Octubre' }));
+
+    // The view follows the preset, so its ends are on screen and nothing of the old range remains.
+    expect(within(panel()).getByRole('grid').getAttribute('aria-label')).toMatch(/octubre 2026/i);
+    const selected = [...panel().querySelectorAll<HTMLElement>('button[data-selected]')].map(
+      (button) => button.dataset.day,
+    );
+    expect(selected).toEqual(['2026-10-01', '2026-10-31']);
+    const announced = [...panel().querySelectorAll('td[aria-selected="true"] button')].map(
+      (button) => (button as HTMLElement).dataset.day ?? '',
+    );
+    expect(announced.every((iso) => iso >= '2026-10-01' && iso <= '2026-10-31')).toBe(true);
+    expect(announced).toContain('2026-10-15');
+  });
+
+  // Mid-range with neither end in view, every day is in the range but none is an end.
+  it('draws the middle of a range as band, never as ends, when neither end is on screen', () => {
+    renderPicker({ from: '2026-06-01', to: '2026-09-30' });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: /siguiente/i }));
+
+    expect(within(panel()).getByRole('grid').getAttribute('aria-label')).toMatch(/julio 2026/i);
+    expect(panel().querySelectorAll('button[data-selected]')).toHaveLength(0);
+    expect(panel().querySelectorAll('button[data-in-range]').length).toBeGreaterThan(20);
+  });
+
+  // Two months on screen: a preset inside one month shows it last, after the month before it.
+  it('shows a preset with its end month last when two months fit', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
+    );
+    const presets = [{ label: 'Octubre', value: { from: '2026-10-01', to: '2026-10-31' } }];
+    renderPicker({ from: '2026-06-30', to: '2026-07-20' }, { presets });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Octubre' }));
+
+    const months = within(panel())
+      .getAllByRole('grid')
+      .map((grid) => grid.getAttribute('aria-label'));
+    expect(months.join(' ')).toMatch(/septiembre 2026.*octubre 2026/i);
+    // Each month shows only its own days, so no day appears, or is announced, twice.
+    expect(panel().querySelectorAll('button[data-outside]')).toHaveLength(0);
+    const days = [...panel().querySelectorAll<HTMLElement>('[role="grid"] button')].map(
+      (button) => button.dataset.day,
+    );
+    expect(new Set(days).size).toBe(days.length);
+    // Only October's own days are announced, never a blank cell standing for a neighbour's day.
+    const announced = [...panel().querySelectorAll('td[aria-selected="true"]')];
+    expect(announced).toHaveLength(31);
+    expect(announced.every((cell) => cell.querySelector('button'))).toBe(true);
+  });
+
+  // The next month's first days repeat in this grid; drawing the range on them doubles its ends.
+  it('draws no range state on days from a neighbouring month', () => {
+    renderPicker({ from: '2026-06-10', to: '2026-07-03' });
+    fireEvent.click(trigger());
+
+    const outside = [...panel().querySelectorAll<HTMLElement>('button[data-outside]')];
+    const july = outside.filter((button) => button.dataset.day! >= '2026-07-01');
+    expect(july.map((button) => button.dataset.day)).toContain('2026-07-03');
+    for (const button of july) {
+      expect(button.hasAttribute('data-selected')).toBe(false);
+      expect(button.hasAttribute('data-in-range')).toBe(false);
+      expect(button.closest('td')!.className).toContain('bg-transparent!');
+    }
+  });
+
+  it('never names a day from a neighbouring month as selected', () => {
+    renderPicker({ from: '2026-06-10', to: '2026-07-03' });
+    fireEvent.click(trigger());
+
+    const july = [...panel().querySelectorAll<HTMLElement>('button[data-outside]')].filter(
+      (button) => button.dataset.day! >= '2026-07-01',
+    );
+    expect(july.length).toBeGreaterThan(0);
+    for (const button of july) {
+      expect(button.getAttribute('aria-label')).not.toMatch(/seleccionad/);
+    }
+    // A day of the month itself still says so.
+    expect(day('10 de junio de 2026').getAttribute('aria-label')).toMatch(/seleccionad/);
+  });
+
+  it('leaves the view alone for a preset already on screen', () => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        }) as unknown as MediaQueryList,
+    );
+    const presets = [{ label: 'Junio', value: { from: '2026-06-01', to: '2026-06-30' } }];
+    renderPicker({ from: '2026-06-10', to: '2026-06-20' }, { presets });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Junio' }));
+
+    // June and July were on screen; moving to "end's month last" would show May and June instead.
+    const months = within(panel())
+      .getAllByRole('grid')
+      .map((grid) => grid.getAttribute('aria-label'));
+    expect(months.join(' ')).toMatch(/junio 2026.*julio 2026/i);
+  });
+
+  it('brings a preset with an open end into view on its start', () => {
+    const presets = [{ label: 'Desde marzo', value: { from: '2026-03-01', to: '' } }];
+    renderPicker({ from: '2026-06-10', to: '2026-06-20' }, { presets, openEnd: 'Sin fin' });
+    fireEvent.click(trigger());
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Desde marzo' }));
+
+    expect(within(panel()).getByRole('grid').getAttribute('aria-label')).toMatch(/marzo 2026/i);
+  });
+
+  // jsdom applies no CSS, so these pin the rules the browser check measured: a press without a
+  // hover (touch, Space) keeps today legible, and a focused disabled day still looks disabled.
+  it('styles today pressed without a hover, and a focused disabled day', () => {
+    renderPicker({ from: '', to: '' });
+    fireEvent.click(trigger());
+    const classes = panel().querySelector('[role="grid"] button')!.className;
+
+    expect(classes).toContain(
+      'data-today:not-data-selected:not-data-in-range:not-data-preview:active:text-accent-foreground',
+    );
+    expect(classes).toContain('aria-disabled:opacity-40');
   });
 
   it('marks both ends selected and greys out days past the bounds', () => {
