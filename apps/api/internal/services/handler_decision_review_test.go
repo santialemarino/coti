@@ -11,12 +11,15 @@ import (
 )
 
 func TestDraftSnapshot_CountsOnlyTheOptionsTheOfferShows(t *testing.T) {
-	itemID, economyID, untypedID := uuid.New(), uuid.New(), uuid.New()
+	itemID, economyID, equivalentID, untypedID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	quotes := &fakeQuoteRepo{
 		items: []domain.QuoteItem{{ID: itemID, Quantity: decimal.NewFromInt(2)}},
 		alternatives: map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {
 			{ID: uuid.New(), ProductID: &economyID, ApprovedBySeller: true,
 				RecommendationType: alternativeType(domain.ProductAlternativeEconomy)},
+			// Seller-only: approving an equivalent never puts it in front of the customer.
+			{ID: uuid.New(), ProductID: &equivalentID, ApprovedBySeller: true,
+				RecommendationType: alternativeType(domain.ProductAlternativeEquivalent)},
 			{ID: uuid.New(), ProductID: &untypedID, ApprovedBySeller: true},
 		}},
 	}
