@@ -71,6 +71,7 @@ describe('DataExportForm', () => {
     fireEvent.click(period());
     fireEvent.click(day('1 de noviembre de 2026'));
     fireEvent.click(day('5 de noviembre de 2026'));
+    fireEvent.click(screen.getByRole('button', { name: messages.common.dateRange.apply }));
     expect(period().textContent).toBe('01/11/2026 – 05/11/2026');
     fireEvent.click(screen.getByRole('button', { name: copy.download.label }));
 
@@ -92,7 +93,7 @@ describe('DataExportForm', () => {
     expect(period().textContent).toBe(copy.period.placeholder);
     fireEvent.click(period());
     fireEvent.click(day('1 de noviembre de 2026'));
-    fireEvent.click(screen.getByRole('button', { name: messages.common.dateRange.done }));
+    fireEvent.click(screen.getByRole('button', { name: messages.common.dateRange.apply }));
     expect(period().textContent).toBe(`01/11/2026 – ${copy.period.openEnd}`);
     fireEvent.click(screen.getByRole('button', { name: copy.download.label }));
 

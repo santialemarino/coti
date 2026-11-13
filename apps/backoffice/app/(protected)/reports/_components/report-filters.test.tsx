@@ -30,7 +30,7 @@ function period() {
   return screen.getByRole('combobox', { name: copy.period });
 }
 
-// Picks a range through the calendar the way a seller does: the start, then the end.
+// Picks a range through the calendar the way a seller does, and applies it in the panel.
 function pickRange(fromLabel: string, toLabel: string) {
   fireEvent.click(period());
   const panel = screen.getByRole('dialog');
@@ -38,6 +38,7 @@ function pickRange(fromLabel: string, toLabel: string) {
     within(panel).getByRole('button', { name: new RegExp(`(^|, )${label}(,|$)`) });
   fireEvent.click(day(fromLabel));
   fireEvent.click(day(toLabel));
+  fireEvent.click(within(panel).getByRole('button', { name: range.apply }));
 }
 
 describe('ReportFilters', () => {
@@ -114,6 +115,22 @@ describe('ReportFilters', () => {
     expect(submit.defaultPrevented).toBe(false);
     expect(form.getAttribute('action')).toBe('/reports');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  // The panel's Aplicar sets the period; only the filters' own submit reloads the report.
+  it('reloads the report only when the filters are submitted', () => {
+    begin.mockClear();
+    const form = renderFilters();
+
+    pickRange('5 de octubre de 2026', '12 de octubre de 2026');
+    fireEvent.click(period());
+    fireEvent.click(screen.getByRole('button', { name: range.presets.lastMonth }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: range.cancel }));
+    expect(begin).not.toHaveBeenCalled();
+    expect(period().textContent).toBe('05/10/2026 – 12/10/2026');
+
+    fireEvent.submit(form);
+    expect(begin).toHaveBeenCalledExactlyOnceWith('/reports?from=2026-10-05&to=2026-10-12');
   });
 
   // next/form navigates on its own, so the shell is told where it goes and shows the bar meanwhile.
