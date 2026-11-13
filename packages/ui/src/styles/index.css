@@ -451,6 +451,76 @@
 }
 
 /*
+ * A calendar's month change: the new weeks slide a short way in from the side it lies on while the
+ * old ones leave the other way, and the caption crossfades. Day-picker adds and removes these as
+ * single classes and waits for the caption's exit to end before dropping the old month, so the exit
+ * holds its last frame.
+ */
+@keyframes calendar-in-right {
+  from {
+    opacity: 0;
+    translate: 1.5rem 0;
+  }
+}
+
+@keyframes calendar-in-left {
+  from {
+    opacity: 0;
+    translate: -1.5rem 0;
+  }
+}
+
+@keyframes calendar-out-left {
+  to {
+    opacity: 0;
+    translate: -1.5rem 0;
+  }
+}
+
+@keyframes calendar-out-right {
+  to {
+    opacity: 0;
+    translate: 1.5rem 0;
+  }
+}
+
+@keyframes calendar-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes calendar-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.calendar-weeks-after-enter {
+  animation: calendar-in-right var(--duration-default) var(--ease-out-soft);
+}
+
+.calendar-weeks-before-enter {
+  animation: calendar-in-left var(--duration-default) var(--ease-out-soft);
+}
+
+.calendar-weeks-before-exit {
+  animation: calendar-out-left var(--duration-default) var(--ease-out-soft) forwards;
+}
+
+.calendar-weeks-after-exit {
+  animation: calendar-out-right var(--duration-default) var(--ease-out-soft) forwards;
+}
+
+.calendar-caption-enter {
+  animation: calendar-fade-in var(--duration-default) var(--ease-out-soft);
+}
+
+.calendar-caption-exit {
+  animation: calendar-fade-out var(--duration-default) var(--ease-out-soft) forwards;
+}
+
+/*
  * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
  * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
  * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
@@ -485,7 +555,9 @@
   [class*='animate-status-halo'],
   [class*='animate-status-pop'],
   [class*='animate-rise-in'],
-  [class*='animate-surface-in'] {
+  [class*='animate-surface-in'],
+  [class*='calendar-weeks-'],
+  [class*='calendar-caption-'] {
     animation: none;
   }
 

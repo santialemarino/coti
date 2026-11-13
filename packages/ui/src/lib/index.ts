@@ -4,3 +4,4 @@ export * from './keep-allowed';
 export * from './cuit';
 export * from './tax-id';
 export * from './phone';
+export * from './dates';

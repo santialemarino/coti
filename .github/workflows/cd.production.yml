@@ -36,34 +36,36 @@ jobs:
           jq -e '.["coti-core"].backoffice | index("API_INTERNAL_URL")' "$RUNNER_TEMP/template-envs.json" > /dev/null
           jq -e '.["coti-core"].migrate and (.["coti-portal"].webapp | length > 0)' "$RUNNER_TEMP/template-envs.json" > /dev/null
 
+  # Each called workflow's `changes` job asks for pull-requests: read, and a called workflow cannot
+  # hold more than its caller grants. `full: true` runs every job whatever triggered the release.
   api:
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci.api.yml
-  backoffice:
+    with:
+      full: true
+  web:
     if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.backoffice.yml
-  webapp:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci.web.yml
+    with:
+      full: true
+  deploy-checks:
     if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.webapp.yml
-  ui:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.ui.yml
-  scripts:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.scripts.yml
-  docker:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.docker.yml
-  deploy-spec:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.deploy-spec.yml
-  skills:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.skills.yml
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci.deploy.yml
+    with:
+      full: true
 
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: [deployment-tests, api, backoffice, webapp, ui, scripts, docker, deploy-spec, skills]
+    needs: [deployment-tests, api, web, deploy-checks]
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 65

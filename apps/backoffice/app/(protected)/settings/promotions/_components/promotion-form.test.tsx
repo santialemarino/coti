@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +21,7 @@ const { createPromotion, updatePromotion } =
   await import('@/app/(protected)/settings/promotions/actions');
 
 const copy = messages.promotions.form;
+const range = messages.common.dateRange;
 const FAMILIES: ProductFamily[] = [
   { id: 'f1', name: 'Cementos', subgroups: [{ id: 's1', name: 'Portland' }] },
 ];
@@ -42,6 +43,32 @@ function renderForm(initialValues: PromotionValues, promotionId?: string) {
 }
 
 beforeEach(() => vi.clearAllMocks());
+
+const STORED: PromotionValues = {
+  ...EMPTY_PROMOTION,
+  name: 'Diciembre',
+  actionValue: '10',
+  validFrom: '2026-12-01',
+  validTo: '2026-12-31',
+  conditions: [{ kind: 'product', targetId: 'p1', label: 'Cemento', minQuantity: '' }],
+};
+
+function validity() {
+  return screen.getByRole('combobox', { name: copy.validity.label });
+}
+
+function day(label: string) {
+  return within(screen.getByRole('dialog')).getByRole('button', {
+    name: new RegExp(`(^|, )${label}(,|$)`),
+  });
+}
+
+async function submittedValues() {
+  vi.mocked(updatePromotion).mockResolvedValue({ ok: true, id: 'p9' });
+  fireEvent.click(screen.getByRole('button', { name: copy.submit.update }));
+  await waitFor(() => expect(updatePromotion).toHaveBeenCalledTimes(1));
+  return vi.mocked(updatePromotion).mock.calls[0]?.[1];
+}
 
 describe('PromotionForm', () => {
   it('renders a stored item set with every kind of target', () => {
@@ -104,5 +131,32 @@ describe('PromotionForm', () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/promotions', undefined));
     expect(vi.mocked(updatePromotion).mock.calls[0]?.[0]).toBe('p9');
+  });
+
+  it('edits the vigencia as one range and saves both days', async () => {
+    renderForm(STORED, 'p9');
+    expect(validity().textContent).toBe('01/12/2026 – 31/12/2026');
+
+    fireEvent.click(validity());
+    fireEvent.click(day('5 de diciembre de 2026'));
+    fireEvent.click(day('20 de diciembre de 2026'));
+
+    expect(await submittedValues()).toEqual(
+      expect.objectContaining({ validFrom: '2026-12-05', validTo: '2026-12-20' }),
+    );
+  });
+
+  // An empty end is "no expiry" for the API, so clearing it has to reach the action as ''.
+  it('leaves the end open when it is cleared', async () => {
+    renderForm(STORED, 'p9');
+
+    fireEvent.click(validity());
+    fireEvent.click(screen.getByRole('button', { name: range.clearTo }));
+    fireEvent.click(screen.getByRole('button', { name: range.done }));
+    expect(validity().textContent).toBe(`01/12/2026 – ${copy.validity.openEnd}`);
+
+    expect(await submittedValues()).toEqual(
+      expect.objectContaining({ validFrom: '2026-12-01', validTo: '' }),
+    );
   });
 });
