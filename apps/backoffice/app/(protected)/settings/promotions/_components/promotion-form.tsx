@@ -2,7 +2,6 @@
 
 import { useId, useMemo, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { useForm, useWatch } from 'react-hook-form';
@@ -47,6 +46,7 @@ import { AmountInput } from '@/components/amount-input';
 import { QuantityInput } from '@/components/quantity-input';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import type { ProductFamily } from '@/lib/api/products';
 import {
@@ -74,7 +74,7 @@ export function PromotionForm({
   families,
   branches,
 }: PromotionFormProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const t = useTranslations('promotions.form');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('promotions');

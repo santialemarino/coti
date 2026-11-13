@@ -24,7 +24,7 @@ export default async function OrdersPage({
   const query = await searchParams;
   const parsed = Number(query.page || 1);
   const page = Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
-  const [orders, t, fmt] = await Promise.all([
+  const [{ orders, hasMore }, t, fmt] = await Promise.all([
     getCustomerOrders(page),
     getTranslations('customerOrders'),
     getFormatters(),
@@ -113,7 +113,7 @@ export default async function OrdersPage({
             ) : (
               <span />
             )}
-            {orders.length > 0 ? (
+            {hasMore ? (
               <Button variant="outline" asChild>
                 <Link href={`${ROUTES.orders}?page=${page + 1}`}>{t('next')}</Link>
               </Button>

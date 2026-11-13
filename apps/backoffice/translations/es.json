@@ -278,6 +278,12 @@
       "previous": "Anterior",
       "next": "Siguiente"
     },
+    "reveal": {
+      "status": "Mostrando {visible} de {total} filas",
+      "more": "Ver {count} más",
+      "all": "Ver todas ({total})",
+      "jumpToConfirm": "Ir a confirmar"
+    },
     "phone": {
       "country": "País",
       "countrySearch": "Buscá un país",
@@ -2837,7 +2843,6 @@
     }
   },
   "catalogImport": {
-    "showMore": "Ver más ({remaining} filas restantes)",
     "title": "Catálogo",
     "bulk": {
       "title": "Edición masiva"
@@ -2936,10 +2941,12 @@
       "economy_alternative_not_found": "No hay ningún producto con el código de la alternativa económica, ni en el catálogo ni en las filas válidas del archivo.",
       "economy_alternative_inactive": "La alternativa económica está desactivada.",
       "economy_alternative_incompatible": "La alternativa económica tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo.",
+      "economy_alternative_ambiguous": "La alternativa económica dice una palabra que la quita, pero también es el código de un producto. Para quitarla usá otra (NINGUNA, NINGUNO o -); para elegir ese producto, cargalo desde su ficha.",
       "premium_alternative_self": "La alternativa premium no puede ser el mismo producto.",
       "premium_alternative_not_found": "No hay ningún producto con el código de la alternativa premium, ni en el catálogo ni en las filas válidas del archivo.",
       "premium_alternative_inactive": "La alternativa premium está desactivada.",
-      "premium_alternative_incompatible": "La alternativa premium tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo."
+      "premium_alternative_incompatible": "La alternativa premium tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo.",
+      "premium_alternative_ambiguous": "La alternativa premium dice una palabra que la quita, pero también es el código de un producto. Para quitarla usá otra (NINGUNA, NINGUNO o -); para elegir ese producto, cargalo desde su ficha."
     }
   },
   "onboarding": {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { FileTextIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -22,6 +21,7 @@ import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context'
 import { SetupNotice } from '@/components/setup-notice';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import { listChannels, type Channel } from '@/lib/api/channels';
 import { errorCodeOf } from '@/lib/api/errors';
 import { createFileRfqDraft } from '@/lib/api/rfqs-client';
@@ -71,7 +71,7 @@ export function RfqImportView({
   activeBranchId,
   onDirtyChange,
 }: RfqImportViewProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const t = useTranslations('rfqs.create.import');
   const tToast = useTranslations('rfqs.create.toast');
   const tChannel = useTranslations('rfqs.channels');

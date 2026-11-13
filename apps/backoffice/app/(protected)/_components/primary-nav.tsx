@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@repo/ui/lib';
 import { NavLink } from '@/app/(protected)/_components/nav-link';
 import { isOrdersPath, ROUTES } from '@/config/routes';
+import { useNavigationPending } from '@/hooks/use-navigation-pending';
 
 interface PrimaryNavProps {
   // Whether Administración, the invoice history, is offered: see showsInvoiceHistory.
@@ -23,7 +24,9 @@ interface PrimaryNavProps {
  */
 export function PrimaryNav({ administration, layout = 'bar', className }: PrimaryNavProps) {
   const t = useTranslations('common');
-  const pathname = usePathname();
+  // The destination is marked on the click, before its page arrives.
+  const committed = usePathname();
+  const pathname = useNavigationPending().pendingPathname ?? committed;
 
   // A section stays active through its children: a client's page keeps "Clientes" lit.
   const inSection = (href: string) => pathname === href || pathname.startsWith(`${href}/`);

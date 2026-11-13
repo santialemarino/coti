@@ -79,6 +79,7 @@ import {
 } from '@/app/(protected)/rfqs/_components/sale-closure-dialogs';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import { errorCodeOf } from '@/lib/api/errors';
 import {
   formatRfqReference,
@@ -414,6 +415,7 @@ export function RfqDashboard({
   activeRfqId?: string | null;
 }) {
   const router = useRouter();
+  const pendingRouter = usePendingRouter();
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const tCommon = useTranslations('common');
@@ -1069,12 +1071,12 @@ export function RfqDashboard({
                       const target = event.target as HTMLElement;
                       if (!event.currentTarget.contains(target)) return;
                       if (target.closest('button, a, input, label, [role="menuitem"]')) return;
-                      router.push(ROUTES.rfqsDetail(rfq.id));
+                      pendingRouter.push(ROUTES.rfqsDetail(rfq.id));
                     }}
                     onKeyDown={(event) => {
                       if (event.target !== event.currentTarget || event.key !== 'Enter') return;
                       event.preventDefault();
-                      router.push(ROUTES.rfqsDetail(rfq.id));
+                      pendingRouter.push(ROUTES.rfqsDetail(rfq.id));
                     }}
                     data-state={selected.has(rfq.id) ? 'selected' : undefined}
                     interactive

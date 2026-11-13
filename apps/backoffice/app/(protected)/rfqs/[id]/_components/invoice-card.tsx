@@ -455,7 +455,9 @@ function IssuedInvoice({
       <AmountsTable amounts={invoice.amounts} currency={invoice.currency} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button asChild variant="outline">
-          <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
+          <a href={ROUTES.invoicePDF(invoice.id, branchId)} download>
+            {t('download')}
+          </a>
         </Button>
         {creditable && note?.status !== 'PENDING' ? (
           <PendingButton
@@ -531,10 +533,14 @@ function CreditedInvoice({ invoice, branchId }: { invoice: Invoice; branchId: st
         <AuthorizationFacts voucher={note} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Button asChild variant="outline" size="sm">
-            <a href={ROUTES.invoicePDF(note.id, branchId)}>{t('downloadNote')}</a>
+            <a href={ROUTES.invoicePDF(note.id, branchId)} download>
+              {t('downloadNote')}
+            </a>
           </Button>
           <Button asChild variant="outline" size="sm">
-            <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('downloadInvoice')}</a>
+            <a href={ROUTES.invoicePDF(invoice.id, branchId)} download>
+              {t('downloadInvoice')}
+            </a>
           </Button>
         </div>
         {note.qrUrl ? (
@@ -560,7 +566,9 @@ function OtherEnvironmentInvoice({ invoice, branchId }: { invoice: Invoice; bran
       title={t('title', { type: invoice.type, number: invoiceNumberOf(invoice) })}
       action={
         <Button asChild variant="outline" size="sm">
-          <a href={ROUTES.invoicePDF(invoice.id, branchId)}>{t('download')}</a>
+          <a href={ROUTES.invoicePDF(invoice.id, branchId)} download>
+            {t('download')}
+          </a>
         </Button>
       }
     >

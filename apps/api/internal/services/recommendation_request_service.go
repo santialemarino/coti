@@ -160,9 +160,13 @@ func (s *RecommendationRequestService) FillVacant(ctx context.Context, tenant do
 		}
 		for _, proposal := range proposals {
 			price, ok := prices[proposal.ProductID]
+			priceCurrency := price.Currency
+			if priceCurrency == "" {
+				priceCurrency = domain.DefaultCurrency
+			}
 			matcherID, reusable := reusableMatcherCandidate(offers[proposal.ItemID], proposal.ProductID)
 			// A price that moved since the proposal was found was never checked against the line.
-			if !ok || !price.Price.Equal(proposal.UnitPrice) || !reusable ||
+			if !ok || !price.Price.Equal(proposal.UnitPrice) || priceCurrency != proposal.Currency || !reusable ||
 				recommendationSlotOccupied(offers[proposal.ItemID], proposal.RecommendationType) {
 				continue
 			}

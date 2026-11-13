@@ -52,6 +52,9 @@ type catalogImportRawRow struct {
 	// nil keeps the slot, an empty code clears it, a code sets it.
 	economyAlternative *string
 	premiumAlternative *string
+	// The cell as written when it was read as a clear word, to flag one that is also a product code.
+	economyClearWord string
+	premiumClearWord string
 }
 
 func parseCatalogImport(src io.Reader) ([]catalogImportRawRow, error) {
@@ -61,6 +64,8 @@ func parseCatalogImport(src io.Reader) ([]catalogImportRawRow, error) {
 	}
 	result := make([]catalogImportRawRow, len(rows))
 	for index, row := range rows {
+		economy, economyClearWord := alternativeCell(row.Values[catalogColumnEconomy])
+		premium, premiumClearWord := alternativeCell(row.Values[catalogColumnPremium])
 		result[index] = catalogImportRawRow{
 			rowNumber:   row.Number,
 			code:        row.Values[catalogColumnCode],
@@ -73,24 +78,27 @@ func parseCatalogImport(src io.Reader) ([]catalogImportRawRow, error) {
 			minPrice:    row.Values[catalogColumnMinPrice],
 			active:      row.Values[catalogColumnActive],
 
-			economyAlternative: alternativeCell(row.Values[catalogColumnEconomy]),
-			premiumAlternative: alternativeCell(row.Values[catalogColumnPremium]),
+			economyAlternative: economy,
+			premiumAlternative: premium,
+			economyClearWord:   economyClearWord,
+			premiumClearWord:   premiumClearWord,
 		}
 	}
 	return result, nil
 }
 
-// alternativeCell reads a recommendation slot cell: blank keeps the slot, a clear word empties it.
-func alternativeCell(raw string) *string {
+// alternativeCell reads a recommendation slot cell: blank keeps the slot, a clear word empties it
+// and is returned as written.
+func alternativeCell(raw string) (*string, string) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
-		return nil
+		return nil, ""
 	}
 	for _, clear := range catalogClearAlternative {
 		if strings.EqualFold(value, clear) {
 			empty := ""
-			return &empty
+			return &empty, value
 		}
 	}
-	return &value
+	return &value, ""
 }

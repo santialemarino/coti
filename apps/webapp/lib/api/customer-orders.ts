@@ -50,10 +50,18 @@ export async function customerFetch(path: string, options?: RequestInit): Promis
   });
 }
 
-export async function getCustomerOrders(page: number): Promise<CustomerOrder[]> {
+export interface CustomerOrderPage {
+  orders: CustomerOrder[];
+  hasMore: boolean;
+}
+
+export async function getCustomerOrders(page: number): Promise<CustomerOrderPage> {
   const response = await customerFetch(`/orders?page=${page}`);
   if (!response.ok) throw new CustomerAuthError(response.status);
-  return ((await response.json()) as CustomerOrderRaw[]).map(mapOrder);
+  return {
+    orders: ((await response.json()) as CustomerOrderRaw[]).map(mapOrder),
+    hasMore: response.headers.get('X-Has-More') === 'true',
+  };
 }
 
 export async function getCustomerOrder(id: string): Promise<CustomerOrder | null> {

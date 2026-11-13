@@ -34,7 +34,8 @@ func TestSelectedAlternatives_RejectsChoicesOutsideTheSentItem(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := selectedAlternatives(items, map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {tc.option}},
+			options := map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {tc.option}}
+			_, err := selectedAlternatives(items, options, sentOffer(options),
 				[]domain.ClientAlternativeSelection{tc.selection})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("selectedAlternatives() = %v, want %v", err, tc.want)
@@ -69,8 +70,8 @@ func TestSelectedAlternatives_RejectsUnusableOptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			option := valid
 			tc.change(&option)
-			_, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
-				map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {option}},
+			options := map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {option}}
+			_, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}}, options, sentOffer(options),
 				[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: option.ID}})
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("selectedAlternatives() = %v, want %v", err, tc.want)
@@ -137,10 +138,45 @@ func TestSelectedAlternatives_AcceptsAnOptionAnEarlierOfferShowed(t *testing.T) 
 		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
 		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
 	}
-	selected, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
-		map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {legacy}},
+	options := map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {legacy}}
+	selected, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}}, options, sentOffer(options),
 		[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: legacy.ID}})
 	if err != nil || selected[itemID].ID != legacy.ID {
 		t.Fatalf("selectedAlternatives() = %+v, %v; want the legacy option accepted", selected, err)
 	}
+}
+
+// An option approved on the version but left out of the offer the customer received can't be chosen.
+func TestSelectedAlternatives_RejectsAnApprovedOptionTheOfferDidNotShow(t *testing.T) {
+	t.Parallel()
+	itemID, productID := uuid.New(), uuid.New()
+	hidden := domain.QuoteItemAlternative{
+		ID: uuid.New(), QuoteItemID: itemID, ProductID: &productID,
+		Type: domain.QuoteItemAlternativeTypeProduct, ApprovedBySeller: true,
+		PriceSnapshot: decimal.NewNullDecimal(decimal.NewFromInt(50)),
+	}
+	offer := domain.QuoteRepresentationPayload{Items: []domain.QuoteRepresentationItem{{ID: itemID,
+		Alternatives: []domain.QuoteRepresentationAlternative{}}}}
+	_, err := selectedAlternatives([]domain.QuoteItem{{ID: itemID}},
+		map[uuid.UUID][]domain.QuoteItemAlternative{itemID: {hidden}}, offer,
+		[]domain.ClientAlternativeSelection{{ItemID: itemID, AlternativeID: hidden.ID}})
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("selectedAlternatives() = %v, want ErrNotFound for an option the offer did not show", err)
+	}
+}
+
+// sentOffer is the frozen offer a send would have built: every approved option, selectable.
+func sentOffer(alternatives map[uuid.UUID][]domain.QuoteItemAlternative) domain.QuoteRepresentationPayload {
+	var offer domain.QuoteRepresentationPayload
+	for itemID, options := range alternatives {
+		item := domain.QuoteRepresentationItem{ID: itemID}
+		for _, option := range options {
+			if option.ApprovedBySeller {
+				item.Alternatives = append(item.Alternatives,
+					domain.QuoteRepresentationAlternative{ID: option.ID, Selectable: true})
+			}
+		}
+		offer.Items = append(offer.Items, item)
+	}
+	return offer
 }

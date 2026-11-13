@@ -2864,6 +2864,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/dto.CustomerOrderResponse"
                             }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "type": "boolean",
+                                "description": "Whether a later page exists"
+                            }
                         }
                     },
                     "401": {

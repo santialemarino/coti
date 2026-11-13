@@ -803,7 +803,8 @@ func (s *QuoteDeliveryService) PreviewPublic(ctx context.Context, token string,
 			if getErr != nil {
 				return getErr
 			}
-			selected, selectionErr := selectedAlternatives(items, alternatives, selections)
+			selected, selectionErr := selectedAlternatives(items, alternatives,
+				representation.Payload, selections)
 			if selectionErr != nil {
 				return selectionErr
 			}
@@ -1025,7 +1026,7 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 					}
 					acceptedVersion, currentErr = cloneQuoteVersionForClientSelection(ctx, q, s.quotes, s.quotes,
 						accountID, quote.BranchID, quote.ID, *current, in.Selections, s.draftCarry,
-						*representation.SelectionPricing)
+						representation.Payload, *representation.SelectionPricing)
 					if currentErr != nil {
 						return currentErr
 					}

@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { PackageIcon, PencilIcon, PlusIcon, PowerIcon, PowerOffIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -23,6 +22,7 @@ import {
 import { setComboActive } from '@/app/(protected)/settings/combos/actions';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import type { Combo } from '@/lib/api/combos';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -33,7 +33,7 @@ interface ComboTableProps {
 }
 
 export function ComboTable({ combos, branches }: ComboTableProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const fmt = useFormatters();
   const t = useTranslations('combos');
   const message = useApiErrorMessage('combos');

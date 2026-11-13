@@ -107,7 +107,7 @@ describe('RfqSidebarList', () => {
     fireEvent.click(within(group('SENT')).getByRole('button', { name: copy.list.groups.expand }));
 
     fireEvent.click(reachable('SENT')[1] as HTMLElement);
-    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('s2'));
+    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('s2'), undefined);
 
     fireEvent.click(within(group('SENT')).getByRole('button', { name: copy.list.groups.collapse }));
     // The extra cards fade out before they leave.
@@ -121,7 +121,7 @@ describe('RfqSidebarList', () => {
       within(group('QUOTED')).queryByRole('button', { name: copy.list.groups.expand }),
     ).toBeNull();
     fireEvent.click(reachable('QUOTED')[0] as HTMLElement);
-    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('q1'));
+    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('q1'), undefined);
   });
 
   // The open order must never be buried, including on the first paint of an order's page.
@@ -242,7 +242,7 @@ describe('RfqSidebarList closing', () => {
       .getAllByRole('button')
       .find((button) => button.closest('li') && button.textContent?.includes('#41'));
     fireEvent.click(card as HTMLElement);
-    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('open'));
+    expect(router.push).toHaveBeenCalledWith(ROUTES.rfqsDetail('open'), undefined);
   });
 
   it('offers a paid sale its invoice while the account invoices, and nothing once it does not', () => {

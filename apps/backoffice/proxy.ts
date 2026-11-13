@@ -5,6 +5,7 @@ import {
   LOCKED_REASON,
   LOGIN_ROUTE,
   NEXT_PARAM,
+  PATHNAME_HEADER,
   REASON_PARAM,
   ROUTES,
   safeNextPath,
@@ -36,6 +37,7 @@ const SESSION_COOKIES = [ACCESS_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE, BRANCH_
  */
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  request.headers.set(PATHNAME_HEADER, pathname);
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   const remembered = request.cookies.get(REMEMBER_COOKIE)?.value === '1';
@@ -46,13 +48,13 @@ export async function proxy(request: NextRequest) {
 
   // A visitor: the public site and the 404 are theirs, and anything guarded asks them to log in.
   if (!accessToken && !refreshToken) {
-    return guarded ? redirectToLogin(request, pathname + search) : NextResponse.next();
+    return guarded ? redirectToLogin(request, pathname + search) : NextResponse.next({ request });
   }
 
-  if (SESSION_CLEARING_ROUTES.includes(pathname)) return NextResponse.next();
+  if (SESSION_CLEARING_ROUTES.includes(pathname)) return NextResponse.next({ request });
 
   if (!needsRenewal(accessToken)) {
-    return signedOutOnly ? NextResponse.redirect(onward) : NextResponse.next();
+    return signedOutOnly ? NextResponse.redirect(onward) : NextResponse.next({ request });
   }
 
   /*
@@ -60,7 +62,7 @@ export async function proxy(request: NextRequest) {
    * refresh token. Letting it would put several renewals inside the same skew window,
    * and the API reads a replayed refresh token past its grace window as theft.
    */
-  if (request.headers.get('next-router-prefetch') === '1') return NextResponse.next();
+  if (request.headers.get('next-router-prefetch') === '1') return NextResponse.next({ request });
 
   /*
    * An expired access token is not an expired session. Renewing it on every page, the public ones
@@ -82,7 +84,7 @@ export async function proxy(request: NextRequest) {
     return response;
   }
   // The API is unreachable: the cookies survive and the next request retries.
-  if (renewed?.status === 0) return NextResponse.next();
+  if (renewed?.status === 0) return NextResponse.next({ request });
 
   if (guarded) {
     const reason = renewed?.code === 'ACCOUNT_LOCKED' ? LOCKED_REASON : undefined;
@@ -91,7 +93,7 @@ export async function proxy(request: NextRequest) {
   // On a public page or a 404 a session ends only when it cannot be renewed (no refresh token, a 401,
   // a lockout); a hiccup (a 5xx, a rate limit) keeps the cookies for the next request to retry.
   const refused = !renewed || renewed.status === 401 || renewed.code === 'ACCOUNT_LOCKED';
-  return refused ? endSession(request) : NextResponse.next();
+  return refused ? endSession(request) : NextResponse.next({ request });
 }
 
 function redirectToLogin(request: NextRequest, from: string, reason?: string) {

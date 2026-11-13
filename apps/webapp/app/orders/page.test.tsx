@@ -30,7 +30,7 @@ vi.mock('@/lib/api/customer-auth-options', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getCustomerOrders).mockResolvedValue([]);
+  vi.mocked(getCustomerOrders).mockResolvedValue({ orders: [], hasMore: false });
   vi.mocked(getCustomerProfile).mockResolvedValue({
     clientId: 'profile',
     taxId: '20123456786',
@@ -77,17 +77,33 @@ it('keeps the regular empty state after profile and contact verification', async
 });
 
 it('loads existing orders without blocking them on the profile verification state', async () => {
-  vi.mocked(getCustomerOrders).mockResolvedValue([
-    {
-      id: 'order',
-      branchName: 'Branch',
-      receivedAt: '2026-11-09T00:00:00Z',
-      status: 'SENT',
-      originalText: '',
-      deliveryToken: 'delivery',
-    },
-  ]);
+  vi.mocked(getCustomerOrders).mockResolvedValue({ orders: [order], hasMore: false });
   render(await OrdersPage({ searchParams: Promise.resolve({}) }));
   expect(screen.getByRole('link', { name: /Branch/ }).getAttribute('href')).toBe('/orders/order');
   expect(getCustomerProfile).not.toHaveBeenCalled();
 });
+
+it('offers the next page only when the API says there is one', async () => {
+  vi.mocked(getCustomerOrders).mockResolvedValue({ orders: [order], hasMore: false });
+  const { unmount } = render(await OrdersPage({ searchParams: Promise.resolve({ page: '2' }) }));
+  expect(screen.queryByRole('link', { name: messages.customerOrders.next })).toBeNull();
+  expect(
+    screen.getByRole('link', { name: messages.customerOrders.previous }).getAttribute('href'),
+  ).toBe('/orders?page=1');
+  unmount();
+
+  vi.mocked(getCustomerOrders).mockResolvedValue({ orders: [order], hasMore: true });
+  render(await OrdersPage({ searchParams: Promise.resolve({ page: '2' }) }));
+  expect(
+    screen.getByRole('link', { name: messages.customerOrders.next }).getAttribute('href'),
+  ).toBe('/orders?page=3');
+});
+
+const order = {
+  id: 'order',
+  branchName: 'Branch',
+  receivedAt: '2026-11-09T00:00:00Z',
+  status: 'SENT',
+  originalText: '',
+  deliveryToken: 'delivery',
+};

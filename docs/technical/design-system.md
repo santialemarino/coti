@@ -296,6 +296,27 @@ transform family that is `scale` / `translate` / `rotate`, never `transform` —
 Radix open/close, fades, zooms and slides come from `tw-animate-css` — don't
 re-declare those.
 
+### Pending navigation
+
+No route in either app has a `loading.tsx`. A route loading state is mounted the moment a
+navigation starts and React holds it for ~300 ms however soon the page is ready, so it blanks the
+screen and slows every click; a navigation instead keeps the old screen until the new one is
+complete and swaps it in. A unit test in each app fails on any `loading.*` file.
+
+In the backoffice the click is answered by `NavigationPendingProvider` in the protected layout. The
+destination's entry in the main nav, the tab bar or the settings nav turns active on the click.
+Past `NAVIGATION_PENDING_DELAY_MS` (150 ms, `@repo/ui/lib`) a 2px `primary` bar sweeps across the top
+of the viewport (`animate-navigation-progress`; a still full-width line under reduced motion), and
+for a change of page the old screen dims to 60%, `aria-busy`, taking no pointer input while focus
+stays where it was. The header, the column and the tab bar stay live, so another click takes over.
+Both go in the render the URL commits, before the view transition captures the new screen; a faster
+navigation shows neither. Link clicks and back/forward are seen with no wiring; a route handler
+under `/api/` and a `download` link are ignored, so file links carry `download`. Code inside the
+shell that navigates itself uses `usePendingRouter()`, and a query-only navigation (a report filter,
+a page) gets the bar but keeps its screen, filters included. An in-page placeholder is only for a
+section inside a fixed-size box whose skeleton matches it exactly; a list with no fixed size renders
+nothing until it arrives.
+
 ### Navigation
 
 The protected shell keeps one left column in its layout (the queue on `/` and an order's page),
@@ -308,6 +329,20 @@ the new one in from there, so two screens never overlap and both land with the c
 root's snapshots are dropped, which keeps the column sliding live underneath, and the overlay
 takes `pointer-events: none` so it never swallows a click. A browser without view transitions
 simply swaps.
+
+### Long lists
+
+A list too long to render whole (an import preview) shows one step at a time through
+`useProgressiveList` (`@repo/ui/hooks`) and ends in **`ShowMore`**: how much is showing, the next
+step, and everything at once, the last offered only while more than one step remains. After a
+reveal, focus moves to the first row it added, since the pressed button may have disappeared.
+Rows that need attention (errors) lead, so none waits behind a step.
+
+Its companion is **`JumpToButton`**, a floating arrow shown only while the list's action row is off
+screen. It points toward it, scrolls there with motion's `animate` (eased over `MOTION.slower`,
+held to the page's end, cancelled by any wheel or touch, instant under reduced motion), and puts
+focus on the row's last enabled control, its primary action. It sits above the phone tab bar
+through `--toast-lift`.
 
 ### Reduced motion
 

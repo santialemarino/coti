@@ -150,6 +150,7 @@ A combo is a named set of the account's products sold together: at least two dis
 with the quantity the combo carries, and the branches that sell it (`branch_combo`, switched off rather
 than deleted when a branch is left out). It has no price of its own. Administrators manage combos under
 `/v1/combos` (list, get, create, replace), and a product or branch from another account is refused.
+A combo's items come back in the order the administrator entered them (`combo_item.position`).
 
 A combo never becomes a quote line. On a priced (`QUOTED`) quote,
 `GET /v1/quotes/{quoteId}/combo-suggestions` lists the active combos the quote's branch sells that the
@@ -304,7 +305,10 @@ always comes from the authenticated tenant.
 
 `alternativa_economica` and `alternativa_premium` are optional and fill the product's `ECONOMY` and
 `PREMIUM` recommendation slots with another product's code. The export writes the codes the slots
-hold. A blank cell keeps the slot, and `NINGUNA` (or `-`) clears it. A code must name an active
+hold. A blank cell keeps the slot, and `NINGUNA`, `NINGUNO` or `-` (in any case) clears it. A clear
+word that is also, exactly, the code of a product in the account or in the file is ambiguous: the row
+is refused (`economy_alternative_ambiguous` / `premium_alternative_ambiguous`) rather than guessed, and
+the admin writes another clear word or sets that product from its page. A code must name an active
 product of the same family, subgroup and unit as the row, with a subgroup on both. It is judged as
 the catalog will stand after the import, so it can name a product created by the same file. A row
 whose alternative fails is reported and skipped like any other invalid row, and the check repeats

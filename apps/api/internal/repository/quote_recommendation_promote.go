@@ -39,5 +39,18 @@ func (r *QuoteRepository) PromoteMatcherRecommendation(ctx context.Context, q Qu
 	FROM changed
 	LEFT JOIN product ON product.account_id = changed.account_id AND product.id = changed.product_id`,
 		accountID, versionID, itemID, alternativeID, productID, kind, price, minPrice)
-	return scanQuoteItemAlternative(row)
+	return recommendationSlotWrite(scanQuoteItemAlternative(row))
+}
+
+// recommendationSlotIndex is the partial unique index holding one ECONOMY and one PREMIUM per line.
+const recommendationSlotIndex = "uq_quote_item_alternative_recommendation"
+
+// recommendationSlotWrite reports a slot a concurrent write filled first as a conflict.
+func recommendationSlotWrite(
+	alternative *domain.QuoteItemAlternative, err error,
+) (*domain.QuoteItemAlternative, error) {
+	if isUniqueViolation(err, recommendationSlotIndex) {
+		return nil, domain.ErrConflict
+	}
+	return alternative, err
 }

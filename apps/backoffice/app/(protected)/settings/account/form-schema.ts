@@ -34,3 +34,13 @@ export function accountSchema(t: SchemaText = rawText) {
 }
 
 export type AccountValues = z.infer<ReturnType<typeof accountSchema>>;
+
+/*
+ * What the form validates: every field but the logo URL, which has no input to show an error on.
+ * The form sends the stored URL as it is, and the action's own check answers for it.
+ */
+export function accountFormSchema(t: SchemaText = rawText) {
+  return accountSchema(t).omit({ brandLogoUrl: true });
+}
+
+export type AccountFormValues = z.infer<ReturnType<typeof accountFormSchema>>;

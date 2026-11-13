@@ -23,6 +23,16 @@ function renderSuggestions(compact = false, initialItems?: []) {
   );
 }
 
+// A list of unknown length has no placeholder that matches it, so the column waits empty.
+it('shows no placeholder in the column while its first load is in flight', () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise(() => {})),
+  );
+  const view = renderSuggestions(true);
+  expect(view.container.querySelector('[data-slot="skeleton"]')).toBeNull();
+});
+
 it('shows a server-resolved empty rail immediately while refreshing in the background', () => {
   vi.stubGlobal(
     'fetch',

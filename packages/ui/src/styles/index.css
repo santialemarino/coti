@@ -438,6 +438,19 @@
 }
 
 /*
+ * The segment sweeping across the navigation progress bar while a navigation is still running. Under
+ * reduced motion it stops as a still, full-width line — it says "still working", so it stays.
+ */
+@keyframes navigation-progress {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 300% 0;
+  }
+}
+
+/*
  * Reduced motion. Decorative motion collapses to nothing; the focus-bump family deliberately does
  * NOT, because it is functional feedback. Every element carrying a bump also shifts colour on
  * focus-visible (see the ux-motion skill), so the affordance survives for a user who cannot
@@ -479,6 +492,11 @@
   .reveal-item {
     animation: none;
     transition: none;
+  }
+
+  [class*='animate-navigation-progress'] {
+    width: 100%;
+    animation: none;
   }
 }
 
