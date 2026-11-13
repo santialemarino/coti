@@ -6,8 +6,8 @@ import { useReducedMotion } from 'motion/react';
 import {
   DayPicker,
   type DayButtonProps,
+  type DayProps,
   type DropdownProps,
-  type Modifiers,
 } from 'react-day-picker';
 import { es } from 'react-day-picker/locale';
 
@@ -24,16 +24,34 @@ const NAV_BUTTON = cn(
   'disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50',
 );
 
-// The button keeps its shape in every state; a range's band is drawn on the cell behind it.
+/*
+ * The button keeps its shape in every state; a range's band is drawn on the cell behind it. States
+ * overlap (today can be selected, an outside day can sit in a range), so each colour names the states
+ * it yields to: selected, then in range or previewed, then today, then outside the month. Colours
+ * change at once, never fade: the band on the cell cannot fade (its ends are gradients), and a button
+ * fading over a band that has already moved reads as a blink when a preset swaps the range.
+ */
 const DAY_BUTTON = cn(
   'relative flex size-(--cell) items-center justify-center rounded-lg text-foreground',
-  'outline-none transition-[color,background-color,box-shadow] duration-150 ease-out-soft',
-  'hover:bg-surface-hover active:bg-surface-active focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/45',
+  'outline-none transition-[box-shadow] duration-150 ease-out-soft',
+  'focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/45',
   'disabled:pointer-events-none disabled:opacity-40',
-  'data-outside:text-foreground-subtle data-today:text-primary',
-  'data-in-range:text-accent-foreground',
-  'data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary-hover data-selected:active:bg-primary-active',
   'text-paragraph-sm tabular-nums data-today:text-paragraph-sm-semibold',
+  // A plain day.
+  'hover:bg-surface-hover active:bg-surface-active',
+  'data-outside:not-data-selected:not-data-in-range:not-data-preview:text-foreground-subtle',
+  'data-today:not-data-selected:not-data-in-range:not-data-preview:text-primary',
+  // Today's blue fails contrast on the grey hover steps, so its hover and press take the blue family.
+  'data-today:not-data-selected:not-data-in-range:not-data-preview:hover:bg-accent-strong',
+  'data-today:not-data-selected:not-data-in-range:not-data-preview:hover:text-accent-foreground',
+  'data-today:not-data-selected:not-data-in-range:not-data-preview:active:bg-accent-stronger',
+  // Inside a range or its preview: the band shows through, and hover and press step up from it.
+  'data-in-range:not-data-selected:text-accent-foreground data-preview:not-data-selected:text-accent-foreground',
+  'data-in-range:not-data-selected:hover:bg-accent-strong data-in-range:not-data-selected:active:bg-accent-stronger',
+  'data-preview:not-data-selected:hover:bg-accent-strong data-preview:not-data-selected:active:bg-accent-stronger',
+  // An end of the range, or the picked day: white on primary, a step darker on hover and press.
+  'data-selected:bg-primary data-selected:text-primary-foreground',
+  'data-selected:hover:bg-primary-hover data-selected:active:bg-primary-active',
 );
 
 /*
@@ -60,6 +78,8 @@ const CLASS_NAMES: CalendarProps['classNames'] = {
   day: 'relative size-(--cell) p-0',
   day_button: DAY_BUTTON,
   hidden: 'invisible',
+  // A day from the next or previous month repeats one the other grid shows; it never carries a range.
+  outside: 'bg-none! bg-transparent!',
   // Day-picker adds these with `classList.add`, so each is one class; the motion is in the styles.
   weeks_after_enter: 'calendar-weeks-after-enter',
   weeks_before_enter: 'calendar-weeks-before-enter',
@@ -80,7 +100,13 @@ function CalendarChevron({ orientation }: { orientation?: 'up' | 'down' | 'left'
  * A day's state reaches its button as data attributes, so the styles can be written against the
  * states a range picker adds (`range_from`, `range_to`, `in_range`, `preview`) as well as day-picker's.
  */
-function CalendarDayButton({ day, modifiers, className, ...props }: DayButtonProps) {
+function CalendarDayButton({
+  day,
+  modifiers,
+  range = false,
+  className,
+  ...props
+}: DayButtonProps & { range?: boolean }) {
   const ref = React.useRef<HTMLButtonElement>(null);
 
   // Day-picker moves focus by re-rendering with a new `focused` day; its own button does this too.
@@ -94,9 +120,13 @@ function CalendarDayButton({ day, modifiers, className, ...props }: DayButtonPro
       data-day={day.isoDate}
       data-today={modifiers.today || undefined}
       data-outside={modifiers.outside || undefined}
-      data-selected={dayIsEndpoint(modifiers) || undefined}
-      data-in-range={modifiers.in_range || undefined}
-      data-preview={modifiers.preview || undefined}
+      data-selected={
+        (!modifiers.outside &&
+          (range ? modifiers.range_from || modifiers.range_to : modifiers.selected)) ||
+        undefined
+      }
+      data-in-range={(!modifiers.outside && modifiers.in_range) || undefined}
+      data-preview={(!modifiers.outside && modifiers.preview) || undefined}
       className={cn('group/day', className)}
       {...props}
     >
@@ -111,11 +141,27 @@ function CalendarDayButton({ day, modifiers, className, ...props }: DayButtonPro
   );
 }
 
-function dayIsEndpoint(modifiers: Modifiers) {
-  if ('range_from' in modifiers || 'range_to' in modifiers) {
-    return modifiers.range_from || modifiers.range_to;
-  }
-  return modifiers.selected;
+/*
+ * A day from a neighbouring month (greyed, or a blank cell beside two months) belongs to the other
+ * grid, so it is never announced selected here either.
+ */
+function CalendarDay({ day, modifiers, ...props }: DayProps) {
+  return (
+    <td
+      {...props}
+      data-day={day.isoDate}
+      aria-selected={modifiers.outside ? undefined : props['aria-selected']}
+    />
+  );
+}
+
+/*
+ * In a range, only its two ends are drawn selected, read from the picker's own `range_from` and
+ * `range_to`. Day-picker includes a custom modifier only while some visible day matches it, so its
+ * absence means "not an end", never "fall back to `selected`".
+ */
+function RangeDayButton(props: DayButtonProps) {
+  return <CalendarDayButton {...props} range />;
 }
 
 /*
@@ -157,13 +203,15 @@ function Calendar({ className, classNames, components, animate, ...props }: Cale
   return (
     <DayPicker
       locale={es}
-      showOutsideDays
+      // With two months side by side, a neighbour's days would repeat the other grid's, ends included.
+      showOutsideDays={(props.numberOfMonths ?? 1) === 1}
       animate={animate ?? !reduced}
       className={cn('[--cell:--spacing(10)] sm:[--cell:--spacing(9)]', className)}
       classNames={{ ...CLASS_NAMES, ...classNames }}
       components={{
         Chevron: CalendarChevron,
-        DayButton: CalendarDayButton,
+        Day: CalendarDay,
+        DayButton: props.mode === 'range' ? RangeDayButton : CalendarDayButton,
         Dropdown: CalendarDropdown,
         ...components,
       }}

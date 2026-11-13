@@ -276,7 +276,13 @@ function DateRangePicker({
                     size="sm"
                     aria-pressed={pressed}
                     className="justify-start aria-pressed:bg-accent aria-pressed:text-accent-foreground text-paragraph-sm"
-                    onClick={() => fill(preset.value)}
+                    onClick={() => {
+                      fill(preset.value);
+                      // A preset can land far from the months on screen; bring it into view with its end's
+                      // month last, so a range inside one month never opens on an empty one.
+                      const end = parseDay(preset.value.to) ?? new Date();
+                      setMonth(twoMonths ? addMonths(end, -1) : end);
+                    }}
                   >
                     {preset.label}
                   </Button>
@@ -320,6 +326,9 @@ function DateRangePicker({
                 month={month}
                 onMonthChange={setMonth}
                 selected={selected}
+                // Controlled: without onSelect day-picker keeps its own copy of the range, which drifts
+                // from the draft and marks the wrong days selected (and announces them so).
+                onSelect={() => {}}
                 onDayClick={pickDay}
                 onDayMouseEnter={(date, modifiers) => {
                   if (!modifiers.disabled) setHovered(toDay(date));
