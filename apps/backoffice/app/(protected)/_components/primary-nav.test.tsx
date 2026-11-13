@@ -1,14 +1,21 @@
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { ROUTES } from '@/config/routes';
 import messages from '@/translations/es.json';
 
-const navigation = vi.hoisted(() => ({ pathname: '/' }));
+const navigation = vi.hoisted(() => ({ pathname: '/', pending: null as string | null }));
 
 vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }));
+vi.mock('@/hooks/use-navigation-pending', () => ({
+  useNavigationPending: () => ({ pendingPathname: navigation.pending }),
+}));
+
+afterEach(() => {
+  navigation.pending = null;
+});
 
 function ordersLink(pathname: string) {
   navigation.pathname = pathname;
@@ -91,6 +98,24 @@ describe('PrimaryNav', () => {
         messages.common.nav.clients,
         messages.common.nav.reports,
       ]);
+    },
+  );
+
+  // The click is answered at once: the destination is marked while its page is still loading.
+  it.each(['bar', 'tabs'] as const)(
+    'marks the destination of a pending navigation in the %s',
+    (layout) => {
+      navigation.pathname = ROUTES.clients;
+      navigation.pending = ROUTES.reports;
+      render(
+        <NextIntlClientProvider locale="es" messages={messages}>
+          <PrimaryNav administration layout={layout} />
+        </NextIntlClientProvider>,
+      );
+
+      expect(screen.getByRole('link', { current: 'page' }).textContent).toBe(
+        messages.common.nav.reports,
+      );
     },
   );
 });

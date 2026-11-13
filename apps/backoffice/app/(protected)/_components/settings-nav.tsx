@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Separator } from '@repo/ui/components';
 import { NavLink } from '@/app/(protected)/_components/nav-link';
 import { ROUTES } from '@/config/routes';
+import { useNavigationPending } from '@/hooks/use-navigation-pending';
 
 export interface SettingsNavItem {
   href: string;
@@ -19,7 +20,9 @@ interface SettingsNavProps {
 
 // The settings sections; the context column and the narrow screens' card give it its heading.
 export function SettingsNav({ title, items }: SettingsNavProps) {
-  const pathname = usePathname();
+  // The destination is marked on the click, before its page arrives.
+  const committed = usePathname();
+  const pathname = useNavigationPending().pendingPathname ?? committed;
 
   return (
     // Below lg the sections are a page, listed on a card like the content of every other page.

@@ -130,7 +130,10 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
                 ) : candidates === null ? (
                   <Skeleton className="w-full h-9" />
                 ) : candidates.length === 0 ? (
-                  <Hint>{t('other.none')}</Hint>
+                  // The row the loading field held, so the dialog keeps its height.
+                  <div className="flex min-h-9 items-center">
+                    <Hint>{t('other.none')}</Hint>
+                  </div>
                 ) : (
                   <Combobox
                     id={`${fieldId}-other`}

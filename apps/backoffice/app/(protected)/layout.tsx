@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 
 import { AppHeader } from '@/app/(protected)/_components/app-header';
 import { ContextColumn } from '@/app/(protected)/_components/context-column';
+import { NavigationPendingShell } from '@/app/(protected)/_components/navigation-pending';
 import { PrimaryNav } from '@/app/(protected)/_components/primary-nav';
 import { ScreenFade } from '@/app/(protected)/_components/screen-fade';
 import { settingsNavItems } from '@/app/(protected)/_components/settings-nav-items';
@@ -56,7 +57,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
     : [];
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <NavigationPendingShell className="flex flex-col min-h-screen">
       <AppHeader session={session} showInvoiceHistory={showsInvoiceHistory(account)} />
       <RfqQueueProvider>
         {/* Below lg the tab bar covers the bottom of the screen, so the page ends above it. */}
@@ -75,6 +76,6 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       >
         <PrimaryNav administration={showsInvoiceHistory(account)} layout="tabs" />
       </div>
-    </div>
+    </NavigationPendingShell>
   );
 }

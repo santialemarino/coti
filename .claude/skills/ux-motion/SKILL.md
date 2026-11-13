@@ -243,6 +243,19 @@ panel enters from the trigger and then dissolves in place.
   **Live is not on top**: the captured screen paints in an overlay above the whole page, so a fixed
   or sticky piece it can overlap (the header once scrolled, the phone tab bar) is captured too
   under its own name, its old image dropped and its new one live and unanimated (`shell-*`).
+- **A navigation keeps the old screen until the new one is ready.** Never add a `loading.tsx` in
+  either app (a unit test in each refuses one): React keeps a mounted route loading state ~300 ms
+  however soon the page is ready, so it blanks the screen and slows every click. In the backoffice
+  `NavigationPendingProvider` (protected layout) answers instead: the destination's nav item turns
+  active on the click, and only past `NAVIGATION_PENDING_DELAY_MS` (150 ms, `@repo/ui/lib`) a 2px bar
+  sweeps across the top and, for another page, the old screen dims to 60% with `aria-busy` and no
+  pointer input — focus untouched, the header, column and tab bar still live. Both go in the
+  render the URL commits, so a fast navigation shows nothing and the new screen never paints dimmed.
+  Links and back/forward need no wiring; code that navigates itself uses `usePendingRouter()`,
+  never a bare `router.push`, and a query-only navigation (a filter, a page) gets the bar and keeps
+  its screen and its filter values. Under reduced motion the bar is a still line and the dim has no
+  transition. An in-page skeleton is only for a section inside a fixed-size box whose placeholder
+  matches it exactly — loading rows, the empty state and the result all fit the same reserved size.
 - **Crossing surfaces is a page fade, not a screen swap.** A navigation between the public site, the
   sign-in screens and the app (`surfaceOf` in the backoffice's routes) fades the whole page in from the
   wash — `SurfaceFade` in the root layout, `animate-surface-in`, 500ms, opacity only (a transform

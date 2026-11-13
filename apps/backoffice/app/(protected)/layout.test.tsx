@@ -36,6 +36,7 @@ vi.mock('@/lib/auth/session', async (importOriginal) => ({
 vi.mock('next/navigation', () => ({
   unstable_rethrow: vi.fn(),
   usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
   redirect: vi.fn((path: string) => {
     throw new RedirectError(path);
   }),

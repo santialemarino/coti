@@ -85,27 +85,39 @@ function ScopedSuggestions({ compact = false, initialItems }: ClientContactSugge
         </Button>
       </div>
     );
+  // In the column the loading rows, the empty state and a short list share one reserved height.
+  if (compact)
+    return (
+      <div className="flex flex-col min-h-48">
+        {items === null ? (
+          <div className="flex flex-col px-6 pb-6 gap-y-3">
+            <Skeleton className="w-full h-9" />
+            <Skeleton className="w-full h-9" />
+            <Skeleton className="w-full h-9" />
+          </div>
+        ) : items.length === 0 ? (
+          <EmptyState icon={UsersIcon} title={t('empty')} />
+        ) : (
+          <div className="flex flex-col px-6 pb-6 gap-y-3">
+            <Button variant="outline" asChild>
+              <Link href={ROUTES.clientSuggestions}>{t('pending', { count: items.length })}</Link>
+            </Button>
+            {items.map((item) => (
+              <Button key={item.id} variant="ghost" asChild className="justify-start">
+                <Link href={`${ROUTES.clientSuggestions}#${item.id}`}>
+                  <span className="truncate">{item.candidateName ?? item.taxId ?? item.value}</span>
+                </Link>
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   if (items === null)
     return (
       <div className="flex flex-col p-6 gap-y-3">
         <Skeleton className="w-full h-16" />
         <Skeleton className="w-full h-16" />
-      </div>
-    );
-  if (compact && items.length === 0) return <EmptyState icon={UsersIcon} title={t('empty')} />;
-  if (compact)
-    return (
-      <div className="flex flex-col px-6 pb-6 gap-y-3">
-        <Button variant="outline" asChild>
-          <Link href={ROUTES.clientSuggestions}>{t('pending', { count: items.length })}</Link>
-        </Button>
-        {items.map((item) => (
-          <Button key={item.id} variant="ghost" asChild className="justify-start">
-            <Link href={`${ROUTES.clientSuggestions}#${item.id}`}>
-              <span className="truncate">{item.candidateName ?? item.taxId ?? item.value}</span>
-            </Link>
-          </Button>
-        ))}
       </div>
     );
   return (
