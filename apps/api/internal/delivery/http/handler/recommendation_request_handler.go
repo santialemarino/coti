@@ -15,6 +15,7 @@ import (
 type RecommendationRequestService interface {
 	Search(context.Context, domain.Tenant, uuid.UUID) ([]domain.RecommendationProposal, error)
 	AddIfVacant(context.Context, domain.Tenant, uuid.UUID, uuid.UUID, uuid.UUID, domain.ProductAlternativeType) (*domain.QuoteItemAlternative, error)
+	FillVacant(context.Context, domain.Tenant, uuid.UUID) ([]domain.FilledRecommendation, error)
 }
 
 // RecommendationRequestHandler serves seller-requested recommendations.
@@ -106,4 +107,39 @@ func (h *RecommendationRequestHandler) AddIfVacant(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toQuoteItemAlternativeResponse(*alternative))
+}
+
+// FillVacant adds every eligible catalog alternative to the quote's empty slots, unapproved.
+//
+// @Summary Fill empty recommendation slots from the catalog
+// @Description Adds, for every quote item, the catalog economy and premium alternatives whose slot is still empty and that are still eligible. Existing choices are never replaced; added ones start unapproved.
+// @Tags quotes
+// @Produce json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param quoteId path string true "Quote id"
+// @Success 200 {object} dto.RecommendationFillResponse
+// @Failure 400,401,404,409 {object} dto.ErrorResponse
+// @Router /v1/quotes/{quoteId}/recommendations/fill [post]
+func (h *RecommendationRequestHandler) FillVacant(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	filled, err := h.service.FillVacant(c.Request.Context(), tenant, quoteID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	items := make([]dto.FilledRecommendationResponse, 0, len(filled))
+	for _, f := range filled {
+		items = append(items, dto.FilledRecommendationResponse{
+			ItemID: f.ItemID, Alternative: toQuoteItemAlternativeResponse(f.Alternative),
+		})
+	}
+	c.JSON(http.StatusOK, dto.RecommendationFillResponse{Items: items})
 }

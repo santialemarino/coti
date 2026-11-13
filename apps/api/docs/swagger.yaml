@@ -1537,6 +1537,13 @@ definitions:
           type: string
         type: array
     type: object
+  dto.FilledRecommendationResponse:
+    properties:
+      alternative:
+        $ref: '#/definitions/dto.QuoteItemAlternativeResponse'
+      item_id:
+        type: string
+    type: object
   dto.ForgotPasswordRequest:
     properties:
       email:
@@ -2882,6 +2889,13 @@ definitions:
         type: string
     required:
     - mode
+    type: object
+  dto.RecommendationFillResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.FilledRecommendationResponse'
+        type: array
     type: object
   dto.RecommendationProposalResponse:
     properties:
@@ -9626,6 +9640,50 @@ paths:
       security:
       - BearerAuth: []
       summary: Reactivate a closed quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/recommendations/fill:
+    post:
+      description: Adds, for every quote item, the catalog economy and premium alternatives
+        whose slot is still empty and that are still eligible. Existing choices are
+        never replaced; added ones start unapproved.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RecommendationFillResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Fill empty recommendation slots from the catalog
       tags:
       - quotes
   /v1/quotes/{quoteId}/recommendations/search:
