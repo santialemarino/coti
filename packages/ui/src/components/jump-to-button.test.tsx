@@ -64,6 +64,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  flight.hold = false;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -135,6 +136,5 @@ describe('JumpToButton', () => {
     fireEvent.click(view.getByRole('button', { name: 'Ir a confirmar' }));
     window.dispatchEvent(new Event(type));
     expect(flight.stop).toHaveBeenCalled();
-    flight.hold = false;
   });
 });
