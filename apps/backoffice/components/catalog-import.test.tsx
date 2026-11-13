@@ -9,7 +9,7 @@ import {
 import { CatalogReview } from '@/components/catalog-import';
 import messages from '@/translations/es.json';
 
-vi.mock('@/lib/config', () => ({ CATALOG_PREVIEW_PAGE_SIZE: 2 }));
+vi.mock('@/lib/config', () => ({ IMPORT_PREVIEW_PAGE_SIZE: 2 }));
 vi.mock('@/app/(protected)/_actions/catalog-import', () => ({ confirmCatalogImport: vi.fn() }));
 
 const preview: CatalogImportPreview = {

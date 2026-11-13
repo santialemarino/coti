@@ -33,7 +33,7 @@ import {
 import { RevealControls } from '@/components/reveal-controls';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
-import { CATALOG_PREVIEW_PAGE_SIZE } from '@/lib/config';
+import { IMPORT_PREVIEW_PAGE_SIZE } from '@/lib/config';
 import { useFormatters } from '@/lib/i18n/formatters';
 
 interface CatalogUploadProps {
@@ -167,7 +167,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
   const [confirming, startConfirm] = useTransition();
   const list = useProgressiveList<HTMLTableRowElement>(
     preview.rows.length,
-    CATALOG_PREVIEW_PAGE_SIZE,
+    IMPORT_PREVIEW_PAGE_SIZE,
   );
   const actionsRef = useRef<HTMLDivElement>(null);
   // Rows with errors lead, so none of them waits behind "Ver más" while the rest are confirmed.

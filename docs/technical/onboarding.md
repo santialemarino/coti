@@ -51,8 +51,8 @@ when the deployment has no portal base URL.
 Catalog upload uses the production preview and confirmation endpoints. Nothing is written during
 preview, and invalid rows are never silently imported. The same import component remains available at
 `/settings/catalog`, so dismissing onboarding cannot make the initial catalog operation unreachable.
-The review initially shows 25 rows and reveals another batch with each Show more action;
-`NEXT_PUBLIC_CATALOG_PREVIEW_PAGE_SIZE` configures the batch size at build time. Confirmation always
+The review initially shows 25 rows and reveals another batch, or every row, on request;
+`NEXT_PUBLIC_IMPORT_PREVIEW_PAGE_SIZE` configures the batch size at build time. Confirmation always
 submits the complete preview, including valid rows that have not been revealed.
 
 The team screen reuses account user creation, with the same two ways in: an invitation by mail, the

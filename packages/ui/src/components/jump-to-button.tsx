@@ -43,7 +43,24 @@ function JumpToButton({ target, label }: JumpToButtonProps) {
       { rootMargin: `-${EDGE_COVER_PX}px 0px -${EDGE_COVER_PX}px 0px` },
     );
     observer.observe(element);
-    return () => observer.disconnect();
+    // A scroll that skips from below the target to above it crosses no threshold, so the observer
+    // stays silent; re-reading the box once per frame keeps the arrow pointing the right way.
+    let frame = 0;
+    const reread = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setDirection((current) =>
+          current === null ? null : element.getBoundingClientRect().top < 0 ? 'up' : 'down',
+        );
+      });
+    };
+    window.addEventListener('scroll', reread, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('scroll', reread);
+      window.cancelAnimationFrame(frame);
+    };
   }, [target]);
 
   React.useEffect(() => {
