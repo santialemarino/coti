@@ -27,21 +27,28 @@ func NewCustomerOrderService(db tenantTxRunner, store customerOrderStore, pageSi
 	return &CustomerOrderService{db: db, store: store, pageSize: pageSize}
 }
 
-// List reads one page of requests for the authenticated customer.
-func (s *CustomerOrderService) List(ctx context.Context, p domain.CustomerPrincipal, page int) ([]domain.CustomerOrder, error) {
+// List reads one page of requests for the authenticated customer and whether a later page exists.
+func (s *CustomerOrderService) List(ctx context.Context, p domain.CustomerPrincipal, page int) ([]domain.CustomerOrder, bool, error) {
 	if p.AccountID == uuid.Nil || p.CustomerID == uuid.Nil {
-		return nil, domain.ErrUnauthenticated
+		return nil, false, domain.ErrUnauthenticated
 	}
 	if page < 1 || s.pageSize < 1 || page > math.MaxInt/s.pageSize {
-		return nil, domain.ErrInvalidInput
+		return nil, false, domain.ErrInvalidInput
 	}
 	var result []domain.CustomerOrder
 	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
 		var err error
-		result, err = s.store.List(ctx, q, p.AccountID, p.CustomerID, s.pageSize, (page-1)*s.pageSize)
+		// One row past the page tells whether another page follows.
+		result, err = s.store.List(ctx, q, p.AccountID, p.CustomerID, s.pageSize+1, (page-1)*s.pageSize)
 		return err
 	})
-	return result, err
+	if err != nil {
+		return nil, false, err
+	}
+	if len(result) > s.pageSize {
+		return result[:s.pageSize], true, nil
+	}
+	return result, false, nil
 }
 
 // Get authorizes a request before exposing its original content or publication reference.

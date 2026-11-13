@@ -195,6 +195,11 @@ func (s *CatalogImportService) prepare(
 				alternativeCodes = append(alternativeCodes, *code)
 			}
 		}
+		for _, word := range []string{raw.economyClearWord, raw.premiumClearWord} {
+			if word != "" {
+				alternativeCodes = append(alternativeCodes, word)
+			}
+		}
 	}
 	current, err := s.catalog.ListRecommendationSlots(ctx, q, accountID, codes)
 	if err != nil {
@@ -205,6 +210,7 @@ func (s *CatalogImportService) prepare(
 	if err != nil {
 		return nil, err
 	}
+	flagAmbiguousClearWords(preview.Rows, rawRows, stored, seen)
 	validateCatalogAlternatives(preview.Rows, stored)
 	for _, row := range preview.Rows {
 		if len(row.Errors) == 0 {
@@ -355,6 +361,27 @@ func resolveCatalogTaxonomy(
 		}
 	}
 	row.Errors = append(row.Errors, "invalid_subgroup")
+}
+
+// flagAmbiguousClearWords refuses a row whose clear word is also a product code, in the catalog or
+// in the file: it can't tell clearing the slot from naming that product.
+func flagAmbiguousClearWords(
+	rows []domain.CatalogImportRow, rawRows []catalogImportRawRow,
+	stored map[string]domain.CatalogProductRef, fileCodes map[string]int,
+) {
+	for i, raw := range rawRows {
+		for _, slot := range []struct{ prefix, word string }{
+			{"economy", raw.economyClearWord}, {"premium", raw.premiumClearWord},
+		} {
+			if slot.word == "" {
+				continue
+			}
+			_, inCatalog := stored[slot.word]
+			if inCatalog || fileCodes[slot.word] > 0 {
+				rows[i].Errors = append(rows[i].Errors, slot.prefix+"_alternative_ambiguous")
+			}
+		}
+	}
 }
 
 /*

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
@@ -257,5 +258,46 @@ func TestQuoteRepository_UnapproveAlternatives_PreservesFrozenAndForeignAlternat
 				}
 			})
 		}
+	}
+}
+
+func TestQuoteItemAlternative_HoldsOneEconomyAndOnePremiumPerLine(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Recommendation slots")
+	productID := seedProduct(t, db, accountID, "Slot product")
+	otherID := seedProduct(t, db, accountID, "Slot replacement")
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchOf(t, db, accountID), productID)
+	insert := func(kind domain.ProductAlternativeType) error {
+		_, err := db.CrossAccount().Exec(ctx, `INSERT INTO quote_item_alternative
+			(account_id, quote_item_id, product_id, type, origin, rank, recommendation_type)
+			VALUES ($1, $2, $3, 'PRODUCT', 'SELLER', 1, $4)`, accountID, itemID, productID, kind)
+		return err
+	}
+	for _, kind := range []domain.ProductAlternativeType{domain.ProductAlternativeEconomy,
+		domain.ProductAlternativePremium, domain.ProductAlternativeEquivalent, domain.ProductAlternativeEquivalent} {
+		if err := insert(kind); err != nil {
+			t.Fatalf("insert %s: %v", kind, err)
+		}
+	}
+	for _, kind := range []domain.ProductAlternativeType{domain.ProductAlternativeEconomy, domain.ProductAlternativePremium} {
+		if err := insert(kind); !isUniqueViolation(err, recommendationSlotIndex) {
+			t.Fatalf("second %s = %v, want the slot index to refuse it", kind, err)
+		}
+	}
+
+	// Replacing a filled slot still works: the old option leaves before the new one arrives.
+	err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+		_, setErr := NewQuoteRepository().SetRecommendationAlternative(ctx, q, accountID, versionID, itemID,
+			otherID, domain.ProductAlternativeEconomy, decimal.NullDecimal{}, decimal.NullDecimal{})
+		return setErr
+	})
+	var economy uuid.UUID
+	if err == nil {
+		err = db.CrossAccount().QueryRow(ctx, `SELECT product_id FROM quote_item_alternative
+			WHERE quote_item_id = $1 AND recommendation_type = 'ECONOMY'`, itemID).Scan(&economy)
+	}
+	if err != nil || economy != otherID {
+		t.Fatalf("replace economy = %v, %v; want the slot holding %s", economy, err, otherID)
 	}
 }

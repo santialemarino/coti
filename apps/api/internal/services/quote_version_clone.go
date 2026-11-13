@@ -100,7 +100,7 @@ func cloneQuoteVersionForClientSelection(
 	freezer quoteVersionFreezer,
 	accountID, branchID, quoteID uuid.UUID, source domain.QuoteVersion,
 	selections []domain.ClientAlternativeSelection, carry *draftCarry,
-	snapshot domain.QuoteSelectionPricingSnapshot,
+	offered domain.QuoteRepresentationPayload, snapshot domain.QuoteSelectionPricingSnapshot,
 ) (*domain.QuoteVersion, error) {
 	if carry == nil || snapshot.CapturedAt.IsZero() {
 		return nil, domain.ErrNotConfigured
@@ -116,7 +116,7 @@ func cloneQuoteVersionForClientSelection(
 	if err != nil {
 		return nil, err
 	}
-	selected, err := selectedAlternatives(items, alternatives, selections)
+	selected, err := selectedAlternatives(items, alternatives, offered, selections)
 	if err != nil {
 		return nil, err
 	}
@@ -180,11 +180,20 @@ func withSelectedAlternatives(
 
 func selectedAlternatives(
 	items []domain.QuoteItem, alternatives map[uuid.UUID][]domain.QuoteItemAlternative,
-	selections []domain.ClientAlternativeSelection,
+	offered domain.QuoteRepresentationPayload, selections []domain.ClientAlternativeSelection,
 ) (map[uuid.UUID]domain.QuoteItemAlternative, error) {
 	knownItems := make(map[uuid.UUID]struct{}, len(items))
 	for _, item := range items {
 		knownItems[item.ID] = struct{}{}
+	}
+	// The customer chooses from the frozen offer, not from whatever the version holds approved.
+	selectable := make(map[domain.ClientAlternativeSelection]struct{})
+	for _, item := range offered.Items {
+		for _, alternative := range item.Alternatives {
+			if alternative.Selectable {
+				selectable[domain.ClientAlternativeSelection{ItemID: item.ID, AlternativeID: alternative.ID}] = struct{}{}
+			}
+		}
 	}
 	selected := make(map[uuid.UUID]domain.QuoteItemAlternative, len(selections))
 	for _, selection := range selections {
@@ -205,7 +214,7 @@ func selectedAlternatives(
 				break
 			}
 		}
-		if candidate == nil || !candidate.ApprovedBySeller ||
+		if _, sent := selectable[selection]; candidate == nil || !sent ||
 			candidate.Type != domain.QuoteItemAlternativeTypeProduct || candidate.ProductID == nil ||
 			!candidate.PriceSnapshot.Valid {
 			return nil, domain.ErrNotFound

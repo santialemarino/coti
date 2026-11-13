@@ -25,6 +25,8 @@ vi.mock('@/lib/api/account', async (importOriginal) => ({
   getAccount: vi.fn(),
 }));
 vi.mock('@/lib/auth/branch', () => ({ getSelectedBranchId: vi.fn() }));
+vi.mock('@/lib/api/client-contact-suggestions-server', () => ({ getContactSuggestions: vi.fn() }));
+vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock('@/lib/auth/session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/session')>()),
   getSession: vi.fn(),
@@ -53,9 +55,11 @@ const { getAccount } = await import('@/lib/api/account');
 const { AppHeader } = await import('@/app/(protected)/_components/app-header');
 const { getSession } = await import('@/lib/auth/session');
 const { getSelectedBranchId } = await import('@/lib/auth/branch');
-const { ROUTES } = await import('@/config/routes');
+const { PATHNAME_HEADER, ROUTES } = await import('@/config/routes');
 const { default: ProtectedLayout } = await import('@/app/(protected)/layout');
 const { ContextColumn } = await import('@/app/(protected)/_components/context-column');
+const { getContactSuggestions } = await import('@/lib/api/client-contact-suggestions-server');
+const { headers } = await import('next/headers');
 
 function session(emailVerified: boolean, role = 'ADMIN', emailVerificationRequired = true) {
   return {
@@ -106,6 +110,24 @@ beforeEach(() => {
 });
 
 describe('ProtectedLayout', () => {
+  // The column shows them only in the clients section, and a layout render is not free.
+  it('reads the contact suggestions only for a page of the clients section', async () => {
+    vi.mocked(getSession).mockResolvedValue(session(true));
+    vi.mocked(getContactSuggestions).mockResolvedValue([]);
+    const at = (path: string) =>
+      vi.mocked(headers).mockResolvedValue(new Headers({ [PATHNAME_HEADER]: path }) as never);
+
+    at(ROUTES.reports);
+    await redirectedTo();
+    expect(getContactSuggestions).not.toHaveBeenCalled();
+    expect(vi.mocked(ContextColumn).mock.lastCall?.[0].suggestions).toBeNull();
+
+    at(ROUTES.clientSuggestions);
+    await redirectedTo();
+    expect(getContactSuggestions).toHaveBeenCalledOnce();
+    expect(vi.mocked(ContextColumn).mock.lastCall?.[0].suggestions).toEqual([]);
+  });
+
   it('sends a caller with no session to the route that clears the cookies', async () => {
     vi.mocked(getSession).mockResolvedValue(null);
 

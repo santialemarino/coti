@@ -112,9 +112,9 @@ func (r *ComboRepository) writeChildren(
 		quantities[i] = item.Quantity.String()
 	}
 	tag, err := q.Exec(ctx,
-		`INSERT INTO combo_item (account_id, combo_id, product_id, quantity)
-		 SELECT $1, $2, p.id, u.quantity::numeric
-		 FROM unnest($3::uuid[], $4::text[]) AS u(product_id, quantity)
+		`INSERT INTO combo_item (account_id, combo_id, product_id, quantity, position)
+		 SELECT $1, $2, p.id, u.quantity::numeric, u.position - 1
+		 FROM unnest($3::uuid[], $4::text[]) WITH ORDINALITY AS u(product_id, quantity, position)
 		 JOIN product p ON p.account_id = $1 AND p.id = u.product_id`,
 		accountID, comboID, productIDs, quantities)
 	if err != nil {
@@ -176,7 +176,7 @@ func (r *ComboRepository) withChildren(
 		 FROM combo_item ci
 		 JOIN product p ON p.id = ci.product_id AND p.account_id = ci.account_id
 		 WHERE ci.account_id = $1 AND ci.combo_id = ANY($2)
-		 ORDER BY ci.created_at, p.canonical_name`, accountID, ids)
+		 ORDER BY ci.combo_id, ci.position`, accountID, ids)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PATHNAME_HEADER } from '@/config/routes';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from '@/lib/auth/tokens';
 
 vi.mock('@/lib/auth/tokens', async (importActual) => ({
@@ -192,5 +193,29 @@ describe('proxy settling a lapsed session', () => {
 
     expect(requestRefresh).not.toHaveBeenCalled();
     expect(response.headers.get('location')).toBeNull();
+  });
+});
+
+describe('proxy forwarding the path', () => {
+  // The protected layout reads it to know whether the page is in the clients section.
+  it('hands the page its path, whether or not the session needed renewing', async () => {
+    const { needsRenewal } = await import('@/lib/auth/tokens');
+    vi.mocked(needsRenewal).mockReturnValueOnce(false);
+    const live = await proxy(
+      new NextRequest('https://backoffice.test/clients/suggestions', {
+        headers: { cookie: `${ACCESS_COOKIE}=live; ${REFRESH_COOKIE}=refresh` },
+      }),
+    );
+    expect(live.headers.get(`x-middleware-request-${PATHNAME_HEADER}`)).toBe(
+      '/clients/suggestions',
+    );
+
+    vi.mocked(requestRefresh).mockResolvedValue({
+      ok: true,
+      status: 200,
+      tokens: { accessToken: 'a', refreshToken: 'r' },
+    } as never);
+    const renewed = await proxy(expiredSession('/clients'));
+    expect(renewed.headers.get(`x-middleware-request-${PATHNAME_HEADER}`)).toBe('/clients');
   });
 });

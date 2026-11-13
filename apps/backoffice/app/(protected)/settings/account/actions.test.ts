@@ -133,6 +133,17 @@ describe('updateAccount', () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 
+  // An unusable stored URL has no field to fix it on; uploading a logo or removing it replaces it.
+  it('saves when a new logo replaces a stored URL its schema refuses', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(undefined);
+    vi.mocked(uploadAccountLogo).mockResolvedValue('https://api.test/files/logo.png');
+    const stale = { ...VALUES, brandLogoUrl: 'tucorralon.com' };
+
+    await expect(updateAccount(stale, new File(['x'], 'logo.png'))).resolves.toEqual({ ok: true });
+    expect(bodySent().brand_logo_url).toBe('https://api.test/files/logo.png');
+    await expect(updateAccount(stale, null)).resolves.toEqual({ ok: true });
+  });
+
   // The code reaches the screen untouched, so the catalog is the only thing that decides what any
   // of them says.
   it.each([

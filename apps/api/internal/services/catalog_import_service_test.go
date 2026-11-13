@@ -470,3 +470,28 @@ func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing
 		t.Fatalf("errors = %v, want an inactive alternative refused when it is a change", preview.Rows[0].Errors)
 	}
 }
+
+func TestCatalogImportService_Preview_RefusesAClearWordThatIsAlsoAProductCode(t *testing.T) {
+	t.Parallel()
+	repo := &catalogImportTestRepository{stored: map[string]domain.CatalogProductRef{
+		"NINGUNA": {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: true},
+	}}
+	preview := previewAlternatives(t, repo,
+		"A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5000;SI;NINGUNA;\n"+
+			"B;Arena fina;m3;MATERIALES DE CONSTRUCCION;ARIDOS;4000;SI;-;-\n"+
+			"-;Arena gruesa;m3;MATERIALES DE CONSTRUCCION;ARIDOS;4500;SI;;ninguna\n")
+
+	if !containsError(preview.Rows[0].Errors, "economy_alternative_ambiguous") {
+		t.Errorf("row naming a stored code = %v, want it flagged as ambiguous", preview.Rows[0].Errors)
+	}
+	// "-" is the code of a product the same file creates.
+	if !containsError(preview.Rows[1].Errors, "economy_alternative_ambiguous") ||
+		!containsError(preview.Rows[1].Errors, "premium_alternative_ambiguous") {
+		t.Errorf("row naming a code of the file = %v, want both slots flagged", preview.Rows[1].Errors)
+	}
+	// Codes match exactly, so a clear word in another case names no product and still clears.
+	if len(preview.Rows[2].Errors) != 0 || preview.Rows[2].PremiumAlternative == nil ||
+		*preview.Rows[2].PremiumAlternative != "" {
+		t.Errorf("row = %v, %v; want the slot cleared", preview.Rows[2].Errors, preview.Rows[2].PremiumAlternative)
+	}
+}
