@@ -44,3 +44,4 @@ const nextConfig = {
 };
 
 export default withNextIntl(nextConfig);
+// Gating demo: touches only apps/webapp.
