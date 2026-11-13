@@ -50,6 +50,7 @@ type productAvailabilityWriter interface {
 // productInitialPriceWriter opens a new product's first price period at several branches.
 type productInitialPriceWriter interface {
 	CreateAtBranches(ctx context.Context, q repository.Querier, accountID, productID uuid.UUID, branchIDs []uuid.UUID, userID *uuid.UUID, in domain.NewProductPrice) error
+	DatabaseTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 // tenantTxRunner is the database surface a tenant-scoped use case needs: one transaction
@@ -151,7 +152,6 @@ func (s *ProductService) CreateProduct(
 		}
 		price := *in.InitialPrice
 		price.Currency = domain.DefaultCurrency
-		price.ValidFrom = s.now()
 		in.InitialPrice = &price
 	}
 
@@ -169,8 +169,15 @@ func (s *ProductService) CreateProduct(
 		if in.InitialPrice == nil || len(branchIDs) == 0 {
 			return nil
 		}
+		// The database's clock, which the in-force reads compare against (see SetPrice).
+		startsAt, timeErr := s.prices.DatabaseTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		price := *in.InitialPrice
+		price.ValidFrom = startsAt
 		return s.prices.CreateAtBranches(ctx, q, tenant.AccountID, product.ID, branchIDs,
-			&tenant.UserID, *in.InitialPrice)
+			&tenant.UserID, price)
 	}); err != nil {
 		return nil, err
 	}

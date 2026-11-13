@@ -353,3 +353,18 @@ func scanProductPrice(row scanRow) (*domain.ProductPrice, error) {
 	}
 	return &p, nil
 }
+
+// DatabaseTime returns the database clock now. Every price-in-force read compares against the
+// database's own clock, so a period stamped with it is in force for any read that starts after the
+// caller commits; the API process's clock can run a few milliseconds ahead and miss that read.
+func (r *ProductPriceRepository) DatabaseTime(ctx context.Context, q Querier) (time.Time, error) {
+	return databaseTime(ctx, q)
+}
+
+// databaseTime reads clock_timestamp(), not now(): now() is when the transaction started, which
+// is before any lock the caller has waited on since.
+func databaseTime(ctx context.Context, q Querier) (time.Time, error) {
+	var at time.Time
+	err := q.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&at)
+	return at, err
+}
