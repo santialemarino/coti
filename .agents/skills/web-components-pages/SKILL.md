@@ -165,6 +165,12 @@ The stack is **react-hook-form + zod** with the shared `Form` primitives from
   confirmation or on a login, where the caller is presenting one they already have. The meter marks
   what is missing in red only once that field has actually been rejected — keyed on the field's own
   error, not on the form's submit count, which a wizard step would trip on arrival.
+- **Never `<input type="date">`; an interval is one field.** The browser's date input is unstyled,
+  untranslated chrome. A day is `DatePicker`; anything with a start and an end — a report period, a
+  promotion's validity, an export range — is one `DateRangePicker`, never a pair of fields. Both take
+  and return `YYYY-MM-DD` strings, so the schema and the API contract stay as they were. An end that
+  may stay empty gets its meaning as `openStart` / `openEnd` ("Desde ya", "Sin vencimiento"); a native
+  form takes the ends through `names`. The shared copy and presets come from `useDateRangeCopy`.
 - **Never `<input type="number">`.** A focused number field treats the wheel as a stepper, so
   scrolling a long form past one silently rewrites the value the pointer happened to be over — and
   the taller the form, the more certain it is. There are two replacements and the choice is the
