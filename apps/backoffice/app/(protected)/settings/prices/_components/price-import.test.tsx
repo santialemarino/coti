@@ -8,7 +8,7 @@ import messages from '@/translations/es.json';
 
 vi.mock('@/lib/config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/config')>()),
-  CATALOG_PREVIEW_PAGE_SIZE: 2,
+  IMPORT_PREVIEW_PAGE_SIZE: 2,
 }));
 vi.mock('@/app/(protected)/settings/prices/actions', () => ({
   confirmPriceImport: vi.fn(),
