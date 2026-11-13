@@ -273,7 +273,13 @@ func (s *QuoteService) ApproveAlternative(
 			return fmt.Errorf("%w: an approved alternative needs a frozen price and catalog identity",
 				domain.ErrInvalidInput)
 		}
-		if approved && alternative.RecommendationType != nil && isQuoteRecommendationType(*alternative.RecommendationType) {
+		// Only the economy and premium options are offered to the customer; an equivalent or a
+		// matcher candidate stays a tool for the seller.
+		if approved && (alternative.RecommendationType == nil || !isQuoteRecommendationType(*alternative.RecommendationType)) {
+			return fmt.Errorf("%w: only an economy or premium option can be offered to the customer",
+				domain.ErrInvalidInput)
+		}
+		if approved {
 			item, getErr := s.quotes.GetItem(ctx, q, tenant.AccountID, version.ID, itemID)
 			if getErr != nil {
 				return getErr
