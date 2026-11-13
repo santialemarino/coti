@@ -50,9 +50,9 @@ function JumpToButton({ target, label }: JumpToButtonProps) {
       if (frame) return;
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        setDirection((current) =>
-          current === null ? null : element.getBoundingClientRect().top < 0 ? 'up' : 'down',
-        );
+        // Measured here, never inside the updater, which React may run during render.
+        const above = element.getBoundingClientRect().top < 0;
+        setDirection((current) => (current === null ? null : above ? 'up' : 'down'));
       });
     };
     window.addEventListener('scroll', reread, { passive: true });
