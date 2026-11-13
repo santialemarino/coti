@@ -353,3 +353,15 @@ func scanProductPrice(row scanRow) (*domain.ProductPrice, error) {
 	}
 	return &p, nil
 }
+
+// TransactionTime returns the database clock for the caller's transaction: the instant every
+// price-in-force read compares against, so a price stamped with it is in force for the next read.
+func (r *ProductPriceRepository) TransactionTime(ctx context.Context, q Querier) (time.Time, error) {
+	return transactionTime(ctx, q)
+}
+
+func transactionTime(ctx context.Context, q Querier) (time.Time, error) {
+	var at time.Time
+	err := q.QueryRow(ctx, `SELECT now()`).Scan(&at)
+	return at, err
+}

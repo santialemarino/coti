@@ -36,6 +36,7 @@ type productPriceRepository interface {
 	GetOpenPeriod(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID) (*domain.ProductPrice, error)
 	Create(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, userID *uuid.UUID, in domain.NewProductPrice) (*domain.ProductPrice, error)
 	CloseOpenPeriod(ctx context.Context, q repository.Querier, accountID, branchID, productID uuid.UUID, at time.Time) (int64, error)
+	TransactionTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 type mutableRecommendationPrices interface {
@@ -155,13 +156,18 @@ func (s *BranchCatalogService) SetPrice(
 	if in.Currency == "" {
 		in.Currency = domain.DefaultCurrency
 	}
-	effectiveAt := s.now()
-	if in.ValidFrom.IsZero() {
-		in.ValidFrom = effectiveAt
-	}
-
 	var price *domain.ProductPrice
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		// The database's clock, not this process's: every in-force read compares against it, and a
+		// period stamped a few milliseconds ahead of it would not be in force for the next request.
+		effectiveAt, timeErr := s.prices.TransactionTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		if in.ValidFrom.IsZero() {
+			in.ValidFrom = effectiveAt
+		}
+
 		// Locking, not just checking: two repricings racing here would each read the same
 		// open period, each fail to close the other's, and leave the product with two.
 		if _, getErr := s.products.GetByIDForUpdate(ctx, q, tenant.AccountID, productID); getErr != nil {

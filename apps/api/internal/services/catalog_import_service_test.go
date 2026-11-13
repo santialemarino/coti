@@ -58,6 +58,10 @@ func (r *catalogImportTestRepository) ListExistingCodes(
 	return r.existing, nil
 }
 
+func (r *catalogImportTestRepository) TransactionTime(_ context.Context, _ repository.Querier) (time.Time, error) {
+	return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC), nil
+}
+
 func (r *catalogImportTestRepository) ApplyImport(
 	_ context.Context, _ repository.Querier, _ domain.Tenant, _ time.Time,
 	rows []domain.CatalogImportRow,

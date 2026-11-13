@@ -20,6 +20,7 @@ type catalogImportRepository interface {
 	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
 	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
+	TransactionTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 // CatalogImportService previews and confirms bulk catalog spreadsheets.
@@ -130,7 +131,12 @@ func (s *CatalogImportService) Confirm(
 		if len(validRows) == 0 {
 			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
 		}
-		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, s.now().UTC(), validRows); applyErr != nil {
+		// The database's clock, so the new prices are in force for the very next read.
+		effectiveAt, timeErr := s.catalog.TransactionTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), validRows); applyErr != nil {
 			return applyErr
 		}
 		for _, row := range validRows {
