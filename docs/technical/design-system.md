@@ -310,10 +310,12 @@ of the viewport (`animate-navigation-progress`; a still full-width line under re
 for a change of page the old screen dims to 60%, `aria-busy`, taking no pointer input while focus
 stays where it was. The header, the column and the tab bar stay live, so another click takes over.
 Both go in the render the URL commits, before the view transition captures the new screen; a faster
-navigation shows neither. Link clicks and back/forward are seen with no wiring; code that navigates
-itself uses `usePendingRouter()`, and a query-only navigation (a report filter, a page) gets the bar
-but keeps its screen, filters included. An in-page placeholder is only for a section inside a
-fixed-size box whose skeleton matches it exactly.
+navigation shows neither. Link clicks and back/forward are seen with no wiring; a route handler
+under `/api/` and a `download` link are ignored, so file links carry `download`. Code inside the
+shell that navigates itself uses `usePendingRouter()`, and a query-only navigation (a report filter,
+a page) gets the bar but keeps its screen, filters included. An in-page placeholder is only for a
+section inside a fixed-size box whose skeleton matches it exactly; a list with no fixed size renders
+nothing until it arrives.
 
 ### Navigation
 

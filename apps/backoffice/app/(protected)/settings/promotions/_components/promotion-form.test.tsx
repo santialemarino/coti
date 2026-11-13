@@ -102,7 +102,7 @@ describe('PromotionForm', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: copy.submit.update }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/promotions'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/promotions', undefined));
     expect(vi.mocked(updatePromotion).mock.calls[0]?.[0]).toBe('p9');
   });
 });

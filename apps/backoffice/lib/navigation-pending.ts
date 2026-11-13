@@ -41,7 +41,7 @@ export function pathOf(pathAndQueryValue: string): string {
 
 /*
  * Where a click on `anchor` takes this tab, or null when it does not: another button, a modifier, a
- * target, a download, another origin, or an in-page `#` jump.
+ * target, a download, another origin, a route handler under `/api/`, or an in-page `#` jump.
  */
 export function linkDestination(click: ClickLike, anchor: AnchorLike, current: URL): string | null {
   if (click.button !== 0 || click.metaKey || click.ctrlKey || click.shiftKey || click.altKey) {
@@ -55,6 +55,8 @@ export function linkDestination(click: ClickLike, anchor: AnchorLike, current: U
     return null;
   }
   if (url.origin !== current.origin) return null;
+  // A route handler (a PDF, an export) is a download, never a page the app commits.
+  if (url.pathname.startsWith('/api/')) return null;
   if (url.hash && pathAndQuery(url) === pathAndQuery(current)) return null;
   return pathAndQuery(url);
 }

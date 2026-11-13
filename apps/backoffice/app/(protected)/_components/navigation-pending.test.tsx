@@ -62,6 +62,7 @@ function Shell() {
           download
         </a>
         <a href="#main">skip</a>
+        <a href="/api/invoices/i1/pdf?branch=b1">pdf</a>
       </nav>
       <ScreenFade>
         <Probe />
@@ -179,6 +180,7 @@ describe('NavigationPendingProvider', () => {
     click('reports', { shiftKey: true });
     click('download');
     click('skip');
+    click('pdf');
     act(() => vi.advanceTimersByTime(NAVIGATION_PENDING_DELAY_MS * 2));
     expect(state()).toEqual(IDLE);
   });

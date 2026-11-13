@@ -147,6 +147,7 @@ export default async function AdministrationPage({
                           <InlineLink
                             tone="muted"
                             href={ROUTES.invoicePDF(credited.id, invoice.branchId)}
+                            download
                             className="text-paragraph-xs"
                           >
                             {t('credits', {
@@ -198,7 +199,9 @@ function InvoiceAction({ invoice, downloadLabel }: { invoice: Invoice; downloadL
   if (invoice.status === 'ISSUED') {
     return (
       <Button asChild variant="outline" size="sm">
-        <a href={ROUTES.invoicePDF(invoice.id, invoice.branchId)}>{downloadLabel}</a>
+        <a href={ROUTES.invoicePDF(invoice.id, invoice.branchId)} download>
+          {downloadLabel}
+        </a>
       </Button>
     );
   }

@@ -27,6 +27,7 @@ import {
 } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import { clientDisplayName, type Client } from '@/lib/api/client-profiles';
 import { getMergeCandidates, mergeClient } from '@/lib/api/clients-client';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -49,6 +50,7 @@ interface ClientMergeDialogProps {
  */
 export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
   const router = useRouter();
+  const pendingRouter = usePendingRouter();
   const t = useTranslations('clients.merge');
   const tClients = useTranslations('clients');
   const message = useApiErrorMessage('clients.merge');
@@ -91,7 +93,7 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
       toast.success(t('merged', { kept, merged: survivor === 'this' ? otherName : name }));
       setOpen(false);
       if (target === clientId) router.refresh();
-      else router.push(ROUTES.clientDetail(target));
+      else pendingRouter.push(ROUTES.clientDetail(target));
     } catch (cause) {
       form.setError('root', { message: message(errorCodeOf(cause)) });
     }

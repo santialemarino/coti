@@ -251,11 +251,13 @@ panel enters from the trigger and then dissolves in place.
   sweeps across the top and, for another page, the old screen dims to 60% with `aria-busy` and no
   pointer input — focus untouched, the header, column and tab bar still live. Both go in the
   render the URL commits, so a fast navigation shows nothing and the new screen never paints dimmed.
-  Links and back/forward need no wiring; code that navigates itself uses `usePendingRouter()`,
-  never a bare `router.push`, and a query-only navigation (a filter, a page) gets the bar and keeps
-  its screen and its filter values. Under reduced motion the bar is a still line and the dim has no
-  transition. An in-page skeleton is only for a section inside a fixed-size box whose placeholder
-  matches it exactly — loading rows, the empty state and the result all fit the same reserved size.
+  Links and back/forward need no wiring (a route handler under `/api/` and a `download` link are
+  ignored — give a file link `download`); code inside the protected shell that navigates itself
+  uses `usePendingRouter()`, never a bare `router.push` (`router.refresh` stays as it is), and a
+  query-only navigation (a filter, a page) gets the bar and keeps its screen and its filter values.
+  Under reduced motion the bar is a still line and the dim has no transition. An in-page skeleton
+  is only for a section inside a fixed-size box whose placeholder matches it exactly; a list with
+  no fixed size renders nothing until it arrives.
 - **Crossing surfaces is a page fade, not a screen swap.** A navigation between the public site, the
   sign-in screens and the app (`surfaceOf` in the backoffice's routes) fades the whole page in from the
   wash — `SurfaceFade` in the root layout, `animate-surface-in`, 500ms, opacity only (a transform

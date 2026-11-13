@@ -44,9 +44,11 @@ describe('linkDestination', () => {
     expect(linkDestination(PLAIN, anchor('/reports', { target: '_self' }), HERE)).toBe('/reports');
   });
 
-  it('ignores another origin and an in-page jump', () => {
+  it('ignores another origin, a route handler and an in-page jump', () => {
     expect(linkDestination(PLAIN, anchor('https://example.com/reports'), HERE)).toBeNull();
     expect(linkDestination(PLAIN, anchor('#main'), HERE)).toBeNull();
+    // A route handler serves a file; the URL never commits, so it must not start a navigation.
+    expect(linkDestination(PLAIN, anchor('/api/invoices/i1/pdf?branch=b1'), HERE)).toBeNull();
     expect(linkDestination(PLAIN, anchor('/clients?page=2#row-3'), HERE)).toBeNull();
   });
 

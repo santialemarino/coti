@@ -32,6 +32,7 @@ import { resumeOnboarding } from '@/app/(onboarding)/onboarding/actions';
 import { setChecklistHidden } from '@/app/(protected)/settings/onboarding/actions';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Onboarding, OnboardingChecklistStep } from '@/lib/api/onboarding';
 
 const ITEMS: Record<OnboardingChecklistStep, { href: string; icon: LucideIcon }> = {
@@ -58,6 +59,7 @@ export function OnboardingChecklist({
   className,
 }: OnboardingChecklistProps) {
   const router = useRouter();
+  const pendingRouter = usePendingRouter();
   const t = useTranslations('onboarding.checklist');
   const message = useApiErrorMessage('onboarding');
   const [hideOpen, setHideOpen] = useState(false);
@@ -79,7 +81,7 @@ export function OnboardingChecklist({
         toast.error(message(result.error));
         return;
       }
-      router.push(ROUTES.onboarding);
+      pendingRouter.push(ROUTES.onboarding);
     });
   }
 
