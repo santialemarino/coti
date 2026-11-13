@@ -30,7 +30,7 @@ const DAY_BUTTON = cn(
   'hover:bg-surface-hover active:bg-surface-active focus-visible:z-10 focus-visible:ring-3 focus-visible:ring-ring/45',
   'disabled:pointer-events-none disabled:opacity-40',
   'data-outside:text-foreground-subtle data-today:text-primary',
-  'data-preview:bg-accent/60 data-in-range:rounded-none data-in-range:bg-accent data-in-range:text-accent-foreground',
+  'data-preview:rounded-none data-preview:bg-accent/60 data-in-range:rounded-none data-in-range:bg-accent data-in-range:text-accent-foreground',
   'data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary-hover data-selected:active:bg-primary-active',
   'text-paragraph-sm tabular-nums data-today:text-paragraph-sm-semibold',
 );
