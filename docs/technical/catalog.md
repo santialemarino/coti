@@ -90,7 +90,10 @@ pair: repeating it returns **409**, and changing the type means deleting and rec
 of each. `PUT /v1/products/{productId}/recommendations/{type}` replaces the existing slot in
 one transaction, so configuring a new premium or economical product cannot leave competing
 recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
-recommendation slot.
+recommendation slot. It is a tool for the seller, shown when choosing a line's product, and never an
+option for the customer: only an `ECONOMY` or `PREMIUM` option can be approved, and only those reach
+the sent offer. An offer sent before this rule may still show an approved untyped option; the customer
+can still choose it, since accepting only checks what the offer itself showed.
 
 Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
 non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote
@@ -181,7 +184,11 @@ nor two concurrent repricings can leave the product with two open periods or non
 That is what keeps a quote frozen last month explainable: the price that applied then is
 still in the table.
 
-- An unspecified `valid_from` means now.
+- An unspecified `valid_from` means now, read from the **database** clock in the write's own
+  transaction, which is the clock every in-force read compares against. The API process's clock
+  can run a few milliseconds ahead, and a period stamped with it would not be in force for the next
+  request. A new product's first price and the catalog and price-list imports start their periods the
+  same way.
 - A `valid_from` **before** the open period's start is rejected (**422**): it would close a
   period before it opened, and rewrite which price applied at a moment already quoted.
 - The first price for a product at a branch closes nothing.

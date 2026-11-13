@@ -113,6 +113,22 @@ export async function getProducts({
   return { ...raw, items: raw.items.map(mapProduct) };
 }
 
+// The names of a few known products, keyed by id; one that no longer resolves is left out.
+export async function getProductNames(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  const products = await Promise.all(
+    unique.map((id) =>
+      apiRequest<ProductRaw>({
+        path: `/v1/products/${encodeURIComponent(id)}`,
+        branchScoped: false,
+      }).catch(() => null),
+    ),
+  );
+  return new Map(
+    products.flatMap((product) => (product ? [[product.id, product.canonical_name] as const] : [])),
+  );
+}
+
 export async function getProductTaxonomy(): Promise<ProductFamily[]> {
   const raw = await apiRequest<ProductTaxonomyRaw>({
     path: '/v1/product-taxonomy',

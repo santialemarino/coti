@@ -38,6 +38,7 @@ import {
 } from '@repo/ui/components';
 import { cn, SPRING } from '@repo/ui/lib';
 import { AmountInput } from '@/components/amount-input';
+import { ProductSearchDialog, type ProductSuggestion } from '@/components/product-search-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -64,7 +65,6 @@ import { useFormatters } from '@/lib/i18n/formatters';
 import { recommendationPriceValid } from '@/lib/recommendation-price';
 import { shortUnit } from '@/lib/utils/units';
 import { DiscountDialog } from './discount-dialog';
-import { ProductSearchDialog, type ProductSuggestion } from './product-search-dialog';
 
 /*
  * Capability matrix keyed on the raw quote.current_status. GENERATED reads as DRAFT here (the

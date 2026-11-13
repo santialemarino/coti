@@ -182,6 +182,14 @@ type initialPriceCall struct {
 
 type fakeInitialPrices struct{ calls []initialPriceCall }
 
+// initialPriceDatabaseNow is the fake database clock, apart from the injected process clock so a
+// test can tell which of the two started a new product's price.
+var initialPriceDatabaseNow = time.Date(2026, 7, 27, 11, 59, 59, 0, time.UTC)
+
+func (f *fakeInitialPrices) DatabaseTime(_ context.Context, _ repository.Querier) (time.Time, error) {
+	return initialPriceDatabaseNow, nil
+}
+
 func (f *fakeInitialPrices) CreateAtBranches(
 	_ context.Context, _ repository.Querier, _, productID uuid.UUID, branchIDs []uuid.UUID,
 	userID *uuid.UUID, in domain.NewProductPrice,
@@ -306,9 +314,9 @@ func TestProductService_CreateProduct_PricesItAtEveryBranchItBecomesAvailableAt(
 		t.Errorf("price = %s / min %s, want 12500.50 / 11000", call.price.Price,
 			call.price.MinPrice.Decimal)
 	}
-	if call.price.Currency != domain.DefaultCurrency || !call.price.ValidFrom.Equal(createdAt) {
-		t.Errorf("currency %q from %s, want %q from %s", call.price.Currency,
-			call.price.ValidFrom, domain.DefaultCurrency, createdAt)
+	if call.price.Currency != domain.DefaultCurrency || !call.price.ValidFrom.Equal(initialPriceDatabaseNow) {
+		t.Errorf("currency %q from %s, want %q from the database clock %s", call.price.Currency,
+			call.price.ValidFrom, domain.DefaultCurrency, initialPriceDatabaseNow)
 	}
 }
 

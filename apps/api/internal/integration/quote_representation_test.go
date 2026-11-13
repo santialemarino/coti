@@ -46,13 +46,26 @@ func TestQuoteRepresentation_GenerateReplayAndPublicDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := services.NewQuoteRepresentationService(e.db, repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(), objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
+	service := services.NewQuoteRepresentationService(e.db, repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(), objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil).
+		WithRecommendationProducts(repository.NewProductRepository())
+	economy := e.seedPricedProduct(t, seed.tenant.AccountID, seed.tenant.BranchID, "Representation economy", "48.00", nil)
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_item_alternative WHERE account_id = $1 AND product_id = $2`,
+			seed.tenant.AccountID, economy)
+	})
+	// An economy option has to share the line's family, subgroup and unit to be offered.
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE product p SET family_id = s.family_id, subgroup_id = s.id, unit = 'bolsa'
+		FROM (SELECT id, family_id FROM product_subgroup ORDER BY family_id, sort_order LIMIT 1) s
+		WHERE p.account_id = $1 AND p.id = ANY($2::uuid[])`,
+		seed.tenant.AccountID, []uuid.UUID{*seed.draft.Items[0].ProductID, economy}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO quote_item_alternative
-	  (account_id, quote_item_id, product_id, type, origin, price_snapshot,
+	  (account_id, quote_item_id, product_id, type, origin, recommendation_type, price_snapshot,
 	   approved_by_seller, rank, confidence_score)
-	  VALUES ($1, $2, $3, 'PRODUCT', 'SELLER', 48.00, TRUE, 1, 0.9000),
-	         ($1, $2, $3, 'PRODUCT', 'SELLER', 47.00, FALSE, 2, 0.8000)`,
-		seed.tenant.AccountID, seed.draft.Items[0].ID, seed.draft.Items[0].ProductID); err != nil {
+	  VALUES ($1, $2, $3, 'PRODUCT', 'SELLER', 'ECONOMY', 48.00, TRUE, 1, 0.9000),
+	         ($1, $2, $3, 'PRODUCT', 'SELLER', 'PREMIUM', 47.00, FALSE, 2, 0.8000)`,
+		seed.tenant.AccountID, seed.draft.Items[0].ID, economy); err != nil {
 		t.Fatal(err)
 	}
 	first, err := service.Ensure(ctx, seed.tenant, seed.draft.Quote.ID)

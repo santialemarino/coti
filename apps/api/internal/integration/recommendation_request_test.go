@@ -126,6 +126,44 @@ func TestRecommendationRequest_ConcurrentAddAndTenantIsolation(t *testing.T) {
 	}
 }
 
+func TestRepresentationSource_OffersOnlyEconomyAndPremium(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	accountID, branchID := e.seedAccount(t, "Seller-only alternatives")
+	seller := e.seedUser(t, accountID, domain.UserRoleSeller)
+	base := e.seedPricedProduct(t, accountID, branchID, "Base", "100.00", nil)
+	economy := e.seedPricedProduct(t, accountID, branchID, "Economy", "80.00", nil)
+	equivalent := e.seedPricedProduct(t, accountID, branchID, "Equivalent", "100.00", nil)
+	candidate := e.seedPricedProduct(t, accountID, branchID, "Candidate", "95.00", nil)
+	seeded := e.seedDraftQuote(t, accountID, branchID, seller, []draftLine{{description: "Base", quantity: "1", productID: &base}})
+	var itemID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `UPDATE quote_item SET unit_price_snapshot=100, subtotal=100
+		WHERE version_id=$1 RETURNING id`, seeded.versionID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	// Every row approved and priced: only the type tells them apart.
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO quote_item_alternative
+		(account_id, quote_item_id, product_id, type, origin, rank, recommendation_type, price_snapshot, approved_by_seller)
+		VALUES ($1,$2,$3,'PRODUCT','SELLER',1,'ECONOMY',80,TRUE),
+		       ($1,$2,$4,'PRODUCT','SELLER',2,'EQUIVALENT',100,TRUE),
+		       ($1,$2,$5,'PRODUCT','AI',3,NULL,95,TRUE)`,
+		accountID, itemID, economy, equivalent, candidate); err != nil {
+		t.Fatal(err)
+	}
+	var source *domain.QuoteRepresentationSource
+	if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, BranchID: branchID}, func(q repository.Querier) error {
+		var err error
+		source, err = repository.NewQuoteRepresentationRepository().LoadSource(ctx, q, accountID, branchID, seeded.quoteID, seeded.versionID)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	offered := source.Alternatives[itemID]
+	if len(offered) != 1 || offered[0].ProductID == nil || *offered[0].ProductID != economy {
+		t.Fatalf("offered = %+v; want only the economy option", offered)
+	}
+}
+
 func TestRecommendationRequest_FillVacantOnceAndTenantIsolation(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
