@@ -19,7 +19,11 @@ type catalogImportRepository interface {
 	ListForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.CatalogExport, error)
 	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
 	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
+	ListProductsByCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogProductRef, error)
+	ListRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogSlots, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
+	ApplyRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, changes []domain.CatalogSlotChange) error
+	DatabaseTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 // CatalogImportService previews and confirms bulk catalog spreadsheets.
@@ -106,6 +110,8 @@ func (s *CatalogImportService) Confirm(
 			rowNumber: i + 2, code: input.Code, name: input.Name,
 			description: input.Description, unit: input.Unit, price: input.Price,
 			family: input.Family, active: activeSpreadsheetValue(input.IsActive),
+			economyAlternative: trimmedAlternative(input.EconomyAlternative),
+			premiumAlternative: trimmedAlternative(input.PremiumAlternative),
 		}
 		if input.Subgroup != nil {
 			rawRows[i].subgroup = *input.Subgroup
@@ -130,8 +136,16 @@ func (s *CatalogImportService) Confirm(
 		if len(validRows) == 0 {
 			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
 		}
-		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, s.now().UTC(), validRows); applyErr != nil {
+		// The database's clock, so the new prices are in force for the very next read.
+		effectiveAt, timeErr := s.catalog.DatabaseTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), validRows); applyErr != nil {
 			return applyErr
+		}
+		if slotErr := s.catalog.ApplyRecommendationSlots(ctx, q, tenant.AccountID, catalogSlotChanges(validRows)); slotErr != nil {
+			return slotErr
 		}
 		for _, row := range validRows {
 			if row.Action == "CREATE" {
@@ -173,14 +187,31 @@ func (s *CatalogImportService) prepare(
 	preview := &domain.CatalogImportPreview{
 		Rows: make([]domain.CatalogImportRow, 0, len(rawRows)), PreviewedAt: s.now().UTC(),
 	}
+	alternativeCodes := make([]string, 0)
 	for _, raw := range rawRows {
-		row := prepareCatalogImportRow(raw, existing, seen, families)
+		preview.Rows = append(preview.Rows, prepareCatalogImportRow(raw, existing, seen, families))
+		for _, code := range []*string{raw.economyAlternative, raw.premiumAlternative} {
+			if code != nil && *code != "" {
+				alternativeCodes = append(alternativeCodes, *code)
+			}
+		}
+	}
+	current, err := s.catalog.ListRecommendationSlots(ctx, q, accountID, codes)
+	if err != nil {
+		return nil, err
+	}
+	keepUnchangedSlots(preview.Rows, current)
+	stored, err := s.catalog.ListProductsByCodes(ctx, q, accountID, alternativeCodes)
+	if err != nil {
+		return nil, err
+	}
+	validateCatalogAlternatives(preview.Rows, stored)
+	for _, row := range preview.Rows {
 		if len(row.Errors) == 0 {
 			preview.ValidRows++
 		} else {
 			preview.InvalidRows++
 		}
-		preview.Rows = append(preview.Rows, row)
 	}
 	preview.CanConfirm = preview.ValidRows > 0
 	return preview, nil
@@ -194,7 +225,7 @@ func prepareCatalogImportRow(
 	row := domain.CatalogImportRow{
 		RowNumber: raw.rowNumber, Code: strings.TrimSpace(raw.code),
 		Name: strings.TrimSpace(raw.name), Description: description, Unit: strings.TrimSpace(raw.unit),
-		IsActive: true,
+		IsActive: true, EconomyAlternative: raw.economyAlternative, PremiumAlternative: raw.premiumAlternative,
 	}
 	isExisting := false
 	if row.Code == "" {
@@ -324,4 +355,127 @@ func resolveCatalogTaxonomy(
 		}
 	}
 	row.Errors = append(row.Errors, "invalid_subgroup")
+}
+
+/*
+ * validateCatalogAlternatives checks every row's recommendation slots against the catalog as it
+ * will stand after the import: a product the file changes is judged by its row, any other by its
+ * stored values. A row refused here is skipped, which can strand a row that named it, so the check
+ * repeats until no further row is refused.
+ */
+func validateCatalogAlternatives(rows []domain.CatalogImportRow, stored map[string]domain.CatalogProductRef) {
+	for {
+		final := make(map[string]domain.CatalogProductRef, len(stored)+len(rows))
+		for code, ref := range stored {
+			final[code] = ref
+		}
+		for _, row := range rows {
+			if len(row.Errors) == 0 {
+				familyID := row.FamilyID
+				final[row.Code] = domain.CatalogProductRef{
+					FamilyID: &familyID, SubgroupID: row.SubgroupID, Unit: row.Unit, IsActive: row.IsActive,
+				}
+			}
+		}
+		refused := false
+		for i := range rows {
+			if len(rows[i].Errors) > 0 {
+				continue
+			}
+			if errs := catalogAlternativeErrors(rows[i], final); len(errs) > 0 {
+				rows[i].Errors = append(rows[i].Errors, errs...)
+				refused = true
+			}
+		}
+		if !refused {
+			return
+		}
+	}
+}
+
+func catalogAlternativeErrors(row domain.CatalogImportRow, final map[string]domain.CatalogProductRef) []string {
+	var errs []string
+	economy, premium := row.EconomyAlternative, row.PremiumAlternative
+	if economy != nil && premium != nil && *economy != "" && *economy == *premium {
+		errs = append(errs, "alternative_repeated")
+	}
+	for _, slot := range []struct {
+		prefix string
+		code   *string
+	}{{"economy", economy}, {"premium", premium}} {
+		if slot.code == nil || *slot.code == "" {
+			continue
+		}
+		ref, ok := final[*slot.code]
+		switch {
+		case *slot.code == row.Code:
+			errs = append(errs, slot.prefix+"_alternative_self")
+		case !ok:
+			errs = append(errs, slot.prefix+"_alternative_not_found")
+		case !ref.IsActive:
+			errs = append(errs, slot.prefix+"_alternative_inactive")
+		case !compatibleCatalogAlternative(row, ref):
+			errs = append(errs, slot.prefix+"_alternative_incompatible")
+		}
+	}
+	return errs
+}
+
+// compatibleCatalogAlternative mirrors the rule every recommendation slot follows: same family,
+// same subgroup and same unit, none of them missing.
+func compatibleCatalogAlternative(row domain.CatalogImportRow, ref domain.CatalogProductRef) bool {
+	unit := strings.TrimSpace(ref.Unit)
+	return row.SubgroupID != nil && ref.FamilyID != nil && ref.SubgroupID != nil &&
+		*ref.FamilyID == row.FamilyID && *ref.SubgroupID == *row.SubgroupID &&
+		unit != "" && strings.EqualFold(unit, strings.TrimSpace(row.Unit))
+}
+
+func catalogSlotChanges(rows []domain.CatalogImportRow) []domain.CatalogSlotChange {
+	var changes []domain.CatalogSlotChange
+	for _, row := range rows {
+		if row.EconomyAlternative != nil {
+			changes = append(changes, domain.CatalogSlotChange{
+				BaseCode: row.Code, Type: domain.ProductAlternativeEconomy, AlternativeCode: *row.EconomyAlternative,
+			})
+		}
+		if row.PremiumAlternative != nil {
+			changes = append(changes, domain.CatalogSlotChange{
+				BaseCode: row.Code, Type: domain.ProductAlternativePremium, AlternativeCode: *row.PremiumAlternative,
+			})
+		}
+	}
+	return changes
+}
+
+func trimmedAlternative(code *string) *string {
+	if code == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*code)
+	return &trimmed
+}
+
+/*
+ * keepUnchangedSlots reads a code equal to what the slot already holds as "keep". An exported file
+ * carries every stored slot, and one whose product was since deactivated or reclassified would
+ * otherwise refuse a row the supplier only opened to change a price.
+ */
+func keepUnchangedSlots(rows []domain.CatalogImportRow, current map[string]domain.CatalogSlots) {
+	for i := range rows {
+		slots, ok := current[rows[i].Code]
+		// Both columns naming one product is refused as repeated, never read as a kept slot.
+		if !ok || sameSlot(rows[i].EconomyAlternative, rows[i].PremiumAlternative) {
+			continue
+		}
+		if sameSlot(rows[i].EconomyAlternative, slots.Economy) {
+			rows[i].EconomyAlternative = nil
+		}
+		if sameSlot(rows[i].PremiumAlternative, slots.Premium) {
+			rows[i].PremiumAlternative = nil
+		}
+	}
+}
+
+func sameSlot(requested, stored *string) bool {
+	return requested != nil && stored != nil && *requested != "" && *requested == *stored
 }

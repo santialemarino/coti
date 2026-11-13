@@ -508,6 +508,30 @@
       "title": "Catálogo",
       "description": "Carga inicial y actualización del catálogo de productos."
     },
+    "promotionSettings": {
+      "title": "Promociones",
+      "description": "Reglas de descuento que se aplican solas a las cotizaciones."
+    },
+    "promotionNew": {
+      "title": "Nueva promoción",
+      "description": "Alta de una regla de descuento del corralón."
+    },
+    "promotionEdit": {
+      "title": "Editar promoción",
+      "description": "Edición de una regla de descuento del corralón."
+    },
+    "comboSettings": {
+      "title": "Combos",
+      "description": "Conjuntos de productos que se ofrecen juntos al cotizar."
+    },
+    "comboNew": {
+      "title": "Nuevo combo",
+      "description": "Alta de un combo del catálogo."
+    },
+    "comboEdit": {
+      "title": "Editar combo",
+      "description": "Edición de un combo del catálogo."
+    },
     "onboarding": {
       "title": "Configuración inicial",
       "description": "Prepará la cuenta para crear las primeras cotizaciones."
@@ -1506,26 +1530,33 @@
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "recommendationType": {
-          "ECONOMY": "Alternativa econ\u00f3mica",
+          "ECONOMY": "Alternativa económica",
           "PREMIUM": "Alternativa premium",
           "EQUIVALENT": "Alternativa equivalente"
         },
         "alternatives": {
           "title": "Opciones para el cliente",
           "compatibilityNotice": "La económica debe tener un precio unitario menor y la premium, mayor al cotizado. Al enviar, se excluyen las opciones que no cumplan esta regla o cuya familia, subgrupo o unidad ya no coincidan. Revisá también que la presentación sea adecuada.",
+          "fill": {
+            "action": "Completar desde el catálogo",
+            "pending": "Completando…",
+            "hint": "Agrega las alternativas del catálogo que falten, sin aprobar; no reemplaza las que ya elegiste.",
+            "done": "{count, plural, one {Agregamos # alternativa del catálogo. Revisala antes de incluirla.} other {Agregamos # alternativas del catálogo. Revisalas antes de incluirlas.}}",
+            "nothing": "El catálogo no tiene alternativas compatibles para completar los lugares vacíos."
+          },
           "priceUnavailable": "Precio no disponible",
           "invalidPrice": "Esta alternativa no cumple la regla de precio y no se enviará. Podés reemplazarla o quitarla.",
-          "description": "Revis\u00e1 las alternativas disponibles por material y eleg\u00ed cu\u00e1les incluir en la cotizaci\u00f3n.",
+          "description": "Revisá las alternativas disponibles por material y elegí cuáles incluir en la cotización.",
           "forItem": "Alternativas para {name}",
-          "empty": "Todav\u00eda no hay alternativas definidas para este material.",
-          "addMissing": "Pod\u00e9s completar las opciones que faltan si quer\u00e9s ofrecerlas.",
+          "empty": "Todavía no hay alternativas definidas para este material.",
+          "addMissing": "Podés completar las opciones que faltan si querés ofrecerlas.",
           "addType": {
-            "ECONOMY": "Agregar alternativa econ\u00f3mica",
+            "ECONOMY": "Agregar alternativa económica",
             "PREMIUM": "Agregar alternativa premium"
           },
           "unitPrice": "Precio unitario: {amount}",
-          "saveToCatalog": "Guardar tambi\u00e9n como alternativa del cat\u00e1logo",
-          "include": "Incluir en la cotizaci\u00f3n",
+          "saveToCatalog": "Guardar también como alternativa del catálogo",
+          "include": "Incluir en la cotización",
           "remove": "No incluir",
           "replace": "Reemplazar",
           "delete": "Quitar alternativa",
@@ -1535,9 +1566,9 @@
             "confirm": "Quitar alternativa",
             "pending": "Quitando…"
           },
-          "pending": "Guardando\u2026",
+          "pending": "Guardando…",
           "picker": {
-            "ECONOMY": "Elegir alternativa econ\u00f3mica",
+            "ECONOMY": "Elegir alternativa económica",
             "PREMIUM": "Elegir alternativa premium",
             "compatibility": "Mostramos productos de la misma familia, subgrupo y unidad. Comprobá que tengan el mismo uso y una presentación equivalente: compartir unidad no garantiza el mismo peso o contenido.",
             "missingClassification": "Completá la familia, el subgrupo y la unidad del producto en el catálogo para elegir alternativas.",
@@ -1547,17 +1578,17 @@
             "retry": "Reintentar"
           },
           "catalogConfirmation": {
-            "title": "\u00bfGuardar tambi\u00e9n en el cat\u00e1logo?",
-            "description": "\u00ab{name}\u00bb va a reemplazar la {type} actual de este producto en el cat\u00e1logo. Las pr\u00f3ximas cotizaciones la van a usar como opci\u00f3n disponible.",
-            "confirm": "Guardar en cat\u00e1logo",
-            "pending": "Guardando\u2026"
+            "title": "¿Guardar también en el catálogo?",
+            "description": "«{name}» va a reemplazar la {type} actual de este producto en el catálogo. Las próximas cotizaciones la van a usar como opción disponible.",
+            "confirm": "Guardar en catálogo",
+            "pending": "Guardando…"
           },
           "toast": {
             "deleted": "Quitamos la alternativa de esta cotización.",
-            "included": "La alternativa \u00ab{name}\u00bb se va a enviar al cliente.",
-            "removed": "La alternativa \u00ab{name}\u00bb no se va a enviar al cliente.",
-            "set": "Guardamos \u00ab{name}\u00bb como alternativa de esta cotizaci\u00f3n.",
-            "savedToCatalog": "Guardamos \u00ab{name}\u00bb en la cotizaci\u00f3n y como alternativa del cat\u00e1logo."
+            "included": "La alternativa «{name}» se va a enviar al cliente.",
+            "removed": "La alternativa «{name}» no se va a enviar al cliente.",
+            "set": "Guardamos «{name}» como alternativa de esta cotización.",
+            "savedToCatalog": "Guardamos «{name}» en la cotización y como alternativa del catálogo."
           }
         },
         "searchProduct": "Buscar producto",
@@ -1613,7 +1644,7 @@
           "scope": {
             "TOTAL": "Global",
             "ITEM": "Por ítem",
-            "ITEM_SET": "Por combo"
+            "ITEM_SET": "Por conjunto de ítems"
           },
           "origin": {
             "AUTOMATIC": "Promoción",
@@ -1886,6 +1917,19 @@
         },
         "errors": {
           "QUOTE_ARCHIVED": "La venta está archivada. Desarchivala antes de marcar el cobro."
+        }
+      },
+      "combos": {
+        "title": "Combos sugeridos",
+        "description": "La cotización tiene parte de estos combos. Agregá lo que falta como líneas comunes; las promociones se recalculan solas.",
+        "missing": "Falta:",
+        "present": "Ya tiene {names}.",
+        "line": "{quantity} {name}",
+        "add": "{count, plural, one {Agregar el que falta} other {Agregar los # que faltan}}",
+        "adding": "Agregando…",
+        "added": "{count, plural, one {Agregamos # producto de «{name}».} other {Agregamos # productos de «{name}».}}",
+        "errors": {
+          "CONFLICT": "Ese combo ya no aplica a la cotización: puede que ya esté completo o que haya cambiado. Actualizá la pantalla."
         }
       }
     }
@@ -2320,11 +2364,15 @@
       "users": "Usuarios",
       "catalog": "Catálogo",
       "prices": "Precios",
+      "promotions": "Promociones",
+      "combos": "Combos",
       "onboarding": "Configuración inicial · {done}/{total}",
       "invoicing": "Facturación",
       "export": "Exportación de datos"
     },
-    "backToInvoicing": "Volver a Facturación"
+    "backToInvoicing": "Volver a Facturación",
+    "backToPromotions": "Volver a Promociones",
+    "backToCombos": "Volver a Combos"
   },
   "branches": {
     "title": "Sucursales",
@@ -2836,8 +2884,15 @@
       "product": "Producto",
       "family": "Rubro",
       "price": "Precio",
+      "alternatives": "Alternativas",
       "status": "Estado",
       "result": "Validación"
+    },
+    "alternatives": {
+      "economy": "Económica: {code}",
+      "premium": "Premium: {code}",
+      "economyCleared": "Económica: se quita",
+      "premiumCleared": "Premium: se quita"
     },
     "status": {
       "active": "Activo",
@@ -2875,7 +2930,16 @@
       "invalid_subgroup": "El subgrupo no corresponde al rubro.",
       "invalid_price": "El precio debe ser mayor a cero y tener hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser mayor a cero y tener hasta 2 decimales.",
-      "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
+      "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
+      "alternative_repeated": "La alternativa económica y la premium no pueden ser el mismo producto.",
+      "economy_alternative_self": "La alternativa económica no puede ser el mismo producto.",
+      "economy_alternative_not_found": "No hay ningún producto con el código de la alternativa económica, ni en el catálogo ni en las filas válidas del archivo.",
+      "economy_alternative_inactive": "La alternativa económica está desactivada.",
+      "economy_alternative_incompatible": "La alternativa económica tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo.",
+      "premium_alternative_self": "La alternativa premium no puede ser el mismo producto.",
+      "premium_alternative_not_found": "No hay ningún producto con el código de la alternativa premium, ni en el catálogo ni en las filas válidas del archivo.",
+      "premium_alternative_inactive": "La alternativa premium está desactivada.",
+      "premium_alternative_incompatible": "La alternativa premium tiene que ser de la misma familia, subgrupo y unidad, y el producto necesita subgrupo."
     }
   },
   "onboarding": {
@@ -3539,5 +3603,347 @@
     "changeWarning": "La dirección anterior dejará de abrir este portal. Los enlaces que ya compartiste dejarán de funcionar: compartí la nueva dirección y reenviá los enlaces de pedidos y cotizaciones. Tus clientes tendrán que volver a ingresar en la nueva dirección; sus cuentas y pedidos se conservan. Cada portal mantiene una sesión independiente.",
     "confirm": "Cambiar dirección",
     "cancel": "Cancelar"
+  },
+  "promotions": {
+    "title": "Promociones",
+    "description": "Las reglas que el motor de descuentos aplica solo al cotizar. Acá se define la regla; el monto lo calcula siempre el motor.",
+    "add": "Nueva promoción",
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "filter": {
+      "placeholder": "Estado",
+      "all": "Todos los estados"
+    },
+    "status": {
+      "ACTIVE": "Vigente",
+      "SCHEDULED": "Programada",
+      "EXPIRED": "Vencida",
+      "INACTIVE": "Inactiva"
+    },
+    "table": {
+      "caption": "Promociones de la cuenta",
+      "name": "Nombre",
+      "type": "Tipo",
+      "benefit": "Beneficio",
+      "scope": "Alcance",
+      "validity": "Vigencia",
+      "status": "Estado",
+      "actions": "Acciones",
+      "exclusive": "Exclusiva"
+    },
+    "benefit": {
+      "percentage": "{value} % de descuento",
+      "fixedAmount": "{amount} menos por unidad",
+      "specialPrice": "Precio especial de {amount}",
+      "tiered": "{count, plural, one {# tramo} other {# tramos}} por cantidad"
+    },
+    "validity": {
+      "range": "{from} al {to}",
+      "from": "Desde el {from}",
+      "to": "Hasta el {to}",
+      "always": "Sin vencimiento"
+    },
+    "scope": {
+      "account": "Toda la cuenta",
+      "unknownBranch": "Sucursal eliminada"
+    },
+    "conditionType": {
+      "PER_ITEM": {
+        "label": "Por producto"
+      },
+      "QUANTITY_TIERED": {
+        "label": "Escalonada por cantidad"
+      },
+      "ITEM_SET": {
+        "label": "Conjunto de ítems"
+      },
+      "ON_TOTAL": {
+        "label": "Sobre el total"
+      }
+    },
+    "empty": {
+      "title": "Todavía no hay promociones",
+      "description": "Creá la primera y el motor la va a aplicar solo en cada cotización que la cumpla.",
+      "filteredTitle": "Ninguna promoción en ese estado",
+      "filteredDescription": "Elegí otro estado o volvé a «Todos los estados»."
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar «{name}»"
+    },
+    "new": {
+      "title": "Nueva promoción",
+      "description": "Definí a qué se aplica, qué descuento da y cuándo está vigente."
+    },
+    "toast": {
+      "activated": "Activamos «{name}»: se aplica en las próximas cotizaciones que la cumplan.",
+      "deactivated": "Desactivamos «{name}»: deja de aplicarse en las próximas cotizaciones."
+    },
+    "errors": {
+      "INVALID_INPUT": "Revisá la regla: algún producto, familia, subgrupo o sucursal ya no existe, o un valor quedó fuera de rango.",
+      "NOT_FOUND": "Esa promoción ya no existe. Volvé al listado y actualizá la pantalla."
+    },
+    "form": {
+      "sections": {
+        "details": {
+          "title": "Datos"
+        },
+        "rule": {
+          "title": "Regla",
+          "description": "Cuándo se cumple la promoción y qué descuento da."
+        },
+        "targets": {
+          "title": "A qué se aplica"
+        },
+        "tiers": {
+          "title": "Tramos"
+        },
+        "validity": {
+          "title": "Vigencia y prioridad",
+          "description": "Una promoción fuera de sus fechas no se aplica, sin necesidad de borrarla."
+        }
+      },
+      "name": {
+        "label": "Nombre",
+        "placeholder": "Ingresá el nombre de la promoción",
+        "required": "Ingresá el nombre de la promoción."
+      },
+      "description": {
+        "label": "Descripción",
+        "placeholder": "Notas opcionales...",
+        "hint": "Solo la ve el equipo del corralón."
+      },
+      "scope": {
+        "label": "Alcance",
+        "placeholder": "Seleccioná un alcance",
+        "account": "Toda la cuenta",
+        "hint": "Una promoción de toda la cuenta se aplica en cada sucursal."
+      },
+      "conditionType": {
+        "label": "Tipo de promoción",
+        "PER_ITEM": {
+          "label": "Por producto",
+          "description": "Descuento en cada unidad de los productos, familias o subgrupos elegidos."
+        },
+        "QUANTITY_TIERED": {
+          "label": "Escalonada por cantidad",
+          "description": "El descuento cambia según cuántas unidades se lleven, por tramos."
+        },
+        "ITEM_SET": {
+          "label": "Conjunto de ítems",
+          "description": "Se cumple cuando la cotización tiene todos los productos elegidos juntos."
+        },
+        "ON_TOTAL": {
+          "label": "Sobre el total",
+          "description": "Descuento sobre el total de la cotización, después de los descuentos por línea."
+        }
+      },
+      "actionType": {
+        "label": "Tipo de descuento",
+        "placeholder": "Seleccioná un tipo de descuento",
+        "PERCENTAGE": "Porcentaje",
+        "FIXED_AMOUNT": "Monto fijo",
+        "SPECIAL_PRICE": "Precio especial",
+        "specialPriceScope": "El precio especial solo se usa en promociones por producto o escalonadas."
+      },
+      "actionValue": {
+        "PERCENTAGE": "Porcentaje de descuento",
+        "FIXED_AMOUNT": "Monto a descontar",
+        "SPECIAL_PRICE": "Precio especial por unidad",
+        "placeholder": "Ingresá el valor",
+        "required": "Ingresá un valor mayor a cero.",
+        "percentageMax": "El porcentaje no puede superar {max} %."
+      },
+      "minTotal": {
+        "label": "Total mínimo",
+        "placeholder": "Ingresá el total mínimo",
+        "hint": "Vacío: se aplica a cualquier total.",
+        "positive": "Ingresá un total mayor a cero."
+      },
+      "conditions": {
+        "hint": {
+          "perItem": "Elegí al menos un producto, familia o subgrupo. La cantidad mínima es opcional.",
+          "itemSet": "Elegí al menos {count} productos, familias o subgrupos: la promoción se cumple cuando la cotización los tiene a todos."
+        },
+        "kind": {
+          "label": "Aplica a",
+          "placeholder": "Seleccioná qué elegir",
+          "product": "Producto",
+          "family": "Familia",
+          "subgroup": "Subgrupo"
+        },
+        "target": {
+          "label": "Elección",
+          "pickProduct": "Buscá un producto",
+          "unknownProduct": "Producto sin nombre",
+          "pickFamily": "Seleccioná una familia",
+          "pickSubgroup": "Seleccioná un subgrupo",
+          "search": "Buscá...",
+          "empty": "Sin resultados.",
+          "dialogTitle": "Elegí un producto"
+        },
+        "minQuantity": {
+          "label": "Cantidad mínima",
+          "placeholder": "Opcional"
+        },
+        "add": "Agregar otro",
+        "remove": "Quitar",
+        "tooFew": "{count, plural, one {Elegí al menos # producto, familia o subgrupo.} other {Elegí al menos # productos, familias o subgrupos.}}",
+        "targetRequired": "Elegí a qué se aplica.",
+        "repeated": "Ya está elegido en otra fila.",
+        "minQuantityPositive": "Ingresá una cantidad mayor a cero."
+      },
+      "tiers": {
+        "hint": "Cada tramo da su propio descuento. Los dos extremos están incluidos; sin «hasta», el tramo no tiene tope.",
+        "from": {
+          "label": "Desde",
+          "placeholder": "Ingresá la cantidad"
+        },
+        "to": {
+          "label": "Hasta",
+          "placeholder": "Sin tope"
+        },
+        "value": {
+          "PERCENTAGE": "Porcentaje",
+          "FIXED_AMOUNT": "Monto por unidad",
+          "SPECIAL_PRICE": "Precio por unidad",
+          "placeholder": "Ingresá el valor"
+        },
+        "add": "Agregar tramo",
+        "remove": "Quitar tramo",
+        "required": "Agregá al menos un tramo.",
+        "fromRequired": "Ingresá una cantidad mayor a cero.",
+        "toBelowFrom": "No puede ser menor que «desde».",
+        "valueRequired": "Ingresá un valor mayor a cero.",
+        "overlap": "Se superpone con otro tramo."
+      },
+      "validFrom": {
+        "label": "Desde",
+        "hint": "Vacío: vigente desde ya."
+      },
+      "validTo": {
+        "label": "Hasta",
+        "hint": "Vacío: sin vencimiento. Incluye todo ese día.",
+        "beforeFrom": "No puede ser anterior a «desde»."
+      },
+      "priority": {
+        "label": "Prioridad",
+        "placeholder": "Ingresá la prioridad",
+        "hint": "Si dos promociones caen sobre la misma línea, se aplica la de mayor prioridad; a igual prioridad, la que más descuenta. No se acumulan.",
+        "required": "Ingresá un número entero, 0 o mayor."
+      },
+      "isExclusive": {
+        "label": "Exclusiva",
+        "hint": "Cuando se aplica, ninguna otra promoción toca las líneas que cubre."
+      },
+      "isActive": {
+        "label": "Activa",
+        "hint": "Desactivada no se aplica, pero conserva su definición para volver a activarla."
+      },
+      "submit": {
+        "create": "Crear promoción",
+        "creating": "Creando…",
+        "update": "Guardar cambios",
+        "updating": "Guardando…"
+      },
+      "cancel": "Cancelar",
+      "toast": {
+        "created": "Creamos «{name}»: se aplica en las próximas cotizaciones que la cumplan.",
+        "updated": "Guardamos los cambios de «{name}»."
+      }
+    }
+  },
+  "combos": {
+    "title": "Combos",
+    "description": "Productos que se venden juntos. Cuando una cotización tiene parte de un combo, el vendedor ve lo que falta y lo agrega con un clic.",
+    "add": "Nuevo combo",
+    "activate": "Activar",
+    "deactivate": "Desactivar",
+    "status": {
+      "active": "Activo",
+      "inactive": "Inactivo"
+    },
+    "table": {
+      "caption": "Combos de la cuenta",
+      "name": "Nombre",
+      "products": "Productos",
+      "branches": "Sucursales",
+      "allBranches": "Todas",
+      "status": "Estado",
+      "actions": "Acciones"
+    },
+    "empty": {
+      "title": "Todavía no hay combos",
+      "description": "Creá el primero para que el vendedor vea qué falta cuando una cotización tiene parte de él."
+    },
+    "edit": {
+      "action": "Editar",
+      "title": "Editar «{name}»"
+    },
+    "new": {
+      "title": "Nuevo combo",
+      "description": "Elegí los productos que se venden juntos y en qué sucursales."
+    },
+    "toast": {
+      "activated": "Activamos «{name}»: se sugiere en las cotizaciones que tengan parte de él.",
+      "deactivated": "Desactivamos «{name}»: deja de sugerirse en las cotizaciones."
+    },
+    "errors": {
+      "INVALID_INPUT": "Revisá el combo: algún producto o sucursal ya no existe en la cuenta.",
+      "NOT_FOUND": "Ese combo ya no existe. Volvé al listado y actualizá la pantalla."
+    },
+    "form": {
+      "sections": {
+        "details": "Datos",
+        "products": "Productos",
+        "branches": "Sucursales"
+      },
+      "name": {
+        "label": "Nombre",
+        "placeholder": "Ingresá el nombre del combo",
+        "required": "Ingresá el nombre del combo."
+      },
+      "description": {
+        "label": "Descripción",
+        "placeholder": "Notas opcionales...",
+        "hint": "El vendedor la ve junto a la sugerencia."
+      },
+      "isActive": {
+        "label": "Activo",
+        "hint": "Desactivado no se sugiere, pero conserva su definición."
+      },
+      "items": {
+        "hint": "Al menos {count} productos distintos, con la cantidad que lleva el combo.",
+        "product": "Producto",
+        "pickProduct": "Buscá un producto",
+        "unknownProduct": "Producto sin nombre",
+        "dialogTitle": "Elegí un producto",
+        "quantity": "Cantidad",
+        "quantityPlaceholder": "Ingresá la cantidad",
+        "add": "Agregar producto",
+        "remove": "Quitar",
+        "tooFew": "Elegí al menos {count} productos.",
+        "productRequired": "Elegí un producto.",
+        "repeated": "Ya está en el combo.",
+        "quantityRequired": "Ingresá una cantidad mayor a cero."
+      },
+      "discountHint": "El combo no tiene precio propio: sus productos se cotizan como líneas comunes. Para darle un descuento por llevarlo junto,",
+      "discountLink": "creá una promoción de conjunto de ítems",
+      "branches": {
+        "hint": "Solo se sugiere en las cotizaciones de las sucursales marcadas.",
+        "required": "Elegí al menos una sucursal."
+      },
+      "submit": {
+        "create": "Crear combo",
+        "creating": "Creando…",
+        "update": "Guardar cambios",
+        "updating": "Guardando…"
+      },
+      "cancel": "Cancelar",
+      "toast": {
+        "created": "Creamos «{name}»: se sugiere en las cotizaciones que tengan parte de él.",
+        "updated": "Guardamos los cambios de «{name}»."
+      }
+    }
   }
 }

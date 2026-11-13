@@ -162,3 +162,52 @@ func TestRecommendationRequestService_RefusesImmutableOrNonQuotedVersion(t *test
 		})
 	}
 }
+
+func TestRecommendationRequestService_FillVacant_FillsOnlyEmptySlotsUnapproved(t *testing.T) {
+	f := newRecommendationRequestFixture()
+	filled, err := f.service.FillVacant(context.Background(), f.tenant, f.quoteID)
+	if err != nil || len(filled) != 2 {
+		t.Fatalf("FillVacant() = %+v, %v; want both empty slots filled", filled, err)
+	}
+	for _, entry := range filled {
+		if entry.ItemID != f.itemID || entry.Alternative.ApprovedBySeller || entry.Alternative.RecommendationType == nil {
+			t.Fatalf("filled entry = %+v, want an unapproved slot of the item", entry)
+		}
+	}
+	if len(f.quotes.alternatives[f.itemID]) != 2 {
+		t.Fatalf("item offers = %+v, want the two added", f.quotes.alternatives[f.itemID])
+	}
+
+	// A second run finds both slots taken and changes nothing.
+	again, err := f.service.FillVacant(context.Background(), f.tenant, f.quoteID)
+	if err != nil || len(again) != 0 || len(f.quotes.alternatives[f.itemID]) != 2 {
+		t.Fatalf("second FillVacant() = %+v, %v; offers = %d", again, err, len(f.quotes.alternatives[f.itemID]))
+	}
+}
+
+func TestRecommendationRequestService_FillVacant_KeepsTheSellersChoice(t *testing.T) {
+	f := newRecommendationRequestFixture()
+	economy := domain.ProductAlternativeEconomy
+	chosen := uuid.New()
+	f.quotes.alternatives[f.itemID] = []domain.QuoteItemAlternative{{
+		ID: uuid.New(), ProductID: &chosen, RecommendationType: &economy, ApprovedBySeller: true,
+	}}
+	filled, err := f.service.FillVacant(context.Background(), f.tenant, f.quoteID)
+	if err != nil || len(filled) != 1 || filled[0].Alternative.ProductID == nil ||
+		*filled[0].Alternative.ProductID != f.premiumID {
+		t.Fatalf("FillVacant() = %+v, %v; want only the premium slot filled", filled, err)
+	}
+	offers := f.quotes.alternatives[f.itemID]
+	if len(offers) != 2 || offers[0].ProductID == nil || *offers[0].ProductID != chosen || !offers[0].ApprovedBySeller {
+		t.Fatalf("the seller's economy choice changed: %+v", offers)
+	}
+}
+
+func TestRecommendationRequestService_FillVacant_RefusesAQuoteNotBeingPriced(t *testing.T) {
+	f := newRecommendationRequestFixture()
+	f.quotes.quote.CurrentStatus = domain.QuoteStatusSent
+	_, err := f.service.FillVacant(context.Background(), f.tenant, f.quoteID)
+	if !errors.Is(err, domain.ErrConflict) || len(f.quotes.alternatives[f.itemID]) != 0 {
+		t.Fatalf("FillVacant() err = %v, offers = %+v; want a conflict and no change", err, f.quotes.alternatives)
+	}
+}

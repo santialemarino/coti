@@ -12,7 +12,7 @@ import type {
 } from '@/lib/api/rfqs';
 import messages from '@/translations/es.json';
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 vi.mock('@/lib/api/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/catalog')>()),
@@ -33,6 +33,7 @@ vi.mock('@/lib/api/rfqs-client', () => ({
   deleteDiscount: vi.fn(),
   deleteQuoteItem: vi.fn(),
   deleteQuoteRecommendation: vi.fn(),
+  fillQuoteRecommendations: vi.fn(),
   setQuoteItemRecommendation: vi.fn(),
   updateDiscount: vi.fn(),
   updateQuoteAlternativeApproval: vi.fn(),
@@ -43,6 +44,7 @@ const { toast } = await import('sonner');
 const {
   deleteQuoteItem,
   deleteQuoteRecommendation,
+  fillQuoteRecommendations,
   setQuoteItemRecommendation,
   updateDiscount,
   updateQuoteAlternativeApproval,
@@ -251,6 +253,108 @@ describe('RfqItemsTable customer alternatives', () => {
     expect(
       view.getByRole('button', { name: copy.detail.items.alternatives.addType.PREMIUM }),
     ).toBeTruthy();
+  });
+
+  it('fills the empty slots from the catalog and keeps what is already there', async () => {
+    const onItemsChange = vi.fn();
+    const premium: QuoteItemAlternativeResponse = {
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000002',
+      recommendation_type: 'PREMIUM',
+      price_snapshot: '900.00',
+      canonical_name: 'Ladrillo hueco 18x18x33',
+    };
+    vi.mocked(fillQuoteRecommendations).mockResolvedValue([
+      { itemId: ITEM_ID, alternative: premium },
+    ]);
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] }],
+      onItemsChange,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    await vi.waitFor(() => expect(onItemsChange).toHaveBeenCalled());
+    expect(fillQuoteRecommendations).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID);
+    expect(onItemsChange.mock.calls[0]?.[0][0].alternatives).toEqual([
+      ECONOMY_ALTERNATIVE,
+      premium,
+    ]);
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('locks the per-option actions while a fill is running', async () => {
+    let finish: (value: never[]) => void = () => {};
+    vi.mocked(fillQuoteRecommendations).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      { ...PRICED_ITEM, alternatives: [ECONOMY_ALTERNATIVE] },
+    ]);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    const include = view.getByRole('button', { name: copy.detail.items.alternatives.include });
+    await vi.waitFor(() => expect((include as HTMLButtonElement).disabled).toBe(true));
+    finish([]);
+    await vi.waitFor(() => expect((include as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it('replaces an option the fill promoted instead of listing it twice', async () => {
+    const onItemsChange = vi.fn();
+    const candidate: QuoteItemAlternativeResponse = {
+      ...ECONOMY_ALTERNATIVE,
+      id: 'a0000000-0000-4000-8000-000000000009',
+      recommendation_type: null,
+      origin: 'AI',
+    };
+    const promoted = { ...candidate, recommendation_type: 'ECONOMY' as const };
+    vi.mocked(fillQuoteRecommendations).mockResolvedValue([
+      { itemId: ITEM_ID, alternative: promoted },
+    ]);
+    const view = renderItems(
+      BRANCH_ID,
+      'QUOTED',
+      [{ ...PRICED_ITEM, alternatives: [candidate] }],
+      onItemsChange,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    await vi.waitFor(() => expect(onItemsChange).toHaveBeenCalled());
+    expect(onItemsChange.mock.calls[0]?.[0][0].alternatives).toEqual([promoted]);
+  });
+
+  it('says so when the catalog has nothing to add', async () => {
+    const onItemsChange = vi.fn();
+    vi.mocked(fillQuoteRecommendations).mockResolvedValue([]);
+    const view = renderItems(BRANCH_ID, 'QUOTED', [PRICED_ITEM], onItemsChange);
+
+    fireEvent.click(view.getByRole('button', { name: copy.detail.items.alternatives.fill.action }));
+
+    await vi.waitFor(() =>
+      expect(toast.info).toHaveBeenCalledWith(copy.detail.items.alternatives.fill.nothing),
+    );
+    expect(onItemsChange).not.toHaveBeenCalled();
+  });
+
+  it('offers no fill once every slot is taken', () => {
+    const view = renderItems(BRANCH_ID, 'QUOTED', [
+      {
+        ...PRICED_ITEM,
+        alternatives: [
+          ECONOMY_ALTERNATIVE,
+          { ...ECONOMY_ALTERNATIVE, id: 'a-premium', recommendation_type: 'PREMIUM' },
+        ],
+      },
+    ]);
+    expect(
+      view.queryByRole('button', { name: copy.detail.items.alternatives.fill.action }),
+    ).toBeNull();
   });
 
   it.each(['780.00', '800.00', null])(

@@ -18,70 +18,31 @@ import type {
 } from '@/lib/api/rfqs';
 import { mapListItem, mapRfqDetail } from '@/lib/api/rfqs';
 
-interface RecommendationProposalRaw {
-  item_id: string;
-  product_id: string;
-  recommendation_type: 'ECONOMY' | 'PREMIUM';
-  name: string;
-  code: string | null;
-  unit: string | null;
-  unit_price: string;
-  currency: string;
-}
-
-export interface RecommendationProposal {
+// One catalog alternative the API added to an empty slot, with the quote item it belongs to.
+export interface FilledRecommendation {
   itemId: string;
-  productId: string;
-  recommendationType: 'ECONOMY' | 'PREMIUM';
-  name: string;
-  code: string | null;
-  unit: string | null;
-  unitPrice: string;
-  currency: string;
+  alternative: QuoteItemAlternativeResponse;
 }
 
-export async function searchQuoteRecommendations(
+/*
+ * Fills every empty economy and premium slot of the quote from the catalog, unapproved. Slots the
+ * seller already decided are never replaced, so it is safe to run again after editing lines.
+ */
+export async function fillQuoteRecommendations(
   quoteId: string,
   branchId: string,
-): Promise<RecommendationProposal[]> {
-  const response = await fetch(`/api/quotes/${quoteId}/recommendations/search`, {
+): Promise<FilledRecommendation[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/recommendations/fill`, {
     method: 'POST',
     headers: branchHeaders(branchId, true),
     body: '{}',
     cache: 'no-store',
   });
   if (!response.ok) await throwApiError(response);
-  const body = (await response.json()) as { items: RecommendationProposalRaw[] };
-  return body.items.map((item) => ({
-    itemId: item.item_id,
-    productId: item.product_id,
-    recommendationType: item.recommendation_type,
-    name: item.name,
-    code: item.code,
-    unit: item.unit,
-    unitPrice: item.unit_price,
-    currency: item.currency,
-  }));
-}
-
-export async function addQuoteRecommendationIfVacant(
-  quoteId: string,
-  itemId: string,
-  type: 'ECONOMY' | 'PREMIUM',
-  branchId: string,
-  productId: string,
-): Promise<QuoteItemAlternativeResponse> {
-  const response = await fetch(
-    `/api/quotes/${quoteId}/items/${itemId}/recommendations/${type}/add`,
-    {
-      method: 'POST',
-      headers: branchHeaders(branchId, true),
-      body: JSON.stringify({ product_id: productId }),
-      cache: 'no-store',
-    },
-  );
-  if (!response.ok) await throwApiError(response);
-  return response.json() as Promise<QuoteItemAlternativeResponse>;
+  const body = (await response.json()) as {
+    items: { item_id: string; alternative: QuoteItemAlternativeResponse }[];
+  };
+  return body.items.map((item) => ({ itemId: item.item_id, alternative: item.alternative }));
 }
 
 interface CreateRfqBody {
@@ -656,4 +617,86 @@ export async function reactivateQuote(
     await throwApiError(response);
   }
   return response.json() as Promise<QuoteResponse>;
+}
+
+// --- Combo suggestions ---
+
+interface ComboItemRaw {
+  product_id: string;
+  quantity: string;
+  product_code: string | null;
+  product_name: string;
+  product_unit: string | null;
+}
+
+interface ComboSuggestionRaw {
+  combo_id: string;
+  name: string;
+  description: string | null;
+  present: ComboItemRaw[];
+  missing: ComboItemRaw[];
+}
+
+export interface ComboSuggestionItem {
+  productId: string;
+  quantity: string;
+  productCode: string | null;
+  productName: string;
+  productUnit: string | null;
+}
+
+export interface ComboSuggestion {
+  comboId: string;
+  name: string;
+  description: string | null;
+  present: ComboSuggestionItem[];
+  missing: ComboSuggestionItem[];
+}
+
+function mapComboItem(raw: ComboItemRaw): ComboSuggestionItem {
+  return {
+    productId: raw.product_id,
+    quantity: raw.quantity,
+    productCode: raw.product_code,
+    productName: raw.product_name,
+    productUnit: raw.product_unit,
+  };
+}
+
+// The combos the priced quote holds part of, with what each still lacks.
+export async function fetchComboSuggestions(
+  quoteId: string,
+  branchId: string,
+): Promise<ComboSuggestion[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/combo-suggestions`, {
+    method: 'GET',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const body = (await response.json()) as { items: ComboSuggestionRaw[] };
+  return body.items.map((raw) => ({
+    comboId: raw.combo_id,
+    name: raw.name,
+    description: raw.description,
+    present: raw.present.map(mapComboItem),
+    missing: raw.missing.map(mapComboItem),
+  }));
+}
+
+// Adds a suggested combo's missing products as priced lines; returns the lines added.
+export async function addComboItems(
+  quoteId: string,
+  comboId: string,
+  branchId: string,
+): Promise<QuoteItemResponse[]> {
+  const response = await fetch(`/api/quotes/${quoteId}/combo-suggestions/${comboId}/add`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: '{}',
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  const body = (await response.json()) as { items: QuoteItemResponse[] };
+  return body.items;
 }

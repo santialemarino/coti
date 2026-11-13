@@ -29,6 +29,8 @@ const preview: CatalogImportPreview = {
     price: '100.00',
     minPrice: null,
     isActive: true,
+    economyAlternative: null,
+    premiumAlternative: null,
     action: 'CREATE',
     errors: [],
   })),
@@ -84,4 +86,28 @@ it('lists rows with errors before the valid ones', () => {
   );
   expect(view.getByText('Last product')).toBeTruthy();
   expect(view.queryByText('Second product')).toBeNull();
+});
+
+it('shows what each row does to the recommendation slots only when some row changes one', () => {
+  const [first, second] = preview.rows;
+  if (!first || !second) throw new Error('fixture has rows');
+  const plain = review();
+  expect(plain.queryByText(messages.catalogImport.table.alternatives)).toBeNull();
+  plain.unmount();
+
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <CatalogReview
+        preview={{
+          ...preview,
+          rows: [{ ...first, economyAlternative: 'ARE-002', premiumAlternative: '' }, second],
+        }}
+        onBack={() => {}}
+        onConfirmed={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByText(messages.catalogImport.table.alternatives)).toBeTruthy();
+  expect(view.getByText('Económica: ARE-002')).toBeTruthy();
+  expect(view.getByText(messages.catalogImport.alternatives.premiumCleared)).toBeTruthy();
 });

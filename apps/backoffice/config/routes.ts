@@ -34,6 +34,12 @@ export const ROUTES = {
   // A step of the ARCA guide, linked from the status card when that step is the one left.
   arcaStep: (step: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing/arca#${step}`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
+  promotionSettings: `${SETTINGS_ROOT}/promotions`,
+  promotionNew: `${SETTINGS_ROOT}/promotions/new`,
+  promotionEdit: (id: string) => `${SETTINGS_ROOT}/promotions/${encodeURIComponent(id)}`,
+  comboSettings: `${SETTINGS_ROOT}/combos`,
+  comboNew: `${SETTINGS_ROOT}/combos/new`,
+  comboEdit: (id: string) => `${SETTINGS_ROOT}/combos/${encodeURIComponent(id)}`,
   exportSettings: `${SETTINGS_ROOT}/export`,
   invoicingSettings: `${SETTINGS_ROOT}/invoicing`,
   // A section of the invoicing page, linked from where a missing piece of it is reported.

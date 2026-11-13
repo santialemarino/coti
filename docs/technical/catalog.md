@@ -90,7 +90,10 @@ pair: repeating it returns **409**, and changing the type means deleting and rec
 of each. `PUT /v1/products/{productId}/recommendations/{type}` replaces the existing slot in
 one transaction, so configuring a new premium or economical product cannot leave competing
 recommendations behind. `EQUIVALENT` remains an open-ended catalog relation and is not a
-recommendation slot.
+recommendation slot. It is a tool for the seller, shown when choosing a line's product, and never an
+option for the customer: only an `ECONOMY` or `PREMIUM` option can be approved, and only those reach
+the sent offer. An offer sent before this rule may still show an approved untyped option; the customer
+can still choose it, since accepting only checks what the offer itself showed.
 
 Both products of an `ECONOMY` or `PREMIUM` relation must have the same family, subgroup and
 non-empty unit. Units are compared without case or surrounding whitespace. The catalog and quote
@@ -125,10 +128,14 @@ If a selected replacement has no active branch price, the API returns
 `RECOMMENDATION_PRICE_UNAVAILABLE`. A toast explains the missing price and the selector stays open
 so the seller can choose another product or have its branch price configured.
 
-The API also exposes catalog recommendation search on a mutable `QUOTED` version. Search is
-read-only; a separate API action adds a still-valid proposal to an empty line slot without approving
-it or replacing a seller's existing choice. The backoffice does not expose this search. Generation-time
-catalog proposals remain in place, and the seller separately chooses which options to offer.
+On a mutable `QUOTED` version the seller can also fill the empty slots on demand, with
+**Completar desde el catálogo** (`POST /v1/quotes/{quoteId}/recommendations/fill`). In one transaction,
+with the quote claimed for the edit, it adds every still-eligible catalog `ECONOMY` or `PREMIUM`
+alternative to a line whose slot of that type is empty: unapproved, priced at the quote branch, and
+never replacing a seller's existing choice, so running it again after editing lines is safe. A matcher
+candidate for the same product is promoted in place rather than duplicated. The API keeps the
+read-only search (`POST /v1/quotes/{quoteId}/recommendations/search`) and the single-slot add beside
+it; the backoffice uses only the fill.
 
 Catalog slots do not encode branch prices. In a quote, an economy alternative's unit price must be
 strictly lower than the quoted line's unit price, and a premium alternative's must be strictly higher;
@@ -136,6 +143,23 @@ equal prices qualify for neither slot. The comparison uses the two price snapsho
 currency before discounts, without converting package sizes. The seller checks presentation and
 suitability. Discounts are recalculated for the selected combination, so a lower unit price does not
 guarantee a lower final total.
+
+## Combos
+
+A combo is a named set of the account's products sold together: at least two distinct products, each
+with the quantity the combo carries, and the branches that sell it (`branch_combo`, switched off rather
+than deleted when a branch is left out). It has no price of its own. Administrators manage combos under
+`/v1/combos` (list, get, create, replace), and a product or branch from another account is refused.
+
+A combo never becomes a quote line. On a priced (`QUOTED`) quote,
+`GET /v1/quotes/{quoteId}/combo-suggestions` lists the active combos the quote's branch sells that the
+quote holds at least one product of and lacks at least one, with what is present and what is missing.
+A combo is left out when a missing product is inactive or has no price at the branch, so completing it
+can never add an unpriced line. `POST /v1/quotes/{quoteId}/combo-suggestions/{comboId}/add` adds the
+missing products as ordinary lines, at the combo's quantities and the branch's current prices, in one
+transaction, and settles the total and promotions once. A combo the quote no longer qualifies for
+answers **409**. A bundle discount is an `ITEM_SET` promotion over the same products: the engine applies
+it to the completed lines like any other promotion.
 
 ## The check the database does not do
 
@@ -177,7 +201,11 @@ nor two concurrent repricings can leave the product with two open periods or non
 That is what keeps a quote frozen last month explainable: the price that applied then is
 still in the table.
 
-- An unspecified `valid_from` means now.
+- An unspecified `valid_from` means now, read from the **database** clock in the write's own
+  transaction, which is the clock every in-force read compares against. The API process's clock
+  can run a few milliseconds ahead, and a period stamped with it would not be in force for the next
+  request. A new product's first price and the catalog and price-list imports start their periods the
+  same way.
 - A `valid_from` **before** the open period's start is rejected (**422**): it would close a
   period before it opened, and rewrite which price applied at a moment already quoted.
 - The first price for a product at a branch closes nothing.
@@ -273,6 +301,15 @@ validates that a provided subgroup belongs to the selected family. Prices use AR
 strings throughout the HTTP contract; currency and price conditions are not spreadsheet
 columns. Every route requires an administrator and an active `X-Branch-Id`; the account
 always comes from the authenticated tenant.
+
+`alternativa_economica` and `alternativa_premium` are optional and fill the product's `ECONOMY` and
+`PREMIUM` recommendation slots with another product's code. The export writes the codes the slots
+hold. A blank cell keeps the slot, and `NINGUNA` (or `-`) clears it. A code must name an active
+product of the same family, subgroup and unit as the row, with a subgroup on both. It is judged as
+the catalog will stand after the import, so it can name a product created by the same file. A row
+whose alternative fails is reported and skipped like any other invalid row, and the check repeats
+until no remaining row points at a skipped one. Confirming writes the slots in the same transaction
+as the products, with the replacement rule of `PUT /v1/products/{productId}/recommendations/{type}`.
 
 Catalog declares its columns and workbook sheets on the shared contract documented in
 [Shared spreadsheet layer](spreadsheets.md); it does not own CSV, XLSX, ZIP, or cell serialization.

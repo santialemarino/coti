@@ -137,3 +137,11 @@ Admin-only, account-scoped:
 
 A rule naming a branch or product outside the account is refused with `422`. Changing a rule reaches
 a quote at its next sweep; a frozen version keeps the discounts it was sent with.
+
+Administrators manage the rules in the backoffice under **Configuración → Promociones**
+(`/settings/promotions`, with `/new` and `/{id}`). The list shows each rule's type, benefit, scope and
+validity, and a status read from the flag and the window: in force, scheduled, expired or switched off.
+Switching a rule off or on resends it whole, so its definition survives. The form mirrors the service's
+validation and sends days as whole Argentine days (`T00:00:00-03:00` to `T23:59:59-03:00`). A tiered
+rule's quantities are its tiers, so the form sends no per-target minimum for it. The screen never
+calculates an amount; the engine does.

@@ -2,10 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ProductSearchDialog,
-  type ProductSuggestion,
-} from '@/app/(protected)/rfqs/[id]/_components/product-search-dialog';
+import { ProductSearchDialog, type ProductSuggestion } from '@/components/product-search-dialog';
 import messages from '@/translations/es.json';
 
 vi.mock('@/lib/api/catalog', async (importOriginal) => ({

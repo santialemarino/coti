@@ -29,6 +29,9 @@ vi.mock('@/lib/api/rfqs-client', () => ({
 // The send button's presence per status is what these tests exercise; the edit surface and header
 // are stubbed out, with the send dialog left as a spy.
 vi.mock('./rfq-items-table', () => ({ RfqItemsTable: vi.fn(() => null) }));
+vi.mock('@/app/(protected)/rfqs/[id]/_components/combo-suggestions', () => ({
+  ComboSuggestions: () => null,
+}));
 vi.mock('./rfq-detail-header', () => ({ RfqDetailHeader: () => null }));
 vi.mock('./invoice-card', () => ({
   InvoiceCard: ({ readOnly }: { readOnly?: boolean }) => (

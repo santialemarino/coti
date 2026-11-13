@@ -9,7 +9,7 @@ import (
 
 var catalogImportHeaders = []string{
 	"codigo", "nombre", "descripcion", "unidad", "familia", "subgrupo", "precio",
-	"precio_minimo", "activo",
+	"precio_minimo", "activo", "alternativa_economica", "alternativa_premium",
 }
 
 var catalogImportInstructions = []string{
@@ -23,6 +23,8 @@ var catalogImportInstructions = []string{
 	"Los precios iniciales se guardan en ARS.",
 	"Las filas con errores se muestran en la vista previa y se omiten al confirmar.",
 	"Los cambios de precio crean una nueva vigencia y no modifican cotizaciones anteriores.",
+	"En alternativa_economica y alternativa_premium va el código de otro producto activo de la misma familia, subgrupo y unidad. Puede ser un producto del mismo archivo.",
+	"Una alternativa vacía conserva la actual; escribí NINGUNA para quitarla. Cargar una reemplaza la que había para las próximas cotizaciones.",
 }
 
 func buildCatalogImportXLSX(export domain.CatalogExport, families []domain.ProductFamily) ([]byte, error) {
@@ -36,6 +38,7 @@ func buildCatalogImportXLSX(export domain.CatalogExport, families []domain.Produ
 		catalogRows = append(catalogRows, spreadsheet.ExportRow{Number: index + 2, Values: []string{
 			row.Code, row.Name, row.Description, row.Unit, row.Family, optionalString(row.Subgroup),
 			optionalString(row.Price), optionalString(row.MinPrice), active,
+			optionalString(row.EconomyAlternative), optionalString(row.PremiumAlternative),
 		}})
 	}
 	familyLastRow := len(families) + 1
@@ -54,7 +57,7 @@ func buildCatalogImportXLSX(export domain.CatalogExport, families []domain.Produ
 				ColumnWidths: []spreadsheet.ColumnWidth{
 					{Min: 1, Max: 1, Width: 20}, {Min: 2, Max: 3, Width: 38},
 					{Min: 4, Max: 4, Width: 18}, {Min: 5, Max: 6, Width: 34},
-					{Min: 7, Max: 9, Width: 18},
+					{Min: 7, Max: 9, Width: 18}, {Min: 10, Max: 11, Width: 24},
 				},
 				DataValidations: []spreadsheet.DataValidation{
 					{

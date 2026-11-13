@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Callout, ConfirmDialog, PendingButton } from '@repo/ui/components';
 import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
+import { ComboSuggestions } from '@/app/(protected)/rfqs/[id]/_components/combo-suggestions';
 import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -386,6 +387,15 @@ export function RfqDetailView({
         onRefresh={refreshDetail}
         readOnly={archived}
       />
+
+      {quoteId && quoteStatus === 'QUOTED' && !archived ? (
+        <ComboSuggestions
+          quoteId={quoteId}
+          branchId={branchId}
+          items={items}
+          onAdded={refreshDetail}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={discardOpen}

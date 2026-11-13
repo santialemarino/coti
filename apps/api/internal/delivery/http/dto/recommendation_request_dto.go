@@ -23,3 +23,14 @@ type RecommendationProposalResponse struct {
 type AddRecommendationRequest struct {
 	ProductID uuid.UUID `json:"product_id" binding:"required"`
 }
+
+// RecommendationFillResponse lists the catalog alternatives added to empty slots, by quote item.
+type RecommendationFillResponse struct {
+	Items []FilledRecommendationResponse `json:"items"`
+}
+
+// FilledRecommendationResponse is one alternative added to an item's empty slot.
+type FilledRecommendationResponse struct {
+	ItemID      uuid.UUID                    `json:"item_id"`
+	Alternative QuoteItemAlternativeResponse `json:"alternative"`
+}

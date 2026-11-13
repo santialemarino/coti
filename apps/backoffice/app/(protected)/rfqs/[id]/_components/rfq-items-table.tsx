@@ -38,6 +38,7 @@ import {
 } from '@repo/ui/components';
 import { cn, SPRING } from '@repo/ui/lib';
 import { AmountInput } from '@/components/amount-input';
+import { ProductSearchDialog, type ProductSuggestion } from '@/components/product-search-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -54,6 +55,7 @@ import {
   deleteDiscount,
   deleteQuoteItem,
   deleteQuoteRecommendation,
+  fillQuoteRecommendations,
   setQuoteItemRecommendation,
   updateDiscount,
   updateQuoteAlternativeApproval,
@@ -63,7 +65,6 @@ import { useFormatters } from '@/lib/i18n/formatters';
 import { recommendationPriceValid } from '@/lib/recommendation-price';
 import { shortUnit } from '@/lib/utils/units';
 import { DiscountDialog } from './discount-dialog';
-import { ProductSearchDialog, type ProductSuggestion } from './product-search-dialog';
 
 /*
  * Capability matrix keyed on the raw quote.current_status. GENERATED reads as DRAFT here (the
@@ -220,6 +221,7 @@ export function RfqItemsTable({
     product: CatalogProduct;
   } | null>(null);
   const [updatingRecommendation, setUpdatingRecommendation] = useState<string | null>(null);
+  const [filling, setFilling] = useState(false);
 
   const hasQuote = !!quoteId;
   const showPricing = hasQuote && PRICED_STATUSES.has(quoteStatus ?? '');
@@ -230,6 +232,15 @@ export function RfqItemsTable({
   // Confidence belongs to the pre-quote review: visible before pricing is set, hidden once a
   // quote exists and the seller reasons about products and money.
   const showConfidence = !showPricing;
+  // Whether some priced line still has an economy or premium slot the catalog could fill.
+  const hasEmptySlot = items.some(
+    (item) =>
+      item.product_id !== null &&
+      CUSTOMER_RECOMMENDATION_TYPES.some(
+        (type) =>
+          !item.alternatives.some((alternative) => alternative.recommendation_type === type),
+      ),
+  );
   // A priced quote keeps its lines, but one the catalog left unsure can still be settled.
   const canResolve = canEditProducts || canEditPrices;
   const quantityKind = canEditProducts ? 'quantityInput' : 'quantity';
@@ -416,6 +427,44 @@ export function RfqItemsTable({
       delete next[itemId];
       return next;
     });
+  }
+
+  /*
+   * Fills every empty economy and premium slot from the catalog in one request. What it adds starts
+   * unapproved, so nothing reaches the customer until the seller includes it.
+   */
+  async function fillFromCatalog() {
+    if (!quoteId || filling) return;
+    setFilling(true);
+    try {
+      const filled = await fillQuoteRecommendations(quoteId, branchId);
+      if (filled.length === 0) {
+        toast.info(t('detail.items.alternatives.fill.nothing'));
+        return;
+      }
+      onItemsChange(
+        items.map((line) => {
+          const added = filled
+            .filter((entry) => entry.itemId === line.id)
+            .map((entry) => entry.alternative);
+          if (added.length === 0) return line;
+          return {
+            ...line,
+            alternatives: [
+              ...line.alternatives.filter(
+                (alternative) => !added.some((entry) => entry.id === alternative.id),
+              ),
+              ...added,
+            ],
+          };
+        }),
+      );
+      toast.success(t('detail.items.alternatives.fill.done', { count: filled.length }));
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    } finally {
+      setFilling(false);
+    }
   }
 
   async function handleAlternativeApproval(
@@ -913,6 +962,23 @@ export function RfqItemsTable({
               className="-mt-3 overflow-hidden"
             >
               <div className="flex flex-col pt-3 gap-y-3">
+                {hasEmptySlot ? (
+                  <div className="flex flex-col items-start gap-y-1">
+                    <PendingButton
+                      variant="outline"
+                      size="sm"
+                      pending={filling}
+                      pendingLabel={t('detail.items.alternatives.fill.pending')}
+                      disabled={updatingAlternativeId !== null || updatingRecommendation !== null}
+                      onClick={() => void fillFromCatalog()}
+                    >
+                      {t('detail.items.alternatives.fill.action')}
+                    </PendingButton>
+                    <p className="text-paragraph-xs text-foreground-muted">
+                      {t('detail.items.alternatives.fill.hint')}
+                    </p>
+                  </div>
+                ) : null}
                 {items
                   .filter((item) => item.product_id !== null)
                   .map((item) => {
@@ -1009,6 +1075,7 @@ export function RfqItemsTable({
                                           variant="outline"
                                           size="sm"
                                           disabled={
+                                            filling ||
                                             updatingAlternativeId !== null ||
                                             updatingRecommendation !== null
                                           }
@@ -1034,6 +1101,7 @@ export function RfqItemsTable({
                                           variant="outline"
                                           size="sm"
                                           disabled={
+                                            filling ||
                                             updatingAlternativeId !== null ||
                                             updatingRecommendation !== null
                                           }
@@ -1054,6 +1122,7 @@ export function RfqItemsTable({
                                       variant={approved ? 'outline' : 'default'}
                                       size="sm"
                                       disabled={
+                                        filling ||
                                         updatingAlternativeId !== null ||
                                         updatingRecommendation !== null ||
                                         (!approved && !validPrice)
@@ -1098,6 +1167,7 @@ export function RfqItemsTable({
                                     variant="outline"
                                     size="sm"
                                     disabled={
+                                      filling ||
                                       updatingAlternativeId !== null ||
                                       updatingRecommendation !== null
                                     }
