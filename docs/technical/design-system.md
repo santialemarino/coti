@@ -364,12 +364,13 @@ both take and hand back `YYYY-MM-DD` strings, so a form keeps the shape the API 
   the chosen day again keeps it. The month and year are `Combobox`es, never the browser's
   `<select>`, and reach 80 years back unless `min`/`max` bound them.
 - **`DateRangePicker`** — an interval, wherever one is chosen: one field, never two inputs. The
-  panel names both ends and edits one at a time: a day sets the end being edited and moves to the
-  other, the second pick commits and closes, and a day before the start starts the range over, so
-  it can never run backwards. Choosing an end first changes that end alone; the done button
-  confirms a range edited without picking both again. Escape or a click outside drops the edit.
+  panel opens with neither end chosen: two picks make the range in either order (the earlier day
+  is the start, the same day twice is a one-day range), and the second pick commits and closes. Until
+  then the range follows the pointer from the first pick, in either direction. Choosing an end
+  first replaces that end alone and swaps the two when the new day crosses the other. The panel
+  fades out showing the range it committed. Escape or a click outside drops the edit.
   `openStart`/`openEnd` give the wording of an empty end and let it stay empty, with a clear
-  button beside it; `presets` commit at once; `names` submits each end as a hidden input for a
+  button beside it and the done button to confirm a range left open; `presets` commit at once; `names` submits each end as a hidden input for a
   native form (Reportes' `next/form`). Two months side by side from 768px, one below.
 
 The backoffice's shared copy and presets come from `useDateRangeCopy` and
