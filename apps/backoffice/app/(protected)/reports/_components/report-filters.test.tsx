@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -15,6 +15,7 @@ const begin = vi.hoisted(() => vi.fn(() => 1));
 vi.mock('@/hooks/use-navigation-pending', () => ({ useNavigationPending: () => ({ begin }) }));
 
 const copy = messages.reports.filters;
+const range = messages.common.dateRange;
 
 function renderFilters(from = '2026-10-01', to = '2026-10-25') {
   const view = render(
@@ -25,25 +26,52 @@ function renderFilters(from = '2026-10-01', to = '2026-10-25') {
   return view.container.querySelector('form')!;
 }
 
+function period() {
+  return screen.getByRole('button', { name: copy.period });
+}
+
+// Picks a range through the calendar the way a seller does: the start, then the end.
+function pickRange(fromLabel: string, toLabel: string) {
+  fireEvent.click(period());
+  const panel = screen.getByRole('dialog');
+  const day = (label: string) =>
+    within(panel).getByRole('button', { name: new RegExp(`(^|, )${label}(,|$)`) });
+  fireEvent.click(day(fromLabel));
+  fireEvent.click(day(toLabel));
+}
+
 describe('ReportFilters', () => {
+  it('shows the period as one Argentine range', () => {
+    renderFilters();
+
+    expect(period().textContent).toBe('01/10/2026 – 25/10/2026');
+  });
+
+  // A URL can still carry a reversed period; the form refuses to send it on.
   it('blocks a range that runs backwards before it reaches the API', () => {
-    const form = renderFilters();
-    fireEvent.change(screen.getByLabelText(copy.from), { target: { value: '2026-10-20' } });
-    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-10' } });
+    const form = renderFilters('2026-10-20', '2026-10-10');
     fireEvent.submit(form);
 
     expect(screen.getByRole('alert').textContent).toBe(copy.invalidRange);
-    expect(screen.getByLabelText(copy.from).getAttribute('aria-invalid')).toBe('true');
+    expect(period().getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('clears the error once the dates are ordered again', () => {
-    const form = renderFilters();
-    fireEvent.change(screen.getByLabelText(copy.from), { target: { value: '2026-10-20' } });
-    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-10' } });
+  it('clears the error once a range is picked again', () => {
+    const form = renderFilters('2026-10-20', '2026-10-10');
     fireEvent.submit(form);
-    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-25' } });
+    pickRange('5 de octubre de 2026', '12 de octubre de 2026');
 
     expect(screen.queryByRole('alert')).toBeNull();
+    expect(period().hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('offers the frequent periods beside the calendar', () => {
+    renderFilters();
+    fireEvent.click(period());
+
+    expect(
+      within(screen.getByRole('group', { name: range.presetsLabel })).getAllByRole('button'),
+    ).toHaveLength(Object.keys(range.presets).length);
   });
 
   it('submits every active filter and shows the seller selector to administrators', () => {
@@ -89,15 +117,13 @@ describe('ReportFilters', () => {
   });
 
   // next/form navigates on its own, so the shell is told where it goes and shows the bar meanwhile.
-  it('reports the navigation it submits, and none for a range it blocks', () => {
+  it('submits the picked period, and reports the navigation; none for a range it blocks', () => {
     begin.mockClear();
-    const form = renderFilters();
-    fireEvent.change(screen.getByLabelText(copy.from), { target: { value: '2026-10-20' } });
-    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-10' } });
+    const form = renderFilters('2026-10-20', '2026-10-10');
     fireEvent.submit(form);
     expect(begin).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-25' } });
+    pickRange('20 de octubre de 2026', '25 de octubre de 2026');
     fireEvent.submit(form);
     expect(begin).toHaveBeenCalledWith('/reports?from=2026-10-20&to=2026-10-25');
   });

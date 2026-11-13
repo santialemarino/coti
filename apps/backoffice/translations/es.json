@@ -176,6 +176,22 @@
       "search": "Buscar",
       "back": "Volver"
     },
+    "dateRange": {
+      "from": "Desde",
+      "to": "Hasta",
+      "pick": "Seleccioná una fecha",
+      "done": "Listo",
+      "clearFrom": "Quitar la fecha de inicio",
+      "clearTo": "Quitar la fecha de fin",
+      "presetsLabel": "Períodos frecuentes",
+      "presets": {
+        "last7": "Últimos 7 días",
+        "last30": "Últimos 30 días",
+        "thisMonth": "Este mes",
+        "lastMonth": "Mes anterior",
+        "thisYear": "Este año"
+      }
+    },
     "states": {
       "loading": "Cargando…",
       "empty": "No hay datos para mostrar.",
@@ -2192,8 +2208,10 @@
       "closed": "{name} (cerrada)"
     },
     "period": {
-      "from": "Desde",
-      "to": "Hasta",
+      "label": "Período",
+      "placeholder": "Todo el historial",
+      "openStart": "Desde el inicio",
+      "openEnd": "Hasta hoy",
       "quotesHint": "Por fecha de creación. Sin fechas, se exporta todo el historial.",
       "invoicesHint": "Por fecha de emisión. Sin fechas, se exporta todo el historial.",
       "invalidRange": "La fecha desde no puede ser posterior a la fecha hasta."
@@ -2215,8 +2233,7 @@
       "error": "No pudimos generar el PDF. Probá de nuevo."
     },
     "filters": {
-      "from": "Desde",
-      "to": "Hasta",
+      "period": "Período",
       "status": "Estado",
       "statusCount": "{count, plural, one {# estado} other {# estados}}",
       "clearStatus": "Limpiar estados",
@@ -3824,13 +3841,14 @@
         "valueRequired": "Ingresá un valor mayor a cero.",
         "overlap": "Se superpone con otro tramo."
       },
-      "validFrom": {
-        "label": "Desde",
-        "hint": "Vacío: vigente desde ya."
+      "validity": {
+        "label": "Vigencia",
+        "placeholder": "Siempre vigente",
+        "openStart": "Desde ya",
+        "openEnd": "Sin vencimiento",
+        "hint": "Sin inicio, rige desde ya; sin fin, no vence. Incluye todo el último día."
       },
       "validTo": {
-        "label": "Hasta",
-        "hint": "Vacío: sin vencimiento. Incluye todo ese día.",
         "beforeFrom": "No puede ser anterior a «desde»."
       },
       "priority": {

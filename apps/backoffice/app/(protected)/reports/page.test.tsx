@@ -176,8 +176,9 @@ describe('ReportsPage', () => {
       branchIds: [],
       tagIds: [],
     });
-    expect((screen.getByLabelText(copy.filters.from) as HTMLInputElement).value).toBe('2026-09-26');
-    expect((screen.getByLabelText(copy.filters.to) as HTMLInputElement).value).toBe('2026-10-25');
+    expect(screen.getByRole('button', { name: copy.filters.period }).textContent).toBe(
+      '26/09/2026 – 25/10/2026',
+    );
   });
 
   it('forwards every report filter and seeds the controls from the URL', async () => {
@@ -573,7 +574,9 @@ describe('ReportsPage', () => {
     );
 
     expect(screen.getByText(copy.filters.invalid)).toBeTruthy();
-    expect((screen.getByLabelText(copy.filters.from) as HTMLInputElement).value).toBe('2025-01-01');
+    expect(screen.getByRole('button', { name: copy.filters.period }).textContent).toBe(
+      '01/01/2025 – 01/01/2026',
+    );
     expect(screen.queryByRole('button', { name: copy.download.label })).toBeNull();
   });
 });

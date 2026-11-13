@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import {
   Combobox,
+  DatePicker,
   Form,
   FormControl,
   FormDescription,
@@ -60,6 +61,7 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
   const t = useTranslations('invoicing.settings');
   const tConditions = useTranslations('invoicing.ivaConditions');
   const tErrors = useTranslations('common.form.errors');
+  const tDateRange = useTranslations('common.dateRange');
   const message = useApiErrorMessage('invoicing.settings');
   const schema = useMemo(
     () => invoicingSettingsSchema({ field: t, shared: tErrors }),
@@ -271,7 +273,15 @@ export function InvoicingSettingsForm({ settings }: InvoicingSettingsFormProps) 
                 <FormItem>
                   <FormLabel required>{t('profile.activityStartedOn')}</FormLabel>
                   <FormControl>
-                    <Input {...field} type="date" disabled={pending} />
+                    <DatePicker
+                      ref={field.ref}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      onBlur={field.onBlur}
+                      placeholder={tDateRange('pick')}
+                      disabled={pending}
+                      className="sm:w-56"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

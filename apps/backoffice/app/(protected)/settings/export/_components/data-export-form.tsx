@@ -11,8 +11,8 @@ import {
   Collapsible,
   CollapsibleContent,
   Combobox,
+  DateRangePicker,
   Hint,
-  Input,
   Label,
   PendingButton,
   RadioGroup,
@@ -22,7 +22,9 @@ import {
   ToggleGroupItem,
 } from '@repo/ui/components';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { useDateRangeCopy } from '@/hooks/use-date-range-copy';
 import { errorCodeOf, throwApiError } from '@/lib/api/errors';
+import { DATE_RANGE_PRESETS } from '@/lib/utils/date-ranges';
 
 const ENTITIES = ['quotes', 'catalog', 'clients', 'invoices'] as const;
 const FORMATS = ['csv', 'xml'] as const;
@@ -55,10 +57,10 @@ export function DataExportForm({ branches, offersInvoices }: DataExportFormProps
   const [entity, setEntity] = useState<Entity>('quotes');
   const [format, setFormat] = useState<Format>('csv');
   const [branchId, setBranchId] = useState(ALL_BRANCHES);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [period, setPeriod] = useState({ from: '', to: '' });
   const [rangeError, setRangeError] = useState('');
   const [pending, setPending] = useState(false);
+  const rangeCopy = useDateRangeCopy(DATE_RANGE_PRESETS);
 
   const entities = ENTITIES.filter((value) => value !== 'invoices' || offersInvoices);
   // A branch is a choice only between several, and clients belong to the whole account.
@@ -66,7 +68,7 @@ export function DataExportForm({ branches, offersInvoices }: DataExportFormProps
   const showsPeriod = entity === 'quotes' || entity === 'invoices';
 
   async function download() {
-    if (showsPeriod && from && to && from > to) {
+    if (showsPeriod && period.from && period.to && period.from > period.to) {
       setRangeError(t('period.invalidRange'));
       return;
     }
@@ -74,8 +76,8 @@ export function DataExportForm({ branches, offersInvoices }: DataExportFormProps
     try {
       const query = new URLSearchParams({ format });
       if (showsBranch && branchId !== ALL_BRANCHES) query.set('branch_id', branchId);
-      if (showsPeriod && from) query.set('from', from);
-      if (showsPeriod && to) query.set('to', to);
+      if (showsPeriod && period.from) query.set('from', period.from);
+      if (showsPeriod && period.to) query.set('to', period.to);
       const response = await fetch(`/api/exports/${entity}?${query.toString()}`, {
         cache: 'no-store',
       });
@@ -184,25 +186,23 @@ export function DataExportForm({ branches, offersInvoices }: DataExportFormProps
         <Collapsible open={showsPeriod} className="-mt-6">
           <CollapsibleContent>
             <div className="flex flex-col pt-6 gap-y-2">
-              <div className="flex flex-wrap gap-4">
-                {(['from', 'to'] as const).map((bound) => (
-                  <div key={bound} className="flex w-full flex-col gap-y-1.5 sm:w-auto">
-                    <Label htmlFor={`${fieldId}-${bound}`}>{t(`period.${bound}`)}</Label>
-                    <Input
-                      id={`${fieldId}-${bound}`}
-                      type="date"
-                      containerClassName="w-full sm:w-44"
-                      value={bound === 'from' ? from : to}
-                      aria-invalid={Boolean(rangeError)}
-                      aria-describedby={`${fieldId}-period-hint`}
-                      onChange={(event) => {
-                        (bound === 'from' ? setFrom : setTo)(event.target.value);
-                        setRangeError('');
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
+              <Label htmlFor={`${fieldId}-period`}>{t('period.label')}</Label>
+              <DateRangePicker
+                id={`${fieldId}-period`}
+                value={period}
+                onValueChange={(next) => {
+                  setPeriod(next);
+                  setRangeError('');
+                }}
+                placeholder={t('period.placeholder')}
+                labels={rangeCopy.labels}
+                presets={rangeCopy.presets}
+                openStart={t('period.openStart')}
+                openEnd={t('period.openEnd')}
+                className="sm:w-80"
+                aria-invalid={Boolean(rangeError)}
+                aria-describedby={`${fieldId}-period-hint`}
+              />
               <p
                 id={`${fieldId}-period-hint`}
                 aria-live="polite"

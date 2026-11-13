@@ -13,9 +13,11 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Combobox, Input, Label, MultiCombobox } from '@repo/ui/components';
+import { Button, Combobox, DateRangePicker, Label, MultiCombobox } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
+import { useDateRangeCopy } from '@/hooks/use-date-range-copy';
 import { useNavigationPending } from '@/hooks/use-navigation-pending';
+import { DATE_RANGE_PRESETS } from '@/lib/utils/date-ranges';
 
 const REPORT_STATUSES = [
   'DRAFT',
@@ -77,8 +79,7 @@ export function ReportFilters({
   const t = useTranslations('reports.filters');
   const tStatus = useTranslations('reports.statusLabels');
   const tChannel = useTranslations('rfqs.channels');
-  const [fromValue, setFromValue] = useState(from);
-  const [toValue, setToValue] = useState(to);
+  const [period, setPeriod] = useState({ from, to });
   const [statusValues, setStatusValues] = useState(statuses);
   const [channelValue, setChannelValue] = useState(channel ?? ALL);
   const [sellerValue, setSellerValue] = useState(sellerId ?? ALL);
@@ -87,13 +88,14 @@ export function ReportFilters({
   const [tagValues, setTagValues] = useState(tagIds);
   const [error, setError] = useState('');
   const { begin } = useNavigationPending();
+  const rangeCopy = useDateRangeCopy(DATE_RANGE_PRESETS);
 
   return (
     <Form
       action={ROUTES.reports}
       className="flex flex-wrap items-end gap-4"
       onSubmit={(event) => {
-        if (fromValue && toValue && fromValue > toValue) {
+        if (period.from && period.to && period.from > period.to) {
           event.preventDefault();
           setError(t('invalidRange'));
           return;
@@ -107,37 +109,21 @@ export function ReportFilters({
       }}
     >
       <div className="flex w-full flex-col gap-y-1.5 sm:w-auto">
-        <Label htmlFor="report-from">{t('from')}</Label>
-        <Input
-          id="report-from"
-          name="from"
-          type="date"
-          required
-          containerClassName="w-full sm:w-44"
-          value={fromValue}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'report-range-error' : undefined}
-          onChange={(event) => {
-            setFromValue(event.target.value);
+        <Label htmlFor="report-period">{t('period')}</Label>
+        <DateRangePicker
+          id="report-period"
+          value={period}
+          onValueChange={(next) => {
+            setPeriod(next);
             setError('');
           }}
-        />
-      </div>
-      <div className="flex w-full flex-col gap-y-1.5 sm:w-auto">
-        <Label htmlFor="report-to">{t('to')}</Label>
-        <Input
-          id="report-to"
-          name="to"
-          type="date"
-          required
-          containerClassName="w-full sm:w-44"
-          value={toValue}
+          placeholder={t('period')}
+          labels={rangeCopy.labels}
+          presets={rangeCopy.presets}
+          names={{ from: 'from', to: 'to' }}
+          className="sm:w-72"
           aria-invalid={Boolean(error)}
           aria-describedby={error ? 'report-range-error' : undefined}
-          onChange={(event) => {
-            setToValue(event.target.value);
-            setError('');
-          }}
         />
       </div>
       <MultiCombobox
