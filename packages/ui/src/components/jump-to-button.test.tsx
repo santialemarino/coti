@@ -152,4 +152,19 @@ describe('JumpToButton', () => {
     await act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
     expect(view.container.querySelector('svg')?.getAttribute('class')).toContain('rotate-180');
   });
+
+  // A scroll while the target is on screen must not conjure the arrow back.
+  it('stays hidden on scroll while the target is on screen', async () => {
+    const view = render(<Page />);
+    act(() => report({ isIntersecting: true, top: 300 }));
+    vi.spyOn(view.getByTestId('actions'), 'getBoundingClientRect').mockReturnValue({
+      top: 300,
+      bottom: 350,
+    } as DOMRect);
+    act(() => {
+      window.dispatchEvent(new Event('scroll'));
+    });
+    await act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
+    expect(wrapper(view)?.dataset.state).toBe('hidden');
+  });
 });
