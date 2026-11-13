@@ -1,9 +1,10 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Pagination } from '@repo/ui/components';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { AdministrationView } from '@/lib/constants/administration';
 
 interface InvoicePaginationProps {
@@ -14,7 +15,7 @@ interface InvoicePaginationProps {
 
 // Both views are paged on the server, so a page change is a navigation to `?page=` in the same view.
 export function InvoicePagination({ page, pageCount, view = 'history' }: InvoicePaginationProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const pathname = usePathname();
   const t = useTranslations('common.pagination');
 

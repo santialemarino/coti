@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { cn } from '@repo/ui/lib';
+import { PENDING_SCREEN_CLASS } from '@/app/(protected)/_components/navigation-pending';
 import { OnboardingChecklist } from '@/app/(protected)/_components/onboarding-checklist';
 import { SettingsNav, type SettingsNavItem } from '@/app/(protected)/_components/settings-nav';
 import { ClientContactSuggestions } from '@/app/(protected)/clients/_components/client-contact-suggestions';
@@ -17,6 +18,7 @@ import { RfqViewLink } from '@/app/(protected)/rfqs/_components/rfq-view-link';
 import { isOrdersPath } from '@/config/routes';
 import { useColumnSection } from '@/hooks/use-column-section';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { useNavigationPending } from '@/hooks/use-navigation-pending';
 import type { ContactSuggestion } from '@/lib/api/client-contact-suggestions';
 import type { Onboarding } from '@/lib/api/onboarding';
 
@@ -51,6 +53,8 @@ export function ContextColumn({ settingsNav, onboarding, suggestions }: ContextC
   const activeRfqId = useHeldWhileClosed(rfqId, live === 'queue');
   // Below lg on a landing the column is the page's content, so it is its main landmark and title.
   const isPage = atRoot && !wide;
+  // As the page, it is the screen a navigation leaves, and dims like one.
+  const busy = useNavigationPending().busy && isPage;
 
   // A layout is never re-rendered by navigation, so the list is read again on every move within the
   // orders — the queue, an order, the table — and when the window regains focus on them.
@@ -88,7 +92,11 @@ export function ContextColumn({ settingsNav, onboarding, suggestions }: ContextC
       <motion.aside
         layoutScroll
         role={isPage ? 'main' : undefined}
-        className="flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:bg-transparent max-lg:border-r-0"
+        aria-busy={busy || undefined}
+        className={cn(
+          'flex w-(--column-width) h-full shrink-0 flex-col bg-background border-r border-border scroll-area max-lg:h-auto max-lg:overflow-visible max-lg:bg-transparent max-lg:border-r-0',
+          busy && PENDING_SCREEN_CLASS,
+        )}
       >
         <ColumnPanel hidden={section !== 'clients'} title={tClients('title')} isPage={false}>
           <ClientContactSuggestions compact initialItems={suggestions} />

@@ -62,6 +62,6 @@ describe('ComboForm', () => {
     vi.mocked(createCombo).mockResolvedValue({ ok: true });
     renderForm([branch('b1', 'Central')]);
     fireEvent.click(screen.getByRole('button', { name: copy.submit.create }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/combos'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/settings/combos', undefined));
   });
 });

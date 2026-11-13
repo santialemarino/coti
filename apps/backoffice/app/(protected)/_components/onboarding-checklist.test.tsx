@@ -101,7 +101,7 @@ describe('OnboardingChecklist', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retomar asistente' }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith(ROUTES.onboarding));
+    await waitFor(() => expect(push).toHaveBeenCalledWith(ROUTES.onboarding, undefined));
     expect(resumeOnboarding).toHaveBeenCalled();
   });
 

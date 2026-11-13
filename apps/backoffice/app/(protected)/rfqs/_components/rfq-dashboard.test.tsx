@@ -522,11 +522,11 @@ describe('RfqDashboard row actions', () => {
     });
 
     fireEvent.click(within(row).getByText('Constructora A'));
-    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001', undefined);
 
     router.push.mockClear();
     fireEvent.keyDown(row, { key: 'Enter' });
-    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001');
+    expect(router.push).toHaveBeenLastCalledWith('/rfqs/2001', undefined);
 
     router.push.mockClear();
     fireEvent.click(within(row).getByRole('checkbox'));

@@ -11,6 +11,9 @@ vi.mock('next/form', () => ({
   default: (props: ComponentProps<'form'>) => <form {...props} />,
 }));
 
+const begin = vi.hoisted(() => vi.fn(() => 1));
+vi.mock('@/hooks/use-navigation-pending', () => ({ useNavigationPending: () => ({ begin }) }));
+
 const copy = messages.reports.filters;
 
 function renderFilters(from = '2026-10-01', to = '2026-10-25') {
@@ -83,5 +86,19 @@ describe('ReportFilters', () => {
     expect(submit.defaultPrevented).toBe(false);
     expect(form.getAttribute('action')).toBe('/reports');
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  // next/form navigates on its own, so the shell is told where it goes and shows the bar meanwhile.
+  it('reports the navigation it submits, and none for a range it blocks', () => {
+    begin.mockClear();
+    const form = renderFilters();
+    fireEvent.change(screen.getByLabelText(copy.from), { target: { value: '2026-10-20' } });
+    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-10' } });
+    fireEvent.submit(form);
+    expect(begin).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(copy.to), { target: { value: '2026-10-25' } });
+    fireEvent.submit(form);
+    expect(begin).toHaveBeenCalledWith('/reports?from=2026-10-20&to=2026-10-25');
   });
 });

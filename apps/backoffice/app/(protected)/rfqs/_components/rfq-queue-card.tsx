@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Badge, Button, MetaList } from '@repo/ui/components';
@@ -10,6 +9,7 @@ import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context'
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
 import { saleNextStep, type SaleNextStep } from '@/app/(protected)/rfqs/_components/sale-closure';
 import { ROUTES } from '@/config/routes';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import { formatRfqReference, type RfqRecord } from '@/lib/api/rfqs';
 import { useFormatters } from '@/lib/i18n/formatters';
 
@@ -37,7 +37,7 @@ export function RfqQueueCard({
   onExpand,
   onClosingStep,
 }: RfqQueueCardProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const fmt = useFormatters();
   const t = useTranslations('rfqs');
   const { invoicingEnabled } = useRfqList();

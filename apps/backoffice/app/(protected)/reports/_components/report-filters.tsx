@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl';
 
 import { Button, Combobox, Input, Label, MultiCombobox } from '@repo/ui/components';
 import { ROUTES } from '@/config/routes';
+import { useNavigationPending } from '@/hooks/use-navigation-pending';
 
 const REPORT_STATUSES = [
   'DRAFT',
@@ -54,7 +55,8 @@ interface ReportFiltersProps {
   granularity?: string;
 }
 
-// A GET form through next/form: the URL carries the filters and navigation stays client-side.
+// A GET form through next/form: the URL carries the filters and navigation stays client-side; the
+// old report stays on screen, with the filters as chosen, until the new one arrives.
 export function ReportFilters({
   from,
   to,
@@ -84,6 +86,7 @@ export function ReportFilters({
   const [branchValues, setBranchValues] = useState(branchIds);
   const [tagValues, setTagValues] = useState(tagIds);
   const [error, setError] = useState('');
+  const { begin } = useNavigationPending();
 
   return (
     <Form
@@ -96,6 +99,11 @@ export function ReportFilters({
           return;
         }
         setError('');
+        // next/form navigates on its own; the shell is told, so the bar shows while the report loads.
+        const query = new URLSearchParams(
+          [...new FormData(event.currentTarget)].map(([key, value]) => [key, String(value)]),
+        ).toString();
+        begin(query ? `${ROUTES.reports}?${query}` : ROUTES.reports);
       }}
     >
       <div className="flex w-full flex-col gap-y-1.5 sm:w-auto">

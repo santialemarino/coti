@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { PencilIcon, PlusIcon, PowerIcon, PowerOffIcon, TagIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -30,6 +29,7 @@ import {
 } from '@/app/(protected)/settings/promotions/promotion-status';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import type { Promotion } from '@/lib/api/promotions';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -51,7 +51,7 @@ interface PromotionTableProps {
 }
 
 export function PromotionTable({ promotions, branches, now }: PromotionTableProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const fmt = useFormatters();
   const t = useTranslations('promotions');
   const message = useApiErrorMessage('promotions');

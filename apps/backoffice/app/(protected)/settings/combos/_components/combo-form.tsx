@@ -2,7 +2,6 @@
 
 import { useId, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { PackageSearchIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -46,6 +45,7 @@ import { AmountInput } from '@/components/amount-input';
 import { ProductSearchDialog } from '@/components/product-search-dialog';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import type { CatalogProduct } from '@/lib/api/catalog';
 import { FORM_VALIDATION } from '@/lib/forms/options';
@@ -58,7 +58,7 @@ interface ComboFormProps {
 }
 
 export function ComboForm({ comboId, initialValues, branches }: ComboFormProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const t = useTranslations('combos.form');
   const tErrors = useTranslations('common.form.errors');
   const message = useApiErrorMessage('combos');

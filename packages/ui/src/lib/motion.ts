@@ -41,3 +41,6 @@ export const STAGGER = { step: 0.025, max: 6 } as const;
 
 /* Delay before a debounced search fires, in milliseconds. */
 export const DEBOUNCE_MS = 300;
+
+/* How long a navigation runs before the shell shows it is still going, in milliseconds. */
+export const NAVIGATION_PENDING_DELAY_MS = 150;

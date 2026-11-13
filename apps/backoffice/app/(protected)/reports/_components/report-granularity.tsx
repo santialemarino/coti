@@ -1,10 +1,11 @@
 'use client';
 
 import { useOptimistic, useTransition } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { ToggleGroup, ToggleGroupItem } from '@repo/ui/components';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { ReportGranularity } from '@/lib/api/reports';
 
 const GRANULARITIES: ReportGranularity[] = ['day', 'week', 'month'];
@@ -12,7 +13,7 @@ const GRANULARITIES: ReportGranularity[] = ['day', 'week', 'month'];
 // The trend's bucket size; it lives in the URL so a shared link and the PDF read the same buckets.
 export function ReportGranularityToggle({ value }: { value: ReportGranularity }) {
   const t = useTranslations('reports.timeline.granularity');
-  const router = useRouter();
+  const router = usePendingRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();

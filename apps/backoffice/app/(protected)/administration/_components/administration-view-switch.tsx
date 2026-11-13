@@ -1,9 +1,10 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { ToggleGroup, ToggleGroupItem } from '@repo/ui/components';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import { ADMINISTRATION_VIEWS, type AdministrationView } from '@/lib/constants/administration';
 
 interface AdministrationViewSwitchProps {
@@ -12,7 +13,7 @@ interface AdministrationViewSwitchProps {
 
 // Switches between the invoice history and the sales awaiting an invoice; each starts on page one.
 export function AdministrationViewSwitch({ view }: AdministrationViewSwitchProps) {
-  const router = useRouter();
+  const router = usePendingRouter();
   const pathname = usePathname();
   const t = useTranslations('invoicing.views');
 
