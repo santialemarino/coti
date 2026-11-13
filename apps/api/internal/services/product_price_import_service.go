@@ -17,6 +17,7 @@ type productPriceImportRepository interface {
 	ListCurrentForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.ProductPriceExport, error)
 	GetByCodes(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, codes []string) (map[string]domain.ProductPriceLookup, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, updates []domain.ProductPriceUpdate) error
+	DatabaseTime(ctx context.Context, q repository.Querier) (time.Time, error)
 }
 
 // ProductPriceImportService previews and confirms branch price spreadsheets.
@@ -127,7 +128,12 @@ func (s *ProductPriceImportService) Confirm(
 		if len(updates) == 0 {
 			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
 		}
-		if applyErr := s.prices.ApplyImport(ctx, q, tenant, s.now().UTC(), updates); applyErr != nil {
+		// The database's clock, so the new prices are in force for the very next read.
+		effectiveAt, timeErr := s.prices.DatabaseTime(ctx, q)
+		if timeErr != nil {
+			return timeErr
+		}
+		if applyErr := s.prices.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), updates); applyErr != nil {
 			return applyErr
 		}
 		importedRows = len(updates)

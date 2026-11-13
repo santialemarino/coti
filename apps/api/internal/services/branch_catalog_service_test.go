@@ -26,11 +26,19 @@ type closedPeriod struct {
 	at        time.Time
 }
 
+// fakeDatabaseNow is the fake database clock, a second behind the injected process clock, so a
+// test can tell which of the two stamped a price.
+var fakeDatabaseNow = fixedNow.Add(-time.Second)
+
 type fakePrices struct {
 	open    *domain.ProductPrice
 	closed  []closedPeriod
 	created []domain.NewProductPrice
 	filters [][]uuid.UUID
+}
+
+func (f *fakePrices) DatabaseTime(_ context.Context, _ repository.Querier) (time.Time, error) {
+	return fakeDatabaseNow, nil
 }
 
 func (f *fakePrices) ListByProduct(
@@ -267,8 +275,9 @@ func TestBranchCatalogService_SetPrice_AppliesTheDefaults(t *testing.T) {
 	if got.Currency != domain.DefaultCurrency {
 		t.Errorf("currency = %q, want %q", got.Currency, domain.DefaultCurrency)
 	}
-	if !got.ValidFrom.Equal(fixedNow) {
-		t.Errorf("valid_from = %v, want the injected clock %v", got.ValidFrom, fixedNow)
+	// The database clock, which every in-force read compares against, not the process clock.
+	if !got.ValidFrom.Equal(fakeDatabaseNow) {
+		t.Errorf("valid_from = %v, want the database clock %v", got.ValidFrom, fakeDatabaseNow)
 	}
 	if got.MinPrice.Valid {
 		t.Error("min_price is set; an omitted floor must stay NULL")
