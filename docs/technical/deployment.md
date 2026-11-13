@@ -37,8 +37,9 @@ apps to `main` after approval and release.
 ## Automatic production releases
 
 `.github/workflows/cd.production.yml` runs on a push to `main` or a manual dispatch from `main`.
-It calls all eight reusable CI workflows and deploys only after every check succeeds. Their
-standalone push triggers cover `dev`; PR checks remain unchanged. Feature branches and dev never
+It calls the three reusable CI workflows (`ci.api.yml`, `ci.web.yml`, `ci.deploy.yml`), which run
+every job outside a PR, and deploys only after every check succeeds. Their standalone push triggers
+cover `dev`; on a PR each workflow runs only the jobs whose area changed. Feature branches and dev never
 receive deployment credentials or deploy. Workflow changes have a separate secret-free PR test job.
 
 Repository configuration:
@@ -378,7 +379,7 @@ holds the Space) and `STORAGE_BUCKET`.
 the committed spec ships every optional one **off** — `AI_*_PROVIDER` at `disabled`,
 `MAIL_PROVIDER` at `console`, `STORAGE_PROVIDER` at `local`, `RATE_LIMIT_TRUSTED_PROXY_HOPS` at
 `0`. Fill a secret, then turn its capability on; doing it the other way round produces a deploy
-that never starts, and `ci.deploy-spec.yml` boots the image on the spec's own settings to keep that
+that never starts, and `ci.deploy.yml` boots the image on the spec's own settings to keep that
 true.
 
 | Key                             | Needed when                                                        | Shape                               |
@@ -470,12 +471,12 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 
 ## What CI already proves
 
-`.github/workflows/ci.docker.yml` builds all three images on every PR that touches them or what they
+`.github/workflows/ci.deploy.yml` builds all three images on every PR that touches them or what they
 copy, and boots every one of them. The api job goes further: it asserts the four binaries are in the
 image and applies the whole migration chain **from inside it** against a real Postgres, which is the
 PRE_DEPLOY job's exact command.
 
-`.github/workflows/ci.deploy-spec.yml` covers the spec itself: `doctl apps spec validate
+The same workflow covers the spec itself: `doctl apps spec validate
 --schema-only`, which needs no account, plus the four things a schema check cannot see — that no
 `type: SECRET` entry carries a value, that every component repeating `ARCA_ENVIRONMENT` carries the
 api service's value, that every component builds `/` with a Dockerfile that exists, and that every
