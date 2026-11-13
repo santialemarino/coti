@@ -124,23 +124,26 @@ export function StatusPieChart({
           })}
         </ul>
       </div>
-      <table className="sr-only">
-        <caption>{ariaLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{label}</th>
-            <th scope="col">{valueLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.key}>
-              <th scope="row">{item.label}</th>
-              <td>{formatValue(item.value)}</td>
+      {/* A table cannot shrink to sr-only's 1px, so the wrapper hides it without widening the page. */}
+      <div className="sr-only">
+        <table>
+          <caption>{ariaLabel}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{label}</th>
+              <th scope="col">{valueLabel}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.key}>
+                <th scope="row">{item.label}</th>
+                <td>{formatValue(item.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
@@ -357,29 +360,32 @@ export function TrendChart({
           </div>
         </div>
       </div>
-      <table className="sr-only">
-        <caption>{ariaLabel}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{labels.bucket}</th>
-            <th scope="col">{labels.rfqs}</th>
-            <th scope="col">{labels.sent}</th>
-            <th scope="col">{labels.accepted}</th>
-            <th scope="col">{labels.conversion}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((point) => (
-            <tr key={point.date}>
-              <th scope="row">{formatBucket(point.date)}</th>
-              <td>{formatValue(point.rfqs)}</td>
-              <td>{formatValue(point.sent)}</td>
-              <td>{formatValue(point.accepted)}</td>
-              <td>{point.conversionRate === null ? '—' : formatShare(point.conversionRate)}</td>
+      {/* A table cannot shrink to sr-only's 1px, so the wrapper hides it without widening the page. */}
+      <div className="sr-only">
+        <table>
+          <caption>{ariaLabel}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{labels.bucket}</th>
+              <th scope="col">{labels.rfqs}</th>
+              <th scope="col">{labels.sent}</th>
+              <th scope="col">{labels.accepted}</th>
+              <th scope="col">{labels.conversion}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {points.map((point) => (
+              <tr key={point.date}>
+                <th scope="row">{formatBucket(point.date)}</th>
+                <td>{formatValue(point.rfqs)}</td>
+                <td>{formatValue(point.sent)}</td>
+                <td>{formatValue(point.accepted)}</td>
+                <td>{point.conversionRate === null ? '—' : formatShare(point.conversionRate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
