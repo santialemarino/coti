@@ -42,6 +42,20 @@ describe('ShowMore', () => {
     expect(view.getAllByRole('button')).toHaveLength(1);
   });
 
+  it('offers only the next step when exactly one step remains', () => {
+    const view = render(
+      <ShowMore
+        visible={5}
+        total={7}
+        step={2}
+        onShowMore={() => {}}
+        onShowAll={() => {}}
+        labels={labels}
+      />,
+    );
+    expect(view.getAllByRole('button')).toHaveLength(1);
+  });
+
   it('renders nothing once the whole list shows', () => {
     const view = render(
       <ShowMore

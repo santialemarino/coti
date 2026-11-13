@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JumpToButton } from './jump-to-button';
 
 // The flight runs to its end at once, so a test reads where it lands and what takes focus.
+const flight = vi.hoisted(() => ({ hold: false, stop: () => {} }));
+
 vi.mock('motion/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('motion/react')>()),
   animate: (
@@ -12,9 +14,11 @@ vi.mock('motion/react', async (importOriginal) => ({
     to: number,
     options: { onUpdate: (value: number) => void; onComplete: () => void },
   ) => {
-    options.onUpdate(to);
-    options.onComplete();
-    return { stop: () => {} };
+    if (!flight.hold) {
+      options.onUpdate(to);
+      options.onComplete();
+    }
+    return { stop: () => flight.stop() };
   },
 }));
 
@@ -120,5 +124,17 @@ describe('JumpToButton', () => {
     act(() => report({ isIntersecting: false, top: 2400 }));
     fireEvent.click(view.getByRole('button', { name: 'Ir a confirmar' }));
     expect(document.activeElement).toBe(view.getByTestId('actions'));
+  });
+
+  // A scroll by hand mid-flight wins; the flight must not drag the page back.
+  it.each(['wheel', 'keydown', 'pointerdown'])('stops the flight on %s', (type) => {
+    flight.hold = true;
+    flight.stop = vi.fn();
+    const view = render(<Page />);
+    act(() => report({ isIntersecting: false, top: 2400 }));
+    fireEvent.click(view.getByRole('button', { name: 'Ir a confirmar' }));
+    window.dispatchEvent(new Event(type));
+    expect(flight.stop).toHaveBeenCalled();
+    flight.hold = false;
   });
 });

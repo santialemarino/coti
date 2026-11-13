@@ -133,5 +133,5 @@ it('reveals every row at once on request', () => {
   expect(view.getByRole('status').textContent).toBe('Mostrando 2 de 6 filas');
   fireEvent.click(view.getByRole('button', { name: 'Ver todas (6)' }));
   expect(view.getByText('Row 6')).toBeTruthy();
-  expect(document.activeElement?.textContent).toContain('Row 3');
+  expect(document.activeElement).toBe(view.getByText('Row 3').closest('tr'));
 });

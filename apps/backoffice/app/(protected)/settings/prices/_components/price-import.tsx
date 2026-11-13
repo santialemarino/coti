@@ -260,7 +260,7 @@ function PricePreviewRows({ rows }: { rows: ProductPriceImportPreview['rows'] })
             ))}
           </TableBody>
         </Table>
-      </div>{' '}
+      </div>
       <RevealControls list={list} />
     </>
   );

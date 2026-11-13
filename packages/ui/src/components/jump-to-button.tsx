@@ -48,12 +48,12 @@ function JumpToButton({ target, label }: JumpToButtonProps) {
 
   React.useEffect(() => {
     const cancel = () => flight.current?.stop();
-    window.addEventListener('wheel', cancel, { passive: true });
-    window.addEventListener('touchstart', cancel, { passive: true });
+    // Any way of scrolling by hand: wheel, touch, keys, or a press on the scrollbar.
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    for (const type of events) window.addEventListener(type, cancel, { passive: true });
     return () => {
       cancel();
-      window.removeEventListener('wheel', cancel);
-      window.removeEventListener('touchstart', cancel);
+      for (const type of events) window.removeEventListener(type, cancel);
     };
   }, []);
 
@@ -62,8 +62,9 @@ function JumpToButton({ target, label }: JumpToButtonProps) {
     if (!element) return;
     const box = element.getBoundingClientRect();
     const bottom = document.documentElement.scrollHeight - window.innerHeight;
+    // Read from the box now: the last observer report can be stale after a fast scroll.
     const destination =
-      direction === 'up'
+      box.top < 0
         ? box.top + window.scrollY - EDGE_COVER_PX - ARRIVAL_GAP_PX
         : box.bottom + window.scrollY - window.innerHeight + EDGE_COVER_PX + ARRIVAL_GAP_PX;
     // Held to the page's own range, or the curve would run on past where the page stops.
