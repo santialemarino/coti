@@ -235,3 +235,23 @@ describe('InvoicingSettingsForm fiscal identity', () => {
     ).toBe('/settings/account');
   });
 });
+
+describe('InvoicingSettingsForm activity start', () => {
+  it('picks the day from the calendar and saves it as a calendar day', async () => {
+    const view = renderForm();
+    const field = view.getByRole('combobox', { name: copy.profile.activityStartedOn });
+    expect(field.textContent).toBe('02/01/2020');
+
+    fireEvent.click(field);
+    fireEvent.click(
+      within(view.getByRole('dialog')).getByRole('button', { name: /(^|, )15 de enero de 2020/ }),
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.submit }));
+
+    await waitFor(() =>
+      expect(updateInvoicingSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ activityStartedOn: '2020-01-15' }),
+      ),
+    );
+  });
+});

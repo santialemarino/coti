@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
   Combobox,
+  DateRangePicker,
   Form,
   FormControl,
   FormDescription,
@@ -46,6 +47,7 @@ import { AmountInput } from '@/components/amount-input';
 import { QuantityInput } from '@/components/quantity-input';
 import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { useDateRangeCopy } from '@/hooks/use-date-range-copy';
 import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import type { ProductFamily } from '@/lib/api/products';
@@ -81,6 +83,7 @@ export function PromotionForm({
   const fieldId = useId();
   const schema = useMemo(() => promotionSchema({ field: t, shared: tErrors }), [t, tErrors]);
   const [saving, startSave] = useTransition();
+  const rangeCopy = useDateRangeCopy();
   const form = useForm<PromotionValues>({
     ...FORM_VALIDATION,
     resolver: zodResolver(schema),
@@ -88,6 +91,7 @@ export function PromotionForm({
   });
   const conditionType = useWatch({ control: form.control, name: 'conditionType' });
   const actionType = useWatch({ control: form.control, name: 'actionType' });
+  const validFrom = useWatch({ control: form.control, name: 'validFrom' });
   const tiered = conditionType === 'QUANTITY_TIERED';
   const onTotal = conditionType === 'ON_TOTAL';
   const percentage = actionType === 'PERCENTAGE';
@@ -361,36 +365,35 @@ export function PromotionForm({
             <CardDescription>{t('sections.validity.description')}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-y-5">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="validFrom"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('validFrom.label')}</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} disabled={saving} />
-                    </FormControl>
-                    <FormDescription>{t('validFrom.hint')}</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="validTo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('validTo.label')}</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} disabled={saving} />
-                    </FormControl>
-                    <FormDescription>{t('validTo.hint')}</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            {/* One field for both ends; it reports on `validTo`, where the schema puts a backwards range. */}
+            <FormField
+              control={form.control}
+              name="validTo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('validity.label')}</FormLabel>
+                  <FormControl>
+                    <DateRangePicker
+                      ref={field.ref}
+                      value={{ from: validFrom, to: field.value }}
+                      onValueChange={(next) => {
+                        form.setValue('validFrom', next.from, { shouldDirty: true });
+                        field.onChange(next.to);
+                      }}
+                      onBlur={field.onBlur}
+                      placeholder={t('validity.placeholder')}
+                      labels={rangeCopy.labels}
+                      openStart={t('validity.openStart')}
+                      openEnd={t('validity.openEnd')}
+                      disabled={saving}
+                      className="sm:w-80"
+                    />
+                  </FormControl>
+                  <FormDescription>{t('validity.hint')}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
