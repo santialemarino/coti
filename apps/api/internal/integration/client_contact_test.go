@@ -267,6 +267,15 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	if err := service.UpdateProfile(ctx, p, domain.ClientContactUpdate{Name: "Registered Name", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeEmail, Value: email, Primary: true}}}); err != nil {
 		t.Fatal(err)
 	}
+	var target uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM client WHERE account_id=$1 AND tax_id=$2`, account, p.TaxID).Scan(&target); err != nil {
+		t.Fatal(err)
+	}
+	messageID := e.storedMessage(t, account, seed.tenant.BranchID)
+	var observationID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,message_id,source_client_id,candidate_client_id,kind,value,original_text,status) VALUES($1,$2,$3,$4,$5,'EMAIL',$6,'Duplicate contact','PENDING') RETURNING id`, account, seed.tenant.BranchID, messageID, source, target, email).Scan(&observationID); err != nil {
+		t.Fatal(err)
+	}
 	path := "/v1/customer/sites/" + host + "/orders/" + seed.draft.RFQ.ID.String()
 	if response := e.do(t, request{method: http.MethodGet, path: path, token: token}); response.Code != 404 {
 		t.Fatalf("history before verification=%d", response.Code)
@@ -324,6 +333,13 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	}
 	if response := e.do(t, request{method: http.MethodGet, path: path, token: token}); response.Code != 200 {
 		t.Fatalf("history after verification=%d %s", response.Code, response.Body)
+	}
+	var observationStatus string
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT status FROM client_contact_observation WHERE account_id=$1 AND id=$2`, account, observationID).Scan(&observationStatus); err != nil {
+		t.Fatal(err)
+	}
+	if observationStatus != "MERGED" {
+		t.Fatalf("verified merge left a pending duplicate: %s", observationStatus)
 	}
 	var retainedName string
 	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT name FROM client WHERE account_id=$1 AND id=$2`, account, source).Scan(&retainedName); err != nil {

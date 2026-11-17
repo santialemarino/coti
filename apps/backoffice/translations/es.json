@@ -1546,7 +1546,7 @@
           "confirm": "Quitar ítem",
           "pending": "Quitando…"
         },
-        "generate": "Generar cotización",
+        "generate": "Aprobar productos",
         "generating": "Generando cotización…",
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
@@ -1730,7 +1730,7 @@
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
         "openQuote": "Abrir",
         "visualizeOnline": "Visualizar online",
-        "resend": "Enviar a otro destino",
+        "resend": "Enviar por otro medio",
         "done": "Listo",
         "toast": {
           "sent": "Cotización enviada",
@@ -3372,7 +3372,7 @@
       "caeCopied": "CAE copiado",
       "caeCopyFailed": "No pudimos copiar el CAE. Seleccionalo y copialo a mano.",
       "caeExpires": "Vencimiento del CAE",
-      "verify": "Verificar en ARCA",
+      "verify": "Ver comprobante en ARCA",
       "receiver": "Receptor",
       "condition": "Condición frente al IVA",
       "finalConsumer": "Consumidor final",
@@ -3544,7 +3544,7 @@
         "REJECTED": "Rechazada",
         "CREDITED": "Anulada"
       },
-      "recover": "Consultar estado",
+      "recover": "Actualizar estado en ARCA",
       "download": "Descargar PDF",
       "recovered": "El estado del comprobante fue actualizado.",
       "finalConsumer": "Consumidor final",

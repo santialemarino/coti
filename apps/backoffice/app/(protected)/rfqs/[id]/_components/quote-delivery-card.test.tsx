@@ -164,16 +164,15 @@ describe('QuoteDeliveryCard rendering', () => {
     expect(noVersion.container.firstChild).toBeNull();
   });
 
-  it('shows the reference, the version and the link the client received', () => {
+  it('shows the reference and lets the seller copy the hidden customer link', () => {
     const view = renderCard(makeDetail({ deliveries: [tracking({}), tracking({ id: 'older-' })] }));
 
     expect(view.getByText('Cotización #07')).toBeTruthy();
     expect(view.getByText('Versión 1')).toBeTruthy();
-    expect(view.getByText(PUBLIC_URL)).toBeTruthy();
-
-    const link = view.getByRole('link', { name: copy.openQuote });
-    expect(link.getAttribute('href')).toBe(PUBLIC_URL);
-    expect(link.getAttribute('target')).toBe('_blank');
+    expect(view.queryByText(PUBLIC_URL)).toBeNull();
+    expect(view.queryByRole('link')).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: copy.copyLink }));
+    expect(writeText).toHaveBeenCalledWith(PUBLIC_URL);
   });
 
   it('falls back to the draft copy on the badge while the quote is still internal', () => {
@@ -223,7 +222,8 @@ describe('QuoteDeliveryCard live link', () => {
       }),
     );
 
-    expect(view.getByText('https://coti.app/quotes/z')).toBeTruthy();
+    fireEvent.click(view.getByRole('button', { name: copy.copyLink }));
+    expect(writeText).toHaveBeenCalledWith('https://coti.app/quotes/z');
     expect(view.queryByText(PUBLIC_URL)).toBeNull();
   });
 

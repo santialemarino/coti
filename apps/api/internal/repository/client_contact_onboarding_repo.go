@@ -34,6 +34,18 @@ func (r *ClientContactRepository) AttachContactObservations(ctx context.Context,
 	return nil
 }
 
+// AssociateCustomerRequest links an authenticated portal request and its quote to the customer profile.
+func (r *ClientContactRepository) AssociateCustomerRequest(ctx context.Context, q Querier, route domain.InboundChannelRoute, messageID, clientID uuid.UUID) error {
+	if _, err := q.Exec(ctx, `UPDATE rfq r SET client_id=c.id
+ FROM inbound_channel_message m JOIN client c ON c.account_id=m.account_id AND c.id=$5 AND c.merged_into IS NULL
+ WHERE r.account_id=$1 AND r.branch_id=$2 AND m.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND m.id=$4 AND r.id=m.rfq_id AND r.client_id IS NULL`, route.AccountID, route.BranchID, route.ChannelID, messageID, clientID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx, `UPDATE quote qt SET client_id=r.client_id FROM rfq r JOIN inbound_channel_message m ON m.account_id=r.account_id AND m.branch_id=r.branch_id AND m.rfq_id=r.id
+ WHERE qt.account_id=$1 AND qt.branch_id=$2 AND r.account_id=$1 AND r.branch_id=$2 AND m.account_id=$1 AND m.branch_id=$2 AND m.channel_id=$3 AND m.id=$4 AND qt.rfq_id=r.id AND r.client_id=$5 AND qt.client_id IS NULL`, route.AccountID, route.BranchID, route.ChannelID, messageID, clientID)
+	return err
+}
+
 // AssociateObservedRequests attaches retained sender history without changing an existing selection.
 func (r *ClientContactRepository) AssociateObservedRequests(ctx context.Context, q Querier, accountID uuid.UUID, kind domain.ChannelType, value string) error {
 	if _, err := q.Exec(ctx, `UPDATE rfq r SET client_id=COALESCE(cl.merged_into,cl.id) FROM inbound_channel_message m JOIN client_contact_observation o ON o.account_id=m.account_id AND o.message_id=m.id JOIN client cl ON cl.account_id=o.account_id AND cl.id=o.source_client_id WHERE r.account_id=$1 AND m.account_id=$1 AND o.account_id=$1 AND o.kind=$2 AND o.value=$3 AND o.source_client_id IS NOT NULL AND r.id=m.rfq_id AND r.branch_id=m.branch_id AND r.client_id IS NULL`, accountID, kind, value); err != nil {

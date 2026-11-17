@@ -91,11 +91,11 @@ func (s *PublicRFQService) GetDestination(ctx context.Context, channelID uuid.UU
 
 // Create retains customer declarations and acknowledges only a durably stored request.
 func (s *PublicRFQService) Create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput) error {
-	return s.create(ctx, channelID, in, nil)
+	return s.create(ctx, channelID, in)
 }
 
-// create stores the request and, when messageID is given, reports the inbound message that carries it.
-func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput, messageID *uuid.UUID) error {
+// create stores and processes a request under its durable inbound reservation.
+func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in domain.PublicRFQInput) error {
 	destination, err := s.GetDestination(ctx, channelID)
 	if err != nil {
 		return err
@@ -148,9 +148,6 @@ func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in d
 		if err != nil {
 			return err
 		}
-		if messageID != nil {
-			*messageID = reserved.ID
-		}
 		var original, current publicRFQEnvelope
 		if err := json.Unmarshal(reserved.Payload, &original); err != nil {
 			return err
@@ -164,12 +161,12 @@ func (s *PublicRFQService) create(ctx context.Context, channelID uuid.UUID, in d
 		if reserved.RFQID == nil {
 			return domain.ErrConflict
 		}
-		return s.acceptReserved(ctx, route, *reserved.RFQID, in, data)
+		return s.acceptReserved(ctx, route, *reserved.RFQID, reserved.ID, in, data)
 	})
 }
 
 func (s *PublicRFQService) acceptReserved(ctx context.Context, route domain.InboundChannelRoute,
-	rfqID uuid.UUID, in domain.PublicRFQInput, data []byte,
+	rfqID, messageID uuid.UUID, in domain.PublicRFQInput, data []byte,
 ) error {
 	var source *domain.RFQ
 	var files []domain.RFQAttachment
@@ -197,6 +194,12 @@ func (s *PublicRFQService) acceptReserved(ctx context.Context, route domain.Inbo
 	})
 	if err != nil {
 		return err
+	}
+	if s.contacts != nil && in.CustomerID != uuid.Nil {
+		principal := domain.CustomerPrincipal{AccountID: route.AccountID, CustomerID: in.CustomerID, TaxID: in.Contact.TaxID}
+		if err := s.contacts.RecordCustomer(ctx, principal, route, messageID, in.Contact); err != nil {
+			return err
+		}
 	}
 	if in.File != nil {
 		if len(files) > 0 {
@@ -264,12 +267,5 @@ func (s *PublicRFQService) CreateForCustomer(ctx context.Context, p domain.Custo
 	if err != nil {
 		return err
 	}
-	var messageID uuid.UUID
-	if err := s.create(ctx, channelID, in, &messageID); err != nil {
-		return err
-	}
-	if s.contacts != nil {
-		return s.contacts.RecordCustomer(ctx, p, destination.Route, messageID, in.Contact)
-	}
-	return nil
+	return s.create(ctx, channelID, in)
 }

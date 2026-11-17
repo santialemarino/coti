@@ -26,6 +26,43 @@ type publicIntakeFake struct {
 	tenant       domain.Tenant
 }
 
+type publicIntakeContactRecorder struct {
+	store *publicIntakeFake
+	calls int
+}
+
+func (f *publicIntakeContactRecorder) RecordCustomer(_ context.Context, p domain.CustomerPrincipal, _ domain.InboundChannelRoute, messageID uuid.UUID, _ domain.PublicRFQContact) error {
+	if f.store.source == nil || f.store.message.ID != messageID || f.store.processCalls > 0 || f.store.fileCalls > 0 || p.CustomerID == uuid.Nil {
+		return errors.New("customer association must precede processing and file storage")
+	}
+	f.calls++
+	f.store.source.ClientID = &p.CustomerID
+	return nil
+}
+
+func TestPublicRFQCustomerAssociationPrecedesTextAndFileProcessing(t *testing.T) {
+	t.Parallel()
+	for _, file := range []bool{false, true} {
+		t.Run(map[bool]string{false: "text", true: "file"}[file], func(t *testing.T) {
+			s, store, in := publicIntakeFixture()
+			recorder := &publicIntakeContactRecorder{store: store}
+			s.WithContacts(recorder)
+			if file {
+				in.Text = ""
+				in.Filename = "request.txt"
+				in.File = &domain.AttachmentUpload{ContentType: "text/plain", Size: 6, Content: bytes.NewBufferString("cement")}
+			}
+			p := domain.CustomerPrincipal{AccountID: store.destination.Route.AccountID, CustomerID: uuid.New(), TaxID: in.Contact.TaxID}
+			if err := s.CreateForCustomer(context.Background(), p, store.destination.Route.ChannelID, in); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.calls != 1 || store.source.ClientID == nil {
+				t.Fatal("the retained order has no authenticated customer")
+			}
+		})
+	}
+}
+
 func (f *publicIntakeFake) CrossAccount() repository.Querier { return nil }
 func (f *publicIntakeFake) InTenantTx(_ context.Context, tenant domain.Tenant, fn func(repository.Querier) error) error {
 	if tenant.AccountID != f.destination.Route.AccountID || tenant.BranchID != f.destination.Route.BranchID {

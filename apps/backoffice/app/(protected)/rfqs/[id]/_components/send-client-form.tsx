@@ -188,24 +188,32 @@ export function SendClientForm({
         className="flex min-w-0 flex-col pb-4 gap-y-4 border-b border-border"
       >
         <legend className="mb-3 text-paragraph-sm-medium">{t('clientTitle')}</legend>
-        <ToggleGroup
-          type="single"
-          value={values.mode}
-          onValueChange={(mode) => {
-            if (mode === 'new' || mode === 'existing')
-              form.setValue('mode', mode, { shouldValidate: true });
-          }}
-          className="w-full"
-          disabled={disabled || fixedClient}
-        >
-          <ToggleGroupItem value="existing" className="flex-1">
-            {t('clientExisting')}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="new" className="flex-1">
-            {t('clientNew')}
-          </ToggleGroupItem>
-        </ToggleGroup>
-        {values.mode === 'existing' ? (
+        {fixedClient ? (
+          <p className="text-paragraph-sm-medium text-foreground">
+            {context.currentClient?.client.name ||
+              context.currentClient?.client.email ||
+              context.currentClient?.client.phone}
+          </p>
+        ) : (
+          <ToggleGroup
+            type="single"
+            value={values.mode}
+            onValueChange={(mode) => {
+              if (mode === 'new' || mode === 'existing')
+                form.setValue('mode', mode, { shouldValidate: true });
+            }}
+            className="w-full"
+            disabled={disabled || fixedClient}
+          >
+            <ToggleGroupItem value="existing" className="flex-1">
+              {t('clientExisting')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="new" className="flex-1">
+              {t('clientNew')}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
+        {values.mode === 'existing' && !fixedClient ? (
           <FormField
             control={form.control}
             name="clientId"
@@ -220,12 +228,11 @@ export function SendClientForm({
                     disabled={disabled || fixedClient}
                     options={directory.map((item) => ({
                       value: item.client.id,
-                      label: [
-                        item.client.name || item.client.email || item.client.phone,
-                        item.client.taxId,
-                      ]
-                        .filter(Boolean)
-                        .join(' · '),
+                      label:
+                        item.client.name ||
+                        item.client.email ||
+                        item.client.phone ||
+                        t('clientTitle'),
                     }))}
                   />
                 </FormControl>

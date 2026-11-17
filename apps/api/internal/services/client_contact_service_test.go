@@ -21,6 +21,7 @@ type fakeContactStore struct {
 	writes        int
 	lockKeys      []string
 	matched       []contactMatch
+	associations  [][2]uuid.UUID
 }
 
 func (f *fakeContactStore) GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error) {
@@ -30,6 +31,38 @@ func (f *fakeContactStore) GetConversationClient(context.Context, repository.Que
 func (f *fakeContactStore) CreateMatchObservations(_ context.Context, _ repository.Querier, _, _, source uuid.UUID, kind domain.ChannelType, value, _ string) error {
 	f.matched = append(f.matched, contactMatch{source, kind, value})
 	return nil
+}
+
+func (f *fakeContactStore) AssociateCustomerRequest(_ context.Context, _ repository.Querier, _ domain.InboundChannelRoute, messageID, clientID uuid.UUID) error {
+	f.associations = append(f.associations, [2]uuid.UUID{messageID, clientID})
+	return nil
+}
+
+func TestClientContactService_RecordCustomer_AssociatesTheAuthenticatedProfileOnRetry(t *testing.T) {
+	t.Parallel()
+	service, profiles, store := newContactHarness()
+	taxID, name := "20123456786", "Registered Customer"
+	client := domain.Client{ID: uuid.New(), TaxID: &taxID, Name: &name}
+	profiles.matches = []domain.Client{client}
+	p := domain.CustomerPrincipal{AccountID: testAccountID, CustomerID: uuid.New(), TaxID: taxID}
+	route := domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID}
+	message := uuid.New()
+	for range 2 {
+		if err := service.RecordCustomer(context.Background(), p, route, message, domain.PublicRFQContact{TaxID: taxID, Name: name, Email: "customer@example.test"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(store.associations) != 2 || store.associations[0] != [2]uuid.UUID{message, client.ID} || store.associations[1] != store.associations[0] {
+		t.Fatalf("request associations = %v", store.associations)
+	}
+	if store.writes != 1 || len(store.observations) != 1 {
+		t.Fatal("retry changed the customer profile")
+	}
+	foreign := p
+	foreign.AccountID = uuid.New()
+	if err := service.RecordCustomer(context.Background(), foreign, route, message, domain.PublicRFQContact{TaxID: taxID}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("foreign customer associated a request: %v", err)
+	}
 }
 
 func (f *fakeContactStore) GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error) {

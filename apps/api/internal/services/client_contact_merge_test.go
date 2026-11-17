@@ -15,6 +15,59 @@ type mergeRecorder struct {
 	merged [][2]uuid.UUID
 }
 
+type survivingProfiles struct {
+	*fakeClientProfiles
+	survivors map[uuid.UUID]uuid.UUID
+}
+
+func (f *survivingProfiles) GetSurvivor(_ context.Context, _ repository.Querier, _ uuid.UUID, id uuid.UUID) (uuid.UUID, error) {
+	return f.survivors[id], nil
+}
+
+type reviewRecorder struct {
+	*mergeRecorder
+	observation domain.ContactObservation
+	decisions   int
+}
+
+func (f *reviewRecorder) GetObservation(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.ContactObservation, error) {
+	return &f.observation, nil
+}
+
+func (f *reviewRecorder) Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error {
+	f.decisions++
+	return nil
+}
+
+func TestClientContactService_ResolveSuggestion_UsesCurrentSurvivors(t *testing.T) {
+	t.Parallel()
+	for _, sameSurvivor := range []bool{false, true} {
+		t.Run(map[bool]string{false: "selects the surviving source", true: "already merged"}[sameSurvivor], func(t *testing.T) {
+			_, profiles, store := newContactHarness()
+			oldSource, source, target := uuid.New(), uuid.New(), uuid.New()
+			if sameSurvivor {
+				target = source
+			}
+			recorder := &reviewRecorder{mergeRecorder: &mergeRecorder{fakeContactStore: store}, observation: domain.ContactObservation{SourceClientID: &oldSource, CandidateClientID: &target, Status: domain.ContactReviewPending}}
+			store.mergeProfiles = map[uuid.UUID]domain.MergeProfile{source: {ID: source, InReach: true}, target: {ID: target, InReach: true}}
+			survivors := &survivingProfiles{fakeClientProfiles: profiles, survivors: map[uuid.UUID]uuid.UUID{oldSource: source, target: target}}
+			service := NewClientContactService(&fakeDB{}, survivors, recorder)
+			if err := service.ResolveSuggestion(context.Background(), domain.Tenant{AccountID: testAccountID}, uuid.New(), domain.ContactReviewMerged, &source); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.decisions != 1 {
+				t.Fatal("the observation was not settled")
+			}
+			if sameSurvivor && len(recorder.merged) != 0 {
+				t.Fatal("already merged history moved twice")
+			}
+			if !sameSurvivor && (len(recorder.merged) != 1 || recorder.merged[0] != [2]uuid.UUID{target, source}) {
+				t.Fatalf("wrong survivor: %v", recorder.merged)
+			}
+		})
+	}
+}
+
 func (f *mergeRecorder) Merge(_ context.Context, _ repository.Querier, _ domain.Tenant, source, target uuid.UUID) error {
 	f.merged = append(f.merged, [2]uuid.UUID{source, target})
 	return nil

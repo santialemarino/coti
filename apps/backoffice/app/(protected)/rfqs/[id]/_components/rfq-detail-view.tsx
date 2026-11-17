@@ -13,6 +13,7 @@ import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context'
 import { ComboSuggestions } from '@/app/(protected)/rfqs/[id]/_components/combo-suggestions';
 import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
+import { useQueuePolling } from '@/hooks/use-queue-polling';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, mapListItem, normalizeRfqStatus } from '@/lib/api/rfqs';
@@ -136,26 +137,23 @@ export function RfqDetailView({
    * recompute the version total, so item subtotals, discounts and version.total all come
    * back together and the timeline and summary cannot drift from what is persisted.
    */
-  const refreshDetail = useCallback(async () => {
-    if (!quoteId) return;
-    try {
-      const fresh = await fetchRfqDetail(detail.rfq.id);
-      setDetail(fresh);
-      setItems(fresh.items);
-      setDiscounts(fresh.discounts ?? []);
-      const { paidAt, invoiceWaivedAt, invoiced, saleComplete } = mapListItem(fresh.rfq);
-      updateRecord(fresh.rfq.id, {
-        ...lineCounts(fresh.items),
-        paidAt,
-        invoiceWaivedAt,
-        invoiced,
-        saleComplete,
-      });
-    } catch {
-      // The mutation itself succeeded; a failed refetch must not look like the write died.
-      toast.error(t('detail.items.toast.error'));
-    }
-  }, [detail.rfq.id, quoteId, t, updateRecord]);
+  const refreshDetail = useCallback(
+    async (silent = false) => {
+      try {
+        const fresh = await fetchRfqDetail(detail.rfq.id);
+        setDetail(fresh);
+        setItems(fresh.items);
+        setDiscounts(fresh.discounts ?? []);
+        updateRecord(fresh.rfq.id, { ...mapListItem(fresh.rfq), ...lineCounts(fresh.items) });
+      } catch {
+        // The mutation itself succeeded; a failed refetch must not look like the write died.
+        if (!silent) toast.error(t('detail.items.toast.error'));
+      }
+    },
+    [detail.rfq.id, t, updateRecord],
+  );
+
+  useQueuePolling(() => refreshDetail(true), rfqStatus === 'RECEIVED');
 
   const handleItemsChange = useCallback(
     (newItems: QuoteItemResponse[]) => {
@@ -385,7 +383,7 @@ export function RfqDetailView({
         onItemsChange={handleItemsChange}
         onDiscountsChange={setDiscounts}
         onRefresh={refreshDetail}
-        readOnly={archived}
+        readOnly={archived || detail.version?.is_immutable === true}
       />
 
       {quoteId && quoteStatus === 'QUOTED' && !archived ? (

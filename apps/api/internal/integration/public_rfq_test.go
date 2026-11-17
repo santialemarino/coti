@@ -102,7 +102,7 @@ func TestPublicRFQFileRouteQueuesOneStoredAttachmentOnRetry(t *testing.T) {
 	}
 }
 
-func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *testing.T) {
+func TestPublicRFQRoutePreservesScopeAndIdempotencyWithAuthenticatedClientAssociation(t *testing.T) {
 	e := newEnvWithRFQProviders(t, rfqTestProviders{extractor: stagedExtractor{lines: []domain.ExtractedRFQLine{{
 		RequestedDescription: "10 bolsas de cemento", Quantity: decimal.NewFromInt(10),
 		Source: domain.QuantitySourceExplicit, QuantityRationale: "el cliente pidió 10 bolsas",
@@ -136,8 +136,15 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithoutClientAssociation(t *t
 		Scan(&rfqID, &actualBranch, &clientID, &sellerID); err != nil {
 		t.Fatal(err)
 	}
+	var quoteClientID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT q.client_id FROM quote q JOIN client c ON c.account_id=q.account_id AND c.id=q.client_id WHERE q.account_id=$1 AND q.rfq_id=$2 AND c.tax_id='20123456786'`, accountID, rfqID).Scan(&quoteClientID); err != nil {
+		t.Fatal(err)
+	}
+	if clientID == nil || quoteClientID != *clientID {
+		t.Fatal("the request and its quote are not associated with the authenticated customer")
+	}
 	e.dropDraft(t, rfqID)
-	if actualBranch != branchID || clientID != nil || sellerID != nil {
+	if actualBranch != branchID || clientID == nil || sellerID != nil {
 		t.Fatalf("unexpected public routing or association: %v %v %v", actualBranch, clientID, sellerID)
 	}
 	if err := e.db.CrossAccount().QueryRow(context.Background(), `SELECT

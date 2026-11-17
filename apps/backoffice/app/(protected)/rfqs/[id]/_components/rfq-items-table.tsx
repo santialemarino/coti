@@ -72,10 +72,10 @@ import { DiscountDialog } from './discount-dialog';
  * status, it only decides what is editable. Gaps are deliberate and map 1:1 to the status rules:
  *   GENERATED (DRAFT)      products editable, no prices shown yet
  *   CHANGE_REQUESTED       products editable, provisional prices shown
- *   QUOTED                 prices (and discounts) editable
+ *   QUOTED                 products, quantities, prices and discounts editable
  *   SENT/ACCEPTED/REJECTED  read-only, prices shown
  */
-const PRODUCT_EDIT_STATUSES = new Set(['DRAFT', 'CHANGE_REQUESTED']);
+const PRODUCT_EDIT_STATUSES = new Set(['DRAFT', 'CHANGE_REQUESTED', 'QUOTED']);
 const PRICE_EDIT_STATUSES = new Set(['QUOTED']);
 const PRICED_STATUSES = new Set(['CHANGE_REQUESTED', 'QUOTED', 'SENT', 'ACCEPTED', 'REJECTED']);
 
@@ -1147,9 +1147,10 @@ export function RfqItemsTable({
                             })}
                           </div>
                         ) : (
-                          <p className="text-paragraph-sm text-foreground-muted">
-                            {t('detail.items.alternatives.empty')}
-                          </p>
+                          <EmptyState
+                            icon={PackageOpenIcon}
+                            title={t('detail.items.alternatives.empty')}
+                          />
                         )}
 
                         {missingTypes.length > 0 && (

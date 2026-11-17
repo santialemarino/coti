@@ -77,7 +77,7 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 			return err
 		}
 		seen, err := s.contacts.HasObservation(ctx, q, p.AccountID, messageID)
-		if err != nil || seen {
+		if err != nil {
 			return err
 		}
 		profiles, err := s.profiles.FindByTaxID(ctx, q, p.AccountID, p.TaxID)
@@ -95,6 +95,9 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 			client = &profiles[0]
 		} else {
 			return domain.ErrConflict
+		}
+		if seen {
+			return s.contacts.AssociateCustomerRequest(ctx, q, route, messageID, client.ID)
 		}
 		access, err := s.contacts.GetProfileAccess(ctx, q, p, client.ID)
 		if err != nil {
@@ -147,6 +150,9 @@ func (s *ClientContactService) RecordCustomer(ctx context.Context, p domain.Cust
 		if err != nil {
 			return err
 		}
-		return s.contacts.CreateObservation(ctx, q, p.AccountID, messageID, domain.ContactObservation{BranchID: route.BranchID, SourceClientID: &client.ID, TaxID: &p.TaxID, Kind: domain.ChannelTypeEmail, Value: in.Email, Name: &in.Name, Original: string(original), Status: "RECORDED"})
+		if err := s.contacts.CreateObservation(ctx, q, p.AccountID, messageID, domain.ContactObservation{BranchID: route.BranchID, SourceClientID: &client.ID, TaxID: &p.TaxID, Kind: domain.ChannelTypeEmail, Value: in.Email, Name: &in.Name, Original: string(original), Status: "RECORDED"}); err != nil {
+			return err
+		}
+		return s.contacts.AssociateCustomerRequest(ctx, q, route, messageID, client.ID)
 	})
 }
