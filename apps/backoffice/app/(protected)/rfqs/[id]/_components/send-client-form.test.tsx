@@ -38,11 +38,17 @@ const context: QuoteClientAssociation = {
   contactHints: { taxId, name: 'Web customer', phone: null, email: 'customer@example.test' },
 };
 
-function renderForm() {
+function renderForm(locked = false) {
   const onChange = vi.fn();
   const view = render(
     <NextIntlClientProvider locale="es" messages={messages}>
-      <SendClientForm quoteId="quote-1" branchId="branch-1" disabled={false} onChange={onChange} />
+      <SendClientForm
+        quoteId="quote-1"
+        branchId="branch-1"
+        disabled={false}
+        locked={locked}
+        onChange={onChange}
+      />
     </NextIntlClientProvider>,
   );
   return { ...view, onChange };
@@ -55,6 +61,24 @@ beforeEach(() => {
 });
 
 describe('send client selection', () => {
+  it('shows an already associated web customer without requiring another selection or exposing the CUIT', async () => {
+    vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+      ...context,
+      currentClient: candidate,
+    });
+    const view = renderForm(true);
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith({
+        taxId,
+        clientId: candidate.client.id,
+        tagIds: [],
+      }),
+    );
+    expect(view.getByText(candidate.client.name!)).toBeTruthy();
+    expect(view.queryByRole('combobox')).toBeNull();
+    expect(view.queryByText(taxId)).toBeNull();
+    expect(view.queryByText(copy.clientNew)).toBeNull();
+  });
   it('prefills a new profile from the web request without saving it separately', async () => {
     const view = renderForm();
     await waitFor(() =>

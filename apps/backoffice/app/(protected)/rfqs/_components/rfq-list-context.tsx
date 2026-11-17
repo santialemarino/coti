@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 
+import { useQueuePolling } from '@/hooks/use-queue-polling';
 import type { RfqRecord } from '@/lib/api/rfqs';
 import { fetchQueue } from '@/lib/api/rfqs-client';
 
@@ -138,6 +139,8 @@ export function RfqListProvider({
       }
     }
   }, [hasQueue]);
+
+  useQueuePolling(reload, hasQueue);
 
   // The server's list carries no archive, so a list that had one reads it again.
   useEffect(() => {

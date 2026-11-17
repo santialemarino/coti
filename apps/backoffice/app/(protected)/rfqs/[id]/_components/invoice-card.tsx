@@ -287,17 +287,20 @@ export function InvoiceCard({
               />
             ) : null}
             {preview.invoice?.status === 'PENDING' ? (
-              <Callout tone="info" title={t('pending.title')}>
-                {t('pending.body')}
-                {readOnly ? null : (
-                  <div className="mt-3">
+              <Callout
+                tone="info"
+                title={t('pending.title')}
+                action={
+                  readOnly ? undefined : (
                     <InvoiceRecoveryButton
                       invoiceId={preview.invoice.id}
                       branchId={branchId}
                       onRecovered={() => void reload()}
                     />
-                  </div>
-                )}
+                  )
+                }
+              >
+                {t('pending.body')}
               </Callout>
             ) : null}
             <RejectionNotice
@@ -434,15 +437,18 @@ function IssuedInvoice({
   return (
     <div className="flex flex-col gap-y-4">
       {note?.status === 'PENDING' ? (
-        <Callout tone="info" title={t('creditNote.pending.title')}>
-          {t('creditNote.pending.body')}
-          <div className="mt-3">
+        <Callout
+          tone="info"
+          title={t('creditNote.pending.title')}
+          action={
             <InvoiceRecoveryButton
               invoiceId={note.id}
               branchId={branchId}
               onRecovered={onRecovered}
             />
-          </div>
+          }
+        >
+          {t('creditNote.pending.body')}
         </Callout>
       ) : null}
       <RejectionNotice
@@ -495,6 +501,9 @@ function AuthorizationFacts({ voucher }: { voucher: Invoice }) {
           {voucher.cae ? (
             <CopyButton
               value={voucher.cae}
+              size="icon-xs"
+              title={t('caeCopy')}
+              className="-my-1 [&>span:nth-child(2)]:sr-only"
               labels={{ copy: t('caeCopy'), copied: t('caeCopied') }}
               onCopyError={() => toast.error(t('caeCopyFailed'))}
             />
@@ -692,7 +701,7 @@ function IssuerFacts({
 }) {
   const t = useTranslations('invoicing.card.issuer');
   return (
-    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-paragraph-sm sm:grid-cols-3">
       <Fact label={t('cuit')}>
         <div className="flex flex-col items-start gap-y-1">
           <span>{cuit ? formatCuit(cuit) : '—'}</span>

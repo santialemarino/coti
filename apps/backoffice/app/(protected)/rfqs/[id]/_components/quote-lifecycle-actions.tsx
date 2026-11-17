@@ -135,14 +135,14 @@ export function QuoteLifecycleActions({
             <Button
               type="button"
               variant="outline"
-              className="h-auto w-full justify-start px-4 py-3 whitespace-normal"
+              className="h-auto w-full items-start justify-start px-4 py-4 gap-x-3 whitespace-normal"
               disabled={reactivating !== null}
               onClick={() => void handleReactivate('RESEND')}
             >
               {reactivating === 'RESEND' ? (
                 <Spinner size="sm" label={t('reactivate.resend.title')} />
               ) : (
-                <SendIcon />
+                <SendIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               )}
               <span className="flex min-w-0 flex-col items-start gap-y-0.5 text-left">
                 <span className="text-paragraph-sm-medium">{t('reactivate.resend.title')}</span>
@@ -155,14 +155,14 @@ export function QuoteLifecycleActions({
             <Button
               type="button"
               variant="outline"
-              className="h-auto w-full justify-start px-4 py-3 whitespace-normal"
+              className="h-auto w-full items-start justify-start px-4 py-4 gap-x-3 whitespace-normal"
               disabled={reactivating !== null}
               onClick={() => void handleReactivate('EDIT')}
             >
               {reactivating === 'EDIT' ? (
                 <Spinner size="sm" label={t('reactivate.edit.title')} />
               ) : (
-                <PencilLineIcon />
+                <PencilLineIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               )}
               <span className="flex min-w-0 flex-col items-start gap-y-0.5 text-left">
                 <span className="text-paragraph-sm-medium">{t('reactivate.edit.title')}</span>

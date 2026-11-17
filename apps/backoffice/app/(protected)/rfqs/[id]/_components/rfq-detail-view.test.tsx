@@ -61,6 +61,7 @@ vi.mock('./sale-closure-card', () => ({
 const { toast } = await import('sonner');
 const { discardAIChanges, fetchRfqDetail, generateQuote, setQuoteArchived } =
   await import('@/lib/api/rfqs-client');
+const { RfqItemsTable } = await import('./rfq-items-table');
 
 const copy = messages.rfqs;
 
@@ -309,6 +310,26 @@ function sendOffered() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+it('refreshes a received order without a quote when AI generation finishes', async () => {
+  vi.useFakeTimers();
+  try {
+    const pending = makeDetail('DRAFT', 'RECEIVED');
+    pending.quote = null;
+    pending.version = null;
+    pending.items = [];
+    const generated = makeDetail('DRAFT', 'GENERATED');
+    vi.mocked(fetchRfqDetail).mockResolvedValue(generated);
+    renderView(pending);
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(fetchRfqDetail).toHaveBeenCalledWith(RFQ_ID);
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].items).toEqual(generated.items);
+    expect(vi.mocked(RfqItemsTable).mock.lastCall?.[0].quoteId).toBe(QUOTE_ID);
+    expect(screen.getByRole('button', { name: copy.detail.items.generate })).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 describe('RfqDetailView tracking', () => {

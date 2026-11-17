@@ -20,6 +20,7 @@ type contactProfiles interface {
 }
 
 type contactStore interface {
+	AssociateCustomerRequest(context.Context, repository.Querier, domain.InboundChannelRoute, uuid.UUID, uuid.UUID) error
 	ListForCustomer(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) ([]domain.ClientContact, error)
 	GetProfileAccess(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) (*domain.CustomerProfileAccess, error)
 	SaveDeclared(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, []domain.ClientContact) error

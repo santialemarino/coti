@@ -295,7 +295,7 @@ See [docs/technical/file-storage.md](docs/technical/file-storage.md).
 
 Backoffice uploads also pass through Next Server Actions. `SERVER_ACTION_BODY_SIZE_LIMIT`
 (default `16mb`) must accommodate the file and multipart envelope; the API's file limits still
-apply independently. See `apps/backoffice/.env.example` for the transport and catalog-preview settings.
+apply independently. See `apps/backoffice/.env.example` for the transport, catalog-preview and seller queue refresh settings.
 
 ## Design system
 

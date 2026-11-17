@@ -92,6 +92,7 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
       const kept = survivor === 'this' ? name : otherName;
       toast.success(t('merged', { kept, merged: survivor === 'this' ? otherName : name }));
       setOpen(false);
+      window.dispatchEvent(new Event('client-contact-suggestions-changed'));
       if (target === clientId) router.refresh();
       else pendingRouter.push(ROUTES.clientDetail(target));
     } catch (cause) {

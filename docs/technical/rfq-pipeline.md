@@ -864,3 +864,19 @@ extension is installed, reload the VS Code window once so its debug adapter is r
 compound starts the API under Delve and runs the evaluator after its health endpoint becomes
 available, allowing Go breakpoints inside extraction, matching, and persistence while the client
 timeline remains visible.
+
+## Seller screen refresh and editing
+
+The visible seller queue refreshes every `NEXT_PUBLIC_RFQ_REFRESH_INTERVAL_SECONDS` (default 5).
+An open received request also rereads its detail until generation completes or fails, updating its
+items, status and queue entry together. Hidden tabs pause these reads; returning to the tab
+refreshes immediately. Failed background reads retain the last usable screen and retry.
+
+Approving materials moves a draft to `QUOTED`. Until delivery freezes its version, the seller can
+add or replace products and edit quantities, prices and discounts. New products use the owning
+branch's current price; each edit recomputes totals and promotions on the backend. Frozen and
+archived versions remain protected.
+
+Sending closes the send form and reports each channel's outcome. The order offers copying the
+customer link and sending through another channel; it never exposes the URL or opens the
+customer-only portal as the seller.

@@ -1,11 +1,9 @@
 'use client';
 
-import { ExternalLinkIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
@@ -78,32 +76,22 @@ export function QuoteDeliveryCard({
           <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
         ) : null}
         {liveDelivery ? (
-          <>
-            <div className="flex flex-col gap-y-1">
-              <span className="text-paragraph-xs-medium text-foreground-muted">
-                {t('linkLabel')}
-              </span>
-              <span
-                aria-label={t('linkLabel')}
-                className="break-all text-paragraph-sm text-foreground"
-              >
-                {liveDelivery.public_url}
-              </span>
-            </div>
-            <div className="flex gap-x-2">
-              <CopyButton
-                value={liveDelivery.public_url}
-                labels={{ copy: t('copyLink'), copied: t('copiedLink') }}
-                onCopyError={() => toast.error(t('copyFailed'))}
+          <div className="flex flex-wrap items-center gap-2">
+            <CopyButton
+              value={liveDelivery.public_url}
+              labels={{ copy: t('copyLink'), copied: t('copiedLink') }}
+              onCopyError={() => toast.error(t('copyFailed'))}
+            />
+            {canAct && quote.current_status === 'SENT' ? (
+              <SendQuoteDialog
+                detail={detail}
+                branchId={detail.rfq.branch_id}
+                onSent={onSent}
+                branchMissesEmail={branchMissesEmail}
+                resend
               />
-              <Button asChild variant="outline" size="sm">
-                <a href={liveDelivery.public_url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLinkIcon className="size-3.5" />
-                  {t('openQuote')}
-                </a>
-              </Button>
-            </div>
-          </>
+            ) : null}
+          </div>
         ) : (
           <p className="text-paragraph-sm text-foreground-muted">{t('unavailable')}</p>
         )}

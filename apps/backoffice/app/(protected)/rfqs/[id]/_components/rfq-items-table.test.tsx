@@ -824,6 +824,19 @@ describe('RfqItemsTable choosing a product for a flagged line', () => {
 });
 
 describe('RfqItemsTable quantity', () => {
+  it('keeps products and quantities editable on an approved quote', async () => {
+    vi.mocked(updateQuoteItem).mockResolvedValue({ ...PRICED_ITEM, quantity: '12.50' });
+    const view = renderItems(BRANCH_ID, 'QUOTED');
+    expect(view.getByRole('button', { name: copy.detail.items.add })).toBeTruthy();
+    const input = view.getByRole('textbox', { name: copy.detail.items.columns.quantity });
+    fireEvent.change(input, { target: { value: '12,50' } });
+    fireEvent.blur(input);
+    await vi.waitFor(() =>
+      expect(updateQuoteItem).toHaveBeenCalledWith(QUOTE_ID, ITEM_ID, BRANCH_ID, {
+        quantity: '12.5',
+      }),
+    );
+  });
   // One figure in one cell: a separate unit column opens a gap that changes width every row.
   it('reads the quantity and its unit together, under one heading', () => {
     const view = renderItems(BRANCH_ID, 'SENT');
