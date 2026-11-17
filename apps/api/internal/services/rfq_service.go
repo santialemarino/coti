@@ -849,6 +849,22 @@ func (s *RFQService) AddItem(
 		if createErr != nil {
 			return createErr
 		}
+		if quote.CurrentStatus == domain.QuoteStatusQuoted && in.ProductID != nil && s.prices != nil {
+			prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID, []uuid.UUID{*in.ProductID})
+			if err != nil {
+				return err
+			}
+			if price, ok := prices[*in.ProductID]; ok {
+				update := domain.QuoteItemUpdate{ProductID: in.ProductID, UnitPriceSnapshot: &price.Price}
+				if price.MinPrice.Valid {
+					update.MinPriceSnapshot = &price.MinPrice.Decimal
+				}
+				item, createErr = s.quotes.UpdateItem(ctx, q, tenant.AccountID, version.ID, item.ID, update)
+				if createErr != nil {
+					return createErr
+				}
+			}
+		}
 		return s.recalculateVersionTotal(ctx, q, tenant, version.ID)
 	}); err != nil {
 		return nil, err

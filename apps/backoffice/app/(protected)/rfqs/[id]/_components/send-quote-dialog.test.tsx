@@ -183,6 +183,24 @@ afterEach(() => {
 });
 
 describe('SendQuoteDialog', () => {
+  it('prefills the declared email of a Webapp customer without requiring a WhatsApp number', async () => {
+    const detail = makeDetail();
+    detail.rfq.channel = 'webapp';
+    detail.publicRequest = {
+      taxId: '20123456786',
+      name: 'Customer',
+      email: 'customer@example.test',
+      attachments: [],
+    };
+    const view = renderDialog(null, detail);
+    openDialog(view);
+    expect((view.getByLabelText(copy.emailLabel) as HTMLInputElement).value).toBe(
+      'customer@example.test',
+    );
+    expect(view.getByRole('checkbox', { name: copy.sendWhatsApp }).getAttribute('data-state')).toBe(
+      'unchecked',
+    );
+  });
   it('reuses the reviewed operation after a transport failure', async () => {
     vi.mocked(sendQuote)
       .mockRejectedValueOnce(new ApiError('UNREACHABLE', 0))
@@ -197,37 +215,19 @@ describe('SendQuoteDialog', () => {
     fireEvent.click(view.getByRole('button', { name: copy.send }));
     await waitFor(() => expect(sendQuote).toHaveBeenCalledTimes(2));
     expect(vi.mocked(sendQuote).mock.calls[1]?.[3]).toBe(vi.mocked(sendQuote).mock.calls[0]?.[3]);
-    await view.findByText(copy.successTitle);
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
   });
 
-  it('opens the web publication without exposing its internal destination', async () => {
+  it('closes after sending without offering the customer-only publication', async () => {
     vi.mocked(sendQuote).mockResolvedValue(
       sentResult([delivery({ channel: 'webapp', destination: 'customer-portal' })]),
     );
     const view = renderDialog();
     openDialog(view);
-    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(true);
     await sendOn(view);
-
-    expect(view.getByRole('link', { name: copy.visualizeOnline }).getAttribute('href')).toBe(
-      WHATSAPP_URL,
-    );
-    expect(view.queryByText('customer-portal')).toBeNull();
-  });
-
-  /*
-   * The send is done: what the seller still needs is the link. It rides the same two channels it
-   * was sent on, so the dialog holds it until it is closed rather than disappearing with the toast.
-   */
-  it('keeps the dialog open on success and surfaces each delivered link', async () => {
-    vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
-    const view = renderDialog();
-    openDialog(view);
-    await sendOn(view);
-
-    expect(view.getByText(copy.successTitle)).toBeTruthy();
-    expect(view.getByText(WHATSAPP_URL)).toBeTruthy();
-    expect(view.getByRole('link', { name: /Abrir/ }).getAttribute('href')).toBe(WHATSAPP_URL);
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    expect(view.queryByRole('link', { name: copy.visualizeOnline })).toBeNull();
+    expect(view.queryByText(WHATSAPP_URL)).toBeNull();
   });
 
   it('uses the inbound WhatsApp sender as the editable recipient default', async () => {
@@ -335,23 +335,7 @@ describe('SendQuoteDialog', () => {
     );
   });
 
-  it('copies a delivered link, then announces it', async () => {
-    vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
-    const view = renderDialog();
-    openDialog(view);
-    await sendOn(view);
-
-    fireEvent.click(view.getByRole('button', { name: copy.copyLink }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(WHATSAPP_URL));
-    expect(view.getAllByRole('status').map((node) => node.textContent)).toContain(copy.copiedLink);
-  });
-
-  /*
-   * A channel that failed never delivered its link, so naming it here would hand the seller a URL
-   * the customer never received — the toast already said which channel to retry by hand.
-   */
-  it('shows only the links of channels that delivered', async () => {
+  it('reports partial delivery and returns to the order', async () => {
     vi.mocked(sendQuote).mockResolvedValue(
       sentResult([
         delivery({ id: 'd-wa', tracking_status: 'FAILED' }),
@@ -369,7 +353,7 @@ describe('SendQuoteDialog', () => {
     await sendOn(view);
 
     expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining(channels.whatsapp));
-    expect(view.getByText(EMAIL_URL)).toBeTruthy();
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
     expect(view.queryByText(WHATSAPP_URL)).toBeNull();
   });
 
@@ -410,13 +394,14 @@ describe('SendQuoteDialog', () => {
     expect(toast.error).toHaveBeenCalledWith(copy.errors.DELIVERY_UNAVAILABLE);
   });
 
-  it('returns to the form from the success view to send to another destination', async () => {
+  it('can reopen the form after a successful send', async () => {
     vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({})]));
     const view = renderDialog();
     openDialog(view);
     await sendOn(view);
 
-    fireEvent.click(view.getByRole('button', { name: copy.resend }));
+    await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+    openDialog(view);
 
     expect(view.queryByText(copy.successTitle)).toBeNull();
     expect(phoneField(view)).toBeTruthy();

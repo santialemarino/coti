@@ -1192,6 +1192,17 @@ func (f *fakeQuoteDrafts) UpdateItem(
 	if in.Unit != nil {
 		item.Unit = in.Unit
 	}
+	if in.UnitPriceSnapshot != nil {
+		item.UnitPriceSnapshot = decimal.NewNullDecimal(*in.UnitPriceSnapshot)
+	}
+	if item.UnitPriceSnapshot.Valid {
+		item.Subtotal = decimal.NewNullDecimal(item.Quantity.Mul(item.UnitPriceSnapshot.Decimal))
+	}
+	for i := range f.itemsByVersionID {
+		if f.itemsByVersionID[i].ID == item.ID {
+			f.itemsByVersionID[i] = *item
+		}
+	}
 	return item, nil
 }
 

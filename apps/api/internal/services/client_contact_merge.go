@@ -85,7 +85,7 @@ func (s *ClientContactService) ResolveSuggestion(ctx context.Context, tenant dom
 		if err != nil {
 			return err
 		}
-		if o.Status != domain.ContactReviewPending {
+		if o.Status != domain.ContactReviewPending && (o.Status != domain.ContactReviewMerged || action != domain.ContactReviewMerged) {
 			return domain.ErrConflict
 		}
 		if action == domain.ContactReviewMerged {
@@ -93,17 +93,23 @@ func (s *ClientContactService) ResolveSuggestion(ctx context.Context, tenant dom
 				return domain.ErrInvalidInput
 			}
 			source, target := *o.SourceClientID, *o.CandidateClientID
-			if keep != nil && *keep == source {
-				source, target = target, source
-			} else if keep != nil && *keep != target {
-				return domain.ErrInvalidInput
-			}
 			// Either side may have been merged since the case was raised; it is settled on survivors.
 			if source, err = s.profiles.GetSurvivor(ctx, q, tenant.AccountID, source); err != nil {
 				return err
 			}
 			if target, err = s.profiles.GetSurvivor(ctx, q, tenant.AccountID, target); err != nil {
 				return err
+			}
+			if keep != nil && (*keep == source || *keep == *o.SourceClientID) {
+				source, target = target, source
+			} else if keep != nil && *keep != target && *keep != *o.CandidateClientID {
+				return domain.ErrInvalidInput
+			}
+			if o.Status == domain.ContactReviewMerged {
+				if source != target {
+					return domain.ErrConflict
+				}
+				return nil
 			}
 			if source != target {
 				if err := s.mergeResolved(ctx, q, tenant, source, target, keep != nil, *o); err != nil {

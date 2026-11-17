@@ -110,7 +110,8 @@ retired the same destination and their survivors all hold a copy, the latest mer
 Every merge, whichever path ran it, also fills the target's empty DNI, legal name, IVA condition and
 fiscal address from the source without overwriting a value the target holds, repoints any profile
 already merged into the source so `merged_into` always names a live profile, settles any open name
-question to the source's contacts (so a late reply cannot rename the target), and writes a
+question to the source's contacts (so a late reply cannot rename the target), settles pending contact
+observations whose two profiles now share a survivor, and writes a
 `client_merge_audit` row (source, target, `merged_by`, `merged_at`; `merged_by` is NULL when the
 customer's own proof merged them).
 
@@ -161,6 +162,7 @@ its customer.
   writes the audit row with the seller. The list's `account_join_ready` says when it is allowed: the
   backoffice then offers «Unir a la cuenta del cliente», otherwise only the dismissal and a hint that
   the customer verifies the contact from the portal first. Accounts on both sides are **403**.
+  Pending observations display the current surviving profiles, including their registration state.
 - **Old links.** `GET /v1/clients/{id}` on a merged profile answers with the profile it ended up in,
   and the backoffice redirects the old URL there.
 

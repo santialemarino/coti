@@ -95,7 +95,10 @@ The old unauthenticated request POST returns 401.
 
 A UUID v4 request_id identifies retries of the same payload. A durable inbound_channel_message
 reservation and payload fingerprint serialize retries under an advisory lock. Changed payloads
-return 409. The API generates RFQ IDs and acknowledges only durable reception. Text enters the
+return 409. The API generates RFQ IDs and acknowledges only durable reception. The authenticated
+customer profile is associated with the retained RFQ before processing or file
+storage starts. Generated quotes inherit that profile, and retries repair missing associations
+without replacing an existing seller selection or changing contact ownership. Text enters the
 existing unassigned inbound pipeline. Files enter the existing attachment sweep. Provider failures
 do not remove retained requests; failed storage is retryable without duplicating the RFQ.
 
