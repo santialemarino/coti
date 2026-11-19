@@ -1,25 +1,21 @@
 package services
 
 import (
-	"slices"
-	"testing"
-
-	"github.com/shopspring/decimal"
-
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"testing"
 )
 
-func TestFollowupItems_WordsMatchedAndUnmatchedLines(t *testing.T) {
-	name, unit := "Cemento Loma Negra 50 kg", "bolsa"
-	items := []domain.QuoteItem{
-		{RequestedDescription: "10 bolsas de cemento", Quantity: decimal.RequireFromString("10.00"),
-			ProductName: &name, ProductUnit: &unit},
-		{RequestedDescription: "un poco de arena fina", Quantity: decimal.RequireFromString("1.00")},
+func TestFollowupTemplate_RenderAndValidation(t *testing.T) {
+	tests := []struct {
+		template string
+		valid    bool
+	}{{domain.DefaultFollowupTemplate, true}, {"{cliente}: {cotizacion}", true}, {"", false}, {"{total}", false}}
+	for _, tc := range tests {
+		if err := domain.ValidateFollowupTemplate(tc.template); (err == nil) != tc.valid {
+			t.Errorf("ValidateFollowupTemplate(%q) = %v", tc.template, err)
+		}
 	}
-
-	got := followupItems(items)
-	want := []string{"10 bolsa Cemento Loma Negra 50 kg", "un poco de arena fina"}
-	if !slices.Equal(got, want) {
-		t.Errorf("followupItems() = %q, want %q", got, want)
+	if got := domain.RenderFollowupTemplate("{cliente}: {cotizacion}", "Cliente", 7); got != "Cliente: COT-000007" {
+		t.Fatalf("rendered = %q", got)
 	}
 }

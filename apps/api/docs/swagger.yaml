@@ -53,6 +53,8 @@ definitions:
         type: string
       created_at:
         type: string
+      followup_template:
+        type: string
       has_invoices:
         description: Whether ARCA ever authorized a voucher here, which keeps the
           history readable while invoicing is off.
@@ -156,6 +158,13 @@ definitions:
         $ref: '#/definitions/dto.ProductResponse'
       type:
         type: string
+    type: object
+  dto.ArchiveFailedRFQRequest:
+    properties:
+      archived:
+        type: boolean
+    required:
+    - archived
     type: object
   dto.AssignSellerRequest:
     properties:
@@ -477,6 +486,15 @@ definitions:
     - kind
     - value
     type: object
+  dto.ClientDeliveryContactResponse:
+    properties:
+      kind:
+        type: string
+      primary:
+        type: boolean
+      value:
+        type: string
+    type: object
   dto.ClientFiscalResponse:
     properties:
       address:
@@ -544,6 +562,10 @@ definitions:
     type: object
   dto.ClientResponse:
     properties:
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientDeliveryContactResponse'
+        type: array
       created_at:
         type: string
       email:
@@ -594,6 +616,10 @@ definitions:
     properties:
       accepted_quote_count:
         type: integer
+      contacts:
+        items:
+          $ref: '#/definitions/dto.ClientDeliveryContactResponse'
+        type: array
       created_at:
         type: string
       email:
@@ -2465,6 +2491,8 @@ definitions:
     properties:
       message:
         type: string
+      template_configured:
+        type: boolean
     type: object
   dto.QuoteItemAlternativeResponse:
     properties:
@@ -2734,8 +2762,24 @@ definitions:
         $ref: '#/definitions/dto.QuoteEmailDeliveryRequest'
       expiry_days:
         type: integer
+      followup_message:
+        maxLength: 2000
+        minLength: 1
+        type: string
+      other_channels_only:
+        type: boolean
+      recipient_emails:
+        items:
+          type: string
+        maxItems: 20
+        type: array
       recipient_phone:
         type: string
+      recipient_phones:
+        items:
+          type: string
+        maxItems: 20
+        type: array
     type: object
   dto.QuoteSendResponse:
     properties:
@@ -2769,6 +2813,8 @@ definitions:
       operation_id:
         type: string
       public_url:
+        type: string
+      purpose:
         type: string
       sent_at:
         type: string
@@ -3601,6 +3647,10 @@ definitions:
           Confirms that a new tax_id removes the ARCA connection made with the old one; without it the
           change is refused with 409 ARCA_CONNECTED.
         type: boolean
+      followup_template:
+        maxLength: 2000
+        minLength: 1
+        type: string
       legal_name:
         maxLength: 255
         type: string
@@ -8838,8 +8888,8 @@ paths:
   /v1/quotes/{quoteId}/followup-draft:
     post:
       description: Drafts, from the quote as it stands, a message the seller can edit
-        and send to a client who has not answered. It contains no prices and is never
-        sent by Coti.
+        and send to a client who has not answered. It uses the configured account
+        template without AI; delivery requires seller confirmation.
       parameters:
       - description: Active branch
         in: header
@@ -8872,10 +8922,6 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
         "422":
           description: No active branch
-          schema:
-            $ref: '#/definitions/dto.ErrorResponse'
-        "503":
-          description: AI_UNAVAILABLE
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
@@ -10266,6 +10312,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Get RFQ detail
+      tags:
+      - rfqs
+  /v1/rfqs/{rfqId}/archive:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Request ID
+        in: path
+        name: rfqId
+        required: true
+        type: string
+      - description: Archive flag
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ArchiveFailedRFQRequest'
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Archive or restore a failed request
       tags:
       - rfqs
   /v1/rfqs/{rfqId}/assign:

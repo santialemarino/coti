@@ -360,3 +360,7 @@ func TestRfqHandler_DeleteDiscount_RemovesTheRow(t *testing.T) {
 			service.deletedTenant, service.deletedQuote, service.deletedID)
 	}
 }
+
+func (s *stubDiscountRFQService) SetFailedArchived(context.Context, domain.Tenant, uuid.UUID, bool) error {
+	return nil
+}

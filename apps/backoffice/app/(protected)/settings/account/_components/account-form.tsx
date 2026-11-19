@@ -24,6 +24,7 @@ import {
   PendingButton,
   RadioGroup,
   RadioGroupItem,
+  Textarea,
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
 import { updateAccount } from '@/app/(protected)/settings/account/actions';
@@ -64,6 +65,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       taxId: taxIdDigits(account.taxId ?? ''),
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
       lowerPriceStrategy: account.preferredLowerPriceStrategy,
+      followupTemplate: account.followupTemplate ?? t('followup.default'),
     },
   });
   const strategyFieldId = useId();
@@ -79,7 +81,13 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
     let result;
     try {
       result = await updateAccount(
-        { ...values, brandLogoUrl: account.brandLogoUrl ?? '' },
+        {
+          ...values,
+          brandLogoUrl: account.brandLogoUrl ?? '',
+          followupTemplate: form.getFieldState('followupTemplate').isDirty
+            ? values.followupTemplate
+            : undefined,
+        },
         logo,
         disconnectARCA,
       );
@@ -245,6 +253,23 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
                     </RadioGroup>
                   </FormControl>
                   <FormDescription>{t('lowerPrice.hint')}</FormDescription>
+                </FormItem>
+              )}
+            />
+          </section>
+          <section id="followup-template" className="flex flex-col gap-5 scroll-mt-24">
+            <h2 className="text-heading-6">{t('followup.title')}</h2>
+            <FormField
+              control={form.control}
+              name="followupTemplate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('followup.label')}</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} maxLength={2000} />
+                  </FormControl>
+                  <FormDescription>{t('followup.hint')}</FormDescription>
+                  <FormMessage />
                 </FormItem>
               )}
             />

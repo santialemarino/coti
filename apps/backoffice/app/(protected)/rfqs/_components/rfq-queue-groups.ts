@@ -4,7 +4,7 @@ import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
  * A stack of the queue column. An accepted order splits in two: «Por cerrar» while the sale still
  * waits to be paid or invoiced, «Completados» once it is closed.
  */
-export type QueueStack = Exclude<RfqStatus, 'ACCEPTED'> | 'TO_CLOSE' | 'COMPLETED';
+export type QueueStack = Exclude<RfqStatus, 'ACCEPTED'> | 'TO_CLOSE' | 'COMPLETED' | 'ARCHIVED';
 
 /*
  * By who has to act: what waits on the seller first, the accepted sales still open next, what waits
@@ -21,17 +21,25 @@ export const QUEUE_STACK_ORDER: readonly QueueStack[] = [
   'RECEIVED',
   'COMPLETED',
   'REJECTED',
+  'ARCHIVED',
 ];
 
 // The closed outcomes: their stacks start folded away, heading only, at the foot of the column.
-export const FOLDED_STACKS: ReadonlySet<QueueStack> = new Set(['COMPLETED', 'REJECTED']);
+export const FOLDED_STACKS: ReadonlySet<QueueStack> = new Set([
+  'COMPLETED',
+  'REJECTED',
+  'ARCHIVED',
+]);
 
 export interface QueueStatusGroup {
   stack: QueueStack;
   records: RfqRecord[];
 }
 
-export function queueStackOf(record: Pick<RfqRecord, 'status' | 'saleComplete'>): QueueStack {
+export function queueStackOf(
+  record: Pick<RfqRecord, 'status' | 'saleComplete' | 'archived'>,
+): QueueStack {
+  if (record.archived) return 'ARCHIVED';
   if (record.status !== 'ACCEPTED') return record.status;
   return record.saleComplete ? 'COMPLETED' : 'TO_CLOSE';
 }
@@ -43,7 +51,6 @@ export function queueStackOf(record: Pick<RfqRecord, 'status' | 'saleComplete'>)
 export function groupQueue(records: readonly RfqRecord[]): QueueStatusGroup[] {
   const byStack = new Map<QueueStack, RfqRecord[]>();
   for (const record of records) {
-    if (record.archived) continue;
     const stack = queueStackOf(record);
     const group = byStack.get(stack);
     if (group) group.push(record);

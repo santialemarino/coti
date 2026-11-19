@@ -3373,3 +3373,11 @@ func TestRfqService_CreateManual_LetsAnAdminLeaveTheOrderUnassigned(t *testing.T
 		t.Fatalf("seller = %v, want an admin's order left unassigned", *repo.created[0].SellerID)
 	}
 }
+
+func (f *fakeRFQs) SetFailedArchived(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error {
+	return nil
+}
+
+func (f *fakeRfqRepoManual) SetFailedArchived(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error {
+	return nil
+}

@@ -29,10 +29,11 @@ type SignupResponse struct {
 
 // UpdateAccountRequest is the body for PUT /v1/account. It replaces the record, brand included.
 type UpdateAccountRequest struct {
-	Name         string  `json:"name" binding:"required,min=1,max=255"`
-	LegalName    *string `json:"legal_name" binding:"omitempty,max=255"`
-	TaxID        *string `json:"tax_id" binding:"omitempty,max=255"`
-	BrandLogoURL *string `json:"brand_logo_url" binding:"omitempty,url,max=512"`
+	FollowupTemplate *string `json:"followup_template" binding:"omitempty,min=1,max=2000"`
+	Name             string  `json:"name" binding:"required,min=1,max=255"`
+	LegalName        *string `json:"legal_name" binding:"omitempty,max=255"`
+	TaxID            *string `json:"tax_id" binding:"omitempty,max=255"`
+	BrandLogoURL     *string `json:"brand_logo_url" binding:"omitempty,url,max=512"`
 	// Hexadecimal, with three, four, six or eight digits behind a hash. Checked here because the
 	// webapp renders a quote with it, not in whichever client happens to be writing it.
 	BrandColor *string `json:"brand_color" binding:"omitempty,hexcolor,max=32"`
@@ -45,12 +46,13 @@ type UpdateAccountRequest struct {
 
 // AccountResponse is the corralón record the backoffice reads and edits.
 type AccountResponse struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	LegalName    *string   `json:"legal_name"`
-	TaxID        *string   `json:"tax_id"`
-	BrandLogoURL *string   `json:"brand_logo_url"`
-	BrandColor   *string   `json:"brand_color"`
+	FollowupTemplate *string   `json:"followup_template"`
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	LegalName        *string   `json:"legal_name"`
+	TaxID            *string   `json:"tax_id"`
+	BrandLogoURL     *string   `json:"brand_logo_url"`
+	BrandColor       *string   `json:"brand_color"`
 	// FIND_CHEAPER_ALTERNATIVES or ADAPT_TO_REACH_DISCOUNT.
 	PreferredLowerPriceStrategy string `json:"preferred_lower_price_strategy"`
 	// Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.

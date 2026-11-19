@@ -143,3 +143,7 @@ hostname to another account's shared portal. Customer sessions stay separate fro
 In development, a registered bare `localhost` hostname keeps HTTP and the configured local port.
 Supplier `.localhost` hostnames use `/c/<supplier>` on the configured shared origin. The webapp
 preserves that supplier prefix when an old quotation link redirects to history or contact guidance.
+
+Authenticated request authors are associated with their commercial profile before processing.
+Migration 00080 restores missing links only from persisted customer authorship within the same
+account. An unverified contact declaration alone never claims a profile.

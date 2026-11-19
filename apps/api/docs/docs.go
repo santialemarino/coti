@@ -7556,7 +7556,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Drafts, from the quote as it stands, a message the seller can edit and send to a client who has not answered. It contains no prices and is never sent by Coti.",
+                "description": "Drafts, from the quote as it stands, a message the seller can edit and send to a client who has not answered. It uses the configured account template without AI; delivery requires seller confirmation.",
                 "produces": [
                     "application/json"
                 ],
@@ -7607,12 +7607,6 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "No active branch",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "AI_UNAVAILABLE",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -9830,6 +9824,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/rfqs/{rfqId}/archive": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rfqs"
+                ],
+                "summary": "Archive or restore a failed request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Request ID",
+                        "name": "rfqId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Archive flag",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ArchiveFailedRFQRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/rfqs/{rfqId}/assign": {
             "post": {
                 "security": [
@@ -10740,6 +10804,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "followup_template": {
+                    "type": "string"
+                },
                 "has_invoices": {
                     "description": "Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.",
                     "type": "boolean"
@@ -10885,6 +10952,17 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ArchiveFailedRFQRequest": {
+            "type": "object",
+            "required": [
+                "archived"
+            ],
+            "properties": {
+                "archived": {
+                    "type": "boolean"
                 }
             }
         },
@@ -11359,6 +11437,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientDeliveryContactResponse": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ClientFiscalResponse": {
             "type": "object",
             "properties": {
@@ -11460,6 +11552,12 @@ const docTemplate = `{
         "dto.ClientResponse": {
             "type": "object",
             "properties": {
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientDeliveryContactResponse"
+                    }
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -11530,6 +11628,12 @@ const docTemplate = `{
             "properties": {
                 "accepted_quote_count": {
                     "type": "integer"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientDeliveryContactResponse"
+                    }
                 },
                 "created_at": {
                     "type": "string"
@@ -14256,6 +14360,9 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "type": "string"
+                },
+                "template_configured": {
+                    "type": "boolean"
                 }
             }
         },
@@ -14649,8 +14756,30 @@ const docTemplate = `{
                 "expiry_days": {
                     "type": "integer"
                 },
+                "followup_message": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "minLength": 1
+                },
+                "other_channels_only": {
+                    "type": "boolean"
+                },
+                "recipient_emails": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "recipient_phone": {
                     "type": "string"
+                },
+                "recipient_phones": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -14702,6 +14831,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "public_url": {
+                    "type": "string"
+                },
+                "purpose": {
                     "type": "string"
                 },
                 "sent_at": {
@@ -15934,6 +16066,11 @@ const docTemplate = `{
                 "disconnect_arca": {
                     "description": "Confirms that a new tax_id removes the ARCA connection made with the old one; without it the\nchange is refused with 409 ARCA_CONNECTED.",
                     "type": "boolean"
+                },
+                "followup_template": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "minLength": 1
                 },
                 "legal_name": {
                     "type": "string",

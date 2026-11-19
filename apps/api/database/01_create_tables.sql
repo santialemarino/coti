@@ -167,7 +167,10 @@ $$;
 -- IDENTITY / TENANT
 -- =============================================================================
 
+CREATE TYPE quote_delivery_purpose AS ENUM ('QUOTE', 'FOLLOWUP');
+
 CREATE TABLE account (
+  followup_template TEXT CHECK (followup_template IS NULL OR length(followup_template) BETWEEN 1 AND 2000),
   public_hostname VARCHAR(253) CONSTRAINT uq_account_public_hostname UNIQUE
     CONSTRAINT ck_account_public_hostname CHECK (public_hostname = lower(public_hostname) AND public_hostname ~ '^[a-z0-9][a-z0-9.-]*[a-z0-9]$'),
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -547,6 +550,7 @@ CREATE TABLE gmail_authorization_state (
 -- What the client asked for. Separate from quote: the UI stepper is a projection over both,
 -- not a third entity.
 CREATE TABLE rfq (
+  archived_at TIMESTAMPTZ,
  CONSTRAINT uq_rfq_account_id UNIQUE(account_id,id),
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id  UUID NOT NULL,
@@ -869,6 +873,8 @@ CREATE TABLE quote_status_change (
 -- The link is issued per send and channel, not stored on quote. public_token is the
 -- webapp's only lookup key, so it is unique.
 CREATE TABLE quote_send (
+  purpose quote_delivery_purpose NOT NULL DEFAULT 'QUOTE',
+  message TEXT,
   client_association_hash VARCHAR(64) NOT NULL DEFAULT '',
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id      UUID NOT NULL,
@@ -887,7 +893,7 @@ CREATE TABLE quote_send (
   CONSTRAINT uq_quote_send_public_token UNIQUE (public_token),
   CONSTRAINT ck_quote_send_validity_days CHECK (validity_days BETWEEN 1 AND 365),
   CONSTRAINT uq_quote_send_idempotency_channel
-    UNIQUE (account_id, idempotency_key, channel_id)
+    UNIQUE (account_id, idempotency_key, channel_id, destination)
 );
 
 CREATE UNIQUE INDEX uq_quote_send_channel_provider_reference

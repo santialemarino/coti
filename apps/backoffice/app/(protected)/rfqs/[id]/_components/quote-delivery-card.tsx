@@ -53,7 +53,10 @@ export function QuoteDeliveryCard({
 
   // The API orders deliveries newest-first, so the first live one is the link the client holds.
   const liveDelivery = (detail.deliveries ?? []).find(
-    (delivery) => LIVE_TRACKING_STATUSES.has(delivery.tracking_status) && delivery.public_url,
+    (delivery) =>
+      delivery.purpose !== 'FOLLOWUP' &&
+      LIVE_TRACKING_STATUSES.has(delivery.tracking_status) &&
+      delivery.public_url,
   );
 
   return (
@@ -71,10 +74,12 @@ export function QuoteDeliveryCard({
           <RfqStatusBadge status={normalizeRfqStatus(quote.current_status)} size="sm" />
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-y-4">
-        {canSendQuote && branchMissesEmail ? (
+      {canSendQuote && branchMissesEmail ? (
+        <CardContent>
           <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
-        ) : null}
+        </CardContent>
+      ) : null}
+      <CardFooter className="flex flex-wrap items-center justify-between gap-2">
         {liveDelivery ? (
           <div className="flex flex-wrap items-center gap-2">
             <CopyButton
@@ -95,26 +100,17 @@ export function QuoteDeliveryCard({
         ) : (
           <p className="text-paragraph-sm text-foreground-muted">{t('unavailable')}</p>
         )}
-      </CardContent>
-      {canAct ? (
-        /* Both action sets stay mounted across every transition, so a dialog outlives the status
-           that offered it; the footer hides itself while neither has a button to show. */
-        <CardFooter className="justify-end gap-x-2 empty:hidden">
-          <SendQuoteDialog
-            detail={detail}
-            branchId={detail.rfq.branch_id}
-            onSent={onSent}
-            showTrigger={canSendQuote}
-            branchMissesEmail={branchMissesEmail}
-          />
-          <QuoteLifecycleActions
-            quoteId={quote.id}
-            branchId={detail.rfq.branch_id}
-            status={quote.current_status}
-            onChanged={onSent}
-          />
-        </CardFooter>
-      ) : null}
+        {canAct ? (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <QuoteLifecycleActions
+              quoteId={quote.id}
+              branchId={detail.rfq.branch_id}
+              status={quote.current_status}
+              onChanged={onSent}
+            />
+          </div>
+        ) : null}
+      </CardFooter>
     </Card>
   );
 }

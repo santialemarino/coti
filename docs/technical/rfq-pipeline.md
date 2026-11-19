@@ -22,6 +22,7 @@ files an order arrives with are stored beside it and are not read here — see
 | `POST`   | `/v1/rfqs/file-drafts`             | Runs an order that arrived as a file through the same pipeline         |
 | `GET`    | `/v1/rfqs`                         | The dashboard queue; `?include_archived=true` keeps archived quotes in |
 | `GET`    | `/v1/rfqs/{id}`                    | Returns the detail with quote state history and delivery tracking      |
+| `PUT`    | `/v1/rfqs/{id}/archive`            | Archives or restores a failed source without creating a quote          |
 | `GET`    | `/v1/channels`                     | The active intake channels of the selected branch                      |
 | `POST`   | `/v1/dev/whatsapp/messages`        | Simulates one inbound WhatsApp message. Not registered in production   |
 | `POST`   | `/v1/quotes/{id}/accept-materials` | Prices the draft's lines and moves the quote to `QUOTED`               |

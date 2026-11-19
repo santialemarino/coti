@@ -274,7 +274,11 @@ func toClientResponse(client domain.Client) dto.ClientResponse {
 		value := string(*client.OriginChannel)
 		origin = &value
 	}
-	return dto.ClientResponse{ID: client.ID, TaxID: client.TaxID, Name: client.Name, Phone: client.Phone,
+	contacts := make([]dto.ClientDeliveryContactResponse, 0, len(client.Contacts))
+	for _, contact := range client.Contacts {
+		contacts = append(contacts, dto.ClientDeliveryContactResponse{Kind: string(contact.Kind), Value: contact.Value, Primary: contact.Primary})
+	}
+	return dto.ClientResponse{Contacts: contacts, ID: client.ID, TaxID: client.TaxID, Name: client.Name, Phone: client.Phone,
 		Email: client.Email, OriginChannel: origin, Notes: client.Notes,
 		CreatedAt: client.CreatedAt, UpdatedAt: client.UpdatedAt}
 }

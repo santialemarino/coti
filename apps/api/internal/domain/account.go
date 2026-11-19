@@ -9,12 +9,13 @@ import (
 
 // Account is one corralón. It is the tenant boundary every other table hangs off.
 type Account struct {
-	ID           uuid.UUID
-	Name         string
-	LegalName    *string
-	TaxID        *string
-	BrandLogoURL *string
-	BrandColor   *string
+	FollowupTemplate *string
+	ID               uuid.UUID
+	Name             string
+	LegalName        *string
+	TaxID            *string
+	BrandLogoURL     *string
+	BrandColor       *string
 	// PreferredLowerPriceStrategy is what a «bajame el precio» tries first when the customer did not say.
 	PreferredLowerPriceStrategy HandlerStrategy
 	// InvoicingEnabled is whether the corralón invoices with Coti; off refuses issuing anything.
@@ -31,11 +32,12 @@ type Account struct {
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client
 // webapp renders a quote with.
 type AccountUpdate struct {
-	Name         string
-	LegalName    *string
-	TaxID        *string
-	BrandLogoURL *string
-	BrandColor   *string
+	FollowupTemplate *string
+	Name             string
+	LegalName        *string
+	TaxID            *string
+	BrandLogoURL     *string
+	BrandColor       *string
 	// PreferredLowerPriceStrategy nil keeps the stored one.
 	PreferredLowerPriceStrategy *HandlerStrategy
 	// DisconnectARCA confirms that a new CUIT may remove the ARCA connection made with the old one.

@@ -133,7 +133,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		BrandLogoURL:                body.BrandLogoURL,
 		BrandColor:                  body.BrandColor,
 		DisconnectARCA:              body.DisconnectARCA,
-		PreferredLowerPriceStrategy: strategy,
+		PreferredLowerPriceStrategy: strategy, FollowupTemplate: body.FollowupTemplate,
 	})
 	if err != nil {
 		Respond(c, err)
@@ -183,12 +183,12 @@ func toAccountResponse(a domain.Account) dto.AccountResponse {
 		TaxID:                       a.TaxID,
 		BrandLogoURL:                a.BrandLogoURL,
 		BrandColor:                  a.BrandColor,
-		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy),
-		InvoicingEnabled:            a.InvoicingEnabled,
-		HasInvoices:                 a.HasInvoices,
-		InvoiceOnPayment:            a.InvoiceOnPayment,
-		IsActive:                    a.IsActive,
-		CreatedAt:                   a.CreatedAt,
-		UpdatedAt:                   a.UpdatedAt,
+		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy), FollowupTemplate: a.FollowupTemplate,
+		InvoicingEnabled: a.InvoicingEnabled,
+		HasInvoices:      a.HasInvoices,
+		InvoiceOnPayment: a.InvoiceOnPayment,
+		IsActive:         a.IsActive,
+		CreatedAt:        a.CreatedAt,
+		UpdatedAt:        a.UpdatedAt,
 	}
 }

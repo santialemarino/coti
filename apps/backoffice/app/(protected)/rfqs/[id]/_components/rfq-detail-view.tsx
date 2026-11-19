@@ -12,6 +12,7 @@ import { followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { ComboSuggestions } from '@/app/(protected)/rfqs/[id]/_components/combo-suggestions';
 import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/public-request-card';
+import { SendQuoteDialog } from '@/app/(protected)/rfqs/[id]/_components/send-quote-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { useQueuePolling } from '@/hooks/use-queue-polling';
 import { errorCodeOf } from '@/lib/api/errors';
@@ -21,6 +22,7 @@ import {
   discardAIChanges,
   fetchRfqDetail,
   generateQuote,
+  setFailedRfqArchived,
   setQuoteArchived,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
@@ -89,7 +91,7 @@ export function RfqDetailView({
   // A requested revision remains a mutable draft until the seller accepts its materials.
   const rfqStatus = normalizeRfqStatus(detail.rfq.status);
   // Every edit on an archived quote is refused until it is unarchived, so the screen offers none.
-  const archived = detail.quote?.archived_at != null;
+  const archived = detail.rfq.archived_at != null;
   const isDraft = !archived && (quoteStatus === 'DRAFT' || quoteStatus === 'CHANGE_REQUESTED');
   const latestClientAction = detail.client_actions?.at(-1);
   // A customer's messages reach the draft through the conversation handler, which leaves a note.
@@ -169,10 +171,10 @@ export function RfqDetailView({
   }
 
   function handleUnarchive() {
-    if (!quoteId) return;
     startUnarchive(async () => {
       try {
-        await setQuoteArchived(quoteId, false, branchId);
+        if (quoteId) await setQuoteArchived(quoteId, false, branchId);
+        else await setFailedRfqArchived(detail.rfq.id, false, branchId);
         setDetail((prev) => ({
           ...prev,
           rfq: { ...prev.rfq, archived_at: null },
@@ -264,13 +266,36 @@ export function RfqDetailView({
         </Callout>
       ) : null}
 
+      {rfqStatus === 'FAILED' && !archived ? (
+        <div className="flex justify-end">
+          <PendingButton
+            variant="outline"
+            pending={unarchiving}
+            pendingLabel={t('list.actions.archive')}
+            onClick={() =>
+              startUnarchive(async () => {
+                try {
+                  await setFailedRfqArchived(detail.rfq.id, true, branchId);
+                  await refreshDetail();
+                } catch (error) {
+                  toast.error(message(errorCodeOf(error)));
+                }
+              })
+            }
+          >
+            <ArchiveIcon className="size-4" />
+            {t('list.actions.archive')}
+          </PendingButton>
+        </div>
+      ) : null}
       <RfqStatusTimeline detail={detail} />
 
-      {detail.publicRequest ? (
-        <PublicRequestCard request={detail.publicRequest} />
-      ) : (
-        <RfqOriginalRequest rfqId={detail.rfq.id} branchId={branchId} text={detail.originalText} />
-      )}
+      {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
+      <RfqOriginalRequest
+        rfqId={detail.rfq.id}
+        branchId={branchId}
+        text={detail.publicRequest?.originalText || detail.originalText}
+      />
 
       {showFollowup ? (
         <FollowupCallout
@@ -278,6 +303,8 @@ export function RfqDetailView({
           branchId={branchId}
           origin={followupOrigin}
           quietSince={followupQuietSince}
+          detail={detail}
+          onSent={refreshDetail}
         />
       ) : null}
 
@@ -410,6 +437,18 @@ export function RfqDetailView({
           cancel: tCommon('actions.cancel'),
         }}
       />
+
+      {quoteId ? (
+        <div className="flex justify-end">
+          <SendQuoteDialog
+            detail={detail}
+            branchId={branchId}
+            onSent={refreshDetail}
+            showTrigger={quoteStatus === 'QUOTED' && !archived}
+            branchMissesEmail={branchMissesEmail}
+          />
+        </div>
+      ) : null}
 
       {isDraft && quoteId && (
         <div className="flex justify-end">

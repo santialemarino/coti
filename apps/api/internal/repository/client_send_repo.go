@@ -42,12 +42,15 @@ func (r *ClientRepository) GetRequestContact(ctx context.Context, q Querier, acc
 	var hints domain.ClientContactHints
 	err := q.QueryRow(ctx, `SELECT NULLIF(m.payload->'contact'->>'tax_id',''),
  COALESCE(NULLIF(m.payload->'contact'->>'name',''),r.client_label),
- NULLIF(m.payload->'contact'->>'phone',''),NULLIF(m.payload->'contact'->>'email','')
+ COALESCE(NULLIF(m.payload->'contact'->>'phone',''),NULLIF(w.sender_id,'')),COALESCE(NULLIF(m.payload->'contact'->>'email',''),NULLIF(e.sender_id,''))
  FROM rfq r LEFT JOIN LATERAL (
  SELECT im.payload FROM inbound_channel_message im
  JOIN channel ch ON ch.account_id=im.account_id AND ch.branch_id=im.branch_id AND ch.id=im.channel_id AND ch.type='WEBAPP'
  WHERE im.account_id=r.account_id AND im.branch_id=r.branch_id AND im.rfq_id=r.id ORDER BY im.created_at,im.id LIMIT 1
- ) m ON TRUE WHERE r.account_id=$1 AND r.branch_id=$2 AND r.id=$3`, accountID, branchID, rfqID).Scan(&hints.TaxID, &hints.Name, &hints.Phone, &hints.Email)
+ ) m ON TRUE
+ LEFT JOIN LATERAL(SELECT im.sender_id FROM inbound_channel_message im JOIN channel c ON c.account_id=im.account_id AND c.branch_id=im.branch_id AND c.id=im.channel_id AND c.type='WHATSAPP' WHERE im.account_id=r.account_id AND im.branch_id=r.branch_id AND im.rfq_id=r.id ORDER BY im.created_at,im.id LIMIT 1) w ON TRUE
+ LEFT JOIN LATERAL(SELECT im.sender_id FROM inbound_channel_message im JOIN channel c ON c.account_id=im.account_id AND c.branch_id=im.branch_id AND c.id=im.channel_id AND c.type='EMAIL' WHERE im.account_id=r.account_id AND im.branch_id=r.branch_id AND im.rfq_id=r.id ORDER BY im.created_at,im.id LIMIT 1) e ON TRUE
+ WHERE r.account_id=$1 AND r.branch_id=$2 AND r.id=$3`, accountID, branchID, rfqID).Scan(&hints.TaxID, &hints.Name, &hints.Phone, &hints.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

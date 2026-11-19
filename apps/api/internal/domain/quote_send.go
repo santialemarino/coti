@@ -23,8 +23,18 @@ const (
 	SendTrackingStatusFailed    SendTrackingStatus = "FAILED"
 )
 
+// QuoteDeliveryPurpose distinguishes a quote publication from a seller-confirmed reminder.
+type QuoteDeliveryPurpose string
+
+const (
+	QuoteDeliveryPurposeQuote    QuoteDeliveryPurpose = "QUOTE"
+	QuoteDeliveryPurposeFollowup QuoteDeliveryPurpose = "FOLLOWUP"
+)
+
 // QuoteSend is one channel-specific attempt to deliver one frozen quote version.
 type QuoteSend struct {
+	Purpose     QuoteDeliveryPurpose
+	Message     *string
 	ID          uuid.UUID
 	AccountID   uuid.UUID
 	VersionID   uuid.UUID
@@ -48,6 +58,8 @@ type QuoteSend struct {
 
 // NewQuoteSend is one pending channel attempt created before contacting a provider.
 type NewQuoteSend struct {
+	Purpose               QuoteDeliveryPurpose
+	Message               *string
 	ClientAssociationHash string
 	ID                    uuid.UUID
 	VersionID             uuid.UUID
@@ -70,6 +82,10 @@ type QuoteSendOutcome struct {
 
 // QuoteDeliveryInput is the seller-approved delivery request.
 type QuoteDeliveryInput struct {
+	Phones            []string
+	Emails            []string
+	OtherChannelsOnly bool
+	FollowupMessage   *string
 	ClientAssociation *AssociateQuoteClientInput
 	IdempotencyKey    uuid.UUID
 	Phone             string

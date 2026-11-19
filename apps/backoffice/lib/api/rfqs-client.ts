@@ -508,6 +508,10 @@ export async function sendQuote(
     headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({
       recipient_phone: body.recipient_phone,
+      recipient_phones: body.recipientPhones,
+      recipient_emails: body.recipientEmails,
+      other_channels_only: body.otherChannelsOnly,
+      followup_message: body.followupMessage,
       email_delivery: body.email_delivery,
       expiry_days: body.expiry_days,
       ...(body.clientAssociation
@@ -563,7 +567,8 @@ export async function draftQuoteFollowup(
   if (!response.ok) {
     await throwApiError(response);
   }
-  return response.json() as Promise<QuoteFollowupDraftResponse>;
+  const raw = (await response.json()) as { message: string; template_configured: boolean };
+  return { message: raw.message, templateConfigured: raw.template_configured };
 }
 
 // Reset a change-requested draft to the version the customer last received.
@@ -699,4 +704,18 @@ export async function addComboItems(
   if (!response.ok) await throwApiError(response);
   const body = (await response.json()) as { items: QuoteItemResponse[] };
   return body.items;
+}
+
+export async function setFailedRfqArchived(
+  rfqId: string,
+  archived: boolean,
+  branchId: string,
+): Promise<void> {
+  const response = await fetch(`/api/rfqs/${encodeURIComponent(rfqId)}/archive`, {
+    method: 'PUT',
+    headers: branchHeaders(branchId, true),
+    body: JSON.stringify({ archived }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
 }

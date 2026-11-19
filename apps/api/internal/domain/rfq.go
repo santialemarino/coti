@@ -36,6 +36,7 @@ const (
 // RFQ is the original request a quote is built from. The raw text is stored before anything is
 // extracted from it, so a quote can always be reconstructed from its source.
 type RFQ struct {
+	ArchivedAt  *time.Time
 	ID          uuid.UUID
 	AccountID   uuid.UUID
 	BranchID    uuid.UUID

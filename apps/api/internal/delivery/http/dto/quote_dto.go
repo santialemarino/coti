@@ -125,6 +125,10 @@ type SetQuoteItemRecommendationRequest struct {
 
 // QuoteSendRequest selects delivery destinations and an optional validity override.
 type QuoteSendRequest struct {
+	RecipientPhones   []string                     `json:"recipient_phones" binding:"max=20,dive,max=32"`
+	RecipientEmails   []string                     `json:"recipient_emails" binding:"max=20,dive,email,max=255"`
+	OtherChannelsOnly bool                         `json:"other_channels_only"`
+	FollowupMessage   *string                      `json:"followup_message" binding:"omitempty,min=1,max=2000"`
 	ClientAssociation *AssociateQuoteClientRequest `json:"client_association"`
 	RecipientPhone    string                       `json:"recipient_phone"`
 	EmailDelivery     *QuoteEmailDeliveryRequest   `json:"email_delivery"`
@@ -281,5 +285,6 @@ type QuoteRepresentationDiscountResponse struct {
 
 // QuoteFollowupDraftResponse is a follow-up message drafted for the seller to edit and send.
 type QuoteFollowupDraftResponse struct {
-	Message string `json:"message"`
+	TemplateConfigured bool   `json:"template_configured"`
+	Message            string `json:"message"`
 }

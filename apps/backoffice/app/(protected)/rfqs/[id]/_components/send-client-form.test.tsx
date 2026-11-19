@@ -81,15 +81,19 @@ describe('send client selection', () => {
   });
   it('prefills a new profile from the web request without saving it separately', async () => {
     const view = renderForm();
+    await view.findByRole('button', { name: copy.clientNew });
+    expect(view.onChange).toHaveBeenLastCalledWith(null);
+    fireEvent.click(view.getByRole('button', { name: copy.clientNew }));
+    expect((view.getByLabelText(new RegExp(copy.clientName)) as HTMLInputElement).value).toBe(
+      'Web customer',
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.clientUse }));
     await waitFor(() =>
       expect(view.onChange).toHaveBeenLastCalledWith({
         taxId: '',
         newClient: { name: 'Web customer', email: 'customer@example.test' },
         tagIds: [],
       }),
-    );
-    expect((view.getByLabelText(new RegExp(copy.clientName)) as HTMLInputElement).value).toBe(
-      'Web customer',
     );
     expect(getQuoteClientAssociation).toHaveBeenCalledWith('quote-1', 'branch-1');
   });
@@ -112,22 +116,14 @@ describe('send client selection', () => {
   it('does not claim a fiscal profile from unverified request declarations', async () => {
     vi.mocked(getClientDirectory).mockResolvedValue([candidate]);
     const view = renderForm();
-    await waitFor(() =>
-      expect(view.onChange).toHaveBeenLastCalledWith({
-        taxId: '',
-        newClient: { name: 'Web customer', email: 'customer@example.test' },
-        tagIds: [],
-      }),
-    );
+    await view.findByRole('button', { name: copy.clientNew });
+    expect(view.onChange).toHaveBeenLastCalledWith(null);
     expect(view.queryByLabelText(new RegExp(copy.clientTax))).toBeNull();
   });
   it('requires a contact for a new provisional profile', async () => {
     const view = renderForm();
-    await waitFor(() =>
-      expect(view.onChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ newClient: expect.anything() }),
-      ),
-    );
+    await view.findByRole('button', { name: copy.clientNew });
+    fireEvent.click(view.getByRole('button', { name: copy.clientNew }));
     fireEvent.change(view.getByLabelText(copy.clientEmail), { target: { value: '' } });
     await waitFor(() => expect(view.onChange).toHaveBeenLastCalledWith(null));
   });
@@ -139,10 +135,7 @@ describe('send client selection', () => {
     expect(view.queryByRole('alert')).toBeNull();
     expect(view.onChange).toHaveBeenLastCalledWith(null);
     fireEvent.click(view.getByRole('button', { name: copy.clientRetry }));
-    await waitFor(() =>
-      expect(view.onChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ newClient: expect.anything() }),
-      ),
-    );
+    await view.findByRole('button', { name: copy.clientNew });
+    fireEvent.click(view.getByRole('button', { name: copy.clientNew }));
   });
 });
