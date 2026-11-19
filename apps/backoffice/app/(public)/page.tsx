@@ -1,9 +1,11 @@
 import { getTranslations } from 'next-intl/server';
 
 import { LandingBenefits } from '@/app/(public)/_components/landing-benefits';
+import { LandingChanges } from '@/app/(public)/_components/landing-changes';
 import { LandingCta } from '@/app/(public)/_components/landing-cta';
 import { LandingFaq } from '@/app/(public)/_components/landing-faq';
 import { LandingFeatures } from '@/app/(public)/_components/landing-features';
+import { LandingFit } from '@/app/(public)/_components/landing-fit';
 import { LandingHero } from '@/app/(public)/_components/landing-hero';
 import { LandingSteps } from '@/app/(public)/_components/landing-steps';
 import { LandingTrust } from '@/app/(public)/_components/landing-trust';
@@ -44,8 +46,10 @@ export default async function LandingPage() {
         }}
       />
       <LandingHero signedIn={signedIn} />
+      <LandingFit />
       <LandingBenefits />
       <LandingSteps />
+      <LandingChanges />
       <LandingFeatures />
       <LandingTrust />
       <LandingFaq />

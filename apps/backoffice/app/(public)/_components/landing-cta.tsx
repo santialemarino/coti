@@ -2,12 +2,15 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
+import { demoContactHref } from '@/app/(public)/_components/demo-link';
 import { Reveal } from '@/app/(public)/_components/reveal';
 import { revealItem } from '@/app/(public)/_components/reveal-item';
 import { ROUTES } from '@/config/routes';
 
 export async function LandingCta() {
   const t = await getTranslations('landing.cta');
+  const tDemo = await getTranslations('landing.demo');
+  const demoHref = demoContactHref({ message: tDemo('message'), subject: tDemo('subject') });
 
   return (
     <section aria-labelledby="cta-title" className="py-16 lg:py-24">
@@ -24,9 +27,18 @@ export async function LandingCta() {
             </h2>
             <p className="text-paragraph text-brand-50">{t('description')}</p>
           </div>
-          <Button asChild variant="secondary" size="lg" className="shrink-0">
-            <Link href={ROUTES.signup}>{t('action')}</Link>
-          </Button>
+          <div className="flex flex-wrap shrink-0 gap-3">
+            <Button asChild variant="secondary" size="lg">
+              <Link href={ROUTES.signup}>{t('action')}</Link>
+            </Button>
+            {demoHref ? (
+              <Button asChild variant="ghost" size="lg" className="text-primary-foreground">
+                <a href={demoHref} target="_blank" rel="noopener noreferrer">
+                  {t('demo')}
+                </a>
+              </Button>
+            ) : null}
+          </div>
         </div>
       </Reveal>
     </section>

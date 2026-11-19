@@ -8,8 +8,10 @@ vi.mock('@/app/(public)/_components/product-preview', () => ({
   ProductPreview: () => null,
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
+vi.mock('@/app/(public)/_components/demo-link', () => ({ demoContactHref: vi.fn(() => null) }));
 
 const { getTranslations } = await import('next-intl/server');
+const { demoContactHref } = await import('@/app/(public)/_components/demo-link');
 const { LandingHero } = await import('@/app/(public)/_components/landing-hero');
 
 const copy = messages.landing.hero;
@@ -40,6 +42,19 @@ describe('LandingHero', () => {
     const links = view.getAllByRole('link');
 
     expect(links.map((link) => link.getAttribute('href'))).toEqual([ROUTES.signup, ROUTES.login]);
+  });
+
+  // Sales are direct demos, so once Coti's contact is configured the second way in is asking for one.
+  it('offers a demo instead of login once a demo contact is configured', async () => {
+    vi.mocked(demoContactHref).mockReturnValue('https://wa.me/5491155500199?text=hola');
+    const view = render(await LandingHero({ signedIn: false }));
+    const links = view.getAllByRole('link');
+
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      ROUTES.signup,
+      'https://wa.me/5491155500199?text=hola',
+    ]);
+    expect(view.getByRole('link', { name: copy.demo })).toBeTruthy();
   });
 
   // The header already carries "Ir a Pedidos"; the hero repeating it is noise.
