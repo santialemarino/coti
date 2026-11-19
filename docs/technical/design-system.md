@@ -425,7 +425,7 @@ serves static assets per app.
 | `public/brand/isotype.png`           | h144    | the mark alone                            |
 | `public/brand/wordmark.png`          | h132    | "Coti"                                    |
 | `public/brand/lockup.png`            | h288    | mark over wordmark                        |
-| `public/brand/tagline.png`           | w720    | "COTIZÁ. CONVERTÍ. CERRÁ."                |
+| `public/brand/tagline.png`           | w745    | "RESPONDÉ PRIMERO. VENDÉ MÁS."            |
 
 Served art is exported at 3× the largest size the UI renders it, so it stays crisp on
 any display.
