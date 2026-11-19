@@ -102,7 +102,7 @@ without replacing an existing seller selection or changing contact ownership. Te
 existing unassigned inbound pipeline. Files enter the existing attachment sweep. Provider failures
 do not remove retained requests; failed storage is retryable without duplicating the RFQ.
 
-Authorized seller detail includes public_contact, public_original_text and public_attachments.
+Authorized seller detail includes public_contact and public_attachments; original_text carries the order as received on every channel.
 Attachment URLs are freshly signed through the existing storage service. No customer data is
 returned by public supplier metadata endpoints.
 

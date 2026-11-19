@@ -160,7 +160,7 @@ type RFQAttachmentListResponse struct {
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
 	PublicContact        *PublicRFQContactResponse                 `json:"public_contact,omitempty"`
-	PublicOriginalText   *string                                   `json:"public_original_text,omitempty"`
+	OriginalText         *string                                   `json:"original_text,omitempty"`
 	PublicAttachments    []RFQAttachmentResponse                   `json:"public_attachments,omitempty"`
 	Rfq                  RfqListItemResponse                       `json:"rfq"`
 	InboundWhatsAppPhone *string                                   `json:"inbound_whatsapp_phone"`

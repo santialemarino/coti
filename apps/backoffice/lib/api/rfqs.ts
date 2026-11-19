@@ -135,6 +135,8 @@ export function formatRfqReference(quoteNumber: number | null | undefined): stri
 
 // Raw shape returned by GET /v1/rfqs/:rfqId — the detail view projection.
 export interface RfqDetailResponse {
+  // The order exactly as it arrived, on every channel.
+  originalText?: string;
   publicRequest?: PublicRfqRequest;
   rfq: RfqListItem;
   // The E.164 sender of the inbound WhatsApp message, used only as the editable send default.
@@ -155,7 +157,7 @@ export interface RfqDetailResponse {
 
 interface PublicRfqDetailRaw extends RfqDetailResponse {
   public_contact?: { tax_id: string; name: string; email: string; phone?: string };
-  public_original_text?: string;
+  original_text?: string;
   public_attachments?: { id: string; url: string }[];
 }
 
@@ -171,12 +173,13 @@ export interface PublicRfqRequest {
 export function mapRfqDetail(raw: PublicRfqDetailRaw): RfqDetailResponse {
   const {
     public_contact: contact,
-    public_original_text: originalText,
+    original_text: originalText,
     public_attachments: attachments,
     ...detail
   } = raw;
   return {
     ...detail,
+    originalText,
     publicRequest: contact
       ? {
           taxId: contact.tax_id,
