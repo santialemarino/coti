@@ -3,11 +3,11 @@ import { getTranslations } from 'next-intl/server';
 
 import { Card, StatusScreen } from '@repo/ui/components';
 import { QuoteActions } from '@/app/quotes/[token]/_components/quote-actions';
+import { QuoteContact } from '@/app/quotes/[token]/_components/quote-contact';
 import { QuoteHeader } from '@/app/quotes/[token]/_components/quote-header';
 import { QuoteInfo } from '@/app/quotes/[token]/_components/quote-info';
 import { QuoteItems } from '@/app/quotes/[token]/_components/quote-items';
 import { QuoteSelectionProvider } from '@/app/quotes/[token]/_components/quote-selection-context';
-import { Brand } from '@/components/brand';
 import type { PublicQuoteSelectionPreview, PublicQuoteSend } from '@/lib/api/public-quotes';
 import { getFormatters } from '@/lib/i18n/formatters-server';
 
@@ -27,14 +27,12 @@ interface PublicQuoteViewProps {
 export async function PublicQuoteView({ send, token, selectionPreviews }: PublicQuoteViewProps) {
   const fmt = await getFormatters();
   const t = await getTranslations('quote');
-  const tCommon = await getTranslations('common');
 
   if (send.status !== 'ACTIVE' || !send.quote) {
     const unavailable = send.status === 'UNAVAILABLE';
     return (
       <main className="flex flex-col min-h-screen items-center justify-center px-4 py-10">
         <div className="flex flex-col w-full max-w-auth-card items-center gap-y-8 animate-rise-in">
-          <Brand variant="lockup" size="xl" label={tCommon('appName')} />
           <Card>
             <StatusScreen
               icon={unavailable ? ArchiveXIcon : ClockAlertIcon}
@@ -98,10 +96,7 @@ export async function PublicQuoteView({ send, token, selectionPreviews }: Public
           />
         </QuoteSelectionProvider>
 
-        <footer className="flex flex-col gap-y-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
-          <Brand variant="wordmark" size="sm" label={tCommon('appName')} />
-          <p className="text-paragraph-sm text-foreground-muted">{t('questions')}</p>
-        </footer>
+        <QuoteContact branch={quote.branch} />
       </div>
     </main>
   );

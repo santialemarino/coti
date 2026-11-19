@@ -14421,7 +14421,13 @@ const docTemplate = `{
                 "address": {
                     "type": "string"
                 },
+                "email": {
+                    "type": "string"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "whatsapp": {
                     "type": "string"
                 }
             }

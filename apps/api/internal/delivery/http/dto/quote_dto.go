@@ -238,8 +238,10 @@ type QuoteRepresentationSupplierResponse struct {
 
 // QuoteRepresentationBranchResponse is the public branch identity.
 type QuoteRepresentationBranchResponse struct {
-	Name    string  `json:"name"`
-	Address *string `json:"address,omitempty"`
+	Name     string  `json:"name"`
+	Address  *string `json:"address,omitempty"`
+	WhatsApp *string `json:"whatsapp,omitempty"`
+	Email    *string `json:"email,omitempty"`
 }
 
 // QuoteRepresentationCustomerResponse is the minimal public customer identity.

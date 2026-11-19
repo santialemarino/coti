@@ -53,6 +53,7 @@ type stagedQuoteEmailSender struct {
 	replyTo []string
 	to      []string
 	names   []string
+	senders []string
 	err     error
 }
 
@@ -69,6 +70,7 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	s.replyTo = append(s.replyTo, mail.ReplyTo)
 	s.to = append(s.to, mail.To)
 	s.names = append(s.names, mail.ReplyToName)
+	s.senders = append(s.senders, mail.FromName)
 	return s.err
 }
 
@@ -463,6 +465,11 @@ func TestQuoteDelivery_ChannelsAreIndependentAndTenantBoundariesHold(t *testing.
 	}
 	if len(email.names) != 1 || !strings.Contains(email.names[0], " — ") {
 		t.Errorf("Reply-To name = %q, want the account and the branch", email.names)
+	}
+	// The customer reads the corralón as the sender, not the platform.
+	if len(email.senders) != 1 || len(email.names) != 1 ||
+		email.senders[0] != strings.SplitN(email.names[0], " — ", 2)[0] {
+		t.Errorf("sender name = %q, want the account name from %q", email.senders, email.names)
 	}
 
 	otherAccount, otherBranch := e.seedAccount(t, "Delivery intruder")
