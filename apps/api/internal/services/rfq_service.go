@@ -350,8 +350,13 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			return quoteErr
 		}
 
+		source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+		if err != nil {
+			return err
+		}
 		detail = &domain.RfqDetail{
-			Rfq: *rfq,
+			Rfq:          *rfq,
+			OriginalText: source.RawText,
 		}
 		if s.publicContacts != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWebApp)) {
 			contact, err := s.publicContacts.FindPublicContactByRFQID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
@@ -359,13 +364,6 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 				return err
 			}
 			detail.PublicContact = contact
-			if contact != nil {
-				source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
-				if err != nil {
-					return err
-				}
-				detail.PublicOriginalText = source.RawText
-			}
 		}
 		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
 			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,

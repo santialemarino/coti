@@ -15094,6 +15094,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.QuoteItemResponse"
                     }
                 },
+                "original_text": {
+                    "type": "string"
+                },
                 "public_attachments": {
                     "type": "array",
                     "items": {
@@ -15102,9 +15105,6 @@ const docTemplate = `{
                 },
                 "public_contact": {
                     "$ref": "#/definitions/dto.PublicRFQContactResponse"
-                },
-                "public_original_text": {
-                    "type": "string"
                 },
                 "quote": {
                     "$ref": "#/definitions/dto.QuoteResponse"

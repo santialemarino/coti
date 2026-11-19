@@ -215,10 +215,12 @@ func (r *QuoteRepresentationRepository) listApprovedAlternatives(
 func (r *QuoteRepresentationRepository) listDiscounts(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteRepresentationDiscount, error) {
-	rows, err := q.Query(ctx, `SELECT COALESCE(description, ''), amount
-		FROM quote_discount
-		WHERE account_id = $1 AND quote_version_id = $2 AND suppressed_by_seller = FALSE
-		ORDER BY created_at, id`, accountID, versionID)
+	// An automatic promotion stores no description of its own: the customer reads its name.
+	rows, err := q.Query(ctx, `SELECT COALESCE(d.description, p.name, ''), d.amount
+		FROM quote_discount d
+		LEFT JOIN promotion p ON p.account_id = d.account_id AND p.id = d.promotion_id
+		WHERE d.account_id = $1 AND d.quote_version_id = $2 AND d.suppressed_by_seller = FALSE
+		ORDER BY d.created_at, d.id`, accountID, versionID)
 	if err != nil {
 		return nil, err
 	}

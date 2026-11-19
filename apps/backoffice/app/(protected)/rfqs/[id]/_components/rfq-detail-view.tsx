@@ -30,8 +30,8 @@ import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
 import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
-import { RfqEmailAttachments } from './rfq-email-attachments';
 import { RfqItemsTable } from './rfq-items-table';
+import { RfqOriginalRequest } from './rfq-original-request';
 import { RfqStatusTimeline } from './rfq-status-timeline';
 import { SaleClosureCard } from './sale-closure-card';
 
@@ -236,10 +236,6 @@ export function RfqDetailView({
     <div ref={rootRef} className="flex flex-col gap-y-4 scroll-mt-20">
       <RfqDetailHeader detail={detail} />
 
-      {detail.rfq.channel.toLowerCase() === 'email' ? (
-        <RfqEmailAttachments rfqId={detail.rfq.id} branchId={branchId} />
-      ) : null}
-
       <QuoteDeliveryCard
         detail={detail}
         onSent={refreshDetail}
@@ -270,7 +266,11 @@ export function RfqDetailView({
 
       <RfqStatusTimeline detail={detail} />
 
-      {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
+      {detail.publicRequest ? (
+        <PublicRequestCard request={detail.publicRequest} />
+      ) : (
+        <RfqOriginalRequest rfqId={detail.rfq.id} branchId={branchId} text={detail.originalText} />
+      )}
 
       {showFollowup ? (
         <FollowupCallout
