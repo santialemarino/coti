@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -241,52 +240,9 @@ describe('QuoteDeliveryCard live link', () => {
 describe('QuoteDeliveryCard send action', () => {
   const SendDialog = vi.mocked(SendQuoteDialog);
 
-  it('mounts the shared send dialog when the version is priced and review-ready', () => {
-    for (const status of ['QUOTED']) {
-      vi.clearAllMocks();
-      renderCard(makeDetail({ quoteStatus: status }));
-
-      expect(SendDialog, `send dialog surfaced on ${status}`).toHaveBeenCalledWith(
-        expect.objectContaining({
-          showTrigger: true,
-          detail: expect.objectContaining({
-            quote: expect.objectContaining({ current_status: status }),
-          }),
-        }),
-        undefined,
-      );
-    }
-  });
-
-  // Mounted on every status so its success view outlives the send; only QUOTED offers the button.
-  it('offers the send only while the quote is review-ready', () => {
-    for (const status of [
-      'DRAFT',
-      'GENERATED',
-      'CHANGE_REQUESTED',
-      'SENT',
-      'ACCEPTED',
-      'REJECTED',
-    ]) {
-      vi.clearAllMocks();
-      renderCard(makeDetail({ quoteStatus: status }));
-
-      expect(SendDialog.mock.lastCall?.[0].showTrigger, `send offered on ${status}`).toBe(false);
-    }
-  });
-
-  // The send moves the quote to SENT while the dialog still shows the links it just delivered.
-  it('keeps the send dialog mounted when the send moves the quote on', () => {
-    const unmounted = vi.fn();
-    SendDialog.mockImplementation(() => {
-      useEffect(() => unmounted, []);
-      return <></>;
-    });
-    const view = renderCard(makeDetail({ quoteStatus: 'QUOTED' }));
-    view.rerender(cardTree(makeDetail({ quoteStatus: 'SENT' })));
-
-    expect(unmounted).not.toHaveBeenCalled();
-    SendDialog.mockImplementation(() => <></>);
+  it('leaves the initial send action to the bottom of the order', () => {
+    renderCard(makeDetail({ quoteStatus: 'QUOTED' }));
+    expect(SendDialog).not.toHaveBeenCalled();
   });
 
   it('keeps send and lifecycle actions hidden while the quote is archived', () => {

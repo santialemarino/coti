@@ -16,6 +16,7 @@ import (
 
 // ManualRFQService is the request-to-quote surface the manual entry handler needs.
 type ManualRFQService interface {
+	SetFailedArchived(context.Context, domain.Tenant, uuid.UUID, bool) error
 	List(ctx context.Context, tenant domain.Tenant, includeArchived bool) ([]domain.RfqListItem, error)
 	CreateManual(ctx context.Context, tenant domain.Tenant, in domain.NewRfq) (*domain.RfqCreation, error)
 	GetDetail(ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID) (*domain.RfqDetail, error)
@@ -1134,7 +1135,7 @@ func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrack
 	responses := make([]dto.QuoteSendTrackingResponse, 0, len(sends))
 	for _, send := range sends {
 		responses = append(responses, dto.QuoteSendTrackingResponse{
-			ID: send.ID, VersionID: send.VersionID, OperationID: send.IdempotencyKey,
+			ID: send.ID, VersionID: send.VersionID, OperationID: send.IdempotencyKey, Purpose: string(send.Purpose),
 			Channel:     string(send.ChannelType),
 			Destination: send.Destination, Format: string(send.Format),
 			TrackingStatus: string(send.TrackingStatus), PublicURL: send.PublicURL,
@@ -1142,4 +1143,36 @@ func toQuoteSendTrackingResponses(sends []domain.QuoteSend) []dto.QuoteSendTrack
 		})
 	}
 	return responses
+}
+
+// SetFailedArchived changes the archive flag of an unreadable request.
+// @Summary Archive or restore a failed request
+// @Tags rfqs
+// @Accept json
+// @Security BearerAuth
+// @Param X-Branch-Id header string true "Active branch"
+// @Param rfqId path string true "Request ID"
+// @Param body body dto.ArchiveFailedRFQRequest true "Archive flag"
+// @Success 204
+// @Failure 401,404,409,422 {object} dto.ErrorResponse
+// @Router /v1/rfqs/{rfqId}/archive [put]
+func (h *RfqHandler) SetFailedArchived(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(c, "rfqId")
+	if !ok {
+		return
+	}
+	var body dto.ArchiveFailedRFQRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	if err := h.rfqs.SetFailedArchived(c.Request.Context(), tenant, id, *body.Archived); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

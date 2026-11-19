@@ -215,6 +215,7 @@ export interface QuoteResponse {
 
 // A follow-up message drafted for the seller to edit and send themselves.
 export interface QuoteFollowupDraftResponse {
+  templateConfigured?: boolean;
   message: string;
 }
 
@@ -295,6 +296,7 @@ export interface QuoteStatusChangeResponse {
 }
 
 export interface QuoteSendTrackingResponse {
+  purpose?: 'QUOTE' | 'FOLLOWUP';
   id: string;
   version_id: string;
   operation_id: string;
@@ -344,6 +346,10 @@ export interface SendClientSelection {
 }
 
 export interface QuoteSendBody {
+  recipientPhones?: string[];
+  recipientEmails?: string[];
+  otherChannelsOnly?: boolean;
+  followupMessage?: string;
   clientAssociation?: SendClientSelection;
   recipient_phone?: string;
   email_delivery?: { address: string } | null;

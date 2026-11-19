@@ -109,6 +109,8 @@ export function RfqListProvider({
   // Bumped by every newer source of truth, so a re-read that lands after one is dropped instead of
   // overwriting it — a branch switch's list, or a row a write just patched.
   const generation = useRef(0);
+  const latestRequest = useRef(0);
+  const initialized = useRef(false);
   const withArchived = useRef(false);
   // Whether the list on screen holds the archive, which a server refresh drops.
   const archivedIn = useRef(false);
@@ -116,12 +118,14 @@ export function RfqListProvider({
   const reload = useCallback(async () => {
     if (!hasQueue) return;
     const ticket = ++generation.current;
+    latestRequest.current = ticket;
     const includeArchived = withArchived.current;
     try {
       const next = await fetchQueue(includeArchived);
       if (ticket !== generation.current) {
         // A row patched meanwhile drops this read, but the archive it carried is still owed.
-        if (includeArchived && !archivedIn.current) void reload();
+        if (includeArchived && !archivedIn.current && latestRequest.current === ticket)
+          void reload();
         return;
       }
       setRecords(next);
@@ -144,6 +148,10 @@ export function RfqListProvider({
 
   // The server's list carries no archive, so a list that had one reads it again.
   useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      return;
+    }
     generation.current += 1;
     setRecords(initialRecords);
     archivedIn.current = false;

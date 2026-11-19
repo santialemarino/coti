@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"slices"
 	"testing"
 	"time"
 
@@ -15,20 +14,9 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/services"
 )
 
-// captureDrafter records what it was asked to write and answers with a fixed message.
-type captureDrafter struct {
-	calls []domain.FollowupDraftInput
-}
-
-func (d *captureDrafter) Draft(_ context.Context, in domain.FollowupDraftInput) (string, error) {
-	d.calls = append(d.calls, in)
-	return "Hola, ¿pudiste ver la cotización?", nil
-}
-
-func (e *env) followupService(drafter domain.FollowupDrafter) *services.QuoteFollowupService {
+func (e *env) followupService() *services.QuoteFollowupService {
 	return services.NewQuoteFollowupService(e.db, repository.NewQuoteRepository(),
-		repository.NewAccountRepository(), repository.NewClientRepository(),
-		repository.NewUserRepository(), drafter)
+		repository.NewAccountRepository(), repository.NewClientRepository())
 }
 
 func (e *env) setQuoteStatus(t *testing.T, quoteID uuid.UUID, status domain.QuoteStatus) {
@@ -39,8 +27,7 @@ func (e *env) setQuoteStatus(t *testing.T, quoteID uuid.UUID, status domain.Quot
 	}
 }
 
-// A sent quote is drafted from its own lines, seller and account, and the draft writes nothing:
-// the flag and the quote's inactivity stay as they were.
+// Rendering an account reminder does not change the quote's follow-up flag or inactivity.
 func TestQuoteFollowupDraft_DraftsASentQuoteAndWritesNothing(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -69,29 +56,13 @@ func TestQuoteFollowupDraft_DraftsASentQuoteAndWritesNothing(t *testing.T) {
 		t.Fatal("the sent quote was not flagged, want a flagged quote to draft for")
 	}
 
-	drafter := &captureDrafter{}
 	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin}
-	message, err := e.followupService(drafter).Draft(ctx, tenant, seeded.quoteID)
+	message, err := e.followupService().Draft(ctx, tenant, seeded.quoteID)
 	if err != nil {
 		t.Fatalf("Draft() = %v, want no error", err)
 	}
-	if message == "" || len(drafter.calls) != 1 {
-		t.Fatalf("message = %q after %d calls, want one draft", message, len(drafter.calls))
-	}
-	in := drafter.calls[0]
-	if in.SupplierName != "Follow-up draft" || in.SellerName != seller.Name {
-		t.Errorf("supplier, seller = %q, %q, want the account and the quote's seller", in.SupplierName,
-			in.SellerName)
-	}
-	if in.ClientName != "Juan Pérez" || !in.Lapsed {
-		t.Errorf("client, lapsed = %q, %v, want the quote's client and its expired offer",
-			in.ClientName, in.Lapsed)
-	}
-	if !slices.Equal(in.Items, []string{"10 bolsas de cemento"}) {
-		t.Errorf("items = %q, want the quote's line", in.Items)
-	}
-	if !in.QuietSince.Equal(before.updatedAt) {
-		t.Errorf("quiet since = %v, want the quote's last change %v", in.QuietSince, before.updatedAt)
+	if message == "" {
+		t.Fatal("the deterministic template is empty")
 	}
 	if after := e.followupOf(t, seeded.quoteID); !after.flagged || !after.updatedAt.Equal(before.updatedAt) {
 		t.Errorf("after the draft: flagged = %v, updated_at = %v, want both untouched", after.flagged,
@@ -99,7 +70,7 @@ func TestQuoteFollowupDraft_DraftsASentQuoteAndWritesNothing(t *testing.T) {
 	}
 }
 
-// Only a sent quote, live in the caller's branch, has a client to chase; a missing model is named.
+// Only a sent quote, live in the caller's branch, has a client to chase; no model is needed.
 func TestQuoteFollowupDraft_RefusesWhatHasNoClientToChase(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -112,8 +83,7 @@ func TestQuoteFollowupDraft_RefusesWhatHasNoClientToChase(t *testing.T) {
 	e.setQuoteStatus(t, archived.quoteID, domain.QuoteStatusSent)
 	e.archiveQuote(t, archived.quoteID, time.Now())
 	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, Role: domain.UserRoleAdmin}
-	drafter := &captureDrafter{}
-	service := e.followupService(drafter)
+	service := e.followupService()
 
 	if _, err := service.Draft(ctx, tenant, draft.quoteID); domain.CodeOf(err) != domain.CodeQuoteNotSent {
 		t.Errorf("draft on a DRAFT quote = %v, want QUOTE_NOT_SENT", err)
@@ -126,10 +96,7 @@ func TestQuoteFollowupDraft_RefusesWhatHasNoClientToChase(t *testing.T) {
 	if _, err := service.Draft(ctx, otherBranch, draft.quoteID); domain.CodeOf(err) != domain.CodeNotFound {
 		t.Errorf("draft from another branch = %v, want NOT_FOUND", err)
 	}
-	if len(drafter.calls) != 0 {
-		t.Errorf("drafter called %d times, want none for a refused quote", len(drafter.calls))
-	}
-	if _, err := e.followupService(nil).Draft(ctx, tenant, draft.quoteID); domain.CodeOf(err) != domain.CodeAIUnavailable {
-		t.Errorf("draft with no model = %v, want AI_UNAVAILABLE", err)
+	if _, err := e.followupService().Draft(ctx, tenant, draft.quoteID); err != nil {
+		t.Errorf("template without a model = %v, want no error", err)
 	}
 }

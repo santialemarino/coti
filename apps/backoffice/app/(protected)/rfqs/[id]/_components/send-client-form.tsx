@@ -12,6 +12,11 @@ import {
   Button,
   Checkbox,
   Combobox,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Form,
   FormControl,
   FormField,
@@ -21,8 +26,6 @@ import {
   Input,
   Label,
   Spinner,
-  ToggleGroup,
-  ToggleGroupItem,
 } from '@repo/ui/components';
 import { PhoneInput } from '@/components/phone-input';
 import type { ClientMatch, QuoteClientAssociation } from '@/lib/api/client-profiles';
@@ -34,6 +37,8 @@ interface SendClientFormProps {
   branchId: string;
   disabled: boolean;
   locked?: boolean;
+  hideTags?: boolean;
+  onContactsChange?: (contacts: { phones: string[]; emails: string[] }) => void;
   onChange: (selection: SendClientSelection | null) => void;
 }
 
@@ -42,10 +47,14 @@ export function SendClientForm({
   branchId,
   disabled,
   locked = false,
+  hideTags = false,
   onChange,
+  onContactsChange,
 }: SendClientFormProps) {
   const t = useTranslations('rfqs.detail.send');
   const phoneCopy = useTranslations('common.phone');
+  const [newOpen, setNewOpen] = useState(false);
+  const [newConfirmed, setNewConfirmed] = useState(false);
   const [context, setContext] = useState<QuoteClientAssociation | null>(null);
   const [directory, setDirectory] = useState<ClientMatch[]>([]);
   const [failed, setFailed] = useState(false);
@@ -84,7 +93,7 @@ export function SendClientForm({
     resolver: zodResolver(schema),
     mode: 'onChange',
     defaultValues: {
-      mode: 'new',
+      mode: 'existing',
       clientId: '',
       taxId: '',
       name: '',
@@ -95,10 +104,10 @@ export function SendClientForm({
   });
   const values = useWatch({ control: form.control });
   const selected = directory.find((item) => item.client.id === values.clientId);
-  const fixedClient = locked && context?.currentClient != null;
+  const fixedClient = locked && (context?.currentClient != null || selected != null);
   const checked = schema.safeParse(values);
   const selection: SendClientSelection | null =
-    context && checked.success
+    context && checked.success && (checked.data.mode === 'existing' || newConfirmed)
       ? {
           taxId: checked.data.mode === 'existing' ? selected?.client.taxId || '' : '',
           ...(checked.data.mode === 'existing'
@@ -114,6 +123,34 @@ export function SendClientForm({
         }
       : null;
   const serialized = JSON.stringify(selection);
+  const client = values.mode === 'existing' ? selected?.client : null;
+  const contacts = client?.contacts ?? [];
+  const phones = [
+    ...new Set(
+      [
+        ...contacts
+          .filter((c) => c.kind === 'WHATSAPP')
+          .sort((a, b) => Number(b.primary) - Number(a.primary))
+          .map((c) => c.value),
+        client?.phone || (values.mode === 'new' && newConfirmed ? values.phone : '') || '',
+      ].filter(Boolean),
+    ),
+  ] as string[];
+  const emails = [
+    ...new Set(
+      [
+        ...contacts
+          .filter((c) => c.kind === 'EMAIL')
+          .sort((a, b) => Number(b.primary) - Number(a.primary))
+          .map((c) => c.value),
+        client?.email || (values.mode === 'new' && newConfirmed ? values.email : '') || '',
+      ].filter(Boolean),
+    ),
+  ] as string[];
+  const serializedContacts = JSON.stringify({ phones, emails });
+  useEffect(() => {
+    if (context && onContactsChange) onContactsChange(JSON.parse(serializedContacts));
+  }, [serializedContacts, onContactsChange, context]);
 
   useEffect(() => {
     onChange(JSON.parse(serialized) as SendClientSelection | null);
@@ -132,13 +169,11 @@ export function SendClientForm({
         ];
         const unique = [...new Map(candidates.map((item) => [item.client.id, item])).values()];
         const taxId = association.currentClient?.client.taxId || '';
-        const matches = unique.filter((item) => taxId && item.client.taxId === taxId);
-        const initial =
-          association.currentClient || (matches.length === 1 ? matches[0] : undefined);
+        const initial = association.currentClient;
         setDirectory(unique);
         setContext(association);
         form.reset({
-          mode: initial || matches.length > 0 ? 'existing' : 'new',
+          mode: 'existing',
           clientId: initial?.client.id || '',
           taxId,
           name: association.contactHints.name || '',
@@ -190,28 +225,29 @@ export function SendClientForm({
         <legend className="mb-3 text-paragraph-sm-medium">{t('clientTitle')}</legend>
         {fixedClient ? (
           <p className="text-paragraph-sm-medium text-foreground">
-            {context.currentClient?.client.name ||
-              context.currentClient?.client.email ||
-              context.currentClient?.client.phone}
+            {(context.currentClient || selected)?.client.name ||
+              (context.currentClient || selected)?.client.email ||
+              (context.currentClient || selected)?.client.phone}
           </p>
         ) : (
-          <ToggleGroup
-            type="single"
-            value={values.mode}
-            onValueChange={(mode) => {
-              if (mode === 'new' || mode === 'existing')
-                form.setValue('mode', mode, { shouldValidate: true });
-            }}
-            className="w-full"
-            disabled={disabled || fixedClient}
-          >
-            <ToggleGroupItem value="existing" className="flex-1">
-              {t('clientExisting')}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="new" className="flex-1">
+          <div className="flex items-center justify-between gap-2">
+            {values.mode === 'new' && newConfirmed ? (
+              <p className="text-paragraph-sm-medium">{values.name}</p>
+            ) : (
+              <span />
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                form.setValue('mode', 'new');
+                setNewOpen(true);
+              }}
+              disabled={disabled}
+            >
               {t('clientNew')}
-            </ToggleGroupItem>
-          </ToggleGroup>
+            </Button>
+          </div>
         )}
         {values.mode === 'existing' && !fixedClient ? (
           <FormField
@@ -241,60 +277,92 @@ export function SendClientForm({
             )}
           />
         ) : null}
-        {values.mode === 'new' ? (
-          <>
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel required>{t('clientName')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} maxLength={255} disabled={disabled} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('clientEmail')}</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="email" maxLength={255} disabled={disabled} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('clientPhone')}</FormLabel>
-                  <FormControl>
-                    <PhoneInput
-                      {...field}
-                      disabled={disabled}
-                      countryLabel={phoneCopy('country')}
-                      countrySearchPlaceholder={phoneCopy('countrySearch')}
-                      countryEmptyLabel={phoneCopy('countryEmpty')}
-                      landlineNotice={{
-                        message: phoneCopy('landline'),
-                        action: (mobile) => phoneCopy('useMobile', { number: mobile }),
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </>
-        ) : null}
-        {context.availableTags.length > 0 ? (
+        <Dialog
+          open={newOpen}
+          onOpenChange={(next) => {
+            setNewOpen(next);
+            if (!next && !newConfirmed) form.setValue('mode', 'existing', { shouldValidate: true });
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('clientNew')}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel required>{t('clientName')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} maxLength={255} disabled={disabled} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('clientEmail')}</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="email" maxLength={255} disabled={disabled} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('clientPhone')}</FormLabel>
+                    <FormControl>
+                      <PhoneInput
+                        {...field}
+                        disabled={disabled}
+                        countryLabel={phoneCopy('country')}
+                        countrySearchPlaceholder={phoneCopy('countrySearch')}
+                        countryEmptyLabel={phoneCopy('countryEmpty')}
+                        landlineNotice={{
+                          message: phoneCopy('landline'),
+                          action: (mobile) => phoneCopy('useMobile', { number: mobile }),
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setNewOpen(false);
+                  if (!newConfirmed) form.setValue('mode', 'existing', { shouldValidate: true });
+                }}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (await form.trigger(['name', 'phone', 'email'])) {
+                    setNewConfirmed(true);
+                    setNewOpen(false);
+                  }
+                }}
+              >
+                {t('clientUse')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {!hideTags && context.availableTags.length > 0 ? (
           <div className="flex flex-col gap-y-2">
             <Label>{t('clientTags')}</Label>
             <div className="flex flex-wrap gap-3">

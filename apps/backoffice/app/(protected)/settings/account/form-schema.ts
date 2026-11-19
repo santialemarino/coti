@@ -30,6 +30,19 @@ export function accountSchema(t: SchemaText = rawText) {
       .trim()
       .refine((raw) => raw === '' || HEX_COLOR_DIGITS.test(raw), t.field('brandColor.invalid')),
     lowerPriceStrategy: z.enum(LOWER_PRICE_STRATEGIES),
+    followupTemplate: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .refine(
+        (value) =>
+          (value.match(/\{[^{}]*\}/g) ?? []).every((parameter) =>
+            ['{cliente}', '{cotizacion}'].includes(parameter),
+          ),
+        t.field('followup.invalid'),
+      )
+      .optional(),
   });
 }
 

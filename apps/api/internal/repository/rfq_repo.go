@@ -13,7 +13,7 @@ import (
 )
 
 const rfqColumns = `id, account_id, branch_id, client_id, channel_id, raw_text, status, work_type,
-	received_at, created_at, updated_at, client_label`
+	received_at, created_at, updated_at, client_label, archived_at`
 
 const rfqStatusChangeColumns = `id, account_id, rfq_id, previous_status, new_status, user_id,
 	changed_at, created_at`
@@ -154,7 +154,7 @@ func (r *RFQRepository) GetByRFQID(
 		        CASE WHEN q.id IS NULL THEN r.status::text
 		             ELSE q.current_status::text
 		        END,
-		        q.archived_at,
+		        COALESCE(q.archived_at,r.archived_at),
 		        COALESCE(q.needs_followup, FALSE),
 		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
@@ -256,7 +256,7 @@ func (r *RFQRepository) ListByTenant(
 		        CASE WHEN q.id IS NULL THEN r.status::text
 		             ELSE q.current_status::text
 		        END,
-		        q.archived_at,
+		        COALESCE(q.archived_at,r.archived_at),
 		        COALESCE(q.needs_followup, FALSE),
 		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
@@ -275,7 +275,7 @@ func (r *RFQRepository) ListByTenant(
 		 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
-		   AND ($4::bool OR q.id IS NULL OR q.archived_at IS NULL)
+		   AND ($4::bool OR (q.archived_at IS NULL AND r.archived_at IS NULL))
 		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
 		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), includeArchived, env,
 	)
@@ -589,7 +589,7 @@ func scanRFQ(row pgx.Row) (*domain.RFQ, error) {
 	var rfq domain.RFQ
 	err := row.Scan(&rfq.ID, &rfq.AccountID, &rfq.BranchID, &rfq.ClientID, &rfq.ChannelID,
 		&rfq.RawText, &rfq.Status, &rfq.WorkType, &rfq.ReceivedAt, &rfq.CreatedAt,
-		&rfq.UpdatedAt, &rfq.ClientLabel)
+		&rfq.UpdatedAt, &rfq.ClientLabel, &rfq.ArchivedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -619,4 +619,16 @@ func sellerParam(tenant domain.Tenant) *uuid.UUID {
 		return nil
 	}
 	return &tenant.UserID
+}
+
+// SetFailedArchived archives a failed source that has no quote.
+func (r *RFQRepository) SetFailedArchived(ctx context.Context, q Querier, accountID, branchID, id uuid.UUID, archived bool) error {
+	result, err := q.Exec(ctx, `UPDATE rfq SET archived_at=CASE WHEN $4 THEN COALESCE(archived_at,now()) ELSE NULL END WHERE account_id=$1 AND branch_id=$2 AND id=$3 AND status='FAILED' AND NOT EXISTS(SELECT 1 FROM quote WHERE account_id=$1 AND branch_id=$2 AND rfq_id=$3)`, accountID, branchID, id, archived)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return domain.ErrConflict
+	}
+	return nil
 }

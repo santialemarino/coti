@@ -55,6 +55,8 @@ const ORDER: RfqRecord = {
   saleComplete: false,
 };
 
+const ORDERS = [ORDER];
+
 const PENDING_SETUP: Onboarding = {
   flowVersion: 1,
   status: 'DISMISSED',
@@ -77,7 +79,7 @@ function tree(hasQueue: boolean, settingsNav = SETTINGS_NAV, options: TreeOption
   return (
     <NextIntlClientProvider locale="es" messages={messages}>
       <RfqListProvider
-        records={[ORDER]}
+        records={ORDERS}
         hasQueue={hasQueue}
         loadFailed={options.loadFailed}
         activeBranchId={null}
@@ -170,30 +172,30 @@ describe('ContextColumn', () => {
 
   // A layout outlives navigation, so coming back to the queue is the moment its list goes stale.
   // The shell's list is read once; staying within the orders must still bring new ones in.
-  it('reads the queue again on every move within the orders, not elsewhere or at first', async () => {
+  it('loads the archive once and refreshes when navigating within the orders', async () => {
     const { navigate } = renderAt(ROUTES.home);
-    expect(fetchQueue).not.toHaveBeenCalled();
+    expect(fetchQueue).toHaveBeenCalledWith(true);
 
     await act(async () => navigate(ROUTES.rfqsDetail('r1')));
     await act(async () => navigate(ROUTES.rfqs));
-    expect(fetchQueue).toHaveBeenCalledTimes(2);
+    expect(fetchQueue).toHaveBeenCalledTimes(3);
 
     await act(async () => navigate(ROUTES.clients));
-    expect(fetchQueue).toHaveBeenCalledTimes(2);
+    expect(fetchQueue).toHaveBeenCalledTimes(3);
 
     await act(async () => navigate(ROUTES.home));
-    expect(fetchQueue).toHaveBeenCalledTimes(3);
+    expect(fetchQueue).toHaveBeenCalledTimes(4);
   });
 
   it('reads the queue again when the window regains focus, only within the orders', async () => {
     const { navigate } = renderAt(ROUTES.home);
 
     await act(async () => fireEvent.focus(window));
-    expect(fetchQueue).toHaveBeenCalledTimes(1);
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
 
     navigate(ROUTES.clients);
     await act(async () => fireEvent.focus(window));
-    expect(fetchQueue).toHaveBeenCalledTimes(1);
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
   });
 
   it('opens on the settings pages with their sections, the queue kept but hidden', () => {
@@ -215,10 +217,10 @@ describe('ContextColumn', () => {
     const { navigate } = renderAt(ROUTES.home);
 
     await act(async () => navigate(ROUTES.accountSettings));
-    expect(fetchQueue).not.toHaveBeenCalled();
+    expect(fetchQueue).toHaveBeenCalledTimes(1);
 
     await act(async () => navigate(ROUTES.home));
-    expect(fetchQueue).toHaveBeenCalledTimes(1);
+    expect(fetchQueue).toHaveBeenCalledTimes(2);
   });
 
   // Below lg a section's landing is its list, and what the list opens takes the page instead.

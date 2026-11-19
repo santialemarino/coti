@@ -368,6 +368,8 @@ describe('RfqDetailView original order', () => {
     const view = renderView(detail);
 
     expect(view.getByText(copy.originalRequest.title)).toBeTruthy();
+    expect(view.queryByText('che mandame 8 bol de portland')).toBeNull();
+    fireEvent.click(view.getByRole('button', { name: copy.originalRequest.title }));
     expect(view.getByText('che mandame 8 bol de portland')).toBeTruthy();
   });
 });

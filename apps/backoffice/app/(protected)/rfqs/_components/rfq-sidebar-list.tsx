@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { InboxIcon } from 'lucide-react';
 import { LayoutGroup } from 'motion/react';
 import { useTranslations } from 'next-intl';
@@ -35,7 +35,10 @@ interface RfqSidebarListProps {
  */
 export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   const t = useTranslations('rfqs');
-  const { reload } = useRfqList();
+  const { reload, requestArchived } = useRfqList();
+  useEffect(() => {
+    requestArchived();
+  }, [requestArchived]);
 
   const groups = useMemo(() => groupQueue(records), [records]);
   const activeRecord = records.find((rfq) => rfq.id === activeRfqId && !rfq.archived);

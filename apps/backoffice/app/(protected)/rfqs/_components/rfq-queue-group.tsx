@@ -28,6 +28,7 @@ const ENTER_OFFSET_PX = -8;
 // Both halves of an accepted order keep the accepted hue.
 const STACK_DOT: Record<QueueStack, string> = {
   ...STATUS_DOT,
+  ARCHIVED: 'bg-foreground-subtle',
   TO_CLOSE: STATUS_DOT.ACCEPTED,
   COMPLETED: STATUS_DOT.ACCEPTED,
 };
@@ -69,7 +70,7 @@ export function RfqQueueGroup({
   const visible = foldsAway && !expanded ? [] : stacked ? records.slice(0, peeks + 1) : records;
   const spring = reduced ? { duration: 0 } : expanded ? SPRING.expand : SPRING.collapse;
   const label =
-    stack === 'TO_CLOSE' || stack === 'COMPLETED'
+    stack === 'TO_CLOSE' || stack === 'COMPLETED' || stack === 'ARCHIVED'
       ? t(`list.groups.stacks.${stack}`)
       : t(`status.${stack}`);
 

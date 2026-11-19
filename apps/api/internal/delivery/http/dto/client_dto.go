@@ -8,15 +8,16 @@ import (
 
 // ClientResponse represents one account-scoped client profile.
 type ClientResponse struct {
-	TaxID         *string   `json:"tax_id"`
-	ID            uuid.UUID `json:"id"`
-	Name          *string   `json:"name"`
-	Phone         *string   `json:"phone"`
-	Email         *string   `json:"email"`
-	OriginChannel *string   `json:"origin_channel"`
-	Notes         *string   `json:"notes"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Contacts      []ClientDeliveryContactResponse `json:"contacts,omitempty"`
+	TaxID         *string                         `json:"tax_id"`
+	ID            uuid.UUID                       `json:"id"`
+	Name          *string                         `json:"name"`
+	Phone         *string                         `json:"phone"`
+	Email         *string                         `json:"email"`
+	OriginChannel *string                         `json:"origin_channel"`
+	Notes         *string                         `json:"notes"`
+	CreatedAt     time.Time                       `json:"created_at"`
+	UpdatedAt     time.Time                       `json:"updated_at"`
 }
 
 // ClientTagResponse represents one reusable account tag.
@@ -112,4 +113,11 @@ type QuoteClientAssociationResponse struct {
 	Suggestions   []ClientMatchResponse      `json:"suggestions"`
 	ContactHints  ClientContactHintsResponse `json:"contact_hints"`
 	AvailableTags []ClientTagResponse        `json:"available_tags"`
+}
+
+// ClientDeliveryContactResponse is one active destination offered to a seller.
+type ClientDeliveryContactResponse struct {
+	Kind    string `json:"kind"`
+	Value   string `json:"value"`
+	Primary bool   `json:"primary"`
 }

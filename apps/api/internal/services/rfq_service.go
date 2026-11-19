@@ -21,6 +21,7 @@ import (
 
 // rfqRepository is the RFQ persistence surface the service needs.
 type rfqRepository interface {
+	SetFailedArchived(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error
 	Create(ctx context.Context, q repository.Querier, accountID uuid.UUID, in domain.NewRFQ) (*domain.RFQ, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID) (*domain.RFQ, error)
 	UpdateStatus(ctx context.Context, q repository.Querier, accountID, id uuid.UUID, status domain.RFQStatus) (*domain.RFQ, error)
@@ -1139,6 +1140,18 @@ func (s *RFQService) CreateManual(
 			now = s.now()
 		}
 		var createErr error
+		if in.RawText == nil && len(in.Items) > 0 {
+			lines := make([]string, 0, len(in.Items))
+			for _, item := range in.Items {
+				unit := ""
+				if item.Unit != nil {
+					unit = " " + *item.Unit
+				}
+				lines = append(lines, item.Quantity.String()+unit+" — "+item.RequestedDescription)
+			}
+			raw := strings.Join(lines, "\n")
+			in.RawText = &raw
+		}
 		creation, createErr = s.rfqs.CreateManualEntry(ctx, q, tenant, channelID, in, now)
 		if createErr != nil || s.productAlternatives == nil {
 			return createErr

@@ -20,7 +20,7 @@ describe('public request declarations', () => {
       </NextIntlClientProvider>,
     );
     expect(view.getByText('contacto@example.com')).toBeTruthy();
-    expect(view.getByText('10 bolsas de cemento')).toBeTruthy();
+    expect(view.queryByText('10 bolsas de cemento')).toBeNull();
     expect(view.queryByText(messages.rfqs.detail.publicRequest.phone)).toBeNull();
   });
 

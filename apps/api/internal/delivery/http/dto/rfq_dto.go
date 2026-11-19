@@ -213,6 +213,7 @@ type QuoteStatusChangeResponse struct {
 
 // QuoteSendTrackingResponse is one delivery attempt shown in the RFQ detail tracking panel.
 type QuoteSendTrackingResponse struct {
+	Purpose        string     `json:"purpose"`
 	ID             uuid.UUID  `json:"id"`
 	VersionID      uuid.UUID  `json:"version_id"`
 	OperationID    uuid.UUID  `json:"operation_id"`
@@ -414,4 +415,9 @@ type AddQuoteItemRequest struct {
 	RequestedDescription string     `json:"requested_description" binding:"required,min=1,max=512"`
 	Quantity             string     `json:"quantity" binding:"required,numeric"`
 	Unit                 *string    `json:"unit" binding:"omitempty,max=64"`
+}
+
+// ArchiveFailedRFQRequest selects whether a failed source belongs in the archive.
+type ArchiveFailedRFQRequest struct {
+	Archived *bool `json:"archived" binding:"required"`
 }

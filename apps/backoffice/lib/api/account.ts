@@ -8,6 +8,7 @@ import type { LowerPriceStrategy } from '@/lib/constants/conversation';
 // --- Raw types (API JSON shape, snake_case) ---
 
 interface AccountRaw {
+  followup_template?: string | null;
   id: string;
   name: string;
   legal_name: string | null;
@@ -26,6 +27,7 @@ interface AccountRaw {
 // --- Frontend types (camelCase) ---
 
 export interface Account {
+  followupTemplate?: string | null;
   id: string;
   name: string;
   legalName: string | null;
@@ -51,6 +53,7 @@ function mapAccount(raw: AccountRaw): Account {
     brandLogoUrl: raw.brand_logo_url,
     brandColor: raw.brand_color,
     preferredLowerPriceStrategy: raw.preferred_lower_price_strategy,
+    followupTemplate: raw.followup_template ?? null,
     invoicingEnabled: raw.invoicing_enabled,
     hasInvoices: raw.has_invoices,
     invoiceOnPayment: raw.invoice_on_payment,

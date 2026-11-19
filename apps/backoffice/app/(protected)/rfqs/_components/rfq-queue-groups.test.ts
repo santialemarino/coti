@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupQueue } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
+import { FOLDED_STACKS, groupQueue } from '@/app/(protected)/rfqs/_components/rfq-queue-groups';
 import type { RfqRecord, RfqStatus } from '@/lib/api/rfqs';
 
 function order(
@@ -81,9 +81,10 @@ describe('groupQueue', () => {
     expect(group?.records.map((record) => record.id)).toEqual(['zeta', 'alfa']);
   });
 
-  it('leaves archived orders out, and with them a group they would be alone in', () => {
+  it('puts archived orders last in a separate folded stack', () => {
     const groups = groupQueue([order('a', 'SENT'), order('b', 'REJECTED', { archived: true })]);
 
-    expect(groups.map((group) => group.stack)).toEqual(['SENT']);
+    expect(groups.map((group) => group.stack)).toEqual(['SENT', 'ARCHIVED']);
+    expect(FOLDED_STACKS.has('ARCHIVED')).toBe(true);
   });
 });

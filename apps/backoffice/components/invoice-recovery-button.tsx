@@ -29,7 +29,12 @@ export function InvoiceRecoveryButton({
   function recover() {
     startTransition(async () => {
       try {
-        await recoverInvoice(invoiceId, branchId);
+        const invoice = await recoverInvoice(invoiceId, branchId);
+        if (invoice.status === 'PENDING') {
+          toast.error(t('notReady'));
+          onRecovered?.();
+          return;
+        }
       } catch (error) {
         toast.error(message(errorCodeOf(error)));
         return;

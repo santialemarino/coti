@@ -782,3 +782,7 @@ func deref(value *string) string {
 	}
 	return *value
 }
+
+func (s *stubRFQService) SetFailedArchived(context.Context, domain.Tenant, uuid.UUID, bool) error {
+	return nil
+}

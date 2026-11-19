@@ -1,6 +1,7 @@
 export interface RfqAttachment {
   id: string;
   name: string | null;
+  type?: string;
   status: string;
   url: string;
 }
@@ -19,12 +20,14 @@ export async function listRfqAttachments(
       id: string;
       original_filename: string | null;
       processing_status: string;
+      type?: string;
       url: string;
     }>;
   };
   return data.attachments.map((item) => ({
     id: item.id,
     name: item.original_filename,
+    ...(item.type ? { type: item.type } : {}),
     status: item.processing_status,
     url: item.url,
   }));

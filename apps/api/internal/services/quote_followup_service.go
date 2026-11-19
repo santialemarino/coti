@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -14,10 +12,6 @@ import (
 
 type followupQuoteReader interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, id uuid.UUID) (*domain.Quote, error)
-	GetCurrentVersion(ctx context.Context, q repository.Querier, accountID, branchID,
-		quoteID uuid.UUID) (*domain.QuoteVersion, error)
-	ListItemsWithProduct(ctx context.Context, q repository.Querier, accountID,
-		versionID uuid.UUID) ([]domain.QuoteItem, error)
 }
 
 type followupAccountReader interface {
@@ -28,111 +22,69 @@ type followupClientReader interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, clientID uuid.UUID) (*domain.Client, error)
 }
 
-type followupUserReader interface {
-	GetByID(ctx context.Context, q repository.Querier, accountID, id uuid.UUID) (*domain.AppUser, error)
-}
-
-// QuoteFollowupService drafts, on the seller's request, the message that chases a sent quote the
-// client has not answered. It writes nothing: the seller sends the message, and only a later write
-// to the quote clears its follow-up flag.
+// QuoteFollowupService renders seller-configured reminders without contacting a customer.
 type QuoteFollowupService struct {
 	db       tenantTxRunner
 	quotes   followupQuoteReader
 	accounts followupAccountReader
 	clients  followupClientReader
-	users    followupUserReader
-	drafter  domain.FollowupDrafter
-	now      func() time.Time
 }
 
-// NewQuoteFollowupService builds the service; a nil drafter answers every draft as AI_UNAVAILABLE.
+// NewQuoteFollowupService builds the template renderer.
 func NewQuoteFollowupService(
 	db tenantTxRunner, quotes followupQuoteReader, accounts followupAccountReader,
-	clients followupClientReader, users followupUserReader, drafter domain.FollowupDrafter,
+	clients followupClientReader,
 ) *QuoteFollowupService {
-	return &QuoteFollowupService{db: db, quotes: quotes, accounts: accounts, clients: clients,
-		users: users, drafter: drafter, now: time.Now}
+	return &QuoteFollowupService{db: db, quotes: quotes, accounts: accounts, clients: clients}
 }
 
-// Draft writes a fresh follow-up message from the quote as it stands now. Only a sent quote has a
-// client to chase; one still waiting on the seller is chased by sending it.
-func (s *QuoteFollowupService) Draft(
-	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
-) (string, error) {
-	if s.drafter == nil {
-		return "", fmt.Errorf("%w: no language model is bound", domain.ErrAIUnavailable)
+// Draft renders the reminder without storing or sending it.
+func (s *QuoteFollowupService) Draft(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (string, error) {
+	result, err := s.Template(ctx, tenant, quoteID)
+	if err != nil {
+		return "", err
 	}
-	var in domain.FollowupDraftInput
+	return result.Message, nil
+}
+
+// Template renders the account's reminder after checking the quote's tenant and state.
+func (s *QuoteFollowupService) Template(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.QuoteFollowupTemplate, error) {
+	var result domain.QuoteFollowupTemplate
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
 		if err != nil {
 			return err
 		}
-		if quote.ArchivedAt != nil {
-			return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+		if err := requireUnarchived(*quote); err != nil {
+			return err
 		}
 		if quote.CurrentStatus != domain.QuoteStatusSent {
-			return domain.WithCode(domain.CodeQuoteNotSent,
-				fmt.Errorf("%w: a %s quote has no client answer to chase", domain.ErrConflict,
-					quote.CurrentStatus))
+			return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
 		}
 		account, err := s.accounts.GetByID(ctx, q, tenant.AccountID)
 		if err != nil {
 			return err
 		}
-		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
-		if err != nil {
-			return err
+		template := domain.DefaultFollowupTemplate
+		if account.FollowupTemplate != nil {
+			template = *account.FollowupTemplate
+			result.TemplateConfigured = true
 		}
-		items, err := s.quotes.ListItemsWithProduct(ctx, q, tenant.AccountID, version.ID)
-		if err != nil {
-			return err
-		}
-		in = domain.FollowupDraftInput{SupplierName: account.Name, QuoteNumber: quote.Number,
-			QuietSince: quote.UpdatedAt,
-			Lapsed:     quote.ExpiresAt != nil && quote.ExpiresAt.Before(s.now()),
-			Items:      followupItems(items)}
-		// A client merged away or a seller removed only leaves the greeting or signature out.
+		name := ""
 		if quote.ClientID != nil {
 			client, err := s.clients.GetByID(ctx, q, tenant.AccountID, *quote.ClientID)
-			switch {
-			case err == nil && client.Name != nil:
-				in.ClientName = *client.Name
-			case err != nil && !errors.Is(err, domain.ErrNotFound):
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
-		}
-		if quote.SellerID != nil {
-			seller, err := s.users.GetByID(ctx, q, tenant.AccountID, *quote.SellerID)
-			switch {
-			case err == nil:
-				in.SellerName = seller.Name
-			case !errors.Is(err, domain.ErrNotFound):
-				return err
+			if client != nil && client.Name != nil {
+				name = *client.Name
 			}
 		}
+		result.Message = domain.RenderFollowupTemplate(template, name, quote.Number)
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return s.drafter.Draft(domain.WithAIAccount(ctx, tenant), in)
-}
-
-// followupItems words each line as the client would read it: a matched product with its quantity,
-// an unmatched one in the client's own words, which already carry theirs.
-func followupItems(items []domain.QuoteItem) []string {
-	lines := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.ProductName == nil || *item.ProductName == "" {
-			lines = append(lines, item.RequestedDescription)
-			continue
-		}
-		quantity := item.Quantity.String()
-		if item.ProductUnit != nil && *item.ProductUnit != "" {
-			quantity += " " + *item.ProductUnit
-		}
-		lines = append(lines, quantity+" "+*item.ProductName)
-	}
-	return lines
+	return &result, nil
 }

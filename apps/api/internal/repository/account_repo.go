@@ -15,7 +15,7 @@ import (
 const accountColumns = `id, name, legal_name, tax_id, brand_logo_url, brand_color,
 	preferred_lower_price_strategy, invoicing_enabled,
 	EXISTS (SELECT 1 FROM invoice WHERE invoice.account_id = account.id AND invoice.status = 'ISSUED'),
-	invoice_on_payment, is_active, created_at, updated_at`
+	invoice_on_payment, followup_template, is_active, created_at, updated_at`
 
 // AccountRepository owns persistence for account.
 type AccountRepository struct{}
@@ -75,11 +75,11 @@ func (r *AccountRepository) Update(
 		`UPDATE account
 		 SET name = $2, legal_name = $3, tax_id = $4, brand_logo_url = $5, brand_color = $6,
 		     preferred_lower_price_strategy = COALESCE($7::lower_price_strategy,
-		       preferred_lower_price_strategy)
+		       preferred_lower_price_strategy), followup_template = COALESCE($8, followup_template)
 		 WHERE id = $1
 		 RETURNING `+accountColumns,
 		accountID, in.Name, in.LegalName, in.TaxID, in.BrandLogoURL, in.BrandColor,
-		in.PreferredLowerPriceStrategy))
+		in.PreferredLowerPriceStrategy, in.FollowupTemplate))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -108,7 +108,7 @@ func (r *AccountRepository) SetInvoicingEnabled(
 func scanAccount(row pgx.Row) (*domain.Account, error) {
 	var a domain.Account
 	if err := row.Scan(&a.ID, &a.Name, &a.LegalName, &a.TaxID, &a.BrandLogoURL, &a.BrandColor,
-		&a.PreferredLowerPriceStrategy, &a.InvoicingEnabled, &a.HasInvoices, &a.InvoiceOnPayment, &a.IsActive,
+		&a.PreferredLowerPriceStrategy, &a.InvoicingEnabled, &a.HasInvoices, &a.InvoiceOnPayment, &a.FollowupTemplate, &a.IsActive,
 		&a.CreatedAt, &a.UpdatedAt); err != nil {
 		return nil, err
 	}

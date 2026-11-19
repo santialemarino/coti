@@ -20,6 +20,7 @@ const (
 
 // Client is the account-scoped customer attached to an RFQ and its quote.
 type Client struct {
+	Contacts      []ClientContact
 	TaxID         *string
 	ID            uuid.UUID
 	AccountID     uuid.UUID

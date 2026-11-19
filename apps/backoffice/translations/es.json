@@ -1281,7 +1281,8 @@
       "unnamed": "Archivo adjunto",
       "manualReview": "Revisar manualmente",
       "refresh": "Actualizar enlaces",
-      "error": "No pudimos cargar los archivos. Intentá de nuevo."
+      "error": "No pudimos cargar los archivos. Intentá de nuevo.",
+      "unavailable": "No se guardó contenido original para este pedido."
     },
     "title": "Pedidos",
     "greeting": "¡Hola, {name}!",
@@ -1381,7 +1382,8 @@
         "stackHint": "Mostrar los {count} pedidos de este estado",
         "stacks": {
           "TO_CLOSE": "Por cerrar",
-          "COMPLETED": "Completados"
+          "COMPLETED": "Completados",
+          "ARCHIVED": "Archivados"
         },
         "show": "Mostrar",
         "hide": "Ocultar"
@@ -1534,7 +1536,9 @@
         "sources": {
           "rfq": "Pedido",
           "quote": "Cotización"
-        }
+        },
+        "destination": "Destinatario",
+        "followupChannel": "Seguimiento por {channel}"
       },
       "confidence": {
         "high": "Alta",
@@ -1598,7 +1602,15 @@
               "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente.",
               "QUOTE_ARCHIVED": "La cotización está archivada."
             }
-          }
+          },
+          "send": "Enviar mensaje de seguimiento",
+          "sent": "Mensaje de seguimiento enviado",
+          "loading": "Cargando mensaje…",
+          "edit": "Editar mensaje",
+          "doneEditing": "Listo",
+          "configure": "Configurar mi plantilla",
+          "confirmSend": "Enviar mensaje",
+          "description": "Revisá el mensaje y elegí los destinatarios antes de enviarlo."
         }
       },
       "items": {
@@ -1835,7 +1847,11 @@
         "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
-        "clientContactRequired": "Ingresá al menos un teléfono o un correo."
+        "clientContactRequired": "Ingresá al menos un teléfono o un correo.",
+        "clientUse": "Usar este cliente",
+        "alreadySent": "Ya enviado",
+        "selectedRecipients": "{count} destinatarios",
+        "clearRecipients": "Quitar selección"
       },
       "quoteCard": {
         "title": "Cotización {reference}",
@@ -2623,6 +2639,13 @@
       "connected": "Cambiar el CUIT desconecta ARCA: se borran el certificado y la clave del CUIT {old}, y no vas a poder facturar hasta conectar el nuevo. Las facturas ya emitidas no cambian.",
       "confirm": "Cambiar CUIT y desconectar ARCA",
       "cancel": "Cancelar"
+    },
+    "followup": {
+      "title": "Mensaje de seguimiento",
+      "label": "Plantilla",
+      "hint": "Usá '{cliente}' para el nombre y '{cotizacion}' para el número de cotización. Podés ajustar cada mensaje antes de enviarlo.",
+      "default": "¿Pudiste revisar la cotización '{cotizacion}'? Quedamos atentos a tu respuesta.",
+      "invalid": "Usá solo los parámetros '{cliente}' y '{cotizacion}'."
     }
   },
   "users": {
@@ -3473,7 +3496,7 @@
       },
       "pending": {
         "title": "La factura se está emitiendo",
-        "body": "ARCA todavía no confirmó el último pedido. Actualizá la página en unos minutos; si sigue igual, volvé a emitirla: no se va a duplicar."
+        "body": "ARCA aún no confirmó la factura. Consultá en unos minutos."
       },
       "issues": {
         "QUOTE_NOT_ACCEPTED": {
@@ -3561,7 +3584,7 @@
         },
         "pending": {
           "title": "La nota de crédito se está emitiendo",
-          "body": "ARCA todavía no confirmó el último pedido. Consultá la autorización en unos minutos: no se va a duplicar."
+          "body": "ARCA aún no confirmó la factura. Consultá en unos minutos."
         },
         "rejected": {
           "title": "ARCA rechazó la nota de crédito",
@@ -3611,7 +3634,7 @@
         "REJECTED": "Rechazada",
         "CREDITED": "Anulada"
       },
-      "recover": "Actualizar estado en ARCA",
+      "recover": "Consultar estado",
       "download": "Descargar PDF",
       "recovered": "El estado del comprobante fue actualizado.",
       "finalConsumer": "Consumidor final",
@@ -3620,7 +3643,8 @@
       "emptyAll": "Todavía no hay comprobantes en ninguna sucursal.",
       "branch": "Sucursal",
       "creditNoteType": "NC {type}",
-      "credits": "Anula {type} {number}"
+      "credits": "Anula {type} {number}",
+      "notReady": "ARCA aún no confirmó la factura."
     },
     "views": {
       "label": "Vista de administración",
