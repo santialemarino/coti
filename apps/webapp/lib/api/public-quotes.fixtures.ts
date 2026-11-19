@@ -24,7 +24,12 @@ export function makeQuotePayload(overrides: Partial<QuotePayload> = {}): QuotePa
       brandColor: '#C2410C',
       logoUrl: 'https://cdn.example.test/corralon-centro.png',
     },
-    branch: { name: 'Casa central', address: 'Av. Siempreviva 742' },
+    branch: {
+      name: 'Casa central',
+      address: 'Av. Siempreviva 742',
+      whatsapp: '+54 9 11 5555-0101',
+      email: 'ventas@corralon.test',
+    },
     customerName: 'Obra Norte',
     items: [
       {

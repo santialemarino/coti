@@ -37,6 +37,11 @@ vi.mock('@/app/quotes/[token]/_components/quote-actions', () => ({
       <p data-testid="quote-actions" />
     ),
 }));
+vi.mock('@/app/quotes/[token]/_components/quote-contact', () => ({
+  QuoteContact: ({ branch }: { branch: { name: string } }) => (
+    <p data-testid="quote-contact">{branch.name}</p>
+  ),
+}));
 vi.mock('@/components/brand', () => ({
   Brand: ({ label }: { label?: string }) =>
     createElement('img', { alt: label, src: '/brand.mock.png' }),
@@ -52,7 +57,9 @@ describe('PublicQuoteView', () => {
     expect(view.getByTestId('quote-info')).toBeTruthy();
     // The actions stay open for a send the customer has not answered yet.
     expect(view.getByTestId('quote-actions').textContent).toBe('');
-    expect(view.getByAltText('Coti')).toBeTruthy();
+    // The quote is the corralón's: no Coti mark beside it, and a way to write back to the branch.
+    expect(view.queryByAltText('Coti')).toBeNull();
+    expect(view.getByTestId('quote-contact').textContent).toBe('Casa central');
   });
 
   it('forwards a send that was already answered to the actions block', async () => {
@@ -92,6 +99,7 @@ describe('PublicQuoteView', () => {
     expect(view.queryByTestId('quote-items')).toBeNull();
     expect(view.queryByTestId('quote-info')).toBeNull();
     expect(view.queryByTestId('quote-actions')).toBeNull();
+    expect(view.queryByAltText('Coti')).toBeNull();
   });
 
   it('says a withdrawn quote is no longer available, never showing it', async () => {

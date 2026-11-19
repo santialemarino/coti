@@ -89,6 +89,7 @@ func renderEmail(account domain.Account, out OutboundMail) (domain.EmailMessage,
 		HTMLBody:    html.String(),
 		ReplyTo:     out.ReplyTo,
 		ReplyToName: out.ReplyToName,
+		FromName:    out.FromName,
 	}, nil
 }
 

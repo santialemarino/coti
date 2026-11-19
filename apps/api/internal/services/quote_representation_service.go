@@ -528,7 +528,7 @@ func buildRepresentationPayload(
 			LegalName: source.Account.LegalName, TaxID: source.Account.TaxID, BrandColor: color,
 			LogoURL: logoURL},
 		Branch: domain.QuoteRepresentationBranch{Name: source.Branch.Name,
-			Address: source.Branch.Address},
+			Address: source.Branch.Address, WhatsApp: source.BranchWhatsApp, Email: source.BranchEmail},
 		Customer: domain.QuoteRepresentationCustomer{Name: source.CustomerName},
 		Items:    items, Discounts: source.Discounts,
 		Total: source.Version.Total.StringFixed(domain.MoneyScale), ValidityNote: quoteValidityNote,

@@ -53,6 +53,8 @@ interface SupplierRaw {
 interface BranchRaw {
   name: string;
   address?: string;
+  whatsapp?: string;
+  email?: string;
 }
 
 interface QuoteItemRaw {
@@ -151,6 +153,9 @@ export interface Supplier {
 export interface Branch {
   name: string;
   address?: string;
+  // The branch's own channels, frozen with the quote; absent on older snapshots.
+  whatsapp?: string;
+  email?: string;
 }
 
 export interface QuoteItem {
@@ -225,7 +230,12 @@ function mapQuotePayload(raw: QuotePayloadRaw): QuotePayload {
     approvedAt: raw.approved_at,
     currency: raw.currency,
     supplier: mapSupplier(raw.supplier),
-    branch: { name: raw.branch.name, address: raw.branch.address },
+    branch: {
+      name: raw.branch.name,
+      address: raw.branch.address,
+      whatsapp: raw.branch.whatsapp,
+      email: raw.branch.email,
+    },
     customerName: raw.customer.name,
     items: raw.items.map(mapItem),
     discounts: raw.discounts.map((discount) => ({

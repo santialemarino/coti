@@ -54,8 +54,11 @@ rebuilt from live catalog data. Money and quantity fields are decimal strings.
 Names, codes and institutional identity are read when the bundle is generated. Quantities,
 prices, discounts and totals come exclusively from persisted version snapshots. The payload
 contains supplier identity, branch, customer name, reference, version, approval timestamp,
-currency, lines, approved alternatives, discounts and total. It excludes contact details,
-internal comments, AI signals, price floors and unapproved alternatives.
+currency, lines, approved alternatives, discounts and total. The branch carries its name, address
+and the WhatsApp number and mailbox of its first active channels of each type, which is where the
+customer writes back; a discount carries its own description or, for an automatic promotion, the
+promotion's name. It excludes the customer's contact details, internal comments, AI signals, price
+floors and unapproved alternatives.
 
 Migration 00019 assigns existing quotes account-local numbers ordered by creation time and
 ID. New numbers use a transactional account counter, so rolled-back creations consume none.
