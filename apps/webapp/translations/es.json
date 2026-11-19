@@ -161,7 +161,11 @@
     "expiredDescription": "El enlace dejó de estar disponible el {date}. Escribile al corralón y pedile una cotización nueva.",
     "unavailableTitle": "Esta cotización ya no está disponible",
     "unavailableDescription": "El corralón la retiró. Escribile y pedile una cotización actualizada.",
-    "questions": "¿Tenés dudas? Contactanos",
+    "contact": {
+      "title": "¿Tenés dudas? Escribinos",
+      "whatsappLabel": "Escribir por WhatsApp al {number}",
+      "emailLabel": "Escribir un correo a {email}"
+    },
     "options": {
       "heading": "Elegí la opción que preferís",
       "intro": "Podés mantener el material cotizado o elegir una alternativa aprobada por el corralón. Al confirmar, recalculamos las promociones y descuentos de la opción elegida.",

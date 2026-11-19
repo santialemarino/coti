@@ -32,7 +32,12 @@ function rawSend(overrides: Record<string, unknown> = {}) {
         brand_color: '#C2410C',
         logo_url: '/v1/public/account-logos/acc/logo',
       },
-      branch: { name: 'Casa central', address: 'Av. Siempreviva 742' },
+      branch: {
+        name: 'Casa central',
+        address: 'Av. Siempreviva 742',
+        whatsapp: '+54 9 11 5555-0101',
+        email: 'ventas@corralon.test',
+      },
       customer: { name: 'Obra Norte' },
       items: [
         {
@@ -104,7 +109,12 @@ describe('getPublicQuoteByToken', () => {
           brandColor: '#C2410C',
           logoUrl: `${API_URL}/v1/public/account-logos/acc/logo`,
         },
-        branch: { name: 'Casa central', address: 'Av. Siempreviva 742' },
+        branch: {
+          name: 'Casa central',
+          address: 'Av. Siempreviva 742',
+          whatsapp: '+54 9 11 5555-0101',
+          email: 'ventas@corralon.test',
+        },
         customerName: 'Obra Norte',
         items: [
           {

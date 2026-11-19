@@ -96,7 +96,15 @@ func (r *QuoteRepresentationRepository) LoadSource(
 		version.id, version.account_id, version.quote_id, version.author_id,
 		version.version_number, version.currency, version.total, version.is_immutable,
 		version.frozen_at, version.comment, version.created_at,
-		COALESCE(client.name, rfq.client_label)
+		COALESCE(client.name, rfq.client_label),
+		(SELECT channel.identifier FROM channel
+		  WHERE channel.account_id = $1 AND channel.branch_id = branch.id AND channel.type = 'WHATSAPP'
+		    AND channel.is_active AND channel.identifier IS NOT NULL
+		  ORDER BY channel.created_at, channel.id LIMIT 1),
+		(SELECT channel.identifier FROM channel
+		  WHERE channel.account_id = $1 AND channel.branch_id = branch.id AND channel.type = 'EMAIL'
+		    AND channel.is_active AND channel.identifier IS NOT NULL
+		  ORDER BY channel.created_at, channel.id LIMIT 1)
 	FROM quote
 	JOIN account ON account.id = $1
 	JOIN branch ON branch.account_id = $1 AND branch.id = $2 AND branch.id = quote.branch_id
@@ -121,7 +129,7 @@ func (r *QuoteRepresentationRepository) LoadSource(
 		&source.Version.AuthorID, &source.Version.VersionNumber, &source.Version.Currency,
 		&source.Version.Total, &source.Version.IsImmutable, &source.Version.FrozenAt,
 		&source.Version.Comment,
-		&source.Version.CreatedAt, &source.CustomerName)
+		&source.Version.CreatedAt, &source.CustomerName, &source.BranchWhatsApp, &source.BranchEmail)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

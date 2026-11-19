@@ -2130,6 +2130,20 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 	}
 }
 
+func TestRFQService_GetDetail_HidesTheFileOrderPlaceholder(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID, RawText: strPtr(fileOrderPlaceholder("lista.jpg"))}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	// The file is the record; its stand-in text would only repeat the file's name.
+	if detail.OriginalText != nil {
+		t.Errorf("original text = %q, want none for a file order", *detail.OriginalText)
+	}
+}
+
 func TestRFQService_GetDetail_DecoratesDeliveryPublicURLs(t *testing.T) {
 	h, _, _, _, _ := getDetailHarness()
 	h.service.WithWebAppURL("https://quotes.test/")

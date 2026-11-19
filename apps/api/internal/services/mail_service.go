@@ -23,6 +23,8 @@ type OutboundMail struct {
 	ToName      string
 	ReplyTo     string
 	ReplyToName string
+	// FromName replaces the platform's display name on the sender, blank to keep it.
+	FromName    string
 	Subject     string
 	Heading     string
 	Paragraphs  []string

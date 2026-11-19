@@ -111,6 +111,9 @@ type QuoteRepresentationSupplier struct {
 type QuoteRepresentationBranch struct {
 	Name    string  `json:"name"`
 	Address *string `json:"address,omitempty"`
+	// WhatsApp and Email are absent on a snapshot frozen before they existed, and on a branch without the channel.
+	WhatsApp *string `json:"whatsapp,omitempty"`
+	Email    *string `json:"email,omitempty"`
 }
 
 // QuoteRepresentationCustomer is the minimal public customer identity.
@@ -171,9 +174,12 @@ type QuoteRepresentationSource struct {
 	Quote        Quote
 	Version      QuoteVersion
 	CustomerName *string
-	Items        []QuoteItem
-	Alternatives map[uuid.UUID][]QuoteItemAlternative
-	Discounts    []QuoteRepresentationDiscount
+	// BranchWhatsApp and BranchEmail are the branch's own active channels, where the customer writes back.
+	BranchWhatsApp *string
+	BranchEmail    *string
+	Items          []QuoteItem
+	Alternatives   map[uuid.UUID][]QuoteItemAlternative
+	Discounts      []QuoteRepresentationDiscount
 }
 
 // QuoteRepresentationResult decorates a stored bundle with a short-lived PDF URL.

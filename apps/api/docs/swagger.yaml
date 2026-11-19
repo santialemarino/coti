@@ -2582,7 +2582,11 @@ definitions:
     properties:
       address:
         type: string
+      email:
+        type: string
       name:
+        type: string
+      whatsapp:
         type: string
     type: object
   dto.QuoteRepresentationCustomerResponse:
