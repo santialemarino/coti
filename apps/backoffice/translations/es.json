@@ -579,7 +579,7 @@
       "title": "Términos de uso",
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
-    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas.",
+    "socialImageAlt": "Coti: respondé primero, vendé más. El que contesta primero, vende.",
     "invoicingSettings": {
       "title": "Facturación",
       "description": "Los datos con los que el corralón emite facturas electrónicas."
@@ -623,12 +623,13 @@
       "madeIn": "Hecho en Argentina"
     },
     "hero": {
-      "slogan": "Cotizá. Convertí. Cerrá.",
-      "title": "Cotizá en minutos lo que hoy te lleva horas",
-      "description": "Coti lee los pedidos que te llegan por WhatsApp, correo, foto o Excel, los arma contra tu catálogo y tus precios, y te deja la cotización lista para revisar y enviar.",
+      "slogan": "Respondé primero. Vendé más.",
+      "title": "El que contesta primero, vende",
+      "description": "Coti arma tus cotizaciones en menos de cinco minutos, con tus precios y tu aprobación. Lee el pedido como te llega —WhatsApp, correo, foto o Excel— y te lo deja listo para revisar y enviar.",
       "signup": "Probar Coti",
       "login": "Ya tengo cuenta",
-      "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto."
+      "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto.",
+      "demo": "Pedí una demo"
     },
     "preview": {
       "label": "Ejemplo: un pedido por WhatsApp convertido en una cotización con tres productos del catálogo, uno marcado para revisar.",
@@ -657,6 +658,29 @@
         "review": "Revisar coincidencia"
       },
       "total": "Total"
+    },
+    "fit": {
+      "eyebrow": "Para quién es",
+      "title": "Hecho para corralones medianos",
+      "description": "Si cotizás todos los días y el mostrador no da abasto, Coti trabaja al lado de tus vendedores.",
+      "items": {
+        "sellers": {
+          "value": "2 a 15",
+          "label": "vendedores atendiendo pedidos"
+        },
+        "quotes": {
+          "value": "15 a 30",
+          "label": "cotizaciones por día"
+        },
+        "catalog": {
+          "value": "Más de 500",
+          "label": "productos en tu catálogo"
+        },
+        "branches": {
+          "value": "Una o varias",
+          "label": "sucursales, cada una con sus precios"
+        }
+      }
     },
     "benefits": {
       "eyebrow": "Por qué Coti",
@@ -695,8 +719,45 @@
         },
         "answer": {
           "title": "El cliente responde",
-          "description": "Abre la cotización con la marca de tu corralón y acepta, rechaza o pide cambios ítem por ítem."
+          "description": "Abre la cotización con la marca de tu corralón y la acepta, la rechaza o te pide cambios."
         }
+      }
+    },
+    "changes": {
+      "eyebrow": "Después del envío",
+      "title": "Cuando el cliente dice «está caro», la versión nueva ya está armada",
+      "description": "Coti lee lo que contesta el cliente, arma la versión nueva con tus alternativas y tus promociones, y te la deja para revisar. Nada sale sin vos.",
+      "items": {
+        "cheaper": {
+          "title": "«Está caro»",
+          "description": "Baja el total con tus alternativas económicas o acercando el pedido a una promoción, y nunca lo sube."
+        },
+        "quality": {
+          "title": "«Quiero algo mejor»",
+          "description": "Ofrece la alternativa premium del mismo material."
+        },
+        "edits": {
+          "title": "«Sacá la cal y agregá cemento»",
+          "description": "Traduce el pedido a cambios concretos sobre la cotización."
+        }
+      },
+      "preview": {
+        "label": "Ejemplo: el cliente pide algo más económico y Coti arma una versión nueva con el cemento económico, más barata, para que el vendedor la revise.",
+        "from": "Martín · Obra Ituzaingó",
+        "channel": "WhatsApp",
+        "message": "Está caro. ¿No tenés algo más económico para el cemento?",
+        "interpretationLabel": "Cómo lo leyó Coti",
+        "interpretation": "Pide bajar el total: el cemento pasa a su alternativa económica.",
+        "version": "Versión 2",
+        "status": "Para revisar",
+        "changed": "Cambiado",
+        "line": "{from} → {to}",
+        "lineDetail": "{quantity} {unit} × {price}",
+        "fromProduct": "Cemento portland 50 kg",
+        "toProduct": "Cemento económico 50 kg",
+        "unit": "bolsas",
+        "total": "Total",
+        "decide": "Vos decidís si se envía"
       }
     },
     "features": {
@@ -787,7 +848,7 @@
         },
         "changes": {
           "question": "¿Qué pasa si el cliente pide cambios?",
-          "answer": "Los pide desde la misma cotización, ítem por ítem. Coti arma la propuesta —más barata, de mejor calidad o con el cambio que pidió— y vos la revisás antes de enviar la nueva versión."
+          "answer": "Te los pide desde la misma cotización o por WhatsApp. Coti arma la propuesta —más barata, de mejor calidad o con el cambio que pidió— y vos la revisás antes de enviar la nueva versión."
         },
         "invoicing": {
           "question": "¿Puedo facturar desde Coti?",
@@ -798,7 +859,12 @@
     "cta": {
       "title": "Probá Coti con tu propio catálogo",
       "description": "Creá la cuenta de tu corralón, importá tus productos y cotizá tu próximo pedido con Coti.",
-      "action": "Crear mi cuenta"
+      "action": "Crear mi cuenta",
+      "demo": "Pedí una demo"
+    },
+    "demo": {
+      "message": "Hola, quiero ver una demo de Coti para mi corralón.",
+      "subject": "Quiero ver una demo de Coti"
     }
   },
   "legal": {

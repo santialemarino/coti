@@ -52,6 +52,10 @@ export const RESEND_COOLDOWN_SECONDS = readInt(
   DEFAULT_RESEND_COOLDOWN_SECONDS,
 );
 
+// Where «Pedí una demo» on the public site leads. Read on the server; the button stays hidden while both are unset.
+export const LANDING_DEMO_WHATSAPP = process.env.LANDING_DEMO_WHATSAPP?.trim() || undefined;
+export const LANDING_DEMO_EMAIL = process.env.LANDING_DEMO_EMAIL?.trim() || undefined;
+
 // How many days before the ARCA certificate expires the invoicing screens ask to renew it.
 export const ARCA_CERTIFICATE_RENEWAL_DAYS = readInt(
   process.env.ARCA_CERTIFICATE_RENEWAL_DAYS,

@@ -54,7 +54,7 @@ func contactVerificationLink(link string) string {
 
 // contactVerificationCode carries the one-use code that proves a phone.
 func contactVerificationCode(code string) string {
-	return "Tu código para confirmar el teléfono en Coti es: " + code
+	return "Tu código para confirmar tu teléfono es: " + code
 }
 
 // contactRecoveryCode carries the one-use code that recovers an account; it says what to do if the

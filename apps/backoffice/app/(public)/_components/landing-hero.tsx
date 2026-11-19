@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
+import { demoContactHref } from '@/app/(public)/_components/demo-link';
 import { ProductPreview } from '@/app/(public)/_components/product-preview';
 import { revealItem } from '@/app/(public)/_components/reveal-item';
 import { ROUTES } from '@/config/routes';
@@ -14,6 +15,8 @@ interface LandingHeroProps {
 // seller already has the way back to the queue in the header, so the hero offers them nothing twice.
 export async function LandingHero({ signedIn }: LandingHeroProps) {
   const t = await getTranslations('landing.hero');
+  const tDemo = await getTranslations('landing.demo');
+  const demoHref = demoContactHref({ message: tDemo('message'), subject: tDemo('subject') });
 
   return (
     <section aria-labelledby="hero-title" className="bg-linear-to-b from-accent to-body-background">
@@ -35,9 +38,17 @@ export async function LandingHero({ signedIn }: LandingHeroProps) {
                 <Button asChild size="lg">
                   <Link href={ROUTES.signup}>{t('signup')}</Link>
                 </Button>
-                <Button asChild variant="outline" size="lg">
-                  <Link href={ROUTES.login}>{t('login')}</Link>
-                </Button>
+                {demoHref ? (
+                  <Button asChild variant="outline" size="lg">
+                    <a href={demoHref} target="_blank" rel="noopener noreferrer">
+                      {t('demo')}
+                    </a>
+                  </Button>
+                ) : (
+                  <Button asChild variant="outline" size="lg">
+                    <Link href={ROUTES.login}>{t('login')}</Link>
+                  </Button>
+                )}
               </div>
               <p {...revealItem(4, 'text-paragraph-sm text-foreground-subtle')}>{t('note')}</p>
             </>
