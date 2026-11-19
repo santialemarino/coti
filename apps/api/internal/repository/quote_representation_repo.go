@@ -96,7 +96,15 @@ func (r *QuoteRepresentationRepository) LoadSource(
 		version.id, version.account_id, version.quote_id, version.author_id,
 		version.version_number, version.currency, version.total, version.is_immutable,
 		version.frozen_at, version.comment, version.created_at,
-		COALESCE(client.name, rfq.client_label)
+		COALESCE(client.name, rfq.client_label),
+		(SELECT channel.identifier FROM channel
+		  WHERE channel.account_id = $1 AND channel.branch_id = branch.id AND channel.type = 'WHATSAPP'
+		    AND channel.is_active AND channel.identifier IS NOT NULL
+		  ORDER BY channel.created_at, channel.id LIMIT 1),
+		(SELECT channel.identifier FROM channel
+		  WHERE channel.account_id = $1 AND channel.branch_id = branch.id AND channel.type = 'EMAIL'
+		    AND channel.is_active AND channel.identifier IS NOT NULL
+		  ORDER BY channel.created_at, channel.id LIMIT 1)
 	FROM quote
 	JOIN account ON account.id = $1
 	JOIN branch ON branch.account_id = $1 AND branch.id = $2 AND branch.id = quote.branch_id
@@ -121,7 +129,7 @@ func (r *QuoteRepresentationRepository) LoadSource(
 		&source.Version.AuthorID, &source.Version.VersionNumber, &source.Version.Currency,
 		&source.Version.Total, &source.Version.IsImmutable, &source.Version.FrozenAt,
 		&source.Version.Comment,
-		&source.Version.CreatedAt, &source.CustomerName)
+		&source.Version.CreatedAt, &source.CustomerName, &source.BranchWhatsApp, &source.BranchEmail)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -207,10 +215,12 @@ func (r *QuoteRepresentationRepository) listApprovedAlternatives(
 func (r *QuoteRepresentationRepository) listDiscounts(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteRepresentationDiscount, error) {
-	rows, err := q.Query(ctx, `SELECT COALESCE(description, ''), amount
-		FROM quote_discount
-		WHERE account_id = $1 AND quote_version_id = $2 AND suppressed_by_seller = FALSE
-		ORDER BY created_at, id`, accountID, versionID)
+	// An automatic promotion stores no description of its own: the customer reads its name.
+	rows, err := q.Query(ctx, `SELECT COALESCE(d.description, p.name, ''), d.amount
+		FROM quote_discount d
+		LEFT JOIN promotion p ON p.account_id = d.account_id AND p.id = d.promotion_id
+		WHERE d.account_id = $1 AND d.quote_version_id = $2 AND d.suppressed_by_seller = FALSE
+		ORDER BY d.created_at, d.id`, accountID, versionID)
 	if err != nil {
 		return nil, err
 	}

@@ -2046,6 +2046,7 @@ func getDetailHarness() (*rfqHarness, *domain.RfqListItem, *domain.Quote, *domai
 	}
 
 	h.rfqs.rfqByID = rfqItem
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID, RawText: strPtr("10 bolsas de cemento y 2 rollos de membrana")}
 	h.quotes.quoteByID = quote
 	h.quotes.currentVersionData = version
 	h.quotes.itemsByVersionID = items
@@ -2085,6 +2086,10 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 	if detail.Rfq.ID != rfqItem.ID {
 		t.Errorf("rfq ID = %v, want %v", detail.Rfq.ID, rfqItem.ID)
 	}
+	// A WhatsApp order carries its original text too, not only a web one.
+	if detail.OriginalText == nil || *detail.OriginalText != "10 bolsas de cemento y 2 rollos de membrana" {
+		t.Errorf("original text = %v, want the stored order", detail.OriginalText)
+	}
 	if detail.Quote == nil || detail.Quote.ID != quote.ID {
 		t.Errorf("quote = %v, want %v", detail.Quote, quote)
 	}
@@ -2122,6 +2127,20 @@ func TestRFQService_GetDetail_ReturnsFullDetailWhenAllDataExists(t *testing.T) {
 	}
 	if len(h.db.scopes) != 1 || h.db.scopes[0] != testAccountID {
 		t.Errorf("transaction scoped to %v, want [%v]", h.db.scopes, testAccountID)
+	}
+}
+
+func TestRFQService_GetDetail_HidesTheFileOrderPlaceholder(t *testing.T) {
+	h, _, _, _, _ := getDetailHarness()
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID, RawText: strPtr(fileOrderPlaceholder("lista.jpg"))}
+
+	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
+	if err != nil {
+		t.Fatalf("GetDetail returned %v", err)
+	}
+	// The file is the record; its stand-in text would only repeat the file's name.
+	if detail.OriginalText != nil {
+		t.Errorf("original text = %q, want none for a file order", *detail.OriginalText)
 	}
 }
 
@@ -2277,6 +2296,7 @@ func TestRFQService_GetDetail_RfqNotFound(t *testing.T) {
 func TestRFQService_GetDetail_QuoteNotFoundReturnsRfqWithoutQuote(t *testing.T) {
 	h := newRFQHarness(nil)
 	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID}
 	h.quotes.quoteByIDErr = domain.ErrNotFound
 
 	detail, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
@@ -2577,6 +2597,7 @@ func TestRFQService_CreateTextDraft_FailsTheDraftWhenCandidatesCannotBeWritten(t
 func TestRFQService_GetDetail_VersionNotFoundGracefullySkipped(t *testing.T) {
 	h := newRFQHarness(nil)
 	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID}
 	quote := &domain.Quote{
 		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
 		CurrentVersionID: &testVersionID,
@@ -2599,6 +2620,7 @@ func TestRFQService_GetDetail_VersionNotFoundGracefullySkipped(t *testing.T) {
 func TestRFQService_GetDetail_QuoteRepositoryErrorIsPropagated(t *testing.T) {
 	h := newRFQHarness(nil)
 	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID}
 	h.quotes.quoteByIDErr = errors.New("database timeout")
 
 	_, err := h.service.GetDetail(context.Background(), rfqTenant(), testRFQID)
@@ -2610,6 +2632,7 @@ func TestRFQService_GetDetail_QuoteRepositoryErrorIsPropagated(t *testing.T) {
 func TestRFQService_GetDetail_QuoteWithoutVersionReturnsRfqAndQuoteOnly(t *testing.T) {
 	h := newRFQHarness(nil)
 	h.rfqs.rfqByID = &domain.RfqListItem{ID: testRFQID}
+	h.rfqs.rfqRow = &domain.RFQ{ID: testRFQID}
 	h.quotes.quoteByID = &domain.Quote{
 		ID: testQuoteID, RFQID: testRFQID, BranchID: testBranchID,
 		CurrentStatus:    domain.QuoteStatusDraft,

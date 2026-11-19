@@ -125,6 +125,96 @@ func TestQuoteRepresentation_GenerateReplayAndPublicDelivery(t *testing.T) {
 	}
 }
 
+func TestQuoteRepresentation_FreezesTheBranchContact(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Representation branch contact", false)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_representation WHERE account_id = $1`, seed.tenant.AccountID)
+	})
+	// An inactive channel and another branch's channel must not reach the customer.
+	otherAccount, otherBranch := e.seedAccount(t, "Representation contact intruder")
+	// The intake channel the seed opened the order through is closed, so the branch's number is the one live WhatsApp.
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE channel SET is_active = FALSE
+	  WHERE account_id = $1 AND branch_id = $2 AND type = 'WHATSAPP'`,
+		seed.tenant.AccountID, seed.tenant.BranchID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel (account_id, branch_id, type, identifier, is_active)
+	  VALUES ($1, $2, 'WHATSAPP', '+54 9 11 5555-0101', TRUE),
+	         ($1, $2, 'EMAIL', 'ventas@corralon.test', TRUE),
+	         ($1, $2, 'WHATSAPP', '+54 9 11 5555-0999', FALSE)`,
+		seed.tenant.AccountID, seed.tenant.BranchID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO channel (account_id, branch_id, type, identifier, is_active)
+	  VALUES ($1, $2, 'EMAIL', 'intruso@otro.test', TRUE)`, otherAccount, otherBranch); err != nil {
+		t.Fatal(err)
+	}
+	baseURL, _ := url.Parse("https://files.test")
+	objects, err := storage.NewLocalStorage(t.TempDir(), baseURL, storage.NewURLSigner([]byte("representation-test-secret-at-least-32-chars"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := services.NewQuoteRepresentationService(e.db, repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(), objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
+	bundle, err := service.Ensure(ctx, seed.tenant, seed.draft.Quote.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := bundle.Representation.Payload.Branch
+	if branch.WhatsApp == nil || *branch.WhatsApp != "+54 9 11 5555-0101" ||
+		branch.Email == nil || *branch.Email != "ventas@corralon.test" {
+		t.Fatalf("branch contact = %+v, want the branch's own active channels", branch)
+	}
+}
+
+func TestQuoteRepresentation_AutomaticDiscountCarriesPromotionName(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Representation discount name", false)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		e.mustCleanup(t, `DELETE FROM quote_representation WHERE account_id = $1`, seed.tenant.AccountID)
+		e.mustCleanup(t, `DELETE FROM quote_discount WHERE account_id = $1`, seed.tenant.AccountID)
+		e.mustCleanup(t, `DELETE FROM promotion WHERE account_id = $1`, seed.tenant.AccountID)
+	})
+	var promotionID uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `INSERT INTO promotion
+	  (account_id, condition_type, action_type, action_value, name)
+	  VALUES ($1, 'ON_TOTAL', 'PERCENTAGE', 10.00, 'Compra grande') RETURNING id`,
+		seed.tenant.AccountID).Scan(&promotionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO quote_discount
+	  (account_id, quote_version_id, promotion_id, condition_type, scope, origin, amount, action_type, action_value)
+	  VALUES ($1, $2, $3, 'ON_TOTAL', 'TOTAL', 'AUTOMATIC', 10.00, 'PERCENTAGE', 10.00),
+	         ($1, $2, NULL, 'ON_TOTAL', 'TOTAL', 'MANUAL_SELLER', 5.00, 'FIXED_AMOUNT', 5.00)`,
+		seed.tenant.AccountID, seed.draft.Version.ID, promotionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote_version SET total = 85.00 WHERE id = $1`,
+		seed.draft.Version.ID); err != nil {
+		t.Fatal(err)
+	}
+	baseURL, _ := url.Parse("https://files.test")
+	objects, err := storage.NewLocalStorage(t.TempDir(), baseURL, storage.NewURLSigner([]byte("representation-test-secret-at-least-32-chars"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := services.NewQuoteRepresentationService(e.db, repository.NewQuoteRepresentationRepository(), repository.NewQuoteRepository(), objects, nil, pdf.NewQuoteRenderer(), 15*time.Minute, nil, nil)
+	bundle, err := service.Ensure(ctx, seed.tenant, seed.draft.Quote.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	discounts := bundle.Representation.Payload.Discounts
+	byAmount := make(map[string]string, len(discounts))
+	for _, discount := range discounts {
+		byAmount[discount.Amount] = discount.Description
+	}
+	if len(discounts) != 2 || byAmount["10.00"] != "Compra grande" || byAmount["5.00"] != "" {
+		t.Fatalf("discounts = %+v, want the promotion name and an unnamed manual discount", discounts)
+	}
+}
+
 func TestQuoteRepresentation_StorageFailureLeavesNoUsableReference(t *testing.T) {
 	e := newEnv(t)
 	seed := e.seedSendableQuote(t, "Representation storage failure", false)

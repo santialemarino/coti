@@ -2582,7 +2582,11 @@ definitions:
     properties:
       address:
         type: string
+      email:
+        type: string
       name:
+        type: string
+      whatsapp:
         type: string
     type: object
   dto.QuoteRepresentationCustomerResponse:
@@ -3024,14 +3028,14 @@ definitions:
         items:
           $ref: '#/definitions/dto.QuoteItemResponse'
         type: array
+      original_text:
+        type: string
       public_attachments:
         items:
           $ref: '#/definitions/dto.RFQAttachmentResponse'
         type: array
       public_contact:
         $ref: '#/definitions/dto.PublicRFQContactResponse'
-      public_original_text:
-        type: string
       quote:
         $ref: '#/definitions/dto.QuoteResponse'
       quote_status_history:

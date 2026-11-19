@@ -350,8 +350,14 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 			return quoteErr
 		}
 
-		detail = &domain.RfqDetail{
-			Rfq: *rfq,
+		source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
+		if err != nil {
+			return err
+		}
+		detail = &domain.RfqDetail{Rfq: *rfq, OriginalText: source.RawText}
+		// A file order's text only names the file, which the seller already sees in the list.
+		if source.RawText != nil && strings.HasPrefix(*source.RawText, fileOrderPlaceholderPrefix) {
+			detail.OriginalText = nil
 		}
 		if s.publicContacts != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWebApp)) {
 			contact, err := s.publicContacts.FindPublicContactByRFQID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
@@ -359,13 +365,6 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 				return err
 			}
 			detail.PublicContact = contact
-			if contact != nil {
-				source, err := s.rfqs.GetByID(ctx, q, tenant.AccountID, rfq.BranchID, rfqID)
-				if err != nil {
-					return err
-				}
-				detail.PublicOriginalText = source.RawText
-			}
 		}
 		if s.inboundMessages != nil && rfq.Channel == strings.ToLower(string(domain.ChannelTypeWhatsApp)) {
 			senderID, senderErr := s.inboundMessages.FindSenderIDByRFQID(ctx, q, tenant.AccountID,
@@ -1990,10 +1989,12 @@ func (s *RFQService) normalizeFileRFQDraftInput(
 	return in, format, data, nil
 }
 
-// fileOrderPlaceholder is the raw_text of an order whose file yields no text of its own — a
+// fileOrderPlaceholderPrefix opens the raw_text of an order whose file yields no text of its own — a
 // photo or a PDF. The row cannot be blank and the file is the record, so it names the file.
+const fileOrderPlaceholderPrefix = "Pedido recibido como archivo: "
+
 func fileOrderPlaceholder(filename string) string {
-	return "Pedido recibido como archivo: " + filename
+	return fileOrderPlaceholderPrefix + filename
 }
 
 func (s *RFQService) requiredRFQText(raw string) (string, error) {
