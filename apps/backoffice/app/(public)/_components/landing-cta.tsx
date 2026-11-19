@@ -32,7 +32,12 @@ export async function LandingCta() {
               <Link href={ROUTES.signup}>{t('action')}</Link>
             </Button>
             {demoHref ? (
-              <Button asChild variant="ghost" size="lg" className="text-primary-foreground">
+              <Button
+                asChild
+                variant="ghost"
+                size="lg"
+                className="text-primary-foreground focus-visible:border-primary-foreground focus-visible:ring-primary-foreground/60"
+              >
                 <a href={demoHref} target="_blank" rel="noopener noreferrer">
                   {t('demo')}
                 </a>

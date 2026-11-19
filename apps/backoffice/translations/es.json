@@ -579,7 +579,7 @@
       "title": "Términos de uso",
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
-    "socialImageAlt": "Coti: cotizá en minutos lo que hoy te lleva horas.",
+    "socialImageAlt": "Coti: respondé primero, vendé más. El que contesta primero, vende.",
     "invoicingSettings": {
       "title": "Facturación",
       "description": "Los datos con los que el corralón emite facturas electrónicas."
@@ -730,7 +730,7 @@
       "items": {
         "cheaper": {
           "title": "«Está caro»",
-          "description": "Pasa cada material a la alternativa económica que vos cargaste, y nunca sube el total."
+          "description": "Baja el total con tus alternativas económicas o acercando el pedido a una promoción, y nunca lo sube."
         },
         "quality": {
           "title": "«Quiero algo mejor»",
