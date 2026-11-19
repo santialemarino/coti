@@ -783,7 +783,7 @@
         },
         "customerAccount": {
           "question": "¿Mi cliente necesita una cuenta para ver la cotización?",
-          "answer": "No. Le llega un enlace y la ve con la marca de tu corralón, desde el celular o la computadora."
+          "answer": "Para ver y responder la cotización, sí: entra con su CUIT o con Google y desde ahí sigue todos sus pedidos, con la marca de tu corralón. Para pedirte por WhatsApp o por correo no necesita ninguna cuenta."
         },
         "changes": {
           "question": "¿Qué pasa si el cliente pide cambios?",
@@ -1208,8 +1208,9 @@
     "createdAt": "Creada el {date}"
   },
   "rfqs": {
-    "emailAttachments": {
-      "title": "Correo y archivos recibidos",
+    "originalRequest": {
+      "title": "Pedido original",
+      "files": "Archivos recibidos",
       "download": "Descargar",
       "unnamed": "Archivo adjunto",
       "manualReview": "Revisar manualmente",

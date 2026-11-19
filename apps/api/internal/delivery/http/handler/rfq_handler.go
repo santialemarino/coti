@@ -856,6 +856,7 @@ func toRfqDetailResponse(
 ) dto.RfqDetailResponse {
 	resp := dto.RfqDetailResponse{
 		Rfq:                  toListItemResponse(detail.Rfq),
+		OriginalText:         detail.OriginalText,
 		InboundWhatsAppPhone: detail.InboundWhatsAppPhone,
 		InboundEmail:         detail.InboundEmail,
 		RFQHistory:           toRFQStatusChangeResponses(detail.RFQStatusChanges),
@@ -863,7 +864,6 @@ func toRfqDetailResponse(
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
 	}
 	if contact := detail.PublicContact; contact != nil {
-		resp.PublicOriginalText = detail.PublicOriginalText
 		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
 		resp.PublicContact = &dto.PublicRFQContactResponse{TaxID: contact.TaxID, Name: contact.Name,
 			Email: contact.Email, Phone: contact.Phone}

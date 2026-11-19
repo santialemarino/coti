@@ -10,7 +10,7 @@ describe('public request declarations', () => {
   it('maps the new wire fields before rendering contact and the original order', () => {
     const detail = mapRfqDetail({
       public_contact: { tax_id: '20123456786', name: 'Obra Norte', email: 'contacto@example.com' },
-      public_original_text: '10 bolsas de cemento',
+      original_text: '10 bolsas de cemento',
     } as Parameters<typeof mapRfqDetail>[0]);
     expect(detail.publicRequest?.taxId).toBe('20123456786');
     expect((detail as unknown as Record<string, unknown>).public_contact).toBeUndefined();

@@ -178,7 +178,7 @@ func TestPublicRFQRoutePreservesScopeAndIdempotencyWithAuthenticatedClientAssoci
 		Contact *struct {
 			Email string `json:"email"`
 		} `json:"public_contact"`
-		Text string `json:"public_original_text"`
+		Text string `json:"original_text"`
 	}
 	if err := json.Unmarshal(detail.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
