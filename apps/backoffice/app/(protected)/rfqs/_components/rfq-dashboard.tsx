@@ -89,6 +89,7 @@ import {
 } from '@/lib/api/rfqs';
 import {
   assignRfqSeller,
+  setFailedRfqArchived,
   setInvoiceWaived,
   setQuoteArchived,
   setQuotePaid,
@@ -354,7 +355,7 @@ function RowActions({
    * The action is absent rather than disabled: a tooltip never fires on a disabled trigger, so the
    * explanation would be unreachable exactly where it was needed.
    */
-  if (rfq.quoteId === null) return null;
+  if (rfq.quoteId === null && rfq.status !== 'FAILED') return null;
 
   if (closing.length > 0) {
     const menuLabel = t('list.closing.menu', { id: reference });
@@ -639,12 +640,13 @@ export function RfqDashboard({
    * write it never made, so the order came back on the next refresh.
    */
   async function toggleArchived(rfq: RfqRecord) {
-    if (rfq.quoteId === null || archiving.has(rfq.id)) return;
+    if ((rfq.quoteId === null && rfq.status !== 'FAILED') || archiving.has(rfq.id)) return;
     const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
     const next = !rfq.archived;
     setArchiving((previous) => new Set(previous).add(rfq.id));
     try {
-      await setQuoteArchived(rfq.quoteId, next, rfq.branchId);
+      if (rfq.quoteId) await setQuoteArchived(rfq.quoteId, next, rfq.branchId);
+      else await setFailedRfqArchived(rfq.id, next, rfq.branchId);
       setRecords((previous) =>
         previous.map((item) => (item.id === rfq.id ? { ...item, archived: next } : item)),
       );
@@ -784,10 +786,16 @@ export function RfqDashboard({
      * Over every record, not the visible page: a selection survives paging, so filtering by what is
      * on screen would archive one page's worth and clear the rest of the selection without a word.
      */
-    const targets = records.filter((rfq) => selected.has(rfq.id) && rfq.quoteId && !rfq.archived);
+    const targets = records.filter(
+      (rfq) => selected.has(rfq.id) && (rfq.quoteId || rfq.status === 'FAILED') && !rfq.archived,
+    );
     if (targets.length === 0) return;
     const results = await Promise.allSettled(
-      targets.map((rfq) => setQuoteArchived(rfq.quoteId as string, true, rfq.branchId)),
+      targets.map((rfq) =>
+        rfq.quoteId
+          ? setQuoteArchived(rfq.quoteId, true, rfq.branchId)
+          : setFailedRfqArchived(rfq.id, true, rfq.branchId),
+      ),
     );
     const archived = new Set(
       targets.filter((_, index) => results[index]?.status === 'fulfilled').map((rfq) => rfq.id),

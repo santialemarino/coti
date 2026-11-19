@@ -227,10 +227,8 @@ func run() error {
 	conversationService := services.NewConversationService(quoteRepo, quoteSendRepo,
 		quoteMessageRepo, messageBatchRepo, cfg.Conversation)
 	var changeProposer domain.ChangeRequestHandler
-	var followupDrafter domain.FollowupDrafter
 	if providers.LanguageModelBound() {
 		changeProposer = ai.NewChangeRequestHandler(providers.Generator)
-		followupDrafter = ai.NewFollowupDrafter(providers.Generator)
 	}
 	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
@@ -311,7 +309,7 @@ func run() error {
 		WithWhatsAppCredentials(channelSealer).
 		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
-		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment)
+		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
@@ -342,7 +340,7 @@ func run() error {
 			RecommendationRequest: handler.NewRecommendationRequestHandler(recommendationRequestService),
 			Conversation:          handler.NewConversationHandler(conversationReviewService),
 			QuoteFollowup: handler.NewQuoteFollowupHandler(services.NewQuoteFollowupService(db,
-				quoteRepo, accountRepo, clientRepo, userRepo, followupDrafter)),
+				quoteRepo, accountRepo, clientRepo)),
 			Client:         handler.NewClientHandler(clientService),
 			ClientContacts: handler.NewClientContactHandler(contactService).WithVerification(contactVerification),
 			Prices:         handler.NewProductPriceHandler(productPriceImportService, cfg.PriceImport.MaxBytes),

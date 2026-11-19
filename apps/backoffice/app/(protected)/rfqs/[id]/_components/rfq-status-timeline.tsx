@@ -260,11 +260,21 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
                   >
                     <div className="flex items-center justify-between gap-x-3">
                       <span className="truncate text-paragraph-sm-medium text-foreground">
-                        {t(`channels.${channel}`)}
+                        {delivery.purpose === 'FOLLOWUP'
+                          ? t('detail.timeline.followupChannel', {
+                              channel: t(`channels.${channel}`),
+                            })
+                          : t(`channels.${channel}`)}
                       </span>
                       <DeliveryBadge status={delivery.tracking_status} />
                     </div>
                     <dl className="grid gap-y-1 text-paragraph-xs text-foreground-muted">
+                      {delivery.channel !== 'WEBAPP' && delivery.destination ? (
+                        <div className="flex justify-between gap-x-3">
+                          <dt>{t('detail.timeline.destination')}</dt>
+                          <dd className="break-all">{delivery.destination}</dd>
+                        </div>
+                      ) : null}
                       <div className="flex justify-between gap-x-3">
                         <dt>{t('detail.timeline.sentAt')}</dt>
                         <dd className="tabular-nums">{fmt.timestamp(deliveryTime(delivery))}</dd>

@@ -233,6 +233,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	// Overwriting who owns an order is an admin's power: a seller draws from the unclaimed
 	// pool, an admin steers the whole branch.
 	rfqs.PUT("/:rfqId/seller", middleware.RequireAdmin(), h.Rfq.SetSeller)
+	rfqs.PUT("/:rfqId/archive", h.Rfq.SetFailedArchived)
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
 

@@ -43,6 +43,10 @@ type quoteDeliveryRepository interface {
 		token string) (*domain.QuoteSend, error)
 }
 
+type quoteDeliveryHistoryReader interface {
+	ListByQuote(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) ([]domain.QuoteSend, error)
+}
+
 type quoteDeliveryQuoteRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID,
 		id uuid.UUID) (*domain.Quote, error)
@@ -256,6 +260,11 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		return replayResult(*quote, *version, prepared)
 	}
 
+	if normalized.FollowupMessage != nil {
+		copyBundle := *bundle
+		copyBundle.Representation.Message = *normalized.FollowupMessage
+		bundle = &copyBundle
+	}
 	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle)
 	completedAt := s.now().UTC()
 	expiresAt := completedAt.AddDate(0, 0, prepared[0].ValidityDays)
@@ -264,6 +273,9 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 			expiresAt = *delivery.ExpiresAt
 			break
 		}
+	}
+	if quote.ExpiresAt != nil && quote.CurrentStatus == domain.QuoteStatusSent {
+		expiresAt = *quote.ExpiresAt
 	}
 	anySuccess := hasSuccessfulSend(prepared)
 	for i := range outcomes {
@@ -330,7 +342,9 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 	quote.ExpiresAt = &expiresAt
 	result := &domain.QuoteDeliveryResult{QuoteID: quote.ID, VersionID: version.ID,
 		CurrentStatus: quote.CurrentStatus, ExpiresAt: &expiresAt, Deliveries: prepared}
-	s.evaluateAfterCommit(ctx, tenant, quote.ID, version.ID)
+	if normalized.FollowupMessage == nil {
+		s.evaluateAfterCommit(ctx, tenant, quote.ID, version.ID)
+	}
 	return result, nil
 }
 
@@ -395,6 +409,9 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		if err != nil {
 			return err
 		}
+		if in.FollowupMessage != nil && quote.CurrentStatus != domain.QuoteStatusSent {
+			return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+		}
 		if version.ID != representedVersionID || !version.IsImmutable {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
@@ -419,6 +436,24 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			return validateReplay(prepared, version.ID, in, validityDays)
 		}
 
+		if in.OtherChannelsOnly {
+			history, ok := s.sends.(quoteDeliveryHistoryReader)
+			if !ok {
+				return domain.ErrNotConfigured
+			}
+			previous, err := history.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+			if err != nil {
+				return err
+			}
+			for _, send := range previous {
+				if send.VersionID != version.ID || send.Purpose == domain.QuoteDeliveryPurposeFollowup || !hasSuccessfulSend([]domain.QuoteSend{send}) {
+					continue
+				}
+				if (send.ChannelType == domain.ChannelTypeWhatsApp && len(deliveryPhones(in)) > 0) || (send.ChannelType == domain.ChannelTypeEmail && len(deliveryEmails(in)) > 0) {
+					return domain.WithCode(domain.CodeDeliveryChannel, domain.ErrConflict)
+				}
+			}
+		}
 		if s.clients == nil {
 			return domain.ErrNotConfigured
 		}
@@ -435,22 +470,32 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		}
 		news := make([]domain.NewQuoteSend, 0, len(selected))
 		for _, selectedChannel := range selected {
-			destination := in.Phone
-			if selectedChannel.Type == domain.ChannelTypeWebApp {
-				destination = "customer-portal"
+			destinations := []string{"customer-portal"}
+			if selectedChannel.Type == domain.ChannelTypeWhatsApp {
+				destinations = deliveryPhones(in)
 			}
 			if selectedChannel.Type == domain.ChannelTypeEmail {
-				destination = *in.Email
+				destinations = deliveryEmails(in)
 			}
-			token, err := newPublicToken()
-			if err != nil {
-				return err
+			for _, destination := range destinations {
+				token, err := newPublicToken()
+				if err != nil {
+					return err
+				}
+				purpose := domain.QuoteDeliveryPurposeQuote
+				if in.FollowupMessage != nil {
+					purpose = domain.QuoteDeliveryPurposeFollowup
+				}
+				news = append(news, domain.NewQuoteSend{
+					ID: uuid.New(), VersionID: version.ID, ChannelID: selectedChannel.ID,
+					IdempotencyKey: in.IdempotencyKey, Destination: destination, PublicToken: token,
+					Format: domain.SendFormatWebAppLink, ValidityDays: validityDays,
+					ClientAssociationHash: sendClientFingerprint(in.ClientAssociation),
+					Purpose:               purpose, Message: in.FollowupMessage,
+				})
 			}
-			news = append(news, domain.NewQuoteSend{ID: uuid.New(), VersionID: version.ID,
-				ChannelID: selectedChannel.ID, IdempotencyKey: in.IdempotencyKey,
-				Destination: destination, PublicToken: token,
-				Format: domain.SendFormatWebAppLink, ValidityDays: validityDays, ClientAssociationHash: sendClientFingerprint(in.ClientAssociation)})
 		}
+
 		prepared, err = s.sends.CreateBatch(ctx, q, tenant.AccountID, news)
 		return err
 	})
@@ -464,13 +509,15 @@ func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repositor
 		return nil, err
 	}
 	types := make([]domain.ChannelType, 0, 2)
-	if in.Phone != "" {
+	if len(deliveryPhones(in)) > 0 {
 		types = append(types, domain.ChannelTypeWhatsApp)
 	}
-	if in.Email != nil {
+	if len(deliveryEmails(in)) > 0 {
 		types = append(types, domain.ChannelTypeEmail)
 	}
-	types = append(types, domain.ChannelTypeWebApp)
+	if in.FollowupMessage == nil {
+		types = append(types, domain.ChannelTypeWebApp)
+	}
 	selected := make([]domain.Channel, 0, len(types))
 	for _, channelType := range types {
 		var channels []domain.Channel
@@ -607,11 +654,17 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
 						payload.ValidityNote}
 				}
+				heading := "Tu cotización está lista"
+				if send.Purpose == "FOLLOWUP" && send.Message != nil {
+					subject = "Seguimiento de cotización"
+					heading = subject
+					paragraphs = []string{*send.Message}
+				}
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
 					FromName: fromName, ReplyTo: replyTo, ReplyToName: replyToName,
-					Subject: subject, Heading: "Tu cotización está lista",
+					Subject: subject, Heading: heading,
 					Paragraphs:  paragraphs,
 					ActionLabel: "Ver cotización", ActionURL: publicURL})
 			default:
@@ -1122,7 +1175,30 @@ func (s *QuoteDeliveryService) evaluateAfterCommit(ctx context.Context, tenant d
 
 func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeliveryInput, error) {
 	in.Phone = strings.TrimSpace(in.Phone)
-	if in.IdempotencyKey == uuid.Nil || (in.Phone == "" && in.Email == nil) {
+	if len(in.Phones) > 20 || len(in.Emails) > 20 {
+		return in, domain.ErrInvalidInput
+	}
+	in.Phones = uniqueDestinations(in.Phones, false)
+	in.Emails = uniqueDestinations(in.Emails, true)
+	for _, phone := range in.Phones {
+		if !e164PhonePattern.MatchString(phone) {
+			return in, domain.ErrInvalidInput
+		}
+	}
+	for _, email := range in.Emails {
+		parsed, err := mail.ParseAddress(email)
+		if err != nil || parsed.Address != email {
+			return in, domain.ErrInvalidInput
+		}
+	}
+	if in.FollowupMessage != nil {
+		message := strings.TrimSpace(*in.FollowupMessage)
+		if message == "" || utf8.RuneCountInString(message) > 2000 || in.OtherChannelsOnly {
+			return in, domain.ErrInvalidInput
+		}
+		in.FollowupMessage = &message
+	}
+	if in.IdempotencyKey == uuid.Nil || (len(deliveryPhones(in)) == 0 && len(deliveryEmails(in)) == 0) {
 		return in, fmt.Errorf("%w: idempotency key and a delivery destination are required", domain.ErrInvalidInput)
 	}
 	if in.Phone != "" && !e164PhonePattern.MatchString(in.Phone) {
@@ -1203,22 +1279,26 @@ func statusForClientAction(action domain.ClientActionType) (domain.QuoteStatus, 
 
 func validateReplay(sends []domain.QuoteSend, versionID uuid.UUID,
 	in domain.QuoteDeliveryInput, validityDays int) error {
-	want := map[domain.ChannelType]string{domain.ChannelTypeWebApp: "customer-portal"}
-	if in.Phone != "" {
-		want[domain.ChannelTypeWhatsApp] = in.Phone
+	want := map[string]bool{}
+	if in.FollowupMessage == nil {
+		want[string(domain.ChannelTypeWebApp)+":customer-portal"] = true
 	}
-	if in.Email != nil {
-		want[domain.ChannelTypeEmail] = *in.Email
+	for _, phone := range deliveryPhones(in) {
+		want[string(domain.ChannelTypeWhatsApp)+":"+phone] = true
+	}
+	for _, email := range deliveryEmails(in) {
+		want[string(domain.ChannelTypeEmail)+":"+email] = true
 	}
 	if len(sends) != len(want) {
 		return domain.WithCode(domain.CodeIdempotencyMismatch, domain.ErrConflict)
 	}
 	for _, send := range sends {
-		destination, ok := want[send.ChannelType]
-		if !ok || send.VersionID != versionID || send.Destination != destination ||
-			send.ValidityDays != validityDays || send.ClientAssociationHash != sendClientFingerprint(in.ClientAssociation) {
+		key := string(send.ChannelType) + ":" + send.Destination
+		sameMessage := (send.Message == nil && in.FollowupMessage == nil) || (send.Message != nil && in.FollowupMessage != nil && *send.Message == *in.FollowupMessage)
+		if !want[key] || !sameMessage || send.VersionID != versionID || send.ValidityDays != validityDays || send.ClientAssociationHash != sendClientFingerprint(in.ClientAssociation) {
 			return domain.WithCode(domain.CodeIdempotencyMismatch, domain.ErrConflict)
 		}
+		delete(want, key)
 	}
 	return nil
 }
@@ -1280,4 +1360,34 @@ func newPublicToken() (string, error) {
 		return "", fmt.Errorf("generate quote public token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func deliveryPhones(in domain.QuoteDeliveryInput) []string {
+	values := append([]string{}, in.Phones...)
+	if in.Phone != "" {
+		values = append(values, in.Phone)
+	}
+	return uniqueDestinations(values, false)
+}
+func deliveryEmails(in domain.QuoteDeliveryInput) []string {
+	values := append([]string{}, in.Emails...)
+	if in.Email != nil {
+		values = append(values, *in.Email)
+	}
+	return uniqueDestinations(values, true)
+}
+func uniqueDestinations(values []string, email bool) []string {
+	result := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if email {
+			value = strings.ToLower(value)
+		}
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
 }

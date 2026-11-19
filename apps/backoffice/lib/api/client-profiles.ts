@@ -7,7 +7,14 @@ export interface ClientTagRaw {
   created_at: string;
 }
 
+export interface ClientContactDestination {
+  kind: 'WHATSAPP' | 'EMAIL';
+  value: string;
+  primary: boolean;
+}
+
 export interface ClientRaw {
+  contacts?: ClientContactDestination[];
   tax_id?: string | null;
   id: string;
   name: string | null;
@@ -75,6 +82,7 @@ export interface ClientTag {
 }
 
 export interface Client {
+  contacts?: ClientContactDestination[];
   taxId?: string | null;
   id: string;
   name: string | null;
@@ -130,6 +138,7 @@ export interface QuoteClientAssociation {
 
 export function mapClient(raw: ClientRaw): Client {
   return {
+    ...(raw.contacts ? { contacts: raw.contacts } : {}),
     id: raw.id,
     taxId: raw.tax_id ?? null,
     name: raw.name,
@@ -159,6 +168,7 @@ export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
   return {
     client: {
       id: summary.id,
+      ...(summary.contacts ? { contacts: summary.contacts } : {}),
       taxId: summary.taxId ?? null,
       name: summary.name,
       phone: summary.phone,

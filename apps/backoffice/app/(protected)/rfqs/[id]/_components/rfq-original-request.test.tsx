@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -31,6 +31,8 @@ it('shows the order text as it arrived', async () => {
   const fetcher = stubAttachments([]);
   renderCard('Hola! Necesito 30 bolsas de cemento\ny 2 m3 de arena');
   expect(screen.getByText(messages.rfqs.originalRequest.title)).toBeTruthy();
+  expect(screen.queryByText(/30 bolsas de cemento/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: messages.rfqs.originalRequest.title }));
   expect(screen.getByText(/30 bolsas de cemento/).textContent).toContain('\ny 2 m3 de arena');
   await waitFor(() => expect(fetcher).toHaveBeenCalled());
   expect(screen.queryByText(messages.rfqs.originalRequest.files)).toBeNull();
@@ -52,9 +54,9 @@ it('lists the files any channel received and flags material that needs manual re
     },
   ]);
   renderCard();
+  fireEvent.click(screen.getByRole('button', { name: messages.rfqs.originalRequest.title }));
   expect(await screen.findByText('lista.jpg')).toBeTruthy();
   expect(screen.getByText('audio.ogg')).toBeTruthy();
-  expect(screen.getByText(messages.rfqs.originalRequest.files)).toBeTruthy();
   expect(screen.getByText(messages.rfqs.originalRequest.manualReview)).toBeTruthy();
   expect(fetcher).toHaveBeenCalledWith('/api/rfqs/rfq-1/attachments', {
     cache: 'no-store',
@@ -62,9 +64,11 @@ it('lists the files any channel received and flags material that needs manual re
   });
 });
 
-it('renders nothing when the order kept neither text nor files', async () => {
+it('keeps the collapsed source section when a legacy order has no saved content', async () => {
   const fetcher = stubAttachments([]);
   const { container } = renderCard('   ');
   await waitFor(() => expect(fetcher).toHaveBeenCalled());
-  expect(container.textContent).toBe('');
+  expect(container.textContent).toBe(messages.rfqs.originalRequest.title);
+  fireEvent.click(screen.getByRole('button', { name: messages.rfqs.originalRequest.title }));
+  expect(await screen.findByText(messages.rfqs.originalRequest.unavailable)).toBeTruthy();
 });

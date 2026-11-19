@@ -47,6 +47,7 @@ describe('getAccount', () => {
       invoicingEnabled: true,
       hasInvoices: false,
       invoiceOnPayment: true,
+      followupTemplate: null,
     });
   });
 

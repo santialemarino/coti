@@ -13,7 +13,7 @@ import (
 
 // QuoteFollowupService drafts the message that chases a quote the client has not answered.
 type QuoteFollowupService interface {
-	Draft(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (string, error)
+	Template(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.QuoteFollowupTemplate, error)
 }
 
 // QuoteFollowupHandler serves the seller's follow-up drafts.
@@ -29,7 +29,7 @@ func NewQuoteFollowupHandler(followups QuoteFollowupService) *QuoteFollowupHandl
 // Draft writes a fresh follow-up message for a sent quote; nothing is sent or stored.
 //
 //	@Summary		Draft a follow-up message
-//	@Description	Drafts, from the quote as it stands, a message the seller can edit and send to a client who has not answered. It contains no prices and is never sent by Coti.
+//	@Description	Drafts, from the quote as it stands, a message the seller can edit and send to a client who has not answered. It uses the configured account template without AI; delivery requires seller confirmation.
 //	@Tags			quotes
 //	@Produce		json
 //	@Security		BearerAuth
@@ -40,7 +40,6 @@ func NewQuoteFollowupHandler(followups QuoteFollowupService) *QuoteFollowupHandl
 //	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
 //	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ARCHIVED or QUOTE_NOT_SENT"
 //	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
-//	@Failure		503			{object}	dto.ErrorResponse	"AI_UNAVAILABLE"
 //	@Router			/v1/quotes/{quoteId}/followup-draft [post]
 func (h *QuoteFollowupHandler) Draft(c *gin.Context) {
 	tenant, ok := tenantOf(c)
@@ -52,10 +51,10 @@ func (h *QuoteFollowupHandler) Draft(c *gin.Context) {
 		return
 	}
 
-	message, err := h.followups.Draft(c.Request.Context(), tenant, quoteID)
+	result, err := h.followups.Template(c.Request.Context(), tenant, quoteID)
 	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, dto.QuoteFollowupDraftResponse{Message: message})
+	c.JSON(http.StatusOK, dto.QuoteFollowupDraftResponse{Message: result.Message, TemplateConfigured: result.TemplateConfigured})
 }

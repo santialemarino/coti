@@ -69,14 +69,19 @@ type clientSendRepository interface {
 		quoteID uuid.UUID) ([]domain.QuoteSend, error)
 }
 
+type clientContactDirectoryReader interface {
+	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error)
+}
+
 // ClientService manages client profiles, tags, and quotation-send associations.
 type ClientService struct {
-	db      tenantTxRunner
-	clients clientProfileRepository
-	tags    clientTagRepository
-	quotes  clientQuoteRepository
-	rfqs    clientRFQRepository
-	sends   clientSendRepository
+	contacts clientContactDirectoryReader
+	db       tenantTxRunner
+	clients  clientProfileRepository
+	tags     clientTagRepository
+	quotes   clientQuoteRepository
+	rfqs     clientRFQRepository
+	sends    clientSendRepository
 	// invoicingEnv is the ARCA environment whose invoices close a sale.
 	invoicingEnv domain.ARCAEnvironment
 }
@@ -88,6 +93,12 @@ func NewClientService(
 ) *ClientService {
 	return &ClientService{db: db, clients: clients, tags: tags, quotes: quotes, rfqs: rfqs,
 		sends: sends}
+}
+
+// WithContactDirectory enables batch reads of the client's active delivery destinations.
+func (s *ClientService) WithContactDirectory(contacts clientContactDirectoryReader) *ClientService {
+	s.contacts = contacts
+	return s
 }
 
 // WithInvoicingEnvironment sets the ARCA environment whose invoices close a sale.
@@ -114,6 +125,15 @@ func (s *ClientService) ListClients(
 		byClient, err := s.tags.ListByClientIDs(ctx, q, tenant.AccountID, ids)
 		if err != nil {
 			return err
+		}
+		if s.contacts != nil {
+			contacts, err := s.contacts.List(ctx, q, tenant.AccountID, ids)
+			if err != nil {
+				return err
+			}
+			for i := range summaries {
+				summaries[i].Contacts = contacts[summaries[i].ID]
+			}
 		}
 		for i := range summaries {
 			summaries[i].Tags = nonNilTags(byClient[summaries[i].ID])
@@ -237,6 +257,18 @@ func (s *ClientService) GetQuoteAssociation(
 			return err
 		}
 
+		if s.contacts != nil {
+			contacts, err := s.contacts.List(ctx, q, tenant.AccountID, uniqueUUIDs(ids))
+			if err != nil {
+				return err
+			}
+			for i := range matches {
+				matches[i].Contacts = contacts[matches[i].ID]
+			}
+			if current != nil {
+				current.Contacts = contacts[current.ID]
+			}
+		}
 		association = &domain.QuoteClientAssociation{ContactHints: hints,
 			AvailableTags: nonNilTags(available), Suggestions: make([]domain.ClientMatch, 0)}
 		if current != nil {

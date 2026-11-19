@@ -252,6 +252,13 @@ func (s *AccountService) Update(
 	if in.PreferredLowerPriceStrategy != nil && !in.PreferredLowerPriceStrategy.IsLowerPriceStrategy() {
 		return nil, fmt.Errorf("%w: preferred_lower_price_strategy is unknown", domain.ErrInvalidInput)
 	}
+	if in.FollowupTemplate != nil {
+		template := strings.TrimSpace(*in.FollowupTemplate)
+		if err := domain.ValidateFollowupTemplate(template); err != nil {
+			return nil, err
+		}
+		in.FollowupTemplate = &template
+	}
 	taxID, err := accountCUIT(in.TaxID)
 	if err != nil {
 		return nil, err

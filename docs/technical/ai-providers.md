@@ -208,13 +208,9 @@ revision port: `ai.NewChangeRequestHandler` turns a batch of client messages int
 `COMPLEX` or `NO_MATCH`) with seller-reviewable draft operations, or a goal the backend reaches
 through a recipe. It is attributed as `CHANGE_REQUEST_HANDLING`; it has an account and branch but
 no RFQ ID because the spend serves the delivered quote rather than RFQ ingestion.
-`domain.FollowupDrafter` drafts, when a seller asks from a flagged `SENT` quote's «Requiere
-seguimiento» notice, a short message chasing a client who has not answered
-(`POST /v1/quotes/{quoteId}/followup-draft`). `ai.NewFollowupDrafter` is given the quote's number,
-its lines, the client, seller and supplier names, the days since it went out and whether the offer
-lapsed — never a price — and is told never to state an amount, a date or stock. Nothing is stored
-or sent: the seller edits the text and sends it themselves, and the call is attributed as
-`FOLLOWUP_DRAFT`. With no language model bound the route answers `AI_UNAVAILABLE`.
+Follow-up reminders use a deterministic account template, never a model. The seller can edit a
+rendered reminder and confirm delivery through the existing quote channels; see
+[seller-delivery.md](seller-delivery.md).
 
 One thing to know before writing a schema for one: **structured outputs do not enforce
 `minLength`, `maxLength`, `minItems` or `maxItems`**. Length and size are the service's to check, and

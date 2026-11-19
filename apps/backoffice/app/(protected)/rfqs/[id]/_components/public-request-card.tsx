@@ -1,6 +1,5 @@
 import { useTranslations } from 'next-intl';
 
-import { InlineLink } from '@repo/ui/components';
 import type { PublicRfqRequest } from '@/lib/api/rfqs';
 
 interface PublicRequestCardProps {
@@ -29,22 +28,6 @@ export function PublicRequestCard({ request }: PublicRequestCardProps) {
             </div>
           ))}
       </dl>
-      <div className="flex flex-col pt-4 gap-y-3 border-t border-border">
-        <h3 className="text-paragraph-sm-medium">{t('original')}</h3>
-        {request.attachments.length ? (
-          request.attachments.map((file) => (
-            <InlineLink key={file.id} asChild>
-              <a href={file.url} target="_blank" rel="noreferrer">
-                {t('file')}
-              </a>
-            </InlineLink>
-          ))
-        ) : (
-          <p className="whitespace-pre-wrap break-words text-paragraph-sm">
-            {request.originalText}
-          </p>
-        )}
-      </div>
     </section>
   );
 }
