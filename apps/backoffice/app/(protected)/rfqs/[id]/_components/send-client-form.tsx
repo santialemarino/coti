@@ -37,6 +37,8 @@ interface SendClientFormProps {
   branchId: string;
   disabled: boolean;
   locked?: boolean;
+  // A send after the first one keeps the quote's client: it is shown, never chosen.
+  readOnly?: boolean;
   hideTags?: boolean;
   onContactsChange?: (contacts: { phones: string[]; emails: string[] }) => void;
   onChange: (selection: SendClientSelection | null) => void;
@@ -47,6 +49,7 @@ export function SendClientForm({
   branchId,
   disabled,
   locked = false,
+  readOnly = false,
   hideTags = false,
   onChange,
   onContactsChange,
@@ -105,7 +108,7 @@ export function SendClientForm({
   const values = useWatch({ control: form.control });
   const selected = directory.find((item) => item.client.id === values.clientId);
   // Only a client the quote already has is fixed; one picked here can still be changed.
-  const fixedClient = locked && context?.currentClient != null;
+  const fixedClient = (locked || readOnly) && context?.currentClient != null;
   const checked = schema.safeParse(values);
   const selection: SendClientSelection | null =
     context && checked.success && (checked.data.mode === 'existing' || newConfirmed)
@@ -230,6 +233,8 @@ export function SendClientForm({
               (context.currentClient || selected)?.client.email ||
               (context.currentClient || selected)?.client.phone}
           </p>
+        ) : readOnly ? (
+          <p className="text-paragraph-sm text-foreground-muted">{t('clientNone')}</p>
         ) : (
           <div className="flex items-center justify-between gap-2">
             {values.mode === 'new' && newConfirmed ? (
@@ -265,7 +270,7 @@ export function SendClientForm({
             </div>
           </div>
         )}
-        {values.mode === 'existing' && !fixedClient ? (
+        {values.mode === 'existing' && !fixedClient && !readOnly ? (
           <FormField
             control={form.control}
             name="clientId"

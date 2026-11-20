@@ -1825,6 +1825,7 @@
         "clientNew": "Crear cliente",
         "clientEdit": "Editar cliente",
         "clientChooseExisting": "Elegir uno existente",
+        "clientNone": "La cotización no tiene un cliente asociado.",
         "clientChoose": "Seleccioná un cliente",
         "clientName": "Nombre y apellido",
         "clientEmail": "Correo (opcional)",

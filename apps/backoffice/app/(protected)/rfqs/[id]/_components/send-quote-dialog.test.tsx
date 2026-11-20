@@ -394,7 +394,10 @@ describe('seller delivery destinations', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     const key = vi.mocked(sendQuote).mock.calls[0]![3];
     await ready(view);
-    fireEvent.click(view.getByRole('button', { name: copy.send }));
+    // The pending label lingers in the button until its width animation ends, which jsdom never runs.
+    fireEvent.click(
+      view.getByRole('dialog').querySelector('[data-slot=dialog-footer] button:last-child')!,
+    );
     await waitFor(() => expect(sendQuote).toHaveBeenCalledTimes(2));
     expect(vi.mocked(sendQuote).mock.calls[1]![3]).toBe(key);
   });
@@ -491,6 +494,19 @@ describe('seller-confirmed follow-up', () => {
       }),
       expect.any(String),
     );
+  });
+  it('shows the client read-only and never offers to create one after the first send', async () => {
+    vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+      ...association(),
+      currentClient: null,
+    });
+    const view = renderDialog(null, makeDetail(), 'FOLLOWUP');
+    fireEvent.click(
+      view.getByRole('button', { name: messages.rfqs.detail.callouts.followup.send }),
+    );
+    expect(await view.findByText(copy.clientNone)).toBeTruthy();
+    expect(view.queryByRole('button', { name: copy.clientNew })).toBeNull();
+    expect(view.queryByRole('combobox', { name: copy.clientTitle })).toBeNull();
   });
   it('offers configuration only while the account has never customized its template', async () => {
     vi.mocked(draftQuoteFollowup).mockResolvedValue({

@@ -290,11 +290,8 @@ export function SendQuoteDialog({
                 quoteId={quoteId}
                 branchId={branchId}
                 disabled={sending}
-                locked={
-                  mode !== 'FIRST' ||
-                  detail.rfq.channel.toLowerCase() === 'webapp' ||
-                  detail.quote?.current_status === 'SENT'
-                }
+                locked={detail.rfq.channel.toLowerCase() === 'webapp'}
+                readOnly={mode !== 'FIRST'}
                 hideTags={mode !== 'FIRST'}
                 onChange={setClientSelection}
                 onContactsChange={adoptContacts}
