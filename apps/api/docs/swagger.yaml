@@ -296,6 +296,8 @@ definitions:
     properties:
       can_confirm:
         type: boolean
+      create_rows:
+        type: integer
       invalid_rows:
         type: integer
       previewed_at:
@@ -304,12 +306,22 @@ definitions:
         items:
           $ref: '#/definitions/dto.CatalogImportRowResponse'
         type: array
+      unchanged_rows:
+        type: integer
+      update_rows:
+        type: integer
       valid_rows:
         type: integer
     type: object
   dto.CatalogImportRowResponse:
     properties:
       action:
+        description: CREATE, UPDATE or UNCHANGED; an UNCHANGED row matches what is
+          stored and is not written.
+        enum:
+        - CREATE
+        - UPDATE
+        - UNCHANGED
         type: string
       code:
         type: string
@@ -790,6 +802,8 @@ definitions:
         type: integer
       skipped_rows:
         type: integer
+      unchanged_rows:
+        type: integer
       updated_rows:
         type: integer
     type: object
@@ -813,6 +827,8 @@ definitions:
   dto.ConfirmProductPriceImportResponse:
     properties:
       imported_rows:
+        type: integer
+      unchanged_rows:
         type: integer
     type: object
   dto.ContactRegistrationLinkRequest:
@@ -2070,6 +2086,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ProductPriceImportRowResponse'
         type: array
+      unchanged_rows:
+        type: integer
       valid_rows:
         type: integer
     type: object
@@ -2095,6 +2113,10 @@ definitions:
         type: string
       row_number:
         type: integer
+      unchanged:
+        description: The row asks for the price and floor already in force; confirming
+          writes nothing for it.
+        type: boolean
     type: object
   dto.ProductResponse:
     properties:
@@ -7748,8 +7770,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Revalidates all rows, skips invalid ones, and atomically upserts
-        products, availability, and changed prices.
+      description: Revalidates all rows, skips invalid ones and those matching the
+        catalog, and atomically upserts products, availability, and changed prices.
       parameters:
       - description: Active branch
         in: header

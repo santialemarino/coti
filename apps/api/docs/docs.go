@@ -4826,7 +4826,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Revalidates all rows, skips invalid ones, and atomically upserts products, availability, and changed prices.",
+                "description": "Revalidates all rows, skips invalid ones and those matching the catalog, and atomically upserts products, availability, and changed prices.",
                 "consumes": [
                     "application/json"
                 ],
@@ -11162,6 +11162,9 @@ const docTemplate = `{
                 "can_confirm": {
                     "type": "boolean"
                 },
+                "create_rows": {
+                    "type": "integer"
+                },
                 "invalid_rows": {
                     "type": "integer"
                 },
@@ -11174,6 +11177,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.CatalogImportRowResponse"
                     }
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
+                "update_rows": {
+                    "type": "integer"
+                },
                 "valid_rows": {
                     "type": "integer"
                 }
@@ -11183,7 +11192,13 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "action": {
-                    "type": "string"
+                    "description": "CREATE, UPDATE or UNCHANGED; an UNCHANGED row matches what is stored and is not written.",
+                    "type": "string",
+                    "enum": [
+                        "CREATE",
+                        "UPDATE",
+                        "UNCHANGED"
+                    ]
                 },
                 "code": {
                     "type": "string"
@@ -11891,6 +11906,9 @@ const docTemplate = `{
                 "skipped_rows": {
                     "type": "integer"
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
                 "updated_rows": {
                     "type": "integer"
                 }
@@ -11926,6 +11944,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "imported_rows": {
+                    "type": "integer"
+                },
+                "unchanged_rows": {
                     "type": "integer"
                 }
             }
@@ -13727,6 +13748,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.ProductPriceImportRowResponse"
                     }
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
                 "valid_rows": {
                     "type": "integer"
                 }
@@ -13764,6 +13788,10 @@ const docTemplate = `{
                 },
                 "row_number": {
                     "type": "integer"
+                },
+                "unchanged": {
+                    "description": "The row asks for the price and floor already in force; confirming writes nothing for it.",
+                    "type": "boolean"
                 }
             }
         },

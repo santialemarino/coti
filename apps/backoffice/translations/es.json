@@ -2988,6 +2988,7 @@
     "summary": {
       "total": "Filas leídas",
       "valid": "Listas para aplicar",
+      "unchanged": "Sin cambios",
       "invalid": "Con errores"
     },
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
@@ -3013,14 +3014,16 @@
     },
     "action": {
       "CREATE": "Nuevo",
-      "UPDATE": "Actualización"
+      "UPDATE": "Actualización",
+      "UNCHANGED": "Sin cambios"
     },
     "valid": "Lista para aplicar",
     "chooseAnother": "Elegir otro archivo",
     "confirm": "Aplicar {count, plural, one {# cambio} other {# cambios}}",
     "confirming": "Aplicando…",
     "noValidRows": "Corregí la planilla: no hay filas válidas para aplicar.",
-    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "noChanges": "No hay nada para aplicar: la planilla coincide con el catálogo de esta sucursal.",
+    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. {unchanged, plural, =0 {} one {# producto quedó sin cambios. } other {# productos quedaron sin cambios. }}Omitimos {skipped, plural, one {# fila} other {# filas}}.",
     "importAnother": "Editar otro archivo",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
@@ -3043,6 +3046,8 @@
       "invalid_subgroup": "El subgrupo no corresponde al rubro.",
       "invalid_price": "El precio debe ser mayor a cero y tener hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser mayor a cero y tener hasta 2 decimales.",
+      "ambiguous_price": "No se sabe si el punto o la coma del precio separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
+      "ambiguous_min_price": "No se sabe si el punto o la coma del precio mínimo separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
       "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
       "alternative_repeated": "La alternativa económica y la premium no pueden ser el mismo producto.",
       "economy_alternative_self": "La alternativa económica no puede ser el mismo producto.",
@@ -3267,12 +3272,14 @@
         "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
       }
     },
-    "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
+    "summary": "Filas con cambios: {changed}. Sin cambios: {unchanged}. Con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",
     "fixErrors": "No hay filas válidas para actualizar. Corregí las filas marcadas y volvé a cargar el archivo.",
+    "noChanges": "No hay nada para actualizar: los precios del archivo son los vigentes en esta sucursal.",
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
     "valid": "Lista para actualizar",
+    "unchanged": "Sin cambios",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
@@ -3285,6 +3292,8 @@
       "unknown_product": "El producto no existe, está inactivo o no está disponible en la sucursal.",
       "invalid_price": "El precio debe ser numérico y mayor a cero, con hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser numérico y mayor a cero, con hasta 2 decimales.",
+      "ambiguous_price": "No se sabe si el punto o la coma del precio separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
+      "ambiguous_min_price": "No se sabe si el punto o la coma del precio mínimo separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
       "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
     },
     "table": {

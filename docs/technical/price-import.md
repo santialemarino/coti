@@ -11,12 +11,15 @@ is always scoped to one branch and needs an `ADMIN` user.
 2. The administrator edits that file — or prepares a compatible `.xlsx` or `.csv` — and
    uploads it on the same screen.
 3. `POST /v1/product-prices/import/preview` parses the file and returns every row with the
-   product it matched, the price in force, the proposed value and any validation errors. It
-   writes nothing.
-4. The screen allows confirming when at least one row is valid and explains that invalid rows will
-   be skipped.
+   product it matched, the price in force, the proposed value and any validation errors. A valid
+   row whose price and floor equal, by value, the ones in force is marked `unchanged` and counted
+   in `unchanged_rows`. It writes nothing.
+4. The screen allows confirming when at least one valid row changes a price, and explains that
+   invalid rows will be skipped.
 5. `POST /v1/product-prices/import/confirm` revalidates the content and, in the same transaction,
-   closes the current price periods and inserts replacements for every valid row.
+   closes the current price periods and inserts replacements for every valid row that changes the
+   price or the floor. An unchanged row touches no period, so re-importing the export untouched
+   writes nothing; the response reports `imported_rows` and `unchanged_rows`.
 
 Existing quotes are untouched. Every `quote_item` keeps the price and minimum-price snapshots
 taken when its version was built; repricing a quote is a separate, explicit action.
@@ -42,7 +45,9 @@ The equivalent English headers are accepted too: `code`, `price` and `min_price`
 use a comma or a semicolon as the separator.
 
 Rows with duplicate codes, unknown or inactive products, invalid amounts, or a minimum above the
-sale price are reported and skipped. They do not block valid rows in the same file.
+sale price are reported and skipped. They do not block valid rows in the same file. An amount
+written with thousands groups only (`1.500`, `1,500`) is refused as ambiguous, because the dot
+could be either separator; write it without one (`1500` or `1500,50`).
 
 ## Configuration
 

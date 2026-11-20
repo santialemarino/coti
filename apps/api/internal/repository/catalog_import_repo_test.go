@@ -435,19 +435,22 @@ func TestCatalogImportRepository_RecommendationSlots_SetClearAndExport(t *testin
 	if got := slots(); len(got) != 2 || got["ECONOMY"] != "ECO" || got["PREMIUM"] != "PRE" {
 		t.Fatalf("slots = %v, want ECONOMY=ECO and PREMIUM=PRE only", got)
 	}
-	var current map[string]domain.CatalogSlots
+	var current map[string]domain.CatalogProductState
 	if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
 		var err error
-		current, err = repo.ListRecommendationSlots(ctx, q, accountID, []string{"BASE", "ECO"})
+		current, err = repo.ListImportState(ctx, q, accountID, branchID, []string{"BASE", "ECO", "NOPE"})
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if base := current["BASE"]; base.Economy == nil || *base.Economy != "ECO" || base.Premium == nil || *base.Premium != "PRE" {
+	if base := current["BASE"].Slots; base.Economy == nil || *base.Economy != "ECO" || base.Premium == nil || *base.Premium != "PRE" {
 		t.Fatalf("current slots of BASE = %+v, want ECO and PRE", base)
 	}
-	if _, ok := current["ECO"]; ok {
-		t.Fatalf("ECO holds no slot but was listed: %+v", current["ECO"])
+	if eco, ok := current["ECO"]; !ok || eco.Slots.Economy != nil || eco.Slots.Premium != nil {
+		t.Fatalf("ECO = %+v, %v; want it listed with no slot", eco, ok)
+	}
+	if _, ok := current["NOPE"]; ok || len(current) != 2 {
+		t.Fatalf("states = %v, want only the two stored codes", current)
 	}
 
 	// Replacing one slot and clearing the other leaves no stale link behind.
@@ -483,5 +486,72 @@ func TestCatalogImportRepository_RecommendationSlots_SetClearAndExport(t *testin
 		{BaseCode: "BASE", Type: domain.ProductAlternativePremium, AlternativeCode: "NOPE"},
 	}); err == nil {
 		t.Fatal("unknown alternative code was accepted")
+	}
+}
+
+func TestCatalogImportRepository_ListImportState_ReadsTheProductAtTheBranch(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Catalog import state")
+	branchID := branchOf(t, db, accountID)
+	otherBranchID := seedExtraBranch(t, db, accountID, "Catalog import state Norte")
+	tenant := domain.Tenant{AccountID: accountID, BranchID: branchID, UserID: seedUser(t, db, accountID, "ADMIN")}
+	strangerID := seedAccount(t, db, "Catalog import state stranger")
+	stranger := domain.Tenant{
+		AccountID: strangerID, BranchID: branchOf(t, db, strangerID), UserID: seedUser(t, db, strangerID, "ADMIN"),
+	}
+	t.Cleanup(func() {
+		for _, id := range []uuid.UUID{accountID, strangerID} {
+			mustCleanup(t, db.CrossAccount(), `DELETE FROM product_price WHERE account_id = $1`, id)
+			mustCleanup(t, db.CrossAccount(), `DELETE FROM branch_product WHERE account_id = $1`, id)
+			mustCleanup(t, db.CrossAccount(), `DELETE FROM product WHERE account_id = $1`, id)
+		}
+	})
+	var familyID, subgroupID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT f.id, s.id FROM product_family f JOIN product_subgroup s ON s.family_id = f.id
+		 WHERE f.name = 'MATERIALES DE CONSTRUCCION' AND s.name = 'ARIDOS'`,
+	).Scan(&familyID, &subgroupID); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewCatalogImportRepository()
+	effectiveAt := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
+	minPrice := "1200.00"
+	apply := func(tenant domain.Tenant, name string) {
+		t.Helper()
+		if err := db.InTenantTx(ctx, tenant, func(q Querier) error {
+			return repo.ApplyImport(ctx, q, tenant, effectiveAt, []domain.CatalogImportRow{{
+				Code: "ARE-1", Name: name, Unit: "m3", FamilyID: familyID, SubgroupID: &subgroupID,
+				Price: "1500", MinPrice: &minPrice, IsActive: true,
+			}})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(tenant, "Arena fina")
+	apply(stranger, "Arena de otra cuenta")
+
+	// The owner pool skips row level security, so only the query's own predicates keep the
+	// stranger's product with the same code out.
+	read := func(branch uuid.UUID) map[string]domain.CatalogProductState {
+		t.Helper()
+		states, err := repo.ListImportState(ctx, db.CrossAccount(), accountID, branch, []string{"ARE-1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return states
+	}
+	states := read(branchID)
+	got := states["ARE-1"]
+	if len(states) != 1 || got.Name != "Arena fina" || got.Description != "" || got.Unit != "m3" ||
+		got.FamilyID == nil || *got.FamilyID != familyID || got.SubgroupID == nil || *got.SubgroupID != subgroupID ||
+		!got.IsActive || got.BranchActive == nil || !*got.BranchActive ||
+		got.Price == nil || *got.Price != "1500.00" || got.MinPrice == nil || *got.MinPrice != minPrice {
+		t.Fatalf("state at the import branch = %+v, want the account's product with its price there", got)
+	}
+	// The other branch neither carries nor prices it.
+	got = read(otherBranchID)["ARE-1"]
+	if got.Name != "Arena fina" || got.BranchActive != nil || got.Price != nil || got.MinPrice != nil {
+		t.Fatalf("state at another branch = %+v, want no availability and no price", got)
 	}
 }

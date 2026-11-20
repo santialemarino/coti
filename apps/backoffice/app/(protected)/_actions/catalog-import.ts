@@ -16,7 +16,7 @@ interface CatalogImportRowRaw {
   is_active: boolean;
   economy_alternative: string | null;
   premium_alternative: string | null;
-  action: 'CREATE' | 'UPDATE';
+  action: CatalogImportAction;
   errors: string[] | null;
 }
 
@@ -24,6 +24,9 @@ interface CatalogImportPreviewRaw {
   rows: CatalogImportRowRaw[];
   valid_rows: number;
   invalid_rows: number;
+  create_rows: number;
+  update_rows: number;
+  unchanged_rows: number;
   can_confirm: boolean;
   previewed_at: string;
 }
@@ -31,8 +34,12 @@ interface CatalogImportPreviewRaw {
 interface ConfirmCatalogImportRaw {
   created_rows: number;
   updated_rows: number;
+  unchanged_rows: number;
   skipped_rows: number;
 }
+
+// An UNCHANGED row already matches the catalog, so confirming leaves it alone.
+export type CatalogImportAction = 'CREATE' | 'UPDATE' | 'UNCHANGED';
 
 export interface CatalogImportRow {
   rowNumber: number;
@@ -48,7 +55,7 @@ export interface CatalogImportRow {
   // A recommendation slot change: null keeps it, an empty code clears it, a code sets it.
   economyAlternative: string | null;
   premiumAlternative: string | null;
-  action: 'CREATE' | 'UPDATE';
+  action: CatalogImportAction;
   errors: string[];
 }
 
@@ -57,6 +64,9 @@ export interface CatalogImportPreview {
   rows: CatalogImportRow[];
   validRows: number;
   invalidRows: number;
+  createRows: number;
+  updateRows: number;
+  unchangedRows: number;
   canConfirm: boolean;
   previewedAt: string;
 }
@@ -66,7 +76,13 @@ export type CatalogPreviewResult =
   | { ok: false; error: ApiErrorCode };
 
 export type CatalogConfirmResult =
-  | { ok: true; createdRows: number; updatedRows: number; skippedRows: number }
+  | {
+      ok: true;
+      createdRows: number;
+      updatedRows: number;
+      unchangedRows: number;
+      skippedRows: number;
+    }
   | { ok: false; error: ApiErrorCode };
 
 export type CatalogTemplateResult =
@@ -117,6 +133,9 @@ export async function previewCatalogImport(
         rows: raw.rows.map(mapCatalogImportRow),
         validRows: raw.valid_rows,
         invalidRows: raw.invalid_rows,
+        createRows: raw.create_rows,
+        updateRows: raw.update_rows,
+        unchangedRows: raw.unchanged_rows,
         canConfirm: raw.can_confirm,
         previewedAt: raw.previewed_at,
       },
@@ -141,7 +160,9 @@ export async function confirmCatalogImport(
   preview: CatalogImportPreview,
 ): Promise<CatalogConfirmResult> {
   try {
-    const reviewedRows = preview.rows.filter((row) => row.errors.length === 0);
+    const reviewedRows = preview.rows.filter(
+      (row) => row.errors.length === 0 && row.action !== 'UNCHANGED',
+    );
     const raw = await apiRequest<ConfirmCatalogImportRaw>({
       path: '/v1/products/import/confirm',
       method: 'POST',
@@ -166,6 +187,7 @@ export async function confirmCatalogImport(
       ok: true,
       createdRows: raw.created_rows,
       updatedRows: raw.updated_rows,
+      unchangedRows: preview.unchangedRows + raw.unchanged_rows,
       skippedRows: preview.invalidRows + raw.skipped_rows,
     };
   } catch (error) {
