@@ -1,7 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
 import { CustomerProfileForm } from '@/app/profile/_components/customer-profile-form';
-import { MainContactCard } from '@/app/profile/_components/main-contact-card';
 import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
 import { ROUTES } from '@/config/routes';
@@ -31,14 +30,6 @@ export default async function CustomerProfilePage() {
             <h1 className="text-heading-3">{t('title')}</h1>
           </header>
           <CustomerProfileForm profile={profile} />
-          {/* Remounts when a verification or a save changes what the card starts from. */}
-          <MainContactCard
-            key={profile.contacts
-              .filter((contact) => contact.verified)
-              .map((contact) => `${contact.kind}:${contact.value}:${contact.main}`)
-              .join('|')}
-            contacts={profile.contacts}
-          />
         </div>
       </main>
       <CustomerFooter />

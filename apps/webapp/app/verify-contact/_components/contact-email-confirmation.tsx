@@ -26,8 +26,8 @@ export function ContactEmailConfirmation({
       form.setError('root', { message: result.error });
       return;
     }
+    // No refresh: it would cancel this navigation, and the profile renders per request anyway.
     router.replace(browserPortalPath(ROUTES.profile));
-    router.refresh();
   }
   return (
     <Form {...form}>

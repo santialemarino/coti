@@ -132,6 +132,50 @@ describe('stateless public RFQ form', () => {
     );
   });
 
+  it('starts another order from the signed-in customer’s own details', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ received: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const contact = { name: 'Obra Norte', email: 'contacto@example.com', phone: '' };
+    const view = render(
+      <NextIntlClientProvider
+        locale="es"
+        messages={messages}
+        timeZone="America/Argentina/Buenos_Aires"
+      >
+        <PublicRfqForm
+          channelId={channelId}
+          destination={destination}
+          taxId="20123456786"
+          contact={contact}
+        />
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(view.getByRole('button', { name: copy.contact.continue }));
+    await waitFor(() => expect(view.getByRole('textbox', { name: /^Pedido/ })).toBeTruthy());
+    fireEvent.change(view.getByRole('textbox', { name: /^Pedido/ }), {
+      target: { value: '10 bolsas de cemento' },
+    });
+    fireEvent.click(await view.findByRole('button', { name: copy.submit }));
+    await waitFor(() => expect(view.getByText(copy.received.title)).toBeTruthy());
+    fireEvent.click(view.getByRole('button', { name: copy.received.another }));
+    await waitFor(() =>
+      expect(view.getByLabelText(copy.fields.name.label, { exact: false })).toHaveProperty(
+        'value',
+        contact.name,
+      ),
+    );
+    expect(view.getByLabelText(copy.fields.email.label, { exact: false })).toHaveProperty(
+      'value',
+      contact.email,
+    );
+    expect(view.getByLabelText(copy.fields.taxId.label, { exact: false })).toHaveProperty(
+      'value',
+      '20-12345678-6',
+    );
+  });
+
   it('reuses a retry identifier after an uncertain network outcome', async () => {
     const fetchMock = vi
       .fn()

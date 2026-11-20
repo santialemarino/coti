@@ -1,9 +1,8 @@
 import 'server-only';
 
 import { cache } from 'react';
-import { headers } from 'next/headers';
 
-import { PUBLIC_SITE_HOSTNAME } from '@/lib/config';
+import { PORTAL_BASE_HOSTNAME } from '@/lib/config';
 import { API_INTERNAL_URL } from '@/lib/config/server';
 import { customerCookies as cookies } from '@/lib/portal/cookies';
 import { getPortalSlug } from '@/lib/portal/server';
@@ -44,17 +43,11 @@ const COOKIE_OPTIONS = {
   path: '/',
 } as const;
 
+// Never from Host: a server action's redirect re-renders through an internal request to Next's own
+// origin, which carries the server's host. Outside /c/<label> there is no supplier.
 export async function getCustomerHostname(): Promise<string> {
-  const host = ((await headers()).get('host') || '')
-    .toLowerCase()
-    .replace(/:\d+$/, '')
-    .replace(/\.$/, '');
-  const loopback = host === 'localhost' || host === '127.0.0.1';
   const slug = await getPortalSlug();
-  if (slug) return `${slug}.${host}`;
-  return loopback && process.env.NODE_ENV !== 'production' && PUBLIC_SITE_HOSTNAME
-    ? PUBLIC_SITE_HOSTNAME.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '')
-    : host;
+  return slug ? `${slug}.${PORTAL_BASE_HOSTNAME}` : '';
 }
 
 export async function getCustomerToken(): Promise<string | undefined> {

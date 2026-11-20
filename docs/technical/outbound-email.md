@@ -26,8 +26,10 @@ pass rather than one restart per problem.
 
 One message, `multipart/alternative`, the plain-text part first — a reader that renders a single
 alternative takes the last one it understands, so the order is what decides whether an HTML
-client shows the HTML. Both parts are `charset=utf-8` and `quoted-printable`; the subject and the
-two display names are RFC 2047 encoded words. None of that is decoration: the copy is Argentine
+client shows the HTML. A message with no HTML body (the name prompt that answers a customer's own
+mail) is a single `text/plain` part instead: an empty HTML alternative is exactly the part a client
+renders, which would arrive as a blank mail. Every body is `charset=utf-8` and `quoted-printable`;
+the subject and the two display names are RFC 2047 encoded words. None of that is decoration: the copy is Argentine
 Spanish, and a transport that assumes ASCII is how "Confirmá tu dirección" arrives mangled.
 
 The sender is `MAIL_FROM_NAME` + `MAIL_FROM_ADDRESS`. The credentials are **one account per
@@ -100,6 +102,14 @@ client webapp renders a quote with. **The colour is pattern-checked before it re
 stylesheet.** `html/template` blanks any value it cannot prove is a CSS token, so an unchecked
 one renders as no colour at all rather than as the account's; anything that is not a hex
 literal falls back to the default.
+
+Customer contact mail (`ClientContactDeliveryService`) uses the same layout. Contact
+verification, account recovery and the registration link go out in the corralón's name and brand
+— the display name is the account's, the address stays the platform's — with a heading, a short
+paragraph and, for the two links, a button (`Confirmar correo`, `Ingresar a mi cuenta`) with the
+URL repeated beneath it for a client that drops the button. The recovery mail carries its code in
+the copy and no button. Only the name prompt stays plain text, because it answers inside the
+customer's own thread from the branch mailbox.
 
 Every user-facing string lives in `internal/services/mail_copy.go`, in Argentine Spanish. It is
 the API's counterpart to the web apps' `es-AR` catalog and the only Spanish in the backend — new

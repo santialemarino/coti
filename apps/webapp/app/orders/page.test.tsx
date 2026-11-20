@@ -99,6 +99,20 @@ it('offers the next page only when the API says there is one', async () => {
   ).toBe('/orders?page=3');
 });
 
+it('names a finished sale and never shows a status key it has no copy for', async () => {
+  vi.mocked(getCustomerOrders).mockResolvedValue({
+    orders: [
+      { ...order, id: 'done', status: 'COMPLETED' },
+      { ...order, id: 'future', status: 'SOMETHING_NEW' },
+    ],
+    hasMore: false,
+  });
+  render(await OrdersPage({ searchParams: Promise.resolve({}) }));
+  expect(screen.getByText(messages.customerOrders.statuses.COMPLETED)).toBeDefined();
+  expect(screen.queryByText(/SOMETHING_NEW/)).toBeNull();
+  expect(screen.getAllByRole('link', { name: /Branch/ })).toHaveLength(2);
+});
+
 const order = {
   id: 'order',
   branchName: 'Branch',

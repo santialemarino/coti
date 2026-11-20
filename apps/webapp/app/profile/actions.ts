@@ -97,23 +97,3 @@ export async function confirmContactVerification(
     return { error: t('verificationUnavailable') };
   }
 }
-
-export async function chooseMainContact(
-  kind: 'EMAIL' | 'WHATSAPP',
-  value: string,
-): Promise<{ error?: string }> {
-  await requireCustomer(ROUTES.profile);
-  const t = await getTranslations('customerProfile.errors');
-  try {
-    const response = await customerFetch('/profile/main-contact', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, value }),
-    });
-    return response.ok
-      ? {}
-      : { error: t(response.status === 404 ? 'mainUnverified' : 'unavailable') };
-  } catch {
-    return { error: t('unavailable') };
-  }
-}

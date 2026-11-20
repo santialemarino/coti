@@ -166,6 +166,7 @@ func run() error {
 	accountService := services.NewAccountService(db, accountRepo, arcaSetupRepo, invoicingRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
+		WithDefaultPortal(services.NewDefaultPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
@@ -217,7 +218,7 @@ func run() error {
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuthService.WithClientProfiles(contactService)
-	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
+	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), accountRepo, mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.LinkLocalOrigin()).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	customerAuthService.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
@@ -320,7 +321,7 @@ func run() error {
 			Health:         handler.NewHealthHandler(db),
 			Auth:           handler.NewAuthHandler(authService),
 			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuthService),
-			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize).WithInvoicingEnvironment(arcaEnvironment)),
 			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{
