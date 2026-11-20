@@ -18,6 +18,11 @@ Pedidos" go there, so the root can be the same public page for everyone, at one 
 
 All three are `PUBLIC_ROUTES`, open the same way with or without a session: the header and the 404 send a seller
 there too. The header offers a visitor "Ingresar" and "Probar Coti", and a seller "Ir a Pedidos".
+"Probar Coti" links to `/#probar` (`ROUTES.landingSection('probar')`), the plans and the call to
+action, so it works from the legal pages too. The landing scrolls there smoothly only under
+`prefers-reduced-motion: no-preference`, and only on the page that has the section
+(`html:has(#probar)` in the backoffice's `globals.css`): no global `scroll-behavior`. The base
+layer's `:target { scroll-margin-top }` keeps the heading clear of the sticky header.
 
 ## Not found and errors
 
@@ -52,12 +57,23 @@ there too. The header offers a visitor "Ingresar" and "Probar Coti", and a selle
 
 - The sections follow the order a buyer asks their questions in: the hero (what Coti does, with both
   calls to action above the fold), three benefits, the four steps, everything Release 1 includes (intake to ARCA invoicing), the
-  copilot rules, the FAQ and a closing call to action that only a visitor sees. The copy describes
-  the Release 1 scope, not only what has shipped so far.
+  copilot rules, the FAQ, and the plans with a closing call to action that only a visitor sees. The
+  copy describes the Release 1 scope, not only what has shipped so far.
+- **The plans** (`#probar`, `landing-pricing.tsx`) are Uno, Pro and Red with their monthly price in
+  ARS, quotations per month and branches, plus the extra-quotation price and that onboarding is
+  included. The figures live in one module, `lib/constants/plans.ts`, never in the JSX; prices are
+  whole pesos (`fmt.currency(…, 'ARS', { wholeUnits: true })`). Nothing else of the commercial model
+  is shown.
+- **The ways in follow `SIGNUP_ENABLED`.** Open: the hero leads with «Crear mi cuenta» and the
+  closing card offers it beside «Quiero Coti en mi corralón». Closed (production): every signup link
+  is gone — hero, closing card, login screen — and «Quiero Coti en mi corralón» (with its hint, «Te
+  contactamos y lo dejamos andando con tu catálogo.») is the way in. That button opens WhatsApp when
+  `LANDING_DEMO_WHATSAPP` is set, else a mail to `LANDING_DEMO_EMAIL`, and is hidden when neither
+  is. See [accounts-and-branches.md](accounts-and-branches.md#closed-signup-and-invites).
 - The product preview is drawn with the app's own components and fixed demo figures; nothing on
   the page computes a price.
-- **No testimonial, logo or metric is shown until a real one exists**, and there is no pricing
-  section until the commercial model is decided. Neither has a hidden placeholder in the code.
+- **No testimonial, logo or metric is shown until a real one exists**, and none has a hidden
+  placeholder in the code.
 - Motion follows `ux-motion`'s public-site exception. Every page's opening screen — the landing's
   hero, the legal pages' heading — rises in on load, item after item (`revealItem`, CSS only, so a
   typed URL animates too). Further down, each group (a section's heading, then its cards or steps;

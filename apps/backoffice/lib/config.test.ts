@@ -16,3 +16,19 @@ describe('API URLs', () => {
     expect(PUBLIC_API_URL).toBe('https://app.coti.test/api');
   });
 });
+
+describe('SIGNUP_ENABLED', () => {
+  it.each([
+    [undefined, true],
+    ['', true],
+    ['true', true],
+    [' FALSE ', false],
+    ['false', false],
+  ])('reads %j as %s', async (raw, expected) => {
+    if (raw !== undefined) vi.stubEnv('SIGNUP_ENABLED', raw);
+
+    const { SIGNUP_ENABLED } = await import('@/lib/config');
+
+    expect(SIGNUP_ENABLED).toBe(expected);
+  });
+});

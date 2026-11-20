@@ -43,6 +43,14 @@ it('keeps the configured local scheme and port when routing a delivery to its su
   ).rejects.toThrow('redirect:http://localhost:3001/c/supplier/quotes/legacy-token');
   expect(requireCustomer).not.toHaveBeenCalled();
 });
+it('answers not found for a supplier still on a hostname outside the portal base, never looping', async () => {
+  vi.mocked(getDeliveryHostname).mockResolvedValue('localhost');
+  await expect(
+    PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
+  ).rejects.toThrow('not-found');
+  expect(requireCustomer).not.toHaveBeenCalled();
+});
+
 it('authenticates before resolving an old link', async () => {
   vi.mocked(requireCustomer).mockRejectedValue(new Error('login-required'));
   await expect(

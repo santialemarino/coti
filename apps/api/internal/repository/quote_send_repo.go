@@ -135,6 +135,35 @@ func (r *QuoteSendRepository) ListByQuote(
 	return scanQuoteSends(rows)
 }
 
+// ListClientLastQuoteSends loads the successful quote sends of the version the client's most
+// recently sent other quote in the branch went out with.
+func (r *QuoteSendRepository) ListClientLastQuoteSends(
+	ctx context.Context, q Querier, accountID, branchID, clientID, excludeQuoteID uuid.UUID,
+) ([]domain.QuoteSend, error) {
+	rows, err := q.Query(ctx, `WITH latest AS (
+		  SELECT send.version_id
+		  FROM quote_send send
+		  JOIN quote_version version ON version.account_id = send.account_id
+		    AND version.id = send.version_id
+		  JOIN quote ON quote.account_id = send.account_id AND quote.id = version.quote_id
+		  WHERE send.account_id = $1 AND quote.branch_id = $2 AND quote.client_id = $3
+		    AND quote.id <> $4 AND send.purpose = 'QUOTE'
+		    AND send.tracking_status IN ('SENT', 'DELIVERED', 'VIEWED')
+		  ORDER BY COALESCE(send.sent_at, send.created_at) DESC, send.created_at DESC
+		  LIMIT 1)
+		SELECT `+quoteSendColumns+`
+		FROM quote_send send
+		JOIN channel ON channel.account_id = send.account_id AND channel.id = send.channel_id
+		WHERE send.account_id = $1 AND send.version_id = (SELECT version_id FROM latest)
+		  AND send.purpose = 'QUOTE' AND send.tracking_status IN ('SENT', 'DELIVERED', 'VIEWED')
+		ORDER BY COALESCE(send.sent_at, send.created_at) DESC, send.created_at DESC, send.id`,
+		accountID, branchID, clientID, excludeQuoteID)
+	if err != nil {
+		return nil, err
+	}
+	return scanQuoteSends(rows)
+}
+
 // ListLiveConversations returns, newest send first, the branch's SENT or CHANGE_REQUESTED quotes
 // that are not archived and whose latest successful send on channelID to one of destinations has
 // not expired at now.

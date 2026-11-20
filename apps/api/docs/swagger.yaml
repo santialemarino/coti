@@ -296,6 +296,8 @@ definitions:
     properties:
       can_confirm:
         type: boolean
+      create_rows:
+        type: integer
       invalid_rows:
         type: integer
       previewed_at:
@@ -304,12 +306,22 @@ definitions:
         items:
           $ref: '#/definitions/dto.CatalogImportRowResponse'
         type: array
+      unchanged_rows:
+        type: integer
+      update_rows:
+        type: integer
       valid_rows:
         type: integer
     type: object
   dto.CatalogImportRowResponse:
     properties:
       action:
+        description: CREATE, UPDATE or UNCHANGED; an UNCHANGED row matches what is
+          stored and is not written.
+        enum:
+        - CREATE
+        - UPDATE
+        - UNCHANGED
         type: string
       code:
         type: string
@@ -535,6 +547,11 @@ definitions:
         items:
           $ref: '#/definitions/dto.ClientResponse'
         type: array
+    type: object
+  dto.ClientMergeResponse:
+    properties:
+      survivor_client_id:
+        type: string
     type: object
   dto.ClientMessageResponse:
     properties:
@@ -790,6 +807,8 @@ definitions:
         type: integer
       skipped_rows:
         type: integer
+      unchanged_rows:
+        type: integer
       updated_rows:
         type: integer
     type: object
@@ -813,6 +832,8 @@ definitions:
   dto.ConfirmProductPriceImportResponse:
     properties:
       imported_rows:
+        type: integer
+      unchanged_rows:
         type: integer
     type: object
   dto.ContactRegistrationLinkRequest:
@@ -2070,6 +2091,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.ProductPriceImportRowResponse'
         type: array
+      unchanged_rows:
+        type: integer
       valid_rows:
         type: integer
     type: object
@@ -2095,6 +2118,10 @@ definitions:
         type: string
       row_number:
         type: integer
+      unchanged:
+        description: The row asks for the price and floor already in force; confirming
+          writes nothing for it.
+        type: boolean
     type: object
   dto.ProductResponse:
     properties:
@@ -2432,6 +2459,32 @@ definitions:
           $ref: '#/definitions/dto.ClientMatchResponse'
         type: array
     type: object
+  dto.QuoteDeliveryPresetResponse:
+    properties:
+      emails:
+        items:
+          type: string
+        type: array
+      phones:
+        items:
+          type: string
+        type: array
+      source:
+        enum:
+        - VERSION
+        - PREVIOUS_VERSION
+        - CLIENT_LAST
+        - NONE
+        type: string
+      used_emails:
+        items:
+          type: string
+        type: array
+      used_phones:
+        items:
+          type: string
+        type: array
+    type: object
   dto.QuoteDeliveryResponse:
     properties:
       channel:
@@ -2765,6 +2818,13 @@ definitions:
       followup_message:
         maxLength: 2000
         minLength: 1
+        type: string
+      mode:
+        enum:
+        - FIRST
+        - OTHER_MEDIUM
+        - RESEND
+        - FOLLOWUP
         type: string
       other_channels_only:
         type: boolean
@@ -3530,6 +3590,14 @@ definitions:
     required:
     - product_id
     type: object
+  dto.SignupInviteCheckRequest:
+    properties:
+      token:
+        maxLength: 255
+        type: string
+    required:
+    - token
+    type: object
   dto.SignupRequest:
     properties:
       account_name:
@@ -3552,6 +3620,11 @@ definitions:
       branch_name:
         maxLength: 255
         minLength: 1
+        type: string
+      invite_token:
+        description: The single-use invite the team handed over; required while public
+          sign-up is closed.
+        maxLength: 255
         type: string
       legal_name:
         maxLength: 255
@@ -5008,20 +5081,24 @@ paths:
         in: header
         name: X-Branch-Id
         type: string
-      - description: Surviving client ID
+      - description: Client the seller merges into
         in: path
         name: clientId
         required: true
         type: string
-      - description: Profile merged into the surviving one
+      - description: Profile merged into the other one
         in: body
         name: body
         required: true
         schema:
           $ref: '#/definitions/dto.MergeClientRequest'
+      produces:
+      - application/json
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMergeResponse'
         "400":
           description: Bad Request
           schema:
@@ -5048,7 +5125,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Merge two client profiles without a CUIT
+      summary: Merge two client profiles
       tags:
       - clients
   /v1/clients/{clientId}/merge-candidates:
@@ -7748,8 +7825,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Revalidates all rows, skips invalid ones, and atomically upserts
-        products, availability, and changed prices.
+      description: Revalidates all rows, skips invalid ones and those matching the
+        catalog, and atomically upserts products, availability, and changed prices.
       parameters:
       - description: Active branch
         in: header
@@ -8030,7 +8107,8 @@ paths:
       consumes:
       - application/json
       description: Creates the account, its first branch with that branch's manual-entry
-        channel, and the administrator, then returns a session.
+        channel, and the administrator, then returns a session. While public sign-up
+        is closed it needs a single-use invite.
       parameters:
       - description: Registration
         in: body
@@ -8047,6 +8125,10 @@ paths:
             $ref: '#/definitions/dto.SignupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
@@ -8398,6 +8480,35 @@ paths:
       summary: Get a public RFQ site
       tags:
       - public-rfqs
+  /v1/public/signup-invites/check:
+    post:
+      consumes:
+      - application/json
+      description: 'Redeems nothing: registration checks the invite again and uses
+        it up.'
+      parameters:
+      - description: Invite token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SignupInviteCheckRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The invite can register a corralón
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: SIGNUP_INVITE_INVALID, SIGNUP_INVITE_USED or SIGNUP_INVITE_EXPIRED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Check a sign-up invite
+      tags:
+      - accounts
   /v1/quotes/{quoteId}/accept-materials:
     post:
       description: 'Freezes each line''s unit price and discount floor from the prices
@@ -8686,6 +8797,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a combo on a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/delivery-preset:
+    get:
+      description: Returns the destinations a send dialog preselects for the given
+        mode (this version's, the last sent version's, or the client's last quote's)
+        and the destinations the current send cycle already reached.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: FIRST, OTHER_MEDIUM, RESEND or FOLLOWUP
+        in: query
+        name: mode
+        required: true
+        type: string
+      - description: Client chosen in the dialog
+        in: query
+        name: client_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteDeliveryPresetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a quote's delivery preset
       tags:
       - quotes
   /v1/quotes/{quoteId}/discard-ai-changes:

@@ -121,13 +121,13 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		return nil, err
 	}
 	origin := customerSiteOrigin(hostname, s.cfg.LinkLocalOrigin())
-	body := contactVerificationLink(origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret))
-	code := ""
+	message := domain.ContactMessage{AccountID: p.AccountID, Purpose: domain.ContactPurposeVerification, Kind: kind, To: value}
 	if kind == domain.ChannelTypeWhatsApp {
-		code = secret
-		body = contactVerificationCode(secret)
+		message.Code, message.Body = secret, contactVerificationCode(secret)
+	} else {
+		message.Link = origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret)
 	}
-	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: p.AccountID, Purpose: domain.ContactPurposeVerification, Kind: kind, To: value, Body: body, Code: code})
+	_, err = s.messenger.SendContact(ctx, message)
 	if err != nil {
 		_ = s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error { return s.store.FinishChallenge(ctx, q, p, c.ID, true) })
 		return nil, err
@@ -287,12 +287,15 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 		if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, kind, value); err != nil {
 			return err
 		}
-		if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, clientID); err != nil {
+		if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, clientID, false); err != nil {
 			return err
 		}
 	}
 	// Verifying first lets the proof this confirm establishes decide the merged primaries.
 	if err := s.store.MarkVerified(ctx, q, p, clientID, kind, value); err != nil {
+		return err
+	}
+	if err := s.contacts.contacts.ConfirmCustomerProof(ctx, q, p.AccountID, clientID, kind, value); err != nil {
 		return err
 	}
 	access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, clientID)

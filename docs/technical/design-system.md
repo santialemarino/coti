@@ -139,11 +139,11 @@ recommendation uses the `success` family, while `PREMIUM` uses the violet
 not the whole row, carries the recommendation colour. `EQUIVALENT` remains neutral.
 
 `followup` marks a quote that has gone quiet and needs a nudge from the seller. It has no `-base`,
-because it is a flag rather than a state with a dot: `-subtle` washes the row, `-hover` is that row
-under the pointer, `-border` and `-foreground` draw the marker. It is indigo (hue 265) so a flagged
-row still reads apart from the azure active row and from the `status-sent` badge it may carry.
-`followup-foreground` is 5.36:1 on `followup-subtle` and 5.01:1 on `followup-hover`. `Badge` and
-`Callout` carry it as a `followup` tone.
+because it is a flag rather than a state with a dot: `-subtle` is the marker's surface, `-border` and
+`-foreground` draw it. A flagged row is not tinted: it is already pinned first and carries the bell.
+It is indigo (hue 265) so the marker reads apart from the azure active row and from the
+`status-sent` badge it may sit beside. `followup-foreground` is 5.36:1 on `followup-subtle`. `Badge`
+and `Callout` carry it as a `followup` tone.
 
 **Mapping a domain enum to a tone is the app's job, not the design system's.** A quote
 status (`GENERATED`, `QUOTED`, `SENT`, …) maps to a `status-*` colour in the app that

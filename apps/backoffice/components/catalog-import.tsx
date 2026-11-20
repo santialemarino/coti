@@ -27,6 +27,7 @@ import {
   confirmCatalogImport,
   downloadCatalogTemplate,
   previewCatalogImport,
+  type CatalogImportAction,
   type CatalogImportPreview,
   type CatalogImportRow,
 } from '@/app/(protected)/_actions/catalog-import';
@@ -35,6 +36,12 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
 import { IMPORT_PREVIEW_PAGE_SIZE } from '@/lib/config';
 import { useFormatters } from '@/lib/i18n/formatters';
+
+const ACTION_TONE: Record<CatalogImportAction, 'success' | 'brand' | 'neutral'> = {
+  CREATE: 'success',
+  UPDATE: 'brand',
+  UNCHANGED: 'neutral',
+};
 
 interface CatalogUploadProps {
   branch: Branch;
@@ -152,10 +159,17 @@ export function CatalogUpload({
   );
 }
 
+interface CatalogImportOutcome {
+  created: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+}
+
 interface CatalogReviewProps {
   preview: CatalogImportPreview;
   onBack: () => void;
-  onConfirmed: (createdRows: number, updatedRows: number, skippedRows: number) => void;
+  onConfirmed: (outcome: CatalogImportOutcome) => void;
 }
 
 export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewProps) {
@@ -170,10 +184,12 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
     IMPORT_PREVIEW_PAGE_SIZE,
   );
   const actionsRef = useRef<HTMLDivElement>(null);
-  // Rows with errors lead, so none of them waits behind "Ver más" while the rest are confirmed.
+  const changes = preview.createRows + preview.updateRows;
+  // Errors lead and rows that change nothing trail, so neither waits behind "Ver más" for the other.
   const rows = [
     ...preview.rows.filter((row) => row.errors.length > 0),
-    ...preview.rows.filter((row) => row.errors.length === 0),
+    ...preview.rows.filter((row) => row.errors.length === 0 && row.action !== 'UNCHANGED'),
+    ...preview.rows.filter((row) => row.errors.length === 0 && row.action === 'UNCHANGED'),
   ];
   // A file without the alternative columns changes no slot, so the column would only say so.
   const showAlternatives = preview.rows.some(
@@ -188,15 +204,21 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
         setError(message(result.error));
         return;
       }
-      onConfirmed(result.createdRows, result.updatedRows, result.skippedRows);
+      onConfirmed({
+        created: result.createdRows,
+        updated: result.updatedRows,
+        unchanged: result.unchangedRows,
+        skipped: result.skippedRows,
+      });
     });
   }
 
   return (
     <div className="flex flex-col gap-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Summary label={t('summary.total')} value={preview.rows.length} />
-        <Summary label={t('summary.valid')} value={preview.validRows} tone="success" />
+        <Summary label={t('summary.valid')} value={changes} tone="success" />
+        <Summary label={t('summary.unchanged')} value={preview.unchangedRows} />
         <Summary label={t('summary.invalid')} value={preview.invalidRows} tone="danger" />
       </div>
 
@@ -250,7 +272,7 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
                 </TableCell>
                 <TableCell>
                   {row.errors.length === 0 ? (
-                    <Badge tone={row.action === 'CREATE' ? 'success' : 'brand'}>
+                    <Badge tone={ACTION_TONE[row.action]}>
                       <CheckCircle2Icon aria-hidden="true" />
                       {t(`action.${row.action}`)}
                     </Badge>
@@ -284,8 +306,10 @@ export function CatalogReview({ preview, onBack, onConfirmed }: CatalogReviewPro
             pendingLabel={t('confirming')}
             onClick={onConfirm}
           >
-            {t('confirm', { count: preview.validRows })}
+            {t('confirm', { count: changes })}
           </PendingButton>
+        ) : preview.validRows > 0 ? (
+          <p className="text-paragraph-sm text-foreground-muted">{t('noChanges')}</p>
         ) : (
           <p className="text-paragraph-sm text-danger-foreground">{t('noValidRows')}</p>
         )}
@@ -303,16 +327,12 @@ export function CatalogImport({ branch }: CatalogImportProps) {
   const router = useRouter();
   const t = useTranslations('catalogImport');
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
-  const [result, setResult] = useState<{
-    created: number;
-    updated: number;
-    skipped: number;
-  } | null>(null);
+  const [result, setResult] = useState<CatalogImportOutcome | null>(null);
 
   if (result) {
     return (
       <div className="flex flex-col items-start gap-y-4">
-        <Callout tone="success">{t('success', result)}</Callout>
+        <Callout tone="success">{t('success', { ...result })}</Callout>
         <Button
           variant="outline"
           onClick={() => {
@@ -330,8 +350,8 @@ export function CatalogImport({ branch }: CatalogImportProps) {
       <CatalogReview
         preview={preview}
         onBack={() => setPreview(null)}
-        onConfirmed={(created, updated, skipped) => {
-          setResult({ created, updated, skipped });
+        onConfirmed={(outcome) => {
+          setResult(outcome);
           router.refresh();
         }}
       />

@@ -27,11 +27,12 @@ beforeEach(() => {
 });
 
 describe('PublicHeader', () => {
-  it('offers a visitor the way in: log in or create an account', async () => {
+  // «Probar Coti» leads to the plans and the way in, which is the same page whether signup is open.
+  it('offers a visitor the way in: log in, or the plans and the call to action', async () => {
     const view = render(await PublicHeader({ signedIn: false }));
 
     expect(view.getByRole('link', { name: copy.login }).getAttribute('href')).toBe(ROUTES.login);
-    expect(view.getByRole('link', { name: copy.signup }).getAttribute('href')).toBe(ROUTES.signup);
+    expect(view.getByRole('link', { name: copy.signup }).getAttribute('href')).toBe('/#probar');
     expect(view.queryByRole('link', { name: copy.goToOrders })).toBeNull();
   });
 

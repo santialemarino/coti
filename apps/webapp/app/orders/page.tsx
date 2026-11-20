@@ -93,7 +93,10 @@ export default async function OrdersPage({
                         </span>
                       </div>
                       <div className="flex items-center gap-x-3">
-                        <Badge>{t(`statuses.${order.status}`)}</Badge>
+                        {/* A status this build has no copy for gets no badge rather than a raw key. */}
+                        {t.has(`statuses.${order.status}`) ? (
+                          <Badge>{t(`statuses.${order.status}`)}</Badge>
+                        ) : null}
                         <ArrowRightIcon
                           aria-hidden="true"
                           className="size-4 text-foreground-subtle"

@@ -29,6 +29,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"AUTH_MAX_FAILED_ATTEMPTS", "AUTH_LOCKOUT_MINUTES", "AUTH_PASSWORD_MIN_LENGTH",
 		"AUTH_PASSWORD_RESET_TTL_MINUTES", "AUTH_EMAIL_VERIFICATION_TTL_HOURS",
 		"AUTH_REQUIRE_VERIFIED_EMAIL", "AUTH_INVITE_TTL_HOURS",
+		"SIGNUP_ENABLED", "SIGNUP_INVITE_TTL_DAYS",
 		"RATE_LIMIT_ENABLED", "RATE_LIMIT_WINDOW_SECONDS", "RATE_LIMIT_GLOBAL_MAX",
 		"RATE_LIMIT_CREDENTIALS_MAX", "RATE_LIMIT_SIGNUP_MAX", "RATE_LIMIT_MAIL_MAX",
 		"RATE_LIMIT_AI_MAX", "RATE_LIMIT_CONTACT_VERIFICATION_MAX", "RATE_LIMIT_PROFILE_MAX",
@@ -649,6 +650,34 @@ func TestLoad_DurationUnitsComeFromKeySuffix(t *testing.T) {
 	}
 }
 
+// Open by default so a local checkout registers as it always has; production closes it.
+func TestLoad_SignupDefaults(t *testing.T) {
+	setEnv(t, minimalEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if !cfg.Signup.Enabled || cfg.Signup.InviteTTL != 14*24*time.Hour {
+		t.Errorf("Signup = %+v, want enabled with a 336h invite", cfg.Signup)
+	}
+}
+
+func TestLoad_SignupKeysLandOnTheirOwnFields(t *testing.T) {
+	env := minimalEnv()
+	env["SIGNUP_ENABLED"] = "false"
+	env["SIGNUP_INVITE_TTL_DAYS"] = "3"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.Signup.Enabled || cfg.Signup.InviteTTL != 3*24*time.Hour {
+		t.Errorf("Signup = %+v, want closed with a 72h invite", cfg.Signup)
+	}
+}
+
 func TestLoad_Invalid(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -669,6 +698,11 @@ func TestLoad_Invalid(t *testing.T) {
 			name:    "unparseable receiver id threshold",
 			mutate:  func(e map[string]string) { e["INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT"] = "10.000.000" },
 			wantSub: "INVOICE_RECEIVER_ID_THRESHOLD_AMOUNT must be a positive amount",
+		},
+		{
+			name:    "non-positive signup invite ttl",
+			mutate:  func(e map[string]string) { e["SIGNUP_INVITE_TTL_DAYS"] = "0" },
+			wantSub: "SIGNUP_INVITE_TTL_DAYS must be greater than zero",
 		},
 		{
 			name:    "missing app url",

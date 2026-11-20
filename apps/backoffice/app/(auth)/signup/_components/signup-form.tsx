@@ -44,12 +44,17 @@ const EMPTY_VALUES: SignupValues = {
   confirmPassword: '',
 };
 
+interface SignupFormProps {
+  // The invite the page was opened with, sent with the registration once the last step submits.
+  invite?: string;
+}
+
 /*
  * One form across three steps, not three forms: the account, its first branch and its
  * administrator are created by a single request, so a caller who abandons the wizard has
  * created nothing.
  */
-export function SignupForm() {
+export function SignupForm({ invite }: SignupFormProps) {
   const router = useRouter();
   const t = useTranslations('auth.signup');
   const tErrors = useTranslations('common.form.errors');
@@ -126,7 +131,7 @@ export function SignupForm() {
   }
 
   async function create(values: SignupValues) {
-    const result = await signup(values);
+    const result = await signup(values, invite);
     if (result.redirectTo) {
       router.replace(result.redirectTo);
       // The session cookie only exists as of this response, so the cached tree still

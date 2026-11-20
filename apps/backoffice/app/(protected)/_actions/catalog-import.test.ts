@@ -22,12 +22,23 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('confirmCatalogImport', () => {
   it('submits reviewed rows and keeps preview rejections in the result', async () => {
-    vi.mocked(apiRequest).mockResolvedValue({ created_rows: 1, updated_rows: 1, skipped_rows: 0 });
+    vi.mocked(apiRequest).mockResolvedValue({
+      created_rows: 1,
+      updated_rows: 1,
+      unchanged_rows: 0,
+      skipped_rows: 0,
+    });
     const preview: CatalogImportPreview = {
       branchId: BRANCH_ID,
       rows: [
         row({ rowNumber: 2, code: 'CEM-001', name: 'Cemento', economyAlternative: 'CEM-002' }),
-        row({ rowNumber: 3, code: 'ARE-001', name: 'Arena', premiumAlternative: '' }),
+        row({
+          rowNumber: 3,
+          code: 'ARE-001',
+          name: 'Arena',
+          premiumAlternative: '',
+          action: 'UPDATE',
+        }),
         row({
           rowNumber: 4,
           code: 'CAL-001',
@@ -35,9 +46,14 @@ describe('confirmCatalogImport', () => {
           subgroup: null,
           errors: ['invalid_subgroup'],
         }),
+        // Already matches the catalog, so it stays out of the request.
+        row({ rowNumber: 5, code: 'ARE-002', name: 'Arena gruesa', action: 'UNCHANGED' }),
       ],
-      validRows: 2,
+      validRows: 3,
       invalidRows: 1,
+      createRows: 1,
+      updateRows: 1,
+      unchangedRows: 1,
       canConfirm: true,
       previewedAt: '2026-08-18T12:00:00Z',
     };
@@ -46,6 +62,7 @@ describe('confirmCatalogImport', () => {
       ok: true,
       createdRows: 1,
       updatedRows: 1,
+      unchangedRows: 1,
       skippedRows: 1,
     });
     expect(requestSent()?.body).toEqual({
@@ -82,7 +99,12 @@ describe('confirmCatalogImport', () => {
   });
 
   it('adds rows rejected by backend revalidation to preview rejections', async () => {
-    vi.mocked(apiRequest).mockResolvedValue({ created_rows: 1, updated_rows: 0, skipped_rows: 1 });
+    vi.mocked(apiRequest).mockResolvedValue({
+      created_rows: 1,
+      updated_rows: 0,
+      unchanged_rows: 0,
+      skipped_rows: 1,
+    });
     const preview: CatalogImportPreview = {
       branchId: BRANCH_ID,
       rows: [
@@ -92,6 +114,9 @@ describe('confirmCatalogImport', () => {
       ],
       validRows: 2,
       invalidRows: 1,
+      createRows: 2,
+      updateRows: 0,
+      unchangedRows: 0,
       canConfirm: true,
       previewedAt: '2026-08-18T12:00:00Z',
     };
@@ -100,6 +125,7 @@ describe('confirmCatalogImport', () => {
       ok: true,
       createdRows: 1,
       updatedRows: 0,
+      unchangedRows: 0,
       skippedRows: 2,
     });
   });

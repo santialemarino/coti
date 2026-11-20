@@ -31,7 +31,7 @@ export function FollowupCallout({
       title={t('title')}
       action={
         origin === 'customer' && quoteId && detail && onSent ? (
-          <SendQuoteDialog detail={detail} branchId={branchId} onSent={onSent} followup />
+          <SendQuoteDialog detail={detail} branchId={branchId} onSent={onSent} mode="FOLLOWUP" />
         ) : null
       }
     >

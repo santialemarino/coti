@@ -52,7 +52,7 @@ func TestSellerMerge_LaterCustomerProofBringsTheMergedHistory(t *testing.T) {
 	survivor := m.profile(t, "Counter buyer", "counter-e@example.test", nil)
 	source := m.profile(t, "Counter buyer (second mail)", "counter-s@example.test", nil)
 	order := m.order(t, source, m.branch)
-	if status, code := m.merge(t, survivor, source); status != http.StatusNoContent {
+	if status, code := m.merge(t, survivor, source); status != http.StatusOK {
 		t.Fatalf("merge: status = %d (%s)", status, code)
 	}
 
@@ -76,7 +76,7 @@ func TestSellerMerge_SettlesOpenNameQuestions(t *testing.T) {
 	survivor := m.profile(t, "Ferreteria Lopez", "lopez@example.test", nil)
 	source := m.profile(t, "pedro@example.test", "pedro@example.test", nil)
 	m.askName(t, "pedro@example.test")
-	if status, code := m.merge(t, survivor, source); status != http.StatusNoContent {
+	if status, code := m.merge(t, survivor, source); status != http.StatusOK {
 		t.Fatalf("merge: status = %d (%s)", status, code)
 	}
 	m.reply(t, "pedro@example.test", "Pedro Gomez")
@@ -122,7 +122,7 @@ func TestSellerMerge_ResolvesObservationsOnSurvivorsAndRefusesAStrangerToKeep(t 
 
 	// The loser was merged elsewhere since the case was raised: the case merges its survivor.
 	elsewhere := m.profile(t, "Elsewhere", "elsewhere-s@example.test", nil)
-	if status, code := m.merge(t, elsewhere, loser); status != http.StatusNoContent {
+	if status, code := m.merge(t, elsewhere, loser); status != http.StatusOK {
 		t.Fatalf("merge: status = %d (%s)", status, code)
 	}
 	if code := resolve(pick, map[string]any{"action": "MERGE"}); code != http.StatusNoContent {

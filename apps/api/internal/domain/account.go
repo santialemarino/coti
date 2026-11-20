@@ -68,6 +68,8 @@ type Signup struct {
 	AdminName     string
 	AdminEmail    string
 	AdminPassword string
+	// InviteToken is the raw single-use invite, required while public sign-up is closed.
+	InviteToken string
 }
 
 // SignupResult is what a completed registration produced.

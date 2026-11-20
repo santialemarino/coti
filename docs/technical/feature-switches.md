@@ -20,11 +20,12 @@ Two rules follow:
 
 ## The switches today
 
-| Switch                                         | Default | Off means                                                      |
-| ---------------------------------------------- | ------- | -------------------------------------------------------------- |
-| `CATALOG_MATCH_REVIEW_MAX_LINES`               | `0`     | Flagged lines are left to the seller; no review calls          |
-| `QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES` | `3`     | Extraction runs without past corrections, and no lookup        |
-| `AI_LLM_PROVIDER` and its two siblings         | off     | The capability refuses; see [ai-providers.md](ai-providers.md) |
+| Switch                                         | Default | Off means                                                                                                                               |
+| ---------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `CATALOG_MATCH_REVIEW_MAX_LINES`               | `0`     | Flagged lines are left to the seller; no review calls                                                                                   |
+| `QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES` | `3`     | Extraction runs without past corrections, and no lookup                                                                                 |
+| `AI_LLM_PROVIDER` and its two siblings         | off     | The capability refuses; see [ai-providers.md](ai-providers.md)                                                                          |
+| `SIGNUP_ENABLED` (API and backoffice)          | `true`  | Registering needs an invite; see [accounts-and-branches.md](accounts-and-branches.md#closed-signup-and-invites). Production sets it off |
 
 The review is off because its measured value does not yet repay its cost
 ([catalog.md](catalog.md#the-review-trade-knowledge-the-catalog-text-does-not-carry)). Interpretation

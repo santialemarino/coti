@@ -22,6 +22,13 @@ services:
       - key: WEB_TRUSTED_PROXY_HOPS
         scope: RUN_TIME
         value: '0'
+      # Must equal the core app's CUSTOMER_PORTAL_BASE_URL (WEB_WEBAPP_URL when that is unset).
+      - key: WEB_PORTAL_BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      - key: WEB_LANDING_URL
+        scope: RUN_TIME
+        value: https://replace-with-core-host.invalid
     git:
       repo_clone_url: https://github.com/santialemarino/coti.git
       branch: main

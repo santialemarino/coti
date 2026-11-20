@@ -1,9 +1,9 @@
 # Deployment
 
-Customer Google sign-in redirects use the public `Host` header over HTTPS in production.
-The reverse proxy must preserve that header, which also scopes customer API requests to the
-registered supplier. The container's `localhost:3001` request URL must not become a browser
-redirect. Development uses HTTP supplier paths on `localhost` and retains legacy supplier hosts.
+Customer Google sign-in redirects use the public `Host` header over HTTPS in production, so the
+reverse proxy must preserve it; the container's `localhost:3001` request URL must not become a
+browser redirect. Which supplier a customer request belongs to comes from the `/c/<label>` path
+and WEB_PORTAL_BASE_URL, never from Host. Development uses HTTP supplier paths on `localhost`.
 
 ## Browser routes and the versioned API
 
@@ -168,8 +168,9 @@ their context — `docker-compose.yml` says `context: .`, and the web ones copy 
 `turbo.json` and `packages/` — so a component pointed at `apps/api` fails at the first `COPY`. This
 is the most likely first failure and it is the cheapest one to avoid.
 
-The api image carries **four** binaries and the migration chain: `/api/bin/api`,
-`/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/goose`, and `/api/migrations`. That is
+The api image carries **five** binaries and the migration chain: `/api/bin/api`,
+`/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/invite`, `/api/bin/portal-backfill`,
+`/api/bin/goose`, and `/api/migrations`. That is
 why one Dockerfile serves nine components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
@@ -460,7 +461,11 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `attachment-extraction` declares no AI keys at all and runs on the defaults, which are off: the
    language model, embeddings and their keys have to be added to it too, or a file order the sweep
    picks up fails at extraction even with AI on everywhere else.
-9. Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
+9. Signup is closed (`SIGNUP_ENABLED=false` on `api` and `backoffice`), so onboard each corralón with
+   an invite: from a console on the api component, `/api/bin/invite --note "<corralón>"` prints the
+   single-use `${APP_URL}/signup?invite=…` link to hand over (see
+   [accounts-and-branches.md](accounts-and-branches.md#closed-signup-and-invites)).
+   Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
    run `/api/bin/catalog-embed --account <uuid>` from a console on the api component to do it now
    (it is also what `--refresh-all` after a model change needs), and build the vector index once
    there are rows
@@ -472,7 +477,7 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 ## What CI already proves
 
 `.github/workflows/ci.deploy.yml` builds all three images on every PR that touches them or what they
-copy, and boots every one of them. The api job goes further: it asserts the four binaries are in the
+copy, and boots every one of them. The api job goes further: it asserts the five binaries are in the
 image and applies the whole migration chain **from inside it** against a real Postgres, which is the
 PRE_DEPLOY job's exact command.
 
@@ -501,9 +506,33 @@ http://localhost:3001 for the shared development Google callback.
 The shared HTTPS origin can be the DigitalOcean starter URL. Each account chooses a unique label,
 and its public address is `<origin>/c/<label>`. No wildcard DNS, extra application or deployment is
 created per supplier. The existing `public_hostname` remains an exact internal routing identifier:
-`<label>.<base-host>`. This identifier is not a browser URL and does not need a DNS record. Existing
-host-based routes remain usable. The registered base host itself can be converted to a path portal
-after explicit acknowledgement; other inherited hostnames remain administratively managed.
+`<label>.<base-host>`. This identifier is not a browser URL and does not need a DNS record. The
+supplier is always taken from the path, never from the Host header; inherited hostnames outside the
+base remain administratively managed.
+
+The portal app sets WEB_PORTAL_BASE_URL to its own origin (`${APP_URL}` in `.do/portal.yaml`), which
+must equal the core app's CUSTOMER_PORTAL_BASE_URL (or WEB_WEBAPP_URL when that is unset), and
+WEB_LANDING_URL to the core app's public origin, where the portal root and every path outside
+`/c/<label>` are redirected.
+
+### Giving existing accounts their default portal
+
+New accounts get a `/c/<label>` portal at registration. Accounts created before that, or holding the
+bare base host (which made the portal root a supplier's portal), are given one by
+`cmd/portal-backfill`. The hostname depends on CUSTOMER_PORTAL_BASE_URL, so this is a command rather
+than a migration; it ships in the api image as `/api/bin/portal-backfill`. Run it once after the
+release that introduces it is deployed, from a console on the api component, which already carries
+every variable it reads:
+
+```sh
+doctl apps console <core-app-id> api
+/api/bin/portal-backfill          # prints the plan: account, previous hostname, new hostname
+/api/bin/portal-backfill --apply  # writes it in one transaction
+```
+
+It touches only accounts whose `public_hostname` is NULL or the bare base host, so a second run finds
+nothing to do. Customers of an account that held the bare host must use its new `/c/<label>` address:
+links already sent as `/quotes/<token>` keep working; other bare links now land on the public site.
 
 The webapp proxy derives supplier context from the path and removes caller-provided context headers.
 Customer and pending Google cookies have supplier-specific names, including after a shared callback.

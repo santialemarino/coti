@@ -54,6 +54,7 @@ type Handlers struct {
 	QuoteFollowup         *handler.QuoteFollowupHandler
 	Client                *handler.ClientHandler
 	Account               *handler.AccountHandler
+	SignupInvite          *handler.SignupInviteHandler
 	CustomerPortal        *handler.CustomerPortalHandler
 	AccountLogo           *handler.BrandLogoHandler
 	Prices                *handler.ProductPriceHandler
@@ -189,6 +190,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.POST("/signup-invites/check", limit("signup-invite", cfg.RateLimit.Credentials), h.SignupInvite.Check)
 	public.GET("/product-images/:accountId/:productId/:imageId", h.Product.GetImage)
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)
@@ -261,11 +263,12 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.PATCH("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.ApproveAlternative)
 	quotes.DELETE("/:quoteId/items/:itemId/alternatives/:alternativeId", h.Quote.DeleteRecommendationAlternative)
 	quotes.PUT("/:quoteId/items/:itemId/recommendations/:recommendationType", h.Quote.SetRecommendationAlternative)
+	quotes.GET("/:quoteId/delivery-preset", h.Quote.DeliveryPreset)
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
-	quotes.POST("/:quoteId/followup-draft", ai, h.QuoteFollowup.Draft)
+	quotes.POST("/:quoteId/followup-draft", h.QuoteFollowup.Draft)
 	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
 	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)

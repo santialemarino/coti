@@ -33,7 +33,7 @@ export async function PublicHeader({ signedIn }: PublicHeaderProps) {
                 <Link href={ROUTES.login}>{t('login')}</Link>
               </Button>
               <Button asChild>
-                <Link href={ROUTES.signup}>{t('signup')}</Link>
+                <Link href={ROUTES.landingSection('probar')}>{t('signup')}</Link>
               </Button>
             </>
           )}

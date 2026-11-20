@@ -88,13 +88,22 @@ export function QuoteDeliveryCard({
               onCopyError={() => toast.error(t('copyFailed'))}
             />
             {canAct && quote.current_status === 'SENT' ? (
-              <SendQuoteDialog
-                detail={detail}
-                branchId={detail.rfq.branch_id}
-                onSent={onSent}
-                branchMissesEmail={branchMissesEmail}
-                resend
-              />
+              <>
+                <SendQuoteDialog
+                  detail={detail}
+                  branchId={detail.rfq.branch_id}
+                  onSent={onSent}
+                  branchMissesEmail={branchMissesEmail}
+                  mode="OTHER_MEDIUM"
+                />
+                <SendQuoteDialog
+                  detail={detail}
+                  branchId={detail.rfq.branch_id}
+                  onSent={onSent}
+                  branchMissesEmail={branchMissesEmail}
+                  mode="RESEND"
+                />
+              </>
             ) : null}
           </div>
         ) : (

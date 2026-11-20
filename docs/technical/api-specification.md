@@ -113,6 +113,10 @@ a code from the sentinel an error wraps — `NOT_FOUND`, `CONFLICT`, `INVALID_IN
 | `SELF_EMAIL_CHANGE`          | 422    | an admin changing their own email from user administration, not their account settings                              |
 | `PASSWORD_POLICY`            | 422    | a password that does not clear `domain.PasswordPolicy`                                                              |
 | `INVALID_LINK`               | 401    | a mailed link that is unknown, expired, used or wrong-typed                                                         |
+| `SIGNUP_CLOSED`              | 403    | registering a corralón without an invite while `SIGNUP_ENABLED` is off                                              |
+| `SIGNUP_INVITE_INVALID`      | 403    | a sign-up invite that matches none                                                                                  |
+| `SIGNUP_INVITE_USED`         | 403    | a sign-up invite that already registered a corralón                                                                 |
+| `SIGNUP_INVITE_EXPIRED`      | 403    | a sign-up invite past its `SIGNUP_INVITE_TTL_DAYS`                                                                  |
 | `INVITE_NOT_PENDING`         | 422    | resending an invite to a user who has already chosen a password, or is deactivated                                  |
 | `MAIL_NOT_CONFIGURED`        | 503    | inviting a user while mail only reaches the log                                                                     |
 | `BRANCH_NOT_ACCESSIBLE`      | 403    | an `X-Branch-Id` the caller does not reach — closed, or not assigned to them                                        |

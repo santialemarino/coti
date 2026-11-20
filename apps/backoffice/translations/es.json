@@ -409,6 +409,7 @@
     "QUOTE_NOT_SENDABLE": "La cotización cambió y esta versión ya no es la aprobada.",
     "QUOTE_ITEMS_UNRESOLVED": "Hay ítems sin producto confirmado o sin precio. Confirmalos o elegí el producto antes de enviar.",
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
+    "CHANNEL_ALREADY_USED": "Esta versión de la cotización ya se envió por ese medio.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
@@ -444,7 +445,11 @@
     "CLIENT_CONTACT_UNPROVED": "El cliente todavía no verificó este contacto desde su portal. Cuando lo haga, vas a poder unir las fichas.",
     "CLIENT_TAX_ID_CONFLICT": "Las dos fichas tienen CUIT distinto: son clientes diferentes.",
     "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
-    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
+    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla.",
+    "SIGNUP_CLOSED": "El registro de corralones está cerrado por ahora. Escribinos y te mandamos una invitación.",
+    "SIGNUP_INVITE_INVALID": "Este enlace de invitación no es válido. Revisá que esté completo o pedinos uno nuevo.",
+    "SIGNUP_INVITE_USED": "Esta invitación ya se usó para crear una cuenta. Si fuiste vos, iniciá sesión.",
+    "SIGNUP_INVITE_EXPIRED": "Esta invitación venció. Escribinos y te mandamos una nueva."
   },
   "meta": {
     "home": {
@@ -608,7 +613,8 @@
           "links": {
             "steps": "Cómo funciona",
             "features": "Qué incluye",
-            "faq": "Preguntas frecuentes"
+            "faq": "Preguntas frecuentes",
+            "pricing": "Precios"
           }
         },
         "legal": {
@@ -626,10 +632,10 @@
       "slogan": "Respondé primero. Vendé más.",
       "title": "El que contesta primero, vende",
       "description": "Coti arma tus cotizaciones en menos de cinco minutos, con tus precios y tu aprobación. Lee el pedido como te llega —WhatsApp, correo, foto o Excel— y te lo deja listo para revisar y enviar.",
-      "signup": "Probar Coti",
+      "signup": "Crear mi cuenta",
       "login": "Ya tengo cuenta",
       "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto.",
-      "demo": "Pedí una demo"
+      "demo": "Quiero Coti en mi corralón"
     },
     "preview": {
       "label": "Ejemplo: un pedido por WhatsApp convertido en una cotización con tres productos del catálogo, uno marcado para revisar.",
@@ -856,11 +862,38 @@
         }
       }
     },
+    "pricing": {
+      "eyebrow": "Precios",
+      "title": "Un plan para cada corralón",
+      "description": "Pagás por mes según cuántas cotizaciones armás.",
+      "perMonth": "por mes",
+      "quotes": "{count} cotizaciones por mes",
+      "sharedQuotes": "{count} cotizaciones por mes, compartidas",
+      "branches": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "extraBranch": "+{price} y +{count} cotizaciones por cada sucursal adicional",
+      "extraQuote": "Cotización adicional: {price}, en los tres planes.",
+      "onboarding": "Onboarding incluido en todos los planes.",
+      "plans": {
+        "uno": {
+          "name": "Uno",
+          "summary": "Para empezar con una sucursal."
+        },
+        "pro": {
+          "name": "Pro",
+          "summary": "Para una sucursal con mucho movimiento."
+        },
+        "red": {
+          "name": "Red",
+          "summary": "Para corralones con más de una sucursal."
+        }
+      }
+    },
     "cta": {
       "title": "Probá Coti con tu propio catálogo",
-      "description": "Creá la cuenta de tu corralón, importá tus productos y cotizá tu próximo pedido con Coti.",
+      "description": "Con tus productos y tus precios cargados, cotizás tu próximo pedido en minutos.",
       "action": "Crear mi cuenta",
-      "demo": "Pedí una demo"
+      "demo": "Quiero Coti en mi corralón",
+      "demoHint": "Te contactamos y lo dejamos andando con tu catálogo."
     },
     "demo": {
       "message": "Hola, quiero ver una demo de Coti para mi corralón.",
@@ -1118,6 +1151,11 @@
       "errors": {
         "RATE_LIMITED": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
         "INTERNAL": "No pudimos crear la cuenta. Intentá de nuevo."
+      },
+      "invite": {
+        "title": "No pudimos abrir tu invitación",
+        "requestAnother": "Pedí una invitación nueva",
+        "login": "Iniciá sesión"
       }
     },
     "forgotPassword": {
@@ -1280,8 +1318,8 @@
       "download": "Descargar",
       "unnamed": "Archivo adjunto",
       "manualReview": "Revisar manualmente",
-      "refresh": "Actualizar enlaces",
-      "error": "No pudimos cargar los archivos. Intentá de nuevo.",
+      "retry": "Reintentar",
+      "error": "No pudimos cargar los archivos.",
       "unavailable": "No se guardó contenido original para este pedido."
     },
     "title": "Pedidos",
@@ -1589,19 +1627,10 @@
           "seller": "La cotización no avanza desde el {date}. Revisala y enviala al cliente.",
           "sellerUndated": "La cotización no avanza. Revisala y enviala al cliente.",
           "draft": {
-            "action": "Redactar mensaje",
-            "again": "Redactar otro",
-            "pending": "Redactando…",
             "label": "Mensaje de seguimiento para el cliente",
             "copy": "Copiar mensaje",
             "copied": "Mensaje copiado",
-            "copyFailed": "No pudimos copiar el mensaje. Seleccionalo y copialo a mano.",
-            "hint": "Revisalo y mandalo vos por WhatsApp o correo: Coti no lo envía.",
-            "errors": {
-              "AI_UNAVAILABLE": "No pudimos redactar el mensaje ahora. Probá de nuevo en unos minutos.",
-              "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente.",
-              "QUOTE_ARCHIVED": "La cotización está archivada."
-            }
+            "copyFailed": "No pudimos copiar el mensaje. Seleccionalo y copialo a mano."
           },
           "send": "Enviar mensaje de seguimiento",
           "sent": "Mensaje de seguimiento enviado",
@@ -1626,7 +1655,7 @@
           "pending": "Quitando…"
         },
         "generate": "Aprobar productos",
-        "generating": "Generando cotización…",
+        "generating": "Aprobando productos…",
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
         "select": "Seleccionar",
@@ -1765,7 +1794,7 @@
           "deleted": "Quitamos «{name}» de la cotización.",
           "added": "Agregamos «{name}» a la cotización.",
           "confirmed": "Confirmamos «{name}» como el producto del ítem.",
-          "generated": "La cotización quedó generada y lista para revisar.",
+          "generated": "Aprobamos los productos: la cotización quedó lista para enviar.",
           "error": "No pudimos guardar el cambio. Intentá de nuevo."
         },
         "errors": {
@@ -1783,34 +1812,32 @@
         }
       },
       "send": {
-        "button": "Enviar cotización",
-        "title": "Enviar cotización",
         "description": "Elegí cómo enviar la cotización al cliente. Cada mensaje incluye un enlace al detalle.",
+        "modes": {
+          "FIRST": { "title": "Enviar cotización", "trigger": "Enviar cotización" },
+          "OTHER_MEDIUM": { "title": "Enviar por otro medio", "trigger": "Enviar por otro medio" },
+          "RESEND": { "title": "Reenviar cotización", "trigger": "Reenviar" }
+        },
         "sendWhatsApp": "Enviar por WhatsApp",
         "phoneLabel": "WhatsApp del cliente",
-        "phonePlaceholder": "Ingresá el celular",
-        "phoneHint": "Código de área sin 0; si es celular, con 9 o 15. Ej.: 11 15 5555-0101.",
         "alsoEmail": "Enviar por correo",
         "emailLabel": "Correo del cliente",
-        "emailPlaceholder": "cliente@empresa.com",
-        "summaryLabel": "Qué se envía",
-        "summaryQuote": "Cotización",
-        "summaryTotal": "Total",
-        "summaryLink": "Incluye un enlace para que el cliente vea el detalle y responda.",
+        "emailPlaceholder": "Ingresá el correo",
+        "usedOn": "Ya enviada a {destinations}.",
+        "allUsed": "Ya la enviaste por WhatsApp y por correo. Para mandarla de nuevo usá «Reenviar».",
+        "onlySelected": "Se envía solo a los seleccionados ({selected} de {total}).",
+        "addPhone": "Agregar otro número",
+        "addEmail": "Agregar otro correo",
+        "add": "Agregar",
+        "presetSource": {
+          "VERSION": "Mismos destinos que el último envío de esta cotización.",
+          "PREVIOUS_VERSION": "Mismos destinos que la versión anterior.",
+          "CLIENT_LAST": "Mismos destinos que la última cotización de este cliente."
+        },
         "numberPending": "sin número",
         "cancel": "Cancelar",
         "send": "Enviar cotización",
         "sending": "Enviando…",
-        "successTitle": "Cotización enviada",
-        "successDescription": "Podés copiar el enlace o abrir la cotización.",
-        "linkLabel": "Enlace de la cotización",
-        "copyLink": "Copiar enlace",
-        "copiedLink": "Enlace copiado",
-        "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
-        "openQuote": "Abrir",
-        "visualizeOnline": "Visualizar online",
-        "resend": "Enviar por otro medio",
-        "done": "Listo",
         "toast": {
           "sent": "Cotización enviada",
           "partial": "Enviamos la cotización, pero falló {channels}. Reintentá ese envío.",
@@ -1820,6 +1847,8 @@
           "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
           "INVALID_INPUT": "Revisá el teléfono y el correo.",
           "DELIVERY_CHANNEL": "Falta un canal activo de WhatsApp o correo en esta sucursal. Pedile a un administrador que lo configure.",
+          "CHANNEL_ALREADY_USED": "Esta versión ya salió por ese medio. Elegí otro o usá «Reenviar».",
+          "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente. Actualizá la pantalla.",
           "DELIVERY_UNAVAILABLE": "No pudimos entregar la cotización por ningún canal. Revisá la configuración de envío o intentá más tarde.",
           "CONFLICT": "La cotización cambió mientras la enviabas. Actualizá la pantalla y revisala antes de enviar.",
           "QUOTE_NOT_SENDABLE": "Esta versión ya no es la aprobada. Actualizá la pantalla y volvé a intentar.",
@@ -1830,26 +1859,23 @@
           "INTERNAL": "No pudimos enviar la cotización. Intentá de nuevo."
         },
         "clientTitle": "Cliente",
-        "clientExisting": "Seleccionar cliente",
         "clientNew": "Crear cliente",
+        "clientEdit": "Editar cliente",
+        "clientChooseExisting": "Elegir uno existente",
+        "clientNone": "La cotización no tiene un cliente asociado.",
         "clientChoose": "Seleccioná un cliente",
-        "clientTax": "CUIT/CUIL",
         "clientName": "Nombre y apellido",
         "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No pudimos cargar los clientes. Intentá de nuevo.",
         "clientRetry": "Reintentar carga de clientes",
-        "clientInvalid": "Completá los datos del cliente.",
-        "clientTaxMismatch": "El CUIT/CUIL no coincide con la ficha seleccionada.",
-        "clientTaxInvalid": "Ingresá un CUIT/CUIL válido.",
         "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
         "clientContactRequired": "Ingresá al menos un teléfono o un correo.",
         "clientUse": "Usar este cliente",
-        "alreadySent": "Ya enviado",
         "selectedRecipients": "{count} destinatarios",
         "clearRecipients": "Quitar selección"
       },
@@ -1857,8 +1883,6 @@
         "title": "Cotización {reference}",
         "version": "Versión {version}",
         "numberPending": "sin número",
-        "linkLabel": "Enlace del cliente",
-        "openQuote": "Ver cotización",
         "copyLink": "Copiar enlace",
         "copiedLink": "Enlace copiado",
         "copyFailed": "No pudimos copiar el enlace. Seleccionalo y copialo a mano.",
@@ -2243,12 +2267,15 @@
         "placeholder": "Seleccioná una ficha",
         "search": "Buscá por nombre o contacto",
         "empty": "No hay fichas con ese nombre o contacto",
-        "none": "No hay otras fichas sin CUIT de tus sucursales para unir."
+        "none": "No hay otras fichas de tus sucursales que se puedan unir con esta.",
+        "taxId": "CUIT {taxId}"
       },
       "survivor": {
         "label": "Ficha que queda",
-        "hint": "Los pedidos y contactos de {merged} pasan a esta ficha. No se puede deshacer."
+        "hint": "Los pedidos y contactos de {merged} pasan a esta ficha. No se puede deshacer.",
+        "fixed": "Queda la ficha con CUIT: los pedidos y contactos de {merged} pasan a {kept}. No se puede deshacer."
       },
+      "portalHold": "Si {kept} tiene cuenta en la webapp, va a ver estos pedidos recién cuando verifique uno de los contactos que se unen. Vos los ves juntos desde ahora.",
       "loadError": "No pudimos cargar las fichas.",
       "retry": "Reintentar",
       "submit": "Unir fichas",
@@ -2988,6 +3015,7 @@
     "summary": {
       "total": "Filas leídas",
       "valid": "Listas para aplicar",
+      "unchanged": "Sin cambios",
       "invalid": "Con errores"
     },
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
@@ -3013,14 +3041,16 @@
     },
     "action": {
       "CREATE": "Nuevo",
-      "UPDATE": "Actualización"
+      "UPDATE": "Actualización",
+      "UNCHANGED": "Sin cambios"
     },
     "valid": "Lista para aplicar",
     "chooseAnother": "Elegir otro archivo",
     "confirm": "Aplicar {count, plural, one {# cambio} other {# cambios}}",
     "confirming": "Aplicando…",
     "noValidRows": "Corregí la planilla: no hay filas válidas para aplicar.",
-    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. Omitimos {skipped, plural, one {# fila} other {# filas}}.",
+    "noChanges": "No hay nada para aplicar: la planilla coincide con el catálogo de esta sucursal.",
+    "success": "Creamos {created, plural, one {# producto} other {# productos}} y actualizamos {updated, plural, one {# producto} other {# productos}}. {unchanged, plural, =0 {} one {# producto quedó sin cambios. } other {# productos quedaron sin cambios. }}Omitimos {skipped, plural, one {# fila} other {# filas}}.",
     "importAnother": "Editar otro archivo",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
@@ -3043,6 +3073,8 @@
       "invalid_subgroup": "El subgrupo no corresponde al rubro.",
       "invalid_price": "El precio debe ser mayor a cero y tener hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser mayor a cero y tener hasta 2 decimales.",
+      "ambiguous_price": "No se sabe si el punto o la coma del precio separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
+      "ambiguous_min_price": "No se sabe si el punto o la coma del precio mínimo separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
       "min_price_above_price": "El precio mínimo no puede superar el precio de venta.",
       "alternative_repeated": "La alternativa económica y la premium no pueden ser el mismo producto.",
       "economy_alternative_self": "La alternativa económica no puede ser el mismo producto.",
@@ -3267,12 +3299,14 @@
         "INTERNAL": "No pudimos exportar los precios. Intentá de nuevo."
       }
     },
-    "summary": "Filas válidas: {valid}. Filas con errores: {invalid}.",
+    "summary": "Filas con cambios: {changed}. Sin cambios: {unchanged}. Con errores: {invalid}.",
     "confirm": "Confirmar actualización",
     "confirming": "Actualizando…",
     "fixErrors": "No hay filas válidas para actualizar. Corregí las filas marcadas y volvé a cargar el archivo.",
+    "noChanges": "No hay nada para actualizar: los precios del archivo son los vigentes en esta sucursal.",
     "invalidRowsSkipped": "Al confirmar se omitirán {count, plural, one {# fila con errores} other {# filas con errores}}.",
     "valid": "Lista para actualizar",
+    "unchanged": "Sin cambios",
     "success": "Se actualizaron {count, plural, one {# producto} other {# productos}}.",
     "errors": {
       "INVALID_BODY": "Seleccioná un archivo válido con el formato indicado.",
@@ -3285,6 +3319,8 @@
       "unknown_product": "El producto no existe, está inactivo o no está disponible en la sucursal.",
       "invalid_price": "El precio debe ser numérico y mayor a cero, con hasta 2 decimales.",
       "invalid_min_price": "El precio mínimo debe ser numérico y mayor a cero, con hasta 2 decimales.",
+      "ambiguous_price": "No se sabe si el punto o la coma del precio separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
+      "ambiguous_min_price": "No se sabe si el punto o la coma del precio mínimo separa miles o decimales. Escribilo sin separador de miles, por ejemplo 1500 o 1500,50.",
       "min_price_above_price": "El precio mínimo no puede superar el precio de venta."
     },
     "table": {
@@ -3584,7 +3620,7 @@
         },
         "pending": {
           "title": "La nota de crédito se está emitiendo",
-          "body": "ARCA aún no confirmó la factura. Consultá en unos minutos."
+          "body": "ARCA aún no confirmó la nota de crédito. Consultá en unos minutos."
         },
         "rejected": {
           "title": "ARCA rechazó la nota de crédito",
@@ -3644,7 +3680,7 @@
       "branch": "Sucursal",
       "creditNoteType": "NC {type}",
       "credits": "Anula {type} {number}",
-      "notReady": "ARCA aún no confirmó la factura."
+      "notReady": "ARCA aún no confirmó el comprobante. Consultá en unos minutos."
     },
     "views": {
       "label": "Vista de administración",

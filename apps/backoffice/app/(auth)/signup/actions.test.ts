@@ -85,6 +85,25 @@ describe('signup', () => {
    * pointer to "" passes validation and lands in the column. So a field the caller left blank
    * has to be absent from the body, not empty in it.
    */
+  // Closed signup refuses a registration without the token from the team's link.
+  it('sends the invite the page was opened with', async () => {
+    jar();
+    vi.mocked(apiRequest).mockResolvedValue({ tokens: TOKENS });
+
+    await signup(VALUES, 'raw-token');
+
+    expect(bodySent().invite_token).toBe('raw-token');
+  });
+
+  it('sends no invite when the page was opened without one', async () => {
+    jar();
+    vi.mocked(apiRequest).mockResolvedValue({ tokens: TOKENS });
+
+    await signup(VALUES);
+
+    expect(bodySent().invite_token).toBeUndefined();
+  });
+
   it('omits a blank optional field rather than sending an empty string', async () => {
     jar();
     vi.mocked(apiRequest).mockResolvedValue({ tokens: TOKENS });

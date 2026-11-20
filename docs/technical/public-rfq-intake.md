@@ -2,22 +2,44 @@
 
 ## Supplier routing
 
-The customer portal opens at the supplier's registered hostname, such as
-https://supplier.coti.com.ar/. Migration 00051 adds nullable, unique account.public_hostname.
-Provision DNS and TLS separately, preserve Host at the ingress, and set the account hostname
-through Account settings or the optional onboarding step when self-service provisioning is enabled.
-Inherited hostnames outside that base remain visible and are managed administratively.
+Every supplier's portal lives under one shared origin, at `<origin>/c/<label>`, for example
+https://portal.coti.com.ar/c/corralon-san-martin. The label lives inside the unique
+`account.public_hostname` as `<label>.<base-host>`, an internal routing identifier that needs no DNS
+record. The API builds it from CUSTOMER_PORTAL_BASE_URL; the webapp resolves the same identifier
+from the path's label and WEB_PORTAL_BASE_URL, so the two must name the same origin.
+
+**The supplier comes from the path, never from the Host header.** The proxy (`lib/portal/proxy.ts`)
+rewrites `/c/<label>/…` to the route and sets `x-coti-portal-slug`, replacing any value a caller sent.
+Host cannot be trusted for this: when a server action redirects (sign-in, sign-up, sign-out), Next
+re-renders the target through an internal request to its own origin, which carries the server's
+host rather than the customer's.
+
+**Every account has a portal from the day it registers.** Registration derives a default label from
+the account name — lowercased, accents folded (`ñ` → `n`, `á` → `a`), anything else a hyphen,
+capped at 63 characters — and takes `-2`, `-3`… on a collision. A name that leaves nothing usable or
+only a reserved word becomes `corralon-<first 6 characters of the account id>`. The onboarding
+«portal» step and Account settings show that label prefilled and still editable. Accounts created
+before this, or holding the bare base host, get theirs from `cmd/portal-backfill` (see
+deployment.md).
+
+**Nothing outside `/c/<label>` serves a page.** The portal root and every other path answer a 307 to
+WEB_LANDING_URL, never a not-found page. The exceptions are the entry points that carry their own
+supplier: `/quotes/<token>` (delivery links already sent, which resolve the supplier by token and
+redirect into its portal), the webapp's own `/api/*` routes (the shared Google callback restores the
+label from its state), and Next's assets, icons, robots and manifest, which the proxy never sees. An
+unknown but well-formed `/c/<label>` reaches the branded not-found page; a malformed one is a bare 404.
+
+Links the API sends all point inside a portal: quotation links `/c/<label>/quotes/<token>`, signup
+`/c/<label>/signup`, contact verification `/c/<label>/verify-contact?challenge=…&token=…`, the
+registration link `/c/<label>/login?next=/profile`, and the Google callback
+`<origin>/api/customer/google/callback`. The backoffice's RFQ detail still shows the legacy
+`<WEB_WEBAPP_URL>/quotes/<token>` form, which the exception above keeps working.
 
 Unknown or inactive suppliers return 404. Customer login remains available when there are no
 active intake branches. The new-request page resolves active branches and WEBAPP destinations
 through GET /v1/public/rfq-sites/{hostname}. Migration 00050 and branch creation provision
-WEBAPP channels. Every supplier is resolved from the request Host. For local development, register
-`account.public_hostname` as `sanmartin.localhost` and open
-`http://sanmartin.localhost:3001/login`. Each supplier uses its own hostname and host-only cookies.
-Bare localhost and unknown supplier subdomains return 404. No hosts-file entry or paid domain is
-needed for these local URLs. `WEB_PUBLIC_SITE_HOSTNAME` is an optional single-supplier override
-only for bare loopback requests during development; it never overrides a supplier subdomain or a
-production request. Leave it empty for local subdomain testing.
+WEBAPP channels. Locally the shared origin is http://localhost:3001 and a supplier whose hostname is
+`sanmartin.localhost` opens at `http://localhost:3001/c/sanmartin/login`.
 
 ## Customer credentials and sessions
 

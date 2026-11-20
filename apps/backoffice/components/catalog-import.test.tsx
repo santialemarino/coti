@@ -16,6 +16,9 @@ const preview: CatalogImportPreview = {
   branchId: 'branch',
   validRows: 3,
   invalidRows: 0,
+  createRows: 3,
+  updateRows: 0,
+  unchangedRows: 0,
   canConfirm: true,
   previewedAt: '2026-11-09T00:00:00Z',
   rows: ['First product', 'Second product', 'Last product'].map((name, index) => ({
@@ -59,11 +62,64 @@ it('confirms every row even when some have not been revealed', async () => {
     ok: true,
     createdRows: 3,
     updatedRows: 0,
+    unchangedRows: 0,
     skippedRows: 0,
   });
   const view = review();
   fireEvent.click(view.getByRole('button', { name: 'Aplicar 3 cambios' }));
   await waitFor(() => expect(confirmCatalogImport).toHaveBeenCalledWith(preview));
+});
+
+it('counts only the rows that change something and lists the unchanged ones last', () => {
+  const [first, second, last] = preview.rows;
+  if (!first || !second || !last) throw new Error('fixture has three rows');
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <CatalogReview
+        preview={{
+          ...preview,
+          createRows: 0,
+          updateRows: 1,
+          unchangedRows: 2,
+          rows: [
+            { ...first, action: 'UNCHANGED' },
+            { ...second, action: 'UNCHANGED' },
+            { ...last, action: 'UPDATE' },
+          ],
+        }}
+        onBack={() => {}}
+        onConfirmed={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByRole('button', { name: 'Aplicar 1 cambio' })).toBeTruthy();
+  // The page shows two rows: the one change first, then the first unchanged one.
+  const [changed, unchanged] = view.getAllByRole('row').slice(1);
+  expect(changed?.textContent).toContain('Last product');
+  expect(changed?.textContent).toContain(messages.catalogImport.action.UPDATE);
+  expect(unchanged?.textContent).toContain('First product');
+  expect(unchanged?.textContent).toContain(messages.catalogImport.action.UNCHANGED);
+  expect(view.queryByText('Second product')).toBeNull();
+});
+
+it('says there is nothing to apply when every valid row matches the catalog', () => {
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <CatalogReview
+        preview={{
+          ...preview,
+          createRows: 0,
+          unchangedRows: 3,
+          canConfirm: false,
+          rows: preview.rows.map((row) => ({ ...row, action: 'UNCHANGED' as const })),
+        }}
+        onBack={() => {}}
+        onConfirmed={() => {}}
+      />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByText(messages.catalogImport.noChanges)).toBeTruthy();
+  expect(view.queryByRole('button', { name: /Aplicar/ })).toBeNull();
 });
 
 it('lists rows with errors before the valid ones', () => {
@@ -77,6 +133,7 @@ it('lists rows with errors before the valid ones', () => {
           ...preview,
           validRows: 2,
           invalidRows: 1,
+          createRows: 2,
           rows: [first, second, failing],
         }}
         onBack={() => {}}
@@ -124,7 +181,7 @@ it('reveals every row at once on request', () => {
   const view = render(
     <NextIntlClientProvider locale="es" messages={messages}>
       <CatalogReview
-        preview={{ ...preview, validRows: 6, rows }}
+        preview={{ ...preview, validRows: 6, createRows: 6, rows }}
         onBack={() => {}}
         onConfirmed={() => {}}
       />

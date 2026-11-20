@@ -2,15 +2,16 @@ import { getTranslations } from 'next-intl/server';
 
 import { LandingBenefits } from '@/app/(public)/_components/landing-benefits';
 import { LandingChanges } from '@/app/(public)/_components/landing-changes';
-import { LandingCta } from '@/app/(public)/_components/landing-cta';
 import { LandingFaq } from '@/app/(public)/_components/landing-faq';
 import { LandingFeatures } from '@/app/(public)/_components/landing-features';
 import { LandingFit } from '@/app/(public)/_components/landing-fit';
 import { LandingHero } from '@/app/(public)/_components/landing-hero';
+import { LandingPricing } from '@/app/(public)/_components/landing-pricing';
 import { LandingSteps } from '@/app/(public)/_components/landing-steps';
 import { LandingTrust } from '@/app/(public)/_components/landing-trust';
 import { ROUTES } from '@/config/routes';
 import { isAuthenticated } from '@/lib/auth/session';
+import { SIGNUP_ENABLED } from '@/lib/config';
 import { generatePublicPageMetadata } from '@/lib/utils/page';
 import { siteOrigin } from '@/lib/utils/site-origin';
 
@@ -45,7 +46,7 @@ export default async function LandingPage() {
           __html: JSON.stringify(structuredData).replace(/</g, '\\u003c'),
         }}
       />
-      <LandingHero signedIn={signedIn} />
+      <LandingHero signedIn={signedIn} signupEnabled={SIGNUP_ENABLED} />
       <LandingFit />
       <LandingBenefits />
       <LandingSteps />
@@ -53,7 +54,7 @@ export default async function LandingPage() {
       <LandingFeatures />
       <LandingTrust />
       <LandingFaq />
-      {signedIn ? null : <LandingCta />}
+      <LandingPricing signedIn={signedIn} signupEnabled={SIGNUP_ENABLED} />
     </>
   );
 }

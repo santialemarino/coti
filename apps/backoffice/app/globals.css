@@ -13,3 +13,13 @@
     --toast-lift: 4rem;
   }
 }
+
+/*
+ * The landing's own links glide to their section; scoped to the page that has them, so no other
+ * page inherits a scroll-behavior, and only for those who have not asked for less motion.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(#probar) {
+    scroll-behavior: smooth;
+  }
+}

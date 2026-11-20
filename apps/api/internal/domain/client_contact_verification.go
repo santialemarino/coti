@@ -67,6 +67,8 @@ type ContactMessage struct {
 	To        string
 	Body      string
 	Code      string
+	// Link is the URL an email carries as its button, blank when the message has none.
+	Link string
 	// InReplyTo is the RFC 5322 Message-ID an email reply threads under, blank otherwise.
 	InReplyTo string
 }

@@ -116,7 +116,7 @@ export async function getMergeCandidates(clientId: string): Promise<Client[]> {
 }
 
 // Merges sourceId into clientId, which survives with both profiles' orders and contacts.
-export async function mergeClient(clientId: string, sourceId: string): Promise<void> {
+export async function mergeClient(clientId: string, sourceId: string): Promise<string> {
   const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/merge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -124,4 +124,6 @@ export async function mergeClient(clientId: string, sourceId: string): Promise<v
     cache: 'no-store',
   });
   if (!response.ok) await throwApiError(response);
+  const raw = (await response.json()) as { survivor_client_id: string };
+  return raw.survivor_client_id;
 }

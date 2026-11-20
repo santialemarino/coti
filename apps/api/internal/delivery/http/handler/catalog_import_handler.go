@@ -93,10 +93,10 @@ func (h *CatalogImportHandler) Preview(c *gin.Context) {
 	c.JSON(http.StatusOK, toCatalogImportPreviewResponse(preview))
 }
 
-// Confirm revalidates the reviewed rows and applies every valid catalog change.
+// Confirm revalidates the reviewed rows and applies every valid row that changes the catalog.
 //
 //	@Summary		Confirm bulk catalog changes
-//	@Description	Revalidates all rows, skips invalid ones, and atomically upserts products, availability, and changed prices.
+//	@Description	Revalidates all rows, skips invalid ones and those matching the catalog, and atomically upserts products, availability, and changed prices.
 //	@Tags			catalog
 //	@Accept			json
 //	@Produce		json
@@ -135,7 +135,8 @@ func (h *CatalogImportHandler) Confirm(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, dto.ConfirmCatalogImportResponse{
-		CreatedRows: result.CreatedRows, UpdatedRows: result.UpdatedRows, SkippedRows: result.SkippedRows,
+		CreatedRows: result.CreatedRows, UpdatedRows: result.UpdatedRows,
+		UnchangedRows: result.UnchangedRows, SkippedRows: result.SkippedRows,
 	})
 }
 
@@ -183,6 +184,8 @@ func toCatalogImportPreviewResponse(preview *domain.CatalogImportPreview) dto.Ca
 	}
 	return dto.CatalogImportPreviewResponse{
 		Rows: rows, ValidRows: preview.ValidRows, InvalidRows: preview.InvalidRows,
-		CanConfirm: preview.CanConfirm, PreviewedAt: preview.PreviewedAt,
+		CreateRows: preview.CreateRows, UpdateRows: preview.UpdateRows,
+		UnchangedRows: preview.UnchangedRows, CanConfirm: preview.CanConfirm,
+		PreviewedAt: preview.PreviewedAt,
 	}
 }

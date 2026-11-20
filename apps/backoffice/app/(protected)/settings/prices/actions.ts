@@ -12,6 +12,7 @@ interface ProductPriceImportRowRaw {
   price: string;
   min_price: string | null;
   currency: string;
+  unchanged: boolean;
   errors: string[] | null;
 }
 
@@ -19,6 +20,7 @@ interface ProductPriceImportPreviewRaw {
   rows: ProductPriceImportRowRaw[];
   valid_rows: number;
   invalid_rows: number;
+  unchanged_rows: number;
   can_confirm: boolean;
   previewed_at: string;
 }
@@ -36,6 +38,8 @@ export interface ProductPriceImportRow {
   price: string;
   minPrice: string | null;
   currency: string;
+  // The row asks for the price and floor already in force, so confirming leaves it alone.
+  unchanged: boolean;
   errors: string[];
 }
 
@@ -44,6 +48,7 @@ export interface ProductPriceImportPreview {
   rows: ProductPriceImportRow[];
   validRows: number;
   invalidRows: number;
+  unchangedRows: number;
   canConfirm: boolean;
   previewedAt: string;
 }
@@ -70,6 +75,7 @@ function mapProductPriceImportRow(raw: ProductPriceImportRowRaw): ProductPriceIm
     price: raw.price,
     minPrice: raw.min_price,
     currency: raw.currency,
+    unchanged: raw.unchanged,
     errors: raw.errors ?? [],
   };
 }
@@ -104,6 +110,7 @@ export async function previewPriceImport(
         rows: raw.rows.map(mapProductPriceImportRow),
         validRows: raw.valid_rows,
         invalidRows: raw.invalid_rows,
+        unchangedRows: raw.unchanged_rows,
         canConfirm: raw.can_confirm,
         previewedAt: raw.previewed_at,
       },
@@ -136,11 +143,13 @@ export async function confirmPriceImport(
       method: 'POST',
       branchId: preview.branchId,
       body: {
-        rows: preview.rows.map((row) => ({
-          code: row.code,
-          price: row.price,
-          min_price: row.minPrice,
-        })),
+        rows: preview.rows
+          .filter((row) => !row.unchanged)
+          .map((row) => ({
+            code: row.code,
+            price: row.price,
+            min_price: row.minPrice,
+          })),
       },
     });
     return { ok: true, importedRows: raw.imported_rows };

@@ -65,9 +65,11 @@ const (
 	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
 	CodeQuoteNotSendable   ErrorCode = "QUOTE_NOT_SENDABLE"
 	// CodeQuoteNotSent refuses a customer answering a quote that is not out for an answer.
-	CodeQuoteNotSent               ErrorCode = "QUOTE_NOT_SENT"
-	CodeQuoteSendExpired           ErrorCode = "QUOTE_SEND_EXPIRED"
-	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
+	CodeQuoteNotSent     ErrorCode = "QUOTE_NOT_SENT"
+	CodeQuoteSendExpired ErrorCode = "QUOTE_SEND_EXPIRED"
+	CodeDeliveryChannel  ErrorCode = "DELIVERY_CHANNEL"
+	// CodeChannelAlreadyUsed refuses «otro medio» through a medium this send cycle already reached.
+	CodeChannelAlreadyUsed         ErrorCode = "CHANNEL_ALREADY_USED"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
 	// CodeQuoteItemsUnresolved refuses sending a quote with a line that has no confirmed,
@@ -127,6 +129,12 @@ const (
 	CodePortalNotConfigured ErrorCode = "PORTAL_NOT_CONFIGURED"
 	// WhatsApp takes free text only within 24 hours of the customer's last message.
 	CodeWhatsAppWindowClosed ErrorCode = "WHATSAPP_WINDOW_CLOSED"
+	// Public sign-up is closed and the registration carried no invite.
+	CodeSignupClosed ErrorCode = "SIGNUP_CLOSED"
+	// A presented sign-up invite that matches none, was already used, or has expired.
+	CodeSignupInviteInvalid ErrorCode = "SIGNUP_INVITE_INVALID"
+	CodeSignupInviteUsed    ErrorCode = "SIGNUP_INVITE_USED"
+	CodeSignupInviteExpired ErrorCode = "SIGNUP_INVITE_EXPIRED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

@@ -1,11 +1,8 @@
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
 
-import { InlineLink } from '@repo/ui/components';
 import { PublicRfqSiteForm } from '@/app/_components/public-rfq-site-form';
 import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
-import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
@@ -21,7 +18,6 @@ export default async function NewRequestPage() {
   const site = await getPublicRfqSite(await getCustomerHostname());
   const profile = await getCustomerProfile();
   if (!site) notFound();
-  const t = await getTranslations('customerOrders');
   return (
     <>
       <CustomerHeader
@@ -29,11 +25,6 @@ export default async function NewRequestPage() {
         supplierName={portal.supplierName}
         logoUrl={portal.logoUrl}
       />
-      <nav className="mx-auto w-full max-w-xl px-4 pt-6 sm:px-6">
-        <InlineLink asChild>
-          <Link href={ROUTES.orders}>{t('back')}</Link>
-        </InlineLink>
-      </nav>
       <PublicRfqSiteForm
         site={site}
         taxId={session.taxId}

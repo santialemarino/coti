@@ -502,8 +502,8 @@ function AuthorizationFacts({ voucher }: { voucher: Invoice }) {
             <CopyButton
               value={voucher.cae}
               size="icon-xs"
-              title={t('caeCopy')}
-              className="-my-1 [&>span:nth-child(2)]:sr-only"
+              iconOnly
+              className="-my-1"
               labels={{ copy: t('caeCopy'), copied: t('caeCopied') }}
               onCopyError={() => toast.error(t('caeCopyFailed'))}
             />

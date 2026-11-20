@@ -78,6 +78,7 @@ type Config struct {
 	Server          ServerConfig
 	Database        DatabaseConfig
 	Auth            AuthConfig
+	Signup          SignupConfig
 	CustomerAuth    CustomerAuthConfig
 	CustomerPortal  CustomerPortalConfig
 	Mail            MailConfig
@@ -314,6 +315,13 @@ type AuthConfig struct {
 	RequireVerifiedEmail bool
 	VerificationTTL      time.Duration
 	InviteTTL            time.Duration
+}
+
+// SignupConfig holds who may register a corralón. Closed, a registration needs a single-use invite the
+// team mints with cmd/invite.
+type SignupConfig struct {
+	Enabled   bool
+	InviteTTL time.Duration
 }
 
 // MailConfig holds the outbound-mail transport settings. One account per environment: the SMTP
@@ -872,6 +880,10 @@ func Load() (*Config, error) {
 			VerificationTTL:      getDuration("AUTH_EMAIL_VERIFICATION_TTL_HOURS", 48*time.Hour, &problems),
 			InviteTTL:            getDuration("AUTH_INVITE_TTL_HOURS", 7*24*time.Hour, &problems),
 		},
+		Signup: SignupConfig{
+			Enabled:   getBool("SIGNUP_ENABLED", true, &problems),
+			InviteTTL: getDuration("SIGNUP_INVITE_TTL_DAYS", 14*24*time.Hour, &problems),
+		},
 		Mail: MailConfig{
 			Provider:     MailProvider(getString("MAIL_PROVIDER", string(MailProviderConsole))),
 			FromAddress:  getString("MAIL_FROM_ADDRESS", ""),
@@ -1114,6 +1126,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.Auth.InviteTTL <= 0 {
 		problems = append(problems, "AUTH_INVITE_TTL_HOURS must be greater than zero")
+	}
+	if cfg.Signup.InviteTTL <= 0 {
+		problems = append(problems, "SIGNUP_INVITE_TTL_DAYS must be greater than zero")
 	}
 	// Demanding a confirmed address while the only transport writes to a log would lock
 	// every user out of an environment nobody can receive mail in.

@@ -139,23 +139,24 @@ requires Google OAuth credentials and an encryption key; see [Gmail intake](docs
 
 ## Common scripts
 
-| Command                           | What it does                                  |
-| --------------------------------- | --------------------------------------------- |
-| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo)   |
-| `pnpm build`                      | Build all apps and packages                   |
-| `pnpm lint`                       | Lint all workspaces                           |
-| `pnpm check`                      | Type-check the API and web apps               |
-| `pnpm dev:docker`                 | Bring up the full stack via docker-compose    |
-| `pnpm db:migrate`                 | Apply Go (goose) migrations                   |
-| `pnpm db:create-migration <name>` | Scaffold a new migration                      |
-| `pnpm db:vector-index`            | Build the catalog's vector index              |
-| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers     |
-| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely       |
-| `pnpm test:rfq:response`          | Print one representative RFQ JSON response    |
-| `pnpm eval:rfq`                   | Evaluate live RFQs through the WhatsApp mock  |
-| `pnpm debug:rfq`                  | Trace the complete live RFQ suite             |
-| `pnpm debug:rfq:case`             | Trace one live RFQ case stage by stage        |
-| `pnpm serve:rfq`                  | Serve the interactive RFQ QA Lab on port 4173 |
+| Command                           | What it does                                   |
+| --------------------------------- | ---------------------------------------------- |
+| `pnpm dev`                        | Build `@repo/ui`, then run all apps (Turbo)    |
+| `pnpm build`                      | Build all apps and packages                    |
+| `pnpm lint`                       | Lint all workspaces                            |
+| `pnpm check`                      | Type-check the API and web apps                |
+| `pnpm dev:docker`                 | Bring up the full stack via docker-compose     |
+| `pnpm db:migrate`                 | Apply Go (goose) migrations                    |
+| `pnpm db:create-migration <name>` | Scaffold a new migration                       |
+| `pnpm db:vector-index`            | Build the catalog's vector index               |
+| `pnpm signup:invite`              | Print a single-use link to register a corralón |
+| `pnpm docs:api`                   | Regenerate the OpenAPI spec from handlers      |
+| `pnpm test:rfq`                   | Run the RFQ engine unit suite verbosely        |
+| `pnpm test:rfq:response`          | Print one representative RFQ JSON response     |
+| `pnpm eval:rfq`                   | Evaluate live RFQs through the WhatsApp mock   |
+| `pnpm debug:rfq`                  | Trace the complete live RFQ suite              |
+| `pnpm debug:rfq:case`             | Trace one live RFQ case stage by stage         |
+| `pnpm serve:rfq`                  | Serve the interactive RFQ QA Lab on port 4173  |
 
 ### RFQ engine tests
 
@@ -317,7 +318,12 @@ Coti's landing, privacy policy and terms live in the backoffice's `(public)` rou
 primary domain: `/` is the landing for everyone, and a seller's home is the queue at `/inbox`.
 An unknown path answers 404 for anyone.
 
-See [docs/technical/public-site.md](docs/technical/public-site.md).
+Public signup follows `SIGNUP_ENABLED` (API and backoffice). Production keeps it off and the team
+onboards each corralón with a single-use invite: `pnpm signup:invite --note "<corralón>"` locally, or
+`/api/bin/invite --note "<corralón>"` from a console on the deployed api component, prints the
+`/signup?invite=…` link to hand over. See
+[docs/technical/accounts-and-branches.md](docs/technical/accounts-and-branches.md#closed-signup-and-invites)
+and [docs/technical/public-site.md](docs/technical/public-site.md).
 
 ## Deployment
 

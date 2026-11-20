@@ -290,17 +290,32 @@ account-level products and branch-scoped availability and prices:
 2. `POST /v1/products/import/preview` accepts `.xlsx` or `.csv`, validates every row, and
    writes nothing. The required columns are `codigo`, `nombre`, `unidad`, `familia`, and
    `activo`, and a `precio` for every new code. An existing product without a branch price may keep
-   that cell empty while its catalog attributes are edited.
-3. `POST /v1/products/import/confirm` revalidates the reviewed rows and atomically upserts each valid
-   account-level product and its selected-branch availability. An existing code updates the product;
-   a new code creates it. A changed price closes the current validity period and creates a new one,
-   while an unchanged price creates no duplicate history row. Invalid rows are skipped.
+   that cell empty while its catalog attributes are edited. Each valid row is classified `CREATE`
+   (new code), `UPDATE` or `UNCHANGED`, and the preview counts each (`create_rows`, `update_rows`,
+   `unchanged_rows`); it can be confirmed only when at least one row creates or updates something.
+3. `POST /v1/products/import/confirm` revalidates the reviewed rows and, in one transaction, writes
+   only the `CREATE` and `UPDATE` ones: the account-level product and its selected-branch
+   availability, plus a new price period when the price or floor changed. `UNCHANGED` rows and
+   invalid rows are counted and skipped, so a confirm in which nothing changed writes nothing.
+
+**What counts as a change.** All the codes of a file are compared in one query against the product,
+its availability and price in force at the selected branch, and its recommendation slots. A row is
+`UNCHANGED` when every column it carries matches: text compared after trimming (a case or accent
+change is a change), a blank `descripcion` equal to none, `familia` and `subgrupo` by the id they
+resolve to, money by value (`1500` equals `1500.00`), a blank `precio` on an existing product as
+"keep the price in force", and `activo` against both the product and its availability at the branch
+— so a product the branch does not carry, or carries as inactive while the account has it active,
+is an `UPDATE`. A slot cell naming what the slot already holds, or a clear word on an empty slot, is
+a keep. Downloading the workbook and uploading it untouched therefore reports zero changes.
 
 `descripcion`, `subgrupo`, and `precio_minimo` are optional. `activo` accepts `SI` or `NO`; `NO`
 soft-deactivates the account product and its availability in the selected branch. The service
 validates that a provided subgroup belongs to the selected family. Prices use ARS and remain decimal
 strings throughout the HTTP contract; currency and price conditions are not spreadsheet
-columns. Every route requires an administrator and an active `X-Branch-Id`; the account
+columns. A price typed as text with only thousands groups and one kind of separator (`1.500`,
+`1,500`, `1.500.000`) is refused as `ambiguous_price` / `ambiguous_min_price`: it reads as
+fifteen hundred to an Argentine supplier and as one and a half where the dot is decimal, so the
+row asks for the amount without a thousands separator instead of guessing. Every route requires an administrator and an active `X-Branch-Id`; the account
 always comes from the authenticated tenant.
 
 `alternativa_economica` and `alternativa_premium` are optional and fill the product's `ECONOMY` and

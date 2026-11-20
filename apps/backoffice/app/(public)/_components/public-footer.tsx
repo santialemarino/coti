@@ -15,6 +15,7 @@ export async function PublicFooter() {
         { href: ROUTES.landingSection('steps'), label: 'steps' },
         { href: ROUTES.landingSection('features'), label: 'features' },
         { href: ROUTES.landingSection('faq'), label: 'faq' },
+        { href: ROUTES.landingSection('probar'), label: 'pricing' },
       ],
     },
     {

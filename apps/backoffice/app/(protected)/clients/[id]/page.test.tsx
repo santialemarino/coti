@@ -173,8 +173,8 @@ describe('ClientProfilePage seller actions', () => {
     expect(view.getByTestId('merge-dialog')).toBeTruthy();
   });
 
-  // A registered profile's name and identity are its customer's.
-  it('offers neither on a registered profile', async () => {
+  // A registered profile's name is its customer's; a seller can still merge another profile into it.
+  it('locks the name of a registered profile but still offers merging into it', async () => {
     vi.mocked(getClient).mockResolvedValue({
       client: { id: 'c1', name: 'Obra Norte', phone: null, email: null, taxId: '20123456786' },
       registered: true,
@@ -185,7 +185,7 @@ describe('ClientProfilePage seller actions', () => {
     const view = await renderPage();
 
     expect(view.getByTestId('name-editor').dataset.registered).toBe('true');
-    expect(view.queryByTestId('merge-dialog')).toBeNull();
+    expect(view.getByTestId('merge-dialog')).toBeTruthy();
   });
 
   // A CUIT a seller recorded is not an account: the profile stays the seller's to tidy.
