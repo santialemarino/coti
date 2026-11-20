@@ -315,7 +315,7 @@ func TestSellerMerge_IntoCustomerAccountHoldsThePortal(t *testing.T) {
 		t.Helper()
 		var found bool
 		if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
-			orders, err := repository.NewCustomerOrderRepository().List(ctx, q, m.account, customer, 50, 0)
+			orders, err := repository.NewCustomerOrderRepository().List(ctx, q, m.account, customer, 50, 0, domain.ARCAEnvironmentHomologation)
 			for _, o := range orders {
 				found = found || o.ID == order
 			}

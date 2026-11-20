@@ -65,7 +65,7 @@ func TestSellerMerge_HoldCoversLaterOrdersAndContacts(t *testing.T) {
 	portal := func() (visible bool, listed bool) {
 		t.Helper()
 		if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
-			orders, err := repository.NewCustomerOrderRepository().List(ctx, q, m.account, customer, 50, 0)
+			orders, err := repository.NewCustomerOrderRepository().List(ctx, q, m.account, customer, 50, 0, domain.ARCAEnvironmentHomologation)
 			if err != nil {
 				return err
 			}
