@@ -14,7 +14,7 @@ var priceExportHeaders = []string{
 var priceExportInstructions = []string{
 	"Editá los valores de la hoja Precios y volvé a importar este archivo.",
 	"Las columnas codigo y precio son obligatorias.",
-	"El precio y el precio mínimo deben ser mayores a cero y admitir hasta 2 decimales.",
+	"El precio y el precio mínimo deben ser mayores a cero, con hasta 2 decimales y sin separador de miles (1500 o 1500,50).",
 	"El precio mínimo no puede superar el precio de venta.",
 	"La columna producto es informativa. La importación identifica cada producto por codigo.",
 	"Eliminá del archivo las filas que no quieras actualizar.",

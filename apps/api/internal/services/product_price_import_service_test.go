@@ -129,14 +129,14 @@ func TestProductPriceImportService_Confirm_AppliesReviewedRows(t *testing.T) {
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	minPrice := "9.500,00"
 
-	count, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{{
+	result, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{{
 		Code: "CEM-001", Price: "$ 10.000,00", MinPrice: &minPrice,
 	}})
 	if err != nil {
 		t.Fatalf("Confirm() = %v, want no error", err)
 	}
-	if count != 1 || len(repo.applied) != 1 {
-		t.Fatalf("count = %d, applied = %d; want 1, 1", count, len(repo.applied))
+	if result.ImportedRows != 1 || len(repo.applied) != 1 {
+		t.Fatalf("imported = %d, applied = %d; want 1, 1", result.ImportedRows, len(repo.applied))
 	}
 	if repo.applied[0].Price != "10000.00" || *repo.applied[0].MinPrice != "9500.00" {
 		t.Errorf("applied = %#v, want normalized decimal strings", repo.applied[0])
@@ -155,7 +155,7 @@ func TestProductPriceImportService_Confirm_RevalidatesAndSkipsInvalidRowsInOneTr
 	service := NewProductPriceImportService(db, repo, nil)
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 
-	count, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{
+	result, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{
 		{Code: "CEM-001", Price: "10000"},
 		{Code: "DESCONOCIDO", Price: "5000"},
 	})
@@ -165,8 +165,91 @@ func TestProductPriceImportService_Confirm_RevalidatesAndSkipsInvalidRowsInOneTr
 	if db.transactions != 1 {
 		t.Fatalf("transactions = %d, want one for revalidation and writes", db.transactions)
 	}
-	if count != 1 || len(repo.applied) != 1 || repo.applied[0].ProductID != repo.products["CEM-001"].ProductID {
-		t.Fatalf("count = %d, applied = %#v; want only the valid row", count, repo.applied)
+	if result.ImportedRows != 1 || len(repo.applied) != 1 || repo.applied[0].ProductID != repo.products["CEM-001"].ProductID {
+		t.Fatalf("result = %+v, applied = %#v; want only the valid row", result, repo.applied)
+	}
+}
+
+func TestProductPriceImportService_Preview_MarksRowsAskingForThePriceInForce(t *testing.T) {
+	t.Parallel()
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"SAME":       {ProductID: uuid.New(), Code: "SAME", CurrentPrice: ptr("1500.00"), CurrentMinPrice: ptr("1200.00")},
+		"NEW-PRICE":  {ProductID: uuid.New(), Code: "NEW-PRICE", CurrentPrice: ptr("1500.00")},
+		"NEW-FLOOR":  {ProductID: uuid.New(), Code: "NEW-FLOOR", CurrentPrice: ptr("1500.00"), CurrentMinPrice: ptr("1200.00")},
+		"DROP-FLOOR": {ProductID: uuid.New(), Code: "DROP-FLOOR", CurrentPrice: ptr("1500.00"), CurrentMinPrice: ptr("1200.00")},
+		"FIRST":      {ProductID: uuid.New(), Code: "FIRST"},
+	}}
+	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+	csvFile := "codigo;precio;precio_minimo\n" +
+		"SAME;1500;1200,00\n" +
+		"NEW-PRICE;1500.01;\n" +
+		"NEW-FLOOR;1500;1100\n" +
+		"DROP-FLOOR;1500;\n" +
+		"FIRST;1500;\n"
+
+	preview, err := service.Preview(context.Background(), tenant, strings.NewReader(csvFile))
+	if err != nil {
+		t.Fatalf("Preview() = %v", err)
+	}
+	want := []bool{true, false, false, false, false}
+	for i, row := range preview.Rows {
+		if len(row.Errors) != 0 || row.Unchanged != want[i] {
+			t.Errorf("row %s: unchanged = %v, errors = %v; want unchanged %v", row.Code, row.Unchanged, row.Errors, want[i])
+		}
+	}
+	if preview.ValidRows != 5 || preview.UnchangedRows != 1 || !preview.CanConfirm {
+		t.Fatalf("valid, unchanged, can confirm = %d, %d, %v; want 5, 1, true",
+			preview.ValidRows, preview.UnchangedRows, preview.CanConfirm)
+	}
+}
+
+func TestProductPriceImportService_Confirm_WritesNoPeriodForAnUnchangedPrice(t *testing.T) {
+	t.Parallel()
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"SAME":  {ProductID: uuid.New(), Code: "SAME", CurrentPrice: ptr("1500.00")},
+		"OTHER": {ProductID: uuid.New(), Code: "OTHER", CurrentPrice: ptr("800.00")},
+	}}
+	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+
+	result, err := service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{
+		{Code: "SAME", Price: "1500"}, {Code: "OTHER", Price: "800,00"},
+	})
+	if err != nil {
+		t.Fatalf("Confirm() = %v, want an import with nothing to change accepted", err)
+	}
+	if result.ImportedRows != 0 || result.UnchangedRows != 2 || repo.applied != nil {
+		t.Fatalf("result = %+v, applied = %#v; want nothing written", result, repo.applied)
+	}
+
+	result, err = service.Confirm(context.Background(), tenant, []domain.ProductPriceImportInput{
+		{Code: "SAME", Price: "1500"}, {Code: "OTHER", Price: "850"},
+	})
+	if err != nil {
+		t.Fatalf("Confirm() = %v", err)
+	}
+	if result.ImportedRows != 1 || result.UnchangedRows != 1 || len(repo.applied) != 1 || repo.applied[0].Price != "850" {
+		t.Fatalf("result = %+v, applied = %#v; want only OTHER written", result, repo.applied)
+	}
+}
+
+func TestProductPriceImportService_Preview_RefusesAThousandsGroupedPrice(t *testing.T) {
+	t.Parallel()
+	repo := &priceImportTestRepository{products: map[string]domain.ProductPriceLookup{
+		"CEM-001": {ProductID: uuid.New(), Code: "CEM-001"},
+	}}
+	service := NewProductPriceImportService(priceImportTestDB{}, repo, nil)
+	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
+
+	preview, err := service.Preview(context.Background(), tenant,
+		strings.NewReader("codigo;precio;precio_minimo\nCEM-001;1.500;1,200\n"))
+	if err != nil {
+		t.Fatalf("Preview() = %v", err)
+	}
+	errs := preview.Rows[0].Errors
+	if !containsError(errs, "ambiguous_price") || !containsError(errs, "ambiguous_min_price") {
+		t.Fatalf("errors = %v, want both amounts refused as ambiguous", errs)
 	}
 }
 

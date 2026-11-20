@@ -18,9 +18,8 @@ import (
 type catalogImportRepository interface {
 	ListForExport(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) (*domain.CatalogExport, error)
 	ListTaxonomy(ctx context.Context, q repository.Querier) ([]domain.ProductFamily, error)
-	ListExistingCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]struct{}, error)
+	ListImportState(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, codes []string) (map[string]domain.CatalogProductState, error)
 	ListProductsByCodes(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogProductRef, error)
-	ListRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, codes []string) (map[string]domain.CatalogSlots, error)
 	ApplyImport(ctx context.Context, q repository.Querier, tenant domain.Tenant, effectiveAt time.Time, rows []domain.CatalogImportRow) error
 	ApplyRecommendationSlots(ctx context.Context, q repository.Querier, accountID uuid.UUID, changes []domain.CatalogSlotChange) error
 	DatabaseTime(ctx context.Context, q repository.Querier) (time.Time, error)
@@ -86,7 +85,7 @@ func (s *CatalogImportService) Preview(
 	var preview *domain.CatalogImportPreview
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var prepareErr error
-		preview, prepareErr = s.prepare(ctx, q, tenant.AccountID, rawRows)
+		preview, prepareErr = s.prepare(ctx, q, tenant, rawRows)
 		return prepareErr
 	}); err != nil {
 		return nil, err
@@ -94,7 +93,8 @@ func (s *CatalogImportService) Preview(
 	return preview, nil
 }
 
-// Confirm revalidates the reviewed rows and atomically applies every valid product change.
+// Confirm revalidates the reviewed rows and atomically applies every valid row that changes the
+// catalog; a valid row matching what is stored is counted and left alone.
 func (s *CatalogImportService) Confirm(
 	ctx context.Context, tenant domain.Tenant, inputs []domain.CatalogImportInput,
 ) (*domain.CatalogImportResult, error) {
@@ -123,39 +123,33 @@ func (s *CatalogImportService) Confirm(
 
 	result := &domain.CatalogImportResult{}
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		preview, prepareErr := s.prepare(ctx, q, tenant.AccountID, rawRows)
+		preview, prepareErr := s.prepare(ctx, q, tenant, rawRows)
 		if prepareErr != nil {
 			return prepareErr
 		}
-		validRows := make([]domain.CatalogImportRow, 0, preview.ValidRows)
+		if preview.ValidRows == 0 {
+			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
+		}
+		result.CreatedRows, result.UpdatedRows = preview.CreateRows, preview.UpdateRows
+		result.UnchangedRows, result.SkippedRows = preview.UnchangedRows, preview.InvalidRows
+		changedRows := make([]domain.CatalogImportRow, 0, preview.CreateRows+preview.UpdateRows)
 		for _, row := range preview.Rows {
-			if len(row.Errors) == 0 {
-				validRows = append(validRows, row)
+			if len(row.Errors) == 0 && row.Action != domain.CatalogImportUnchanged {
+				changedRows = append(changedRows, row)
 			}
 		}
-		if len(validRows) == 0 {
-			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
+		if len(changedRows) == 0 {
+			return nil
 		}
 		// The database's clock, so the new prices are in force for the very next read.
 		effectiveAt, timeErr := s.catalog.DatabaseTime(ctx, q)
 		if timeErr != nil {
 			return timeErr
 		}
-		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), validRows); applyErr != nil {
+		if applyErr := s.catalog.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), changedRows); applyErr != nil {
 			return applyErr
 		}
-		if slotErr := s.catalog.ApplyRecommendationSlots(ctx, q, tenant.AccountID, catalogSlotChanges(validRows)); slotErr != nil {
-			return slotErr
-		}
-		for _, row := range validRows {
-			if row.Action == "CREATE" {
-				result.CreatedRows++
-			} else {
-				result.UpdatedRows++
-			}
-		}
-		result.SkippedRows = preview.InvalidRows
-		return nil
+		return s.catalog.ApplyRecommendationSlots(ctx, q, tenant.AccountID, catalogSlotChanges(changedRows))
 	})
 	if err != nil {
 		return nil, err
@@ -164,7 +158,7 @@ func (s *CatalogImportService) Confirm(
 }
 
 func (s *CatalogImportService) prepare(
-	ctx context.Context, q repository.Querier, accountID uuid.UUID, rawRows []catalogImportRawRow,
+	ctx context.Context, q repository.Querier, tenant domain.Tenant, rawRows []catalogImportRawRow,
 ) (*domain.CatalogImportPreview, error) {
 	codes := make([]string, 0, len(rawRows))
 	seen := make(map[string]int, len(rawRows))
@@ -175,7 +169,7 @@ func (s *CatalogImportService) prepare(
 			seen[code]++
 		}
 	}
-	existing, err := s.catalog.ListExistingCodes(ctx, q, accountID, codes)
+	states, err := s.catalog.ListImportState(ctx, q, tenant.AccountID, tenant.BranchID, codes)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +183,7 @@ func (s *CatalogImportService) prepare(
 	}
 	alternativeCodes := make([]string, 0)
 	for _, raw := range rawRows {
-		preview.Rows = append(preview.Rows, prepareCatalogImportRow(raw, existing, seen, families))
+		preview.Rows = append(preview.Rows, prepareCatalogImportRow(raw, states, seen, families))
 		for _, code := range []*string{raw.economyAlternative, raw.premiumAlternative} {
 			if code != nil && *code != "" {
 				alternativeCodes = append(alternativeCodes, *code)
@@ -201,30 +195,38 @@ func (s *CatalogImportService) prepare(
 			}
 		}
 	}
-	current, err := s.catalog.ListRecommendationSlots(ctx, q, accountID, codes)
-	if err != nil {
-		return nil, err
-	}
-	keepUnchangedSlots(preview.Rows, current)
-	stored, err := s.catalog.ListProductsByCodes(ctx, q, accountID, alternativeCodes)
+	keepUnchangedSlots(preview.Rows, states)
+	stored, err := s.catalog.ListProductsByCodes(ctx, q, tenant.AccountID, alternativeCodes)
 	if err != nil {
 		return nil, err
 	}
 	flagAmbiguousClearWords(preview.Rows, rawRows, stored, seen)
 	validateCatalogAlternatives(preview.Rows, stored)
-	for _, row := range preview.Rows {
-		if len(row.Errors) == 0 {
-			preview.ValidRows++
-		} else {
+	for i := range preview.Rows {
+		row := &preview.Rows[i]
+		if len(row.Errors) > 0 {
 			preview.InvalidRows++
+			continue
+		}
+		preview.ValidRows++
+		if state, ok := states[row.Code]; ok && !catalogRowChanges(*row, state) {
+			row.Action = domain.CatalogImportUnchanged
+		}
+		switch row.Action {
+		case domain.CatalogImportCreate:
+			preview.CreateRows++
+		case domain.CatalogImportUpdate:
+			preview.UpdateRows++
+		default:
+			preview.UnchangedRows++
 		}
 	}
-	preview.CanConfirm = preview.ValidRows > 0
+	preview.CanConfirm = preview.CreateRows+preview.UpdateRows > 0
 	return preview, nil
 }
 
 func prepareCatalogImportRow(
-	raw catalogImportRawRow, existing map[string]struct{}, seen map[string]int,
+	raw catalogImportRawRow, states map[string]domain.CatalogProductState, seen map[string]int,
 	families []domain.ProductFamily,
 ) domain.CatalogImportRow {
 	description := strings.TrimSpace(raw.description)
@@ -243,11 +245,11 @@ func prepareCatalogImportRow(
 		if seen[row.Code] > 1 {
 			row.Errors = append(row.Errors, "duplicate_code")
 		}
-		if _, ok := existing[row.Code]; ok {
+		if _, ok := states[row.Code]; ok {
 			isExisting = true
-			row.Action = "UPDATE"
+			row.Action = domain.CatalogImportUpdate
 		} else {
-			row.Action = "CREATE"
+			row.Action = domain.CatalogImportCreate
 		}
 	}
 	active, activeErr := parseSpreadsheetActive(raw.active)
@@ -278,7 +280,7 @@ func prepareCatalogImportRow(
 			row.Errors = append(row.Errors, "invalid_price")
 		}
 	} else if err != nil || normalizedPrice.Sign() <= 0 {
-		row.Errors = append(row.Errors, "invalid_price")
+		row.Errors = append(row.Errors, moneyError("price", err))
 	} else {
 		row.Price = price
 		priceValue = normalizedPrice
@@ -286,7 +288,7 @@ func prepareCatalogImportRow(
 	if strings.TrimSpace(raw.minPrice) != "" {
 		minPrice, minPriceValue, minErr := normalizeMoney(raw.minPrice)
 		if minErr != nil || minPriceValue.Sign() <= 0 {
-			row.Errors = append(row.Errors, "invalid_min_price")
+			row.Errors = append(row.Errors, moneyError("min_price", minErr))
 		} else {
 			row.MinPrice = &minPrice
 			if priceValue != nil && minPriceValue.Cmp(priceValue) > 0 {
@@ -483,26 +485,67 @@ func trimmedAlternative(code *string) *string {
 }
 
 /*
- * keepUnchangedSlots reads a code equal to what the slot already holds as "keep". An exported file
- * carries every stored slot, and one whose product was since deactivated or reclassified would
- * otherwise refuse a row the supplier only opened to change a price.
+ * keepUnchangedSlots reads a code equal to what the slot already holds, or a clear of a slot that
+ * is already empty, as "keep". An exported file carries every stored slot, and one whose product
+ * was since deactivated or reclassified would otherwise refuse a row the supplier only opened to
+ * change a price.
  */
-func keepUnchangedSlots(rows []domain.CatalogImportRow, current map[string]domain.CatalogSlots) {
+func keepUnchangedSlots(rows []domain.CatalogImportRow, states map[string]domain.CatalogProductState) {
 	for i := range rows {
-		slots, ok := current[rows[i].Code]
+		state, ok := states[rows[i].Code]
 		// Both columns naming one product is refused as repeated, never read as a kept slot.
 		if !ok || sameSlot(rows[i].EconomyAlternative, rows[i].PremiumAlternative) {
 			continue
 		}
-		if sameSlot(rows[i].EconomyAlternative, slots.Economy) {
+		if keepsSlot(rows[i].EconomyAlternative, state.Slots.Economy) {
 			rows[i].EconomyAlternative = nil
 		}
-		if sameSlot(rows[i].PremiumAlternative, slots.Premium) {
+		if keepsSlot(rows[i].PremiumAlternative, state.Slots.Premium) {
 			rows[i].PremiumAlternative = nil
 		}
 	}
 }
 
+func keepsSlot(requested, stored *string) bool {
+	return sameSlot(requested, stored) || (requested != nil && *requested == "" && stored == nil)
+}
+
 func sameSlot(requested, stored *string) bool {
 	return requested != nil && stored != nil && *requested != "" && *requested == *stored
+}
+
+/*
+ * catalogRowChanges reports whether confirming a valid row would write anything the product does
+ * not already hold: an attribute, its availability or price at the branch, or a slot. Text is
+ * compared trimmed, a blank description equals none, and money is compared by value.
+ */
+func catalogRowChanges(row domain.CatalogImportRow, state domain.CatalogProductState) bool {
+	if !sameText(row.Name, state.Name) || !sameText(row.Description, state.Description) ||
+		!sameText(row.Unit, state.Unit) {
+		return true
+	}
+	if state.FamilyID == nil || *state.FamilyID != row.FamilyID || !sameOptionalID(row.SubgroupID, state.SubgroupID) {
+		return true
+	}
+	// The import writes the active flag to the product and to the branch's availability alike.
+	if row.IsActive != state.IsActive || state.BranchActive == nil || *state.BranchActive != row.IsActive {
+		return true
+	}
+	// A blank price keeps the one in force; any other is written when it or its floor differs.
+	if row.Price != "" && (state.Price == nil || !sameMoney(row.Price, *state.Price) ||
+		!sameOptionalMoney(row.MinPrice, state.MinPrice)) {
+		return true
+	}
+	return row.EconomyAlternative != nil || row.PremiumAlternative != nil
+}
+
+func sameText(a, b string) bool {
+	return strings.TrimSpace(a) == strings.TrimSpace(b)
+}
+
+func sameOptionalID(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

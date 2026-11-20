@@ -90,7 +90,9 @@ type ProductPriceImportRow struct {
 	Price           string
 	MinPrice        *string
 	Currency        string
-	Errors          []string
+	// The row asks for the price and floor already in force, so confirming writes nothing for it.
+	Unchanged bool
+	Errors    []string
 }
 
 // ProductPriceUpdate is one validated price version to persist.
@@ -113,6 +115,14 @@ type ProductPriceImportPreview struct {
 	Rows        []ProductPriceImportRow
 	ValidRows   int
 	InvalidRows int
-	CanConfirm  bool
-	PreviewedAt time.Time
+	// The valid rows that ask for what is already in force.
+	UnchangedRows int
+	CanConfirm    bool
+	PreviewedAt   time.Time
+}
+
+// ProductPriceImportResult reports the price versions created and the valid rows left as they were.
+type ProductPriceImportResult struct {
+	ImportedRows  int
+	UnchangedRows int
 }

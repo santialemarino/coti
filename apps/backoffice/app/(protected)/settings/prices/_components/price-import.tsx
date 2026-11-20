@@ -168,7 +168,11 @@ export function PriceImport({ branch }: PriceImportProps) {
         <section className="flex flex-col gap-y-4">
           <div ref={actionsRef} className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-paragraph-sm">
-              {t('summary', { valid: preview.validRows, invalid: preview.invalidRows })}
+              {t('summary', {
+                changed: preview.validRows - preview.unchangedRows,
+                unchanged: preview.unchangedRows,
+                invalid: preview.invalidRows,
+              })}
             </p>
             <PendingButton
               type="button"
@@ -187,22 +191,25 @@ export function PriceImport({ branch }: PriceImportProps) {
           ) : null}
           <PricePreviewRows key={previewRun} rows={preview.rows} />
           <JumpToButton target={actionsRef} label={tCommon('reveal.jumpToConfirm')} />
-          {!preview.canConfirm ? (
+          {preview.canConfirm ? null : preview.validRows > 0 ? (
+            <p className="text-paragraph-sm text-foreground-muted">{t('noChanges')}</p>
+          ) : (
             <p className="text-paragraph-sm text-danger-foreground">{t('fixErrors')}</p>
-          ) : null}
+          )}
         </section>
       ) : null}
     </div>
   );
 }
 
-// The preview's rows, a step at a time; rows with errors lead, so none waits behind "Ver más".
+// The preview's rows, a step at a time; errors lead and rows that change nothing trail.
 function PricePreviewRows({ rows }: { rows: ProductPriceImportPreview['rows'] }) {
   const fmt = useFormatters();
   const t = useTranslations('priceImport');
   const ordered = [
     ...rows.filter((row) => row.errors.length > 0),
-    ...rows.filter((row) => row.errors.length === 0),
+    ...rows.filter((row) => row.errors.length === 0 && !row.unchanged),
+    ...rows.filter((row) => row.errors.length === 0 && row.unchanged),
   ];
   const list = useProgressiveList<HTMLTableRowElement>(ordered.length, IMPORT_PREVIEW_PAGE_SIZE);
 
@@ -247,7 +254,11 @@ function PricePreviewRows({ rows }: { rows: ProductPriceImportPreview['rows'] })
                 </TableCell>
                 <TableCell>
                   {row.errors.length === 0 ? (
-                    <span>{t('valid')}</span>
+                    row.unchanged ? (
+                      <span className="text-foreground-muted">{t('unchanged')}</span>
+                    ) : (
+                      <span>{t('valid')}</span>
+                    )
                   ) : (
                     <ul className="flex flex-col gap-y-1 text-paragraph-xs-medium text-danger-foreground">
                       {row.errors.map((rowError) => (

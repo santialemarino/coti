@@ -16,27 +16,32 @@ type ProductPriceImportInput struct {
 
 // ProductPriceImportRowResponse is one validated row in the import preview.
 type ProductPriceImportRowResponse struct {
-	RowNumber       int      `json:"row_number"`
-	Code            string   `json:"code"`
-	ProductName     string   `json:"product_name"`
-	CurrentPrice    *string  `json:"current_price"`
-	CurrentMinPrice *string  `json:"current_min_price"`
-	Price           string   `json:"price"`
-	MinPrice        *string  `json:"min_price"`
-	Currency        string   `json:"currency"`
-	Errors          []string `json:"errors"`
+	RowNumber       int     `json:"row_number"`
+	Code            string  `json:"code"`
+	ProductName     string  `json:"product_name"`
+	CurrentPrice    *string `json:"current_price"`
+	CurrentMinPrice *string `json:"current_min_price"`
+	Price           string  `json:"price"`
+	MinPrice        *string `json:"min_price"`
+	Currency        string  `json:"currency"`
+	// The row asks for the price and floor already in force; confirming writes nothing for it.
+	Unchanged bool     `json:"unchanged"`
+	Errors    []string `json:"errors"`
 }
 
 // ProductPriceImportPreviewResponse is returned by POST /v1/product-prices/import/preview.
 type ProductPriceImportPreviewResponse struct {
-	Rows        []ProductPriceImportRowResponse `json:"rows"`
-	ValidRows   int                             `json:"valid_rows"`
-	InvalidRows int                             `json:"invalid_rows"`
-	CanConfirm  bool                            `json:"can_confirm"`
-	PreviewedAt time.Time                       `json:"previewed_at"`
+	Rows          []ProductPriceImportRowResponse `json:"rows"`
+	ValidRows     int                             `json:"valid_rows"`
+	InvalidRows   int                             `json:"invalid_rows"`
+	UnchangedRows int                             `json:"unchanged_rows"`
+	CanConfirm    bool                            `json:"can_confirm"`
+	PreviewedAt   time.Time                       `json:"previewed_at"`
 }
 
-// ConfirmProductPriceImportResponse reports how many new price versions were created.
+// ConfirmProductPriceImportResponse reports how many new price versions were created and how many
+// valid rows already matched the price in force.
 type ConfirmProductPriceImportResponse struct {
-	ImportedRows int `json:"imported_rows"`
+	ImportedRows  int `json:"imported_rows"`
+	UnchangedRows int `json:"unchanged_rows"`
 }

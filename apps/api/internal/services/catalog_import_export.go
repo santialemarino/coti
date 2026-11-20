@@ -17,7 +17,7 @@ var catalogImportInstructions = []string{
 	"Las columnas codigo, nombre, unidad, familia y activo son obligatorias. Los productos nuevos también requieren precio.",
 	"Elegí la familia y, si corresponde, el subgrupo de sus desplegables. El subgrupo debe pertenecer a la familia.",
 	"Cada código debe ser único dentro del archivo: uno existente actualiza el producto y uno nuevo lo crea.",
-	"El precio y el precio mínimo deben ser mayores a cero y admitir hasta 2 decimales. Un precio vacío conserva la falta de precio de un producto existente.",
+	"El precio y el precio mínimo deben ser mayores a cero, con hasta 2 decimales y sin separador de miles (1500 o 1500,50). Un precio vacío conserva la falta de precio de un producto existente.",
 	"El precio mínimo no puede superar el precio de venta.",
 	"Usá SI o NO en activo. NO desactiva el producto sin borrar su historial.",
 	"Los precios iniciales se guardan en ARS.",
