@@ -65,9 +65,11 @@ const (
 	CodeManualEntryChannel ErrorCode = "MANUAL_ENTRY_CHANNEL"
 	CodeQuoteNotSendable   ErrorCode = "QUOTE_NOT_SENDABLE"
 	// CodeQuoteNotSent refuses a customer answering a quote that is not out for an answer.
-	CodeQuoteNotSent               ErrorCode = "QUOTE_NOT_SENT"
-	CodeQuoteSendExpired           ErrorCode = "QUOTE_SEND_EXPIRED"
-	CodeDeliveryChannel            ErrorCode = "DELIVERY_CHANNEL"
+	CodeQuoteNotSent     ErrorCode = "QUOTE_NOT_SENT"
+	CodeQuoteSendExpired ErrorCode = "QUOTE_SEND_EXPIRED"
+	CodeDeliveryChannel  ErrorCode = "DELIVERY_CHANNEL"
+	// CodeChannelAlreadyUsed refuses «otro medio» through a medium this send cycle already reached.
+	CodeChannelAlreadyUsed         ErrorCode = "CHANNEL_ALREADY_USED"
 	CodeIdempotencyMismatch        ErrorCode = "IDEMPOTENCY_MISMATCH"
 	CodeQuoteRepresentationInvalid ErrorCode = "QUOTE_REPRESENTATION_INVALID"
 	// CodeQuoteItemsUnresolved refuses sending a quote with a line that has no confirmed,

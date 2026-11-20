@@ -95,7 +95,9 @@ and tags, and moves RFQ, quotation and notification history to the fiscal profil
 name prevails. Only the proved contact becomes verified; other newly imported contacts remain
 pending. Successful proof also records customer-specific contact ownership and snapshots access
 to the source orders before the merge. Delivery destinations already recorded on sends remain
-immutable. The only staff route into a registered profile is that confirmed join.
+immutable. Staff reach a registered profile through that confirmed join or through a seller merge
+into the account, whose orders the portal holds back until the customer's proof (see
+[Seller actions](#seller-actions-on-provisional-profiles)).
 
 The source's other contacts keep routing. An inbound message from one of them attaches to the fiscal
 profile, with no new provisional profile and no name question. The marker is the source's retired,
@@ -111,9 +113,10 @@ Every merge, whichever path ran it, also fills the target's empty DNI, legal nam
 fiscal address from the source without overwriting a value the target holds, repoints any profile
 already merged into the source so `merged_into` always names a live profile, settles any open name
 question to the source's contacts (so a late reply cannot rename the target), settles pending contact
-observations whose two profiles now share a survivor, and writes a
+observations whose two profiles now share a survivor in every branch, and writes a
 `client_merge_audit` row (source, target, `merged_by`, `merged_at`; `merged_by` is NULL when the
-customer's own proof merged them).
+customer's own proof merged them; `requires_customer_proof` and `customer_confirmed_at` for a seller
+merge into an account).
 
 ## Seller actions on provisional profiles
 
@@ -131,28 +134,42 @@ its customer.
   editor, or, on a registered profile, a line saying the customer manages it and can join another
   profile by verifying its contact from the portal.
 - **Merge.** `POST /v1/clients/{id}/merge` with `source_client_id` merges the source into the path
-  profile, which survives. `GET /v1/clients/{id}/merge-candidates` lists the profiles a merge would
-  accept. Both profiles must be live, have no customer account (**403** `CLIENT_REGISTERED`), and be
-  within the caller's reach: every order in the caller's branches and, for a seller, no quote of
-  another seller (**403** `CLIENT_OUT_OF_REACH`). An already merged profile is **409**
-  `CLIENT_MERGED`, and another account's is **404**. A CUIT never ends up on a merged profile: when
-  only the source carries one the source survives instead, and two different CUITs are **409**
-  `CLIENT_TAX_ID_CONFLICT` (the candidates list leaves them out). The source's notes are appended to
-  the target's. The source's orders, tags and notifications move; its live contacts retire
-  and the target gets a copy of each that keeps its channel verification, so they route to the
-  target directly and a customer who later proves one brings the whole merged history in. Both profiles
-  are locked with the same per-profile key inbound routing takes, so a message arriving mid-merge
-  routes to the survivor.
+  profile and answers `survivor_client_id`. `GET /v1/clients/{id}/merge-candidates` lists the
+  profiles a merge would accept. The profile whose orders move must be within the caller's reach:
+  every order in the caller's branches and, for a seller, no quote of another seller (**403**
+  `CLIENT_OUT_OF_REACH`). A profile merged elsewhere is **409** `CLIENT_MERGED`, and another
+  account's is **404**; repeating a merge that already happened answers the same survivor without
+  moving anything again. Both profiles are locked with the same per-profile key inbound routing
+  takes, so a message arriving mid-merge routes to the survivor.
+  - **Two profiles without a customer account.** The path profile survives. A CUIT never ends up on
+    a merged profile: when only the source carries one the source survives instead, and two
+    different CUITs are **409** `CLIENT_TAX_ID_CONFLICT` (the candidates list leaves them out). The
+    source's notes are appended to the target's. Its orders, tags and notifications move; its live
+    contacts retire and the target gets a copy of each that keeps its channel verification, so they
+    route to the target directly and a customer who later proves one brings the whole merged history
+    in.
+  - **Into a customer's account.** A profile without a CUIT merges into an account whichever side
+    the seller named: the account always survives. The seller sees the history together at once and
+    new orders from the merged contacts route to the account, but the copies arrive unverified and
+    never primary, and the merged orders are listed in `client_merge_rfq` and kept out of the
+    customer's portal while the audit row's `customer_confirmed_at` is NULL. Orders a merged contact
+    brings later are held the same way, and the portal profile does not list the unverified copies.
+    Proving any contact the merged profile held (the portal's contact verification, or a contact the
+    customer had already proved at merge time) sets `customer_confirmed_at`, and the orders appear
+    whole, as with a proof merge. A wrong merge therefore never shows one person's orders to another; the
+    seller still sees everything. Two accounts are **403** `CLIENT_REGISTERED`.
 - **Coincidencias.** `GET /v1/client-contact-suggestions` lists the PENDING observations in the
   caller's branches, with both profiles' names and whether either is registered. Besides the shared
   contacts migrations 00062 and 00077 raised, a case opens when a seller types, for a new profile, a
   contact another live profile holds (verified or not), and when an inbound sender matches only
   unverified contacts: the sender gets its own provisional profile and the case links it to each
   profile holding the contact. One pending case per pair of profiles, whichever contact raised it,
-  filed under the branch that saw it. `PUT /v1/client-contact-suggestions/{id}` takes
+  filed under the branch that saw it; the list shows one case per pair of surviving profiles and none
+  whose two sides a merge already made one. `PUT /v1/client-contact-suggestions/{id}` takes
   `MERGE`, which runs the same merge into the candidate (or into the source when `keep_client_id`
-  names it; any other id is **422**), or `SEPARATE`, which dismisses the case; either marks the
-  observation decided with the seller and time. A side merged since the case was raised is settled on
+  names it; any other id is **422**), or `SEPARATE`, which dismisses the case and every other pending
+  case between the same two survivors; either marks the observation decided with the seller and
+  time. A join copies the provisional profile's contacts unverified, except the proved case contact. A side merged since the case was raised is settled on
   the profile it ended up in, and a case whose two sides already share one survivor is just marked
   merged. With a customer account on one side, `MERGE` joins the other, provisional profile into the
   account, which always survives (a `keep_client_id` naming the provisional side is **403**

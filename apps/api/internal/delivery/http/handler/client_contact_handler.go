@@ -22,7 +22,7 @@ type ClientContactService interface {
 	SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error
 	ListMergeCandidates(context.Context, domain.Tenant, uuid.UUID) ([]domain.Client, error)
 	RenameClient(context.Context, domain.Tenant, uuid.UUID, string) (*domain.Client, error)
-	MergeClients(context.Context, domain.Tenant, uuid.UUID, uuid.UUID) error
+	MergeClients(context.Context, domain.Tenant, uuid.UUID, uuid.UUID) (uuid.UUID, error)
 }
 
 // SendRegistrationLink sends a seller-confirmed request to complete the customer's own portal data.
@@ -371,15 +371,17 @@ func (h *ClientContactHandler) RenameClient(c *gin.Context) {
 	c.JSON(http.StatusOK, toClientResponse(*client))
 }
 
-// MergeClients merges another profile without a CUIT into this one, which survives.
-// @Summary Merge two client profiles without a CUIT
+// MergeClients merges another profile into this one and names the survivor: this one, unless the other
+// holds the CUIT or is a customer's account, which always survives.
+// @Summary Merge two client profiles
 // @Tags clients
 // @Accept json
+// @Produce json
 // @Security BearerAuth
 // @Param X-Branch-Id header string false "Branch filter"
-// @Param clientId path string true "Surviving client ID"
-// @Param body body dto.MergeClientRequest true "Profile merged into the surviving one"
-// @Success 204
+// @Param clientId path string true "Client the seller merges into"
+// @Param body body dto.MergeClientRequest true "Profile merged into the other one"
+// @Success 200 {object} dto.ClientMergeResponse
 // @Failure 400,401,403,404,409,422 {object} dto.ErrorResponse
 // @Router /v1/clients/{clientId}/merge [post]
 func (h *ClientContactHandler) MergeClients(c *gin.Context) {
@@ -396,9 +398,10 @@ func (h *ClientContactHandler) MergeClients(c *gin.Context) {
 		Respond(c, domain.ErrInvalidInput)
 		return
 	}
-	if err := h.contacts.MergeClients(c.Request.Context(), tenant, id, body.SourceClientID); err != nil {
+	survivor, err := h.contacts.MergeClients(c.Request.Context(), tenant, id, body.SourceClientID)
+	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusOK, dto.ClientMergeResponse{SurvivorClientID: survivor})
 }

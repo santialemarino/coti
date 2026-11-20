@@ -2,6 +2,9 @@ import { throwApiError } from '@/lib/api/errors';
 import type {
   CreateDiscountBody,
   FileRfqDraftResponse,
+  QuoteDeliveryMode,
+  QuoteDeliveryPreset,
+  QuoteDeliveryPresetSource,
   QuoteDiscountResponse,
   QuoteFollowupDraftResponse,
   QuoteItemAlternativeResponse,
@@ -507,6 +510,7 @@ export async function sendQuote(
     method: 'POST',
     headers: { ...branchHeaders(branchId, true), 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({
+      mode: body.mode,
       recipient_phone: body.recipient_phone,
       recipient_phones: body.recipientPhones,
       recipient_emails: body.recipientEmails,
@@ -532,6 +536,39 @@ export async function sendQuote(
     await throwApiError(response);
   }
   return response.json() as Promise<QuoteSendResponse>;
+}
+
+// Read what a send dialog preselects for mode; clientId is the client chosen in the dialog.
+export async function fetchDeliveryPreset(
+  quoteId: string,
+  branchId: string,
+  mode: QuoteDeliveryMode,
+  clientId?: string | null,
+): Promise<QuoteDeliveryPreset> {
+  const qs = new URLSearchParams({ mode });
+  if (clientId) qs.append('client_id', clientId);
+  const response = await fetch(`/api/quotes/${quoteId}/delivery-preset?${qs}`, {
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  const raw = (await response.json()) as {
+    source: QuoteDeliveryPresetSource;
+    phones: string[] | null;
+    emails: string[] | null;
+    used_phones: string[] | null;
+    used_emails: string[] | null;
+  };
+  return {
+    source: raw.source,
+    phones: raw.phones ?? [],
+    emails: raw.emails ?? [],
+    usedPhones: raw.used_phones ?? [],
+    usedEmails: raw.used_emails ?? [],
+  };
 }
 
 // Record an offline customer outcome from the seller workspace.

@@ -550,7 +550,9 @@ export function RfqDashboard({
       .sort((a, b) => {
         // The inbox contract is follow-ups first; keep that as the primary key whatever
         // other column the seller is sorting by.
-        const byFollowup = Number(b.needsFollowup) - Number(a.needsFollowup);
+        const byFollowup =
+          Number(followupDue(b.needsFollowup, b.status, Boolean(b.archived))) -
+          Number(followupDue(a.needsFollowup, a.status, Boolean(a.archived)));
         if (byFollowup !== 0) return byFollowup;
         return compareRfqs(a, b, sortBy, sortOrder);
       });
@@ -1095,10 +1097,6 @@ export function RfqDashboard({
                     interactive
                     className={cn(
                       'outline-none active:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45',
-                      /* The active row is listed last so it wins over the follow-up tint; the bell
-                         in the reference cell still marks a flagged row that is also active. */
-                      followupDue(rfq.needsFollowup, rfq.status, Boolean(rfq.archived)) &&
-                        'bg-followup-subtle hover:bg-followup-hover',
                       rfq.id === activeRfqId && 'bg-accent hover:bg-accent',
                     )}
                   >
@@ -1126,7 +1124,7 @@ export function RfqDashboard({
                           <TooltipContent>{t(`channels.${rfq.channel}`)}</TooltipContent>
                         </Tooltip>
                         <div className="min-w-0">
-                          <span className="flex items-center gap-x-1.5">
+                          <span className="flex items-center gap-x-2.5">
                             <span className="truncate text-paragraph-sm-medium text-foreground">
                               {reference ?? t('list.numberPending')}
                             </span>

@@ -17,6 +17,8 @@ interface CopyButtonProps extends Omit<
   labels: { copy: string; copied: string };
   /* The clipboard can refuse the write (permissions, an insecure origin); the app words that. */
   onCopyError?: (error: unknown) => void;
+  /* Icon alone, for a value in a dense row; the labels still name it and announce the copy. */
+  iconOnly?: boolean;
 }
 
 /*
@@ -28,6 +30,7 @@ function CopyButton({
   value,
   labels,
   onCopyError,
+  iconOnly = false,
   variant = 'outline',
   size = 'sm',
   className,
@@ -60,6 +63,7 @@ function CopyButton({
         variant={variant}
         size={size}
         aria-label={labels.copy}
+        title={iconOnly ? labels.copy : undefined}
         onClick={handleClick}
         className={className}
         {...props}
@@ -80,10 +84,12 @@ function CopyButton({
             )}
           />
         </span>
-        <span aria-hidden="true" className="grid text-left">
-          <span className={cn(layer, copied ? 'opacity-0' : 'opacity-100')}>{labels.copy}</span>
-          <span className={cn(layer, copied ? 'opacity-100' : 'opacity-0')}>{labels.copied}</span>
-        </span>
+        {iconOnly ? null : (
+          <span aria-hidden="true" className="grid text-left">
+            <span className={cn(layer, copied ? 'opacity-0' : 'opacity-100')}>{labels.copy}</span>
+            <span className={cn(layer, copied ? 'opacity-100' : 'opacity-0')}>{labels.copied}</span>
+          </span>
+        )}
       </Button>
       <span role="status" aria-live="polite" className="sr-only">
         {copied ? labels.copied : ''}

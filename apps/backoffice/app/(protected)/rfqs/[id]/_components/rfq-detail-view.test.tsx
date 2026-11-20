@@ -296,16 +296,17 @@ function viewTree(
 
 function dialogPropsFor(status: string) {
   return expect.objectContaining({
-    showTrigger: true,
     detail: expect.objectContaining({
       quote: expect.objectContaining({ current_status: status }),
     }),
   });
 }
 
-// The dialog stays mounted through every status; what a status decides is whether it offers a send.
+// The bottom first send exists only while the quote waits for it; later sends live in the top card.
 function sendOffered() {
-  return vi.mocked(SendQuoteDialog).mock.lastCall?.[0].showTrigger ?? false;
+  return vi
+    .mocked(SendQuoteDialog)
+    .mock.calls.some(([props]) => (props.mode ?? 'FIRST') === 'FIRST');
 }
 
 beforeEach(() => {
@@ -546,6 +547,16 @@ describe('RfqDetailView send flow', () => {
       renderView(makeDetail(status));
       expect(sendOffered(), `send offered on ${status}`).toBe(false);
     }
+  });
+
+  it('offers no archive action on a failed order: archiving happens from the list', () => {
+    const detail = makeDetail('DRAFT', 'FAILED');
+    detail.quote = null;
+    detail.version = null;
+    detail.items = [];
+    const view = renderView(detail);
+
+    expect(view.queryByRole('button', { name: copy.list.actions.archive })).toBeNull();
   });
 
   it('leaves the DRAFT generate action in place', () => {

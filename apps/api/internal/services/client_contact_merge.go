@@ -11,21 +11,15 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
-// ListMergeCandidates returns the profiles without a customer account a seller could merge with
-// clientID.
+// ListMergeCandidates returns the profiles a seller could merge with clientID, customer accounts
+// included beside a profile without a CUIT.
 func (s *ClientContactService) ListMergeCandidates(ctx context.Context, tenant domain.Tenant, clientID uuid.UUID) ([]domain.Client, error) {
 	var result []domain.Client
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		if _, err := s.profiles.GetByID(ctx, q, tenant.AccountID, clientID); err != nil {
 			return err
 		}
-		registered, err := s.profiles.IsRegistered(ctx, q, tenant.AccountID, clientID)
-		if err != nil {
-			return err
-		}
-		if registered {
-			return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
-		}
+		var err error
 		result, err = s.contacts.ListMergeCandidates(ctx, q, tenant, clientID)
 		return err
 	})
@@ -64,13 +58,38 @@ func (s *ClientContactService) RenameClient(ctx context.Context, tenant domain.T
 	return client, err
 }
 
-// MergeClients merges source into target on a seller's word: both without a customer account, live,
-// and with every order in the caller's reach. Source's orders move and its contacts keep routing to
-// target. A CUIT never ends up on a merged profile: when only source carries one, source survives.
-func (s *ClientContactService) MergeClients(ctx context.Context, tenant domain.Tenant, target, source uuid.UUID) error {
-	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		return s.mergeProvisional(ctx, q, tenant, source, target)
+// MergeClients merges source into target on a seller's word and returns the survivor. Two profiles
+// without a customer account merge as asked, live and with every order in the caller's reach, except
+// that a CUIT never ends up on a merged profile. A profile without an account merges into a
+// customer's account, which always survives, whichever side the seller named (mergeIntoAccount).
+func (s *ClientContactService) MergeClients(ctx context.Context, tenant domain.Tenant, target, source uuid.UUID) (uuid.UUID, error) {
+	var survivor uuid.UUID
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		if source == target {
+			return domain.ErrInvalidInput
+		}
+		// Same order as inbound routing: the contact locks first, then the profile rows.
+		if err := s.lockContactProfiles(ctx, q, tenant.AccountID, "", []domain.Client{{ID: source}, {ID: target}}); err != nil {
+			return err
+		}
+		profiles, err := s.contacts.LockMergeProfiles(ctx, q, tenant, []uuid.UUID{source, target})
+		if err != nil {
+			return err
+		}
+		from, fromFound := profiles[source]
+		into, intoFound := profiles[target]
+		if fromFound && intoFound && from.Registered != into.Registered {
+			provisional, account := source, target
+			if from.Registered {
+				provisional, account = target, source
+			}
+			survivor = account
+			return s.mergeIntoAccount(ctx, q, tenant, provisional, account)
+		}
+		survivor, err = s.mergeProvisional(ctx, q, tenant, source, target)
+		return err
 	})
+	return survivor, err
 }
 
 // ResolveSuggestion settles one pending observation: MERGE joins its two profiles into the candidate,
@@ -134,7 +153,8 @@ func (s *ClientContactService) mergeResolved(ctx context.Context, q repository.Q
 	}
 	switch {
 	case !sourceRegistered && !targetRegistered:
-		return s.mergeProvisional(ctx, q, tenant, source, target)
+		_, err := s.mergeProvisional(ctx, q, tenant, source, target)
+		return err
 	case sourceRegistered && targetRegistered, sourceRegistered && kept:
 		return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
 	case sourceRegistered:
@@ -179,52 +199,96 @@ func (s *ClientContactService) joinAccount(ctx context.Context, q repository.Que
 	if err := s.contacts.GrantProvisionalHistory(ctx, q, domain.CustomerPrincipal{AccountID: tenant.AccountID, CustomerID: *owner}, provisional, kind, value); err != nil {
 		return err
 	}
-	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, provisional, account); err != nil {
+	// Only the proved case contact is the customer's; the others arrive unverified, as on any join.
+	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, provisional, account, false); err != nil {
 		return err
 	}
-	if err := s.contacts.Merge(ctx, q, tenant, provisional, account); err != nil {
+	if err := s.contacts.Merge(ctx, q, tenant, provisional, account, false); err != nil {
 		return err
 	}
 	return s.contacts.ProjectPrimaries(ctx, q, tenant.AccountID, account)
 }
 
 // mergeProvisional runs one seller merge inside the caller's transaction, after locking both profiles
-// against concurrent inbound routing.
-func (s *ClientContactService) mergeProvisional(ctx context.Context, q repository.Querier, tenant domain.Tenant, source, target uuid.UUID) error {
+// against concurrent inbound routing, and returns the survivor. A retry of a merge that already
+// happened succeeds without moving anything again.
+func (s *ClientContactService) mergeProvisional(ctx context.Context, q repository.Querier, tenant domain.Tenant, source, target uuid.UUID) (uuid.UUID, error) {
 	if source == target {
-		return domain.ErrInvalidInput
+		return uuid.Nil, domain.ErrInvalidInput
 	}
 	if err := s.lockContactProfiles(ctx, q, tenant.AccountID, "", []domain.Client{{ID: source}, {ID: target}}); err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	profiles, err := s.contacts.LockMergeProfiles(ctx, q, tenant, []uuid.UUID{source, target})
 	if err != nil {
-		return err
+		return uuid.Nil, err
+	}
+	for _, pair := range [][2]uuid.UUID{{source, target}, {target, source}} {
+		if p, ok := profiles[pair[0]]; ok && p.MergedInto != nil && *p.MergedInto == pair[1] {
+			return pair[1], nil
+		}
 	}
 	for _, id := range []uuid.UUID{source, target} {
 		profile, ok := profiles[id]
 		switch {
 		case !ok:
-			return domain.ErrNotFound
+			return uuid.Nil, domain.ErrNotFound
 		case profile.Registered:
-			return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
+			return uuid.Nil, domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
 		case profile.MergedInto != nil:
-			return domain.WithCode(domain.CodeClientMerged, domain.ErrConflict)
+			return uuid.Nil, domain.WithCode(domain.CodeClientMerged, domain.ErrConflict)
 		case !profile.InReach:
-			return domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
+			return uuid.Nil, domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
 		}
 	}
 	if profiles[source].TaxID != nil {
 		if profiles[target].TaxID != nil {
-			return domain.WithCode(domain.CodeClientTaxIDConflict, domain.ErrConflict)
+			return uuid.Nil, domain.WithCode(domain.CodeClientTaxIDConflict, domain.ErrConflict)
 		}
 		source, target = target, source
 	}
-	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, source, target); err != nil {
+	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, source, target, true); err != nil {
+		return uuid.Nil, err
+	}
+	if err := s.contacts.Merge(ctx, q, tenant, source, target, false); err != nil {
+		return uuid.Nil, err
+	}
+	return target, s.contacts.ProjectPrimaries(ctx, q, tenant.AccountID, target)
+}
+
+// mergeIntoAccount merges a provisional profile into a customer's account on the seller's word. The
+// account survives and the seller sees the history together at once; the provisional contacts arrive
+// unverified, and its orders reach the customer's portal only after the customer proves one of them,
+// so a wrong merge never shows one person's orders to another.
+func (s *ClientContactService) mergeIntoAccount(ctx context.Context, q repository.Querier, tenant domain.Tenant, provisional, account uuid.UUID) error {
+	if err := s.lockContactProfiles(ctx, q, tenant.AccountID, "", []domain.Client{{ID: provisional}, {ID: account}}); err != nil {
 		return err
 	}
-	if err := s.contacts.Merge(ctx, q, tenant, source, target); err != nil {
+	profiles, err := s.contacts.LockMergeProfiles(ctx, q, tenant, []uuid.UUID{provisional, account})
+	if err != nil {
 		return err
 	}
-	return s.contacts.ProjectPrimaries(ctx, q, tenant.AccountID, target)
+	source, sourceFound := profiles[provisional]
+	target, targetFound := profiles[account]
+	switch {
+	case !sourceFound || !targetFound:
+		return domain.ErrNotFound
+	case source.MergedInto != nil && *source.MergedInto == account:
+		return nil
+	case source.Registered || !target.Registered:
+		return domain.WithCode(domain.CodeClientRegistered, domain.ErrForbidden)
+	case source.MergedInto != nil || target.MergedInto != nil:
+		return domain.WithCode(domain.CodeClientMerged, domain.ErrConflict)
+	case !source.InReach:
+		return domain.WithCode(domain.CodeClientOutOfReach, domain.ErrForbidden)
+	case source.TaxID != nil:
+		return domain.WithCode(domain.CodeClientTaxIDConflict, domain.ErrConflict)
+	}
+	if err := s.contacts.MoveContacts(ctx, q, tenant.AccountID, provisional, account, false); err != nil {
+		return err
+	}
+	if err := s.contacts.Merge(ctx, q, tenant, provisional, account, true); err != nil {
+		return err
+	}
+	return s.contacts.ProjectPrimaries(ctx, q, tenant.AccountID, account)
 }

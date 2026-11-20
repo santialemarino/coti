@@ -42,7 +42,7 @@ func TestSellerDelivery_MultipleRecipientsHistoryAndFollowup(t *testing.T) {
 		t.Fatalf("changed recipients=%v", err)
 	}
 	repeated := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phones: []string{"+5491155550103"}, OtherChannelsOnly: true}
-	if _, err := service.Send(ctx, seed.tenant, seed.draft.Quote.ID, repeated); domain.CodeOf(err) != domain.CodeDeliveryChannel {
+	if _, err := service.Send(ctx, seed.tenant, seed.draft.Quote.ID, repeated); domain.CodeOf(err) != domain.CodeChannelAlreadyUsed {
 		t.Fatalf("reusing a channel=%v", err)
 	}
 	originalExpiry := *sent.ExpiresAt

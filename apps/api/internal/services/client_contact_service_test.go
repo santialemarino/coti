@@ -18,10 +18,13 @@ type fakeContactStore struct {
 	observations  map[uuid.UUID]domain.ContactObservation
 	scope         uuid.UUID
 	mergeProfiles map[uuid.UUID]domain.MergeProfile
-	writes        int
-	lockKeys      []string
-	matched       []contactMatch
-	associations  [][2]uuid.UUID
+	// keptVerification records, per MoveContacts call, whether the copies kept their verification.
+	keptVerification []bool
+	confirmedProofs  int
+	writes           int
+	lockKeys         []string
+	matched          []contactMatch
+	associations     [][2]uuid.UUID
 }
 
 func (f *fakeContactStore) GetConversationClient(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) (*domain.Client, error) {
@@ -94,8 +97,13 @@ func (f *fakeContactStore) LockMergeProfiles(_ context.Context, _ repository.Que
 	}
 	return result, nil
 }
-func (f *fakeContactStore) MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error {
+func (f *fakeContactStore) MoveContacts(_ context.Context, _ repository.Querier, _, _, _ uuid.UUID, keep bool) error {
 	f.writes++
+	f.keptVerification = append(f.keptVerification, keep)
+	return nil
+}
+func (f *fakeContactStore) ConfirmCustomerProof(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error {
+	f.confirmedProofs++
 	return nil
 }
 func (f *fakeContactStore) CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error {

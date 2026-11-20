@@ -39,7 +39,10 @@ func customerOrderFrom(envParam string) string {
    SELECT 1 FROM customer_contact_ownership ownership
    JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
    WHERE ownership.account_id=$1 AND ownership.customer_id=$2 AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL
-   AND (ownership.includes_profile_history AND contact.client_id=cl.id OR EXISTS (
+   AND (ownership.includes_profile_history AND contact.client_id=cl.id AND NOT EXISTS (
+ SELECT 1 FROM client_merge_rfq held JOIN client_merge_audit hold ON hold.account_id=held.account_id AND hold.id=held.merge_audit_id
+ WHERE held.account_id=$1 AND held.rfq_id=r.id AND hold.customer_confirmed_at IS NULL
+ ) OR EXISTS (
  SELECT 1 FROM customer_contact_history history WHERE history.account_id=$1 AND history.customer_id=$2 AND history.rfq_id=r.id AND history.kind=contact.kind AND history.value=contact.value
  ) OR EXISTS (
      SELECT 1 FROM client_contact_observation observation

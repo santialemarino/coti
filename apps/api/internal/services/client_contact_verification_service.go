@@ -287,12 +287,15 @@ func (s *ClientContactVerificationService) applyProof(ctx context.Context, q rep
 		if err := s.store.GrantProvisionalHistory(ctx, q, p, *sourceID, kind, value); err != nil {
 			return err
 		}
-		if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, clientID); err != nil {
+		if err := s.contacts.contacts.Merge(ctx, q, domain.Tenant{AccountID: p.AccountID, Role: domain.UserRoleAdmin}, *sourceID, clientID, false); err != nil {
 			return err
 		}
 	}
 	// Verifying first lets the proof this confirm establishes decide the merged primaries.
 	if err := s.store.MarkVerified(ctx, q, p, clientID, kind, value); err != nil {
+		return err
+	}
+	if err := s.contacts.contacts.ConfirmCustomerProof(ctx, q, p.AccountID, clientID, kind, value); err != nil {
 		return err
 	}
 	access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, clientID)

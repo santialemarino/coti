@@ -13,18 +13,50 @@ from the inbound name and contact; publication creates the proposed profile in t
 transaction. Portal orders retain their authenticated customer association. Active contacts are
 batch-loaded with the directory and association context.
 
-Every available contact is prefilled. WhatsApp alone is selected initially when it has a number;
-otherwise email is selected if present, and neither is selected without contact data. Multiple
-contacts of one kind use a multi-select, initially selecting the primary contact.
+## Send actions
 
-`POST /v1/quotes/{id}/sends` accepts `recipient_phones` and `recipient_emails` arrays and retains the
-legacy singular fields. Each normalized destination has its own `quote_send` row, token and provider
-outcome. Up to twenty destinations per medium may be selected. Reusing an operation key with changed
-destinations or reminder text conflicts; retrying the same operation does not contact providers again.
+Every send names its action as `mode` on `POST /v1/quotes/{id}/sends`; the backend enforces each
+mode's state and media under the delivery lock.
 
-The other-medium action sets `other_channels_only`. Every successfully used medium of the current
-version is disabled in the UI and checked again under the delivery lock before contacting providers.
-Failed attempts, earlier versions and follow-up messages do not consume that option.
+| Mode           | Where                                    | Quote state | Media                                 | Expiry |
+| -------------- | ---------------------------------------- | ----------- | ------------------------------------- | ------ |
+| `FIRST`        | «Enviar cotización», bottom of the order | QUOTED      | all                                   | starts |
+| `OTHER_MEDIUM` | «Enviar por otro medio», top card        | SENT        | only media this cycle has not reached | kept   |
+| `RESEND`       | «Reenviar», top card                     | SENT        | all                                   | kept   |
+| `FOLLOWUP`     | follow-up callout                        | SENT        | all                                   | kept   |
+
+A **send cycle** starts each time the quote enters QUOTED: a reactivated quote re-enters it with the
+same version, and what went out before no longer counts as used. A medium is used when a quote send
+of the current version reached it in the current cycle (SENT, DELIVERED or VIEWED); failed attempts
+and reminders never count. `OTHER_MEDIUM` through a used medium is **409** `CHANNEL_ALREADY_USED`.
+Without `mode`, `followup_message` means `FOLLOWUP`, `other_channels_only` means `OTHER_MEDIUM`,
+and otherwise the status decides between `FIRST` and `RESEND`; a mode contradicting those fields is
+**400**.
+
+## Presets
+
+`GET /v1/quotes/{id}/delivery-preset?mode=…&client_id=…` returns what the dialog preselects
+(`phones`, `emails`), where it came from (`source`), and the destinations the current cycle reached
+(`used_phones`, `used_emails`), which «otro medio» shows disabled.
+
+| Mode                 | Preset, first that has destinations                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `FIRST`              | this version's earlier cycle (`VERSION`), else the quote's last sent version (`PREVIOUS_VERSION`), else the client's last sent quote in the branch (`CLIENT_LAST`) |
+| `RESEND`, `FOLLOWUP` | everything this cycle reached (`VERSION`)                                                                                                                          |
+| `OTHER_MEDIUM`       | none                                                                                                                                                               |
+
+A client chosen in the dialog other than the quote's own never inherits the quote's destinations;
+only its own last quote applies. With `NONE`, the dialog applies the WhatsApp-first rule: every
+known contact is prefilled, WhatsApp alone is checked when it has a number, otherwise email when it
+has an address, and nothing is checked without contact data. A checked medium never has an empty
+field, and unchecked never means disabled. With a preset, exactly its destinations are selected and
+a muted line says where they came from. Several values of one medium use a multi-select that also
+accepts a new number or address; with more than one available, a hint says only the selected ones
+receive it.
+
+Each normalized destination has its own `quote_send` row, token and provider outcome. Up to twenty
+destinations per medium may be selected. Reusing an operation key with changed destinations or
+reminder text conflicts; retrying the same operation does not contact providers again.
 
 ## Reminders
 

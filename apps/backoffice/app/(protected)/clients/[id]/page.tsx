@@ -108,7 +108,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 phone={profile.client.phone}
                 email={profile.client.email}
               />
-              {registered ? null : <ClientMergeDialog clientId={id} name={name} />}
+              <ClientMergeDialog clientId={id} name={name} taxId={profile.client.taxId ?? null} />
             </div>
             <div className="flex items-start gap-x-3">
               <PhoneIcon aria-hidden="true" className="mt-0.5 size-4 text-foreground-subtle" />

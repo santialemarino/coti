@@ -419,8 +419,8 @@ func TestSellerMerge_ACUITWithoutAccountMergesAndSurvives(t *testing.T) {
 		t.Fatalf("merge candidates: %d %s, want the CUIT profile without an account offered", rec.Code, rec.Body)
 	}
 	// The seller merges the CUIT profile into the provisional one; the CUIT side survives instead.
-	if status, code := m.merge(t, dumb, fiscal); status != http.StatusNoContent {
-		t.Fatalf("merge: status = %d (%s), want 204", status, code)
+	if status, code := m.merge(t, dumb, fiscal); status != http.StatusOK {
+		t.Fatalf("merge: status = %d (%s), want 200", status, code)
 	}
 	if into := m.mergedInto(t, dumb); into == nil || *into != fiscal {
 		t.Fatalf("provisional merged_into = %v, want the CUIT profile %s", into, fiscal)
