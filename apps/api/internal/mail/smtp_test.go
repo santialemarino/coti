@@ -146,6 +146,48 @@ func TestSMTPMailer_Send_DeliversBothPartsWithEveryHeaderEncoded(t *testing.T) {
 	}
 }
 
+// A message with no HTML body has nothing to offer as an alternative: an empty HTML part is what a
+// client renders, which blanks the mail, so the text travels as the only body.
+func TestSMTPMailer_Send_SendsATextOnlyMessageAsOnePlainPart(t *testing.T) {
+	t.Parallel()
+	server := startFakeSMTP(t, nil)
+
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(),
+		domain.EmailMessage{To: testTo, Subject: smtpSubject, TextBody: smtpText})
+	if err != nil {
+		t.Fatalf("Send() = %v, want no error", err)
+	}
+
+	msg, err := netmail.ReadMessage(strings.NewReader(server.delivered(t).data))
+	if err != nil {
+		t.Fatalf("the adapter wrote no parseable message: %v", err)
+	}
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("Content-Type does not parse: %v", err)
+	}
+	if mediaType != "text/plain" || strings.ToLower(params["charset"]) != "utf-8" {
+		t.Fatalf("Content-Type = %q, want text/plain; charset=utf-8", msg.Header.Get("Content-Type"))
+	}
+	if encoding := msg.Header.Get("Content-Transfer-Encoding"); encoding != "quoted-printable" {
+		t.Errorf("Content-Transfer-Encoding = %q, want quoted-printable", encoding)
+	}
+	raw, err := io.ReadAll(msg.Body)
+	if err != nil {
+		t.Fatalf("body does not read: %v", err)
+	}
+	if bytes.ContainsRune(raw, 'á') {
+		t.Errorf("body crosses the wire unencoded: %q", raw)
+	}
+	body, err := io.ReadAll(quotedprintable.NewReader(bytes.NewReader(raw)))
+	if err != nil {
+		t.Fatalf("body does not decode: %v", err)
+	}
+	if decoded := strings.ReplaceAll(string(body), "\r\n", "\n"); decoded != smtpText {
+		t.Errorf("body = %q, want %q", decoded, smtpText)
+	}
+}
+
 // A client answering the quote should reach the branch mailbox, while the message still comes
 // from the platform's own sender, the only address the provider lets us send as.
 func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {

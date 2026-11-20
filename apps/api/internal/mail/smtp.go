@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -39,33 +40,38 @@ func (m *SMTPMailer) Send(ctx context.Context, msg domain.EmailMessage) error {
 	return m.deliver(ctx, msg.To, payload)
 }
 
-// compose renders the message: headers as RFC 2047 encoded words and both bodies
+// compose renders the message: headers as RFC 2047 encoded words and every body
 // quoted-printable, so Argentine Spanish survives a hop that assumes ASCII.
 func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 	var body bytes.Buffer
-	parts := multipart.NewWriter(&body)
-	// Least capable alternative first: a reader that renders only one takes the last it understands.
-	for _, part := range []struct{ contentType, content string }{
-		{"text/plain; charset=utf-8", msg.TextBody},
-		{"text/html; charset=utf-8", msg.HTMLBody},
-	} {
-		w, err := parts.CreatePart(textproto.MIMEHeader{
-			"Content-Type":              {part.contentType},
-			"Content-Transfer-Encoding": {"quoted-printable"},
-		})
-		if err != nil {
+	contentHeaders := []string{"Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: quoted-printable"}
+	if msg.HTMLBody == "" {
+		// A client shows the last alternative it understands, so an empty HTML part would blank the mail.
+		if err := writeQuotedPrintable(&body, msg.TextBody); err != nil {
+			return nil, err
+		}
+	} else {
+		parts := multipart.NewWriter(&body)
+		// Least capable alternative first: a reader that renders only one takes the last it understands.
+		for _, part := range []struct{ contentType, content string }{
+			{"text/plain; charset=utf-8", msg.TextBody},
+			{"text/html; charset=utf-8", msg.HTMLBody},
+		} {
+			w, err := parts.CreatePart(textproto.MIMEHeader{
+				"Content-Type":              {part.contentType},
+				"Content-Transfer-Encoding": {"quoted-printable"},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("compose email: %w", err)
+			}
+			if err := writeQuotedPrintable(w, part.content); err != nil {
+				return nil, err
+			}
+		}
+		if err := parts.Close(); err != nil {
 			return nil, fmt.Errorf("compose email: %w", err)
 		}
-		encoded := quotedprintable.NewWriter(w)
-		if _, err := encoded.Write([]byte(part.content)); err != nil {
-			return nil, fmt.Errorf("compose email: %w", err)
-		}
-		if err := encoded.Close(); err != nil {
-			return nil, fmt.Errorf("compose email: %w", err)
-		}
-	}
-	if err := parts.Close(); err != nil {
-		return nil, fmt.Errorf("compose email: %w", err)
+		contentHeaders = []string{`Content-Type: multipart/alternative; boundary="` + parts.Boundary() + `"`}
 	}
 
 	fromName := m.cfg.FromName
@@ -78,8 +84,8 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		"Subject: " + mime.QEncoding.Encode("utf-8", msg.Subject),
 		"Date: " + time.Now().Format(time.RFC1123Z),
 		"MIME-Version: 1.0",
-		`Content-Type: multipart/alternative; boundary="` + parts.Boundary() + `"`,
 	}
+	headers = append(headers, contentHeaders...)
 	if msg.ReplyTo != "" {
 		headers = append(headers,
 			"Reply-To: "+(&netmail.Address{Name: msg.ReplyToName, Address: msg.ReplyTo}).String())
@@ -89,6 +95,17 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		headers = append(headers, "In-Reply-To: "+msg.InReplyTo, "References: "+msg.InReplyTo)
 	}
 	return append([]byte(strings.Join(headers, "\r\n")+"\r\n\r\n"), body.Bytes()...), nil
+}
+
+func writeQuotedPrintable(w io.Writer, content string) error {
+	encoded := quotedprintable.NewWriter(w)
+	if _, err := encoded.Write([]byte(content)); err != nil {
+		return fmt.Errorf("compose email: %w", err)
+	}
+	if err := encoded.Close(); err != nil {
+		return fmt.Errorf("compose email: %w", err)
+	}
+	return nil
 }
 
 // deliver runs the SMTP conversation. The connection carries a deadline of its own because
