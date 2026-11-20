@@ -445,7 +445,11 @@
     "CLIENT_CONTACT_UNPROVED": "El cliente todavía no verificó este contacto desde su portal. Cuando lo haga, vas a poder unir las fichas.",
     "CLIENT_TAX_ID_CONFLICT": "Las dos fichas tienen CUIT distinto: son clientes diferentes.",
     "CLIENT_MERGED": "Esa ficha ya se unió a otra. Actualizá la pantalla.",
-    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla."
+    "CLIENT_OUT_OF_REACH": "Esa ficha tiene pedidos de otras sucursales o de otro vendedor, así que no podés unirla.",
+    "SIGNUP_CLOSED": "El registro de corralones está cerrado por ahora. Escribinos y te mandamos una invitación.",
+    "SIGNUP_INVITE_INVALID": "Este enlace de invitación no es válido. Revisá que esté completo o pedinos uno nuevo.",
+    "SIGNUP_INVITE_USED": "Esta invitación ya se usó para crear una cuenta. Si fuiste vos, iniciá sesión.",
+    "SIGNUP_INVITE_EXPIRED": "Esta invitación venció. Escribinos y te mandamos una nueva."
   },
   "meta": {
     "home": {
@@ -609,7 +613,8 @@
           "links": {
             "steps": "Cómo funciona",
             "features": "Qué incluye",
-            "faq": "Preguntas frecuentes"
+            "faq": "Preguntas frecuentes",
+            "pricing": "Precios"
           }
         },
         "legal": {
@@ -627,10 +632,10 @@
       "slogan": "Respondé primero. Vendé más.",
       "title": "El que contesta primero, vende",
       "description": "Coti arma tus cotizaciones en menos de cinco minutos, con tus precios y tu aprobación. Lee el pedido como te llega —WhatsApp, correo, foto o Excel— y te lo deja listo para revisar y enviar.",
-      "signup": "Probar Coti",
+      "signup": "Crear mi cuenta",
       "login": "Ya tengo cuenta",
       "note": "Importás tu catálogo y tus precios desde un Excel, sin cargar producto por producto.",
-      "demo": "Pedí una demo"
+      "demo": "Quiero Coti en mi corralón"
     },
     "preview": {
       "label": "Ejemplo: un pedido por WhatsApp convertido en una cotización con tres productos del catálogo, uno marcado para revisar.",
@@ -857,11 +862,38 @@
         }
       }
     },
+    "pricing": {
+      "eyebrow": "Precios",
+      "title": "Un plan para cada corralón",
+      "description": "Pagás por mes según cuántas cotizaciones armás.",
+      "perMonth": "por mes",
+      "quotes": "{count} cotizaciones por mes",
+      "sharedQuotes": "{count} cotizaciones por mes, compartidas",
+      "branches": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "extraBranch": "+{price} y +{count} cotizaciones por cada sucursal adicional",
+      "extraQuote": "Cotización adicional: {price}, en los tres planes.",
+      "onboarding": "Onboarding incluido en todos los planes.",
+      "plans": {
+        "uno": {
+          "name": "Uno",
+          "summary": "Para empezar con una sucursal."
+        },
+        "pro": {
+          "name": "Pro",
+          "summary": "Para una sucursal con mucho movimiento."
+        },
+        "red": {
+          "name": "Red",
+          "summary": "Para corralones con más de una sucursal."
+        }
+      }
+    },
     "cta": {
       "title": "Probá Coti con tu propio catálogo",
-      "description": "Creá la cuenta de tu corralón, importá tus productos y cotizá tu próximo pedido con Coti.",
+      "description": "Con tus productos y tus precios cargados, cotizás tu próximo pedido en minutos.",
       "action": "Crear mi cuenta",
-      "demo": "Pedí una demo"
+      "demo": "Quiero Coti en mi corralón",
+      "demoHint": "Te contactamos y lo dejamos andando con tu catálogo."
     },
     "demo": {
       "message": "Hola, quiero ver una demo de Coti para mi corralón.",
@@ -1119,6 +1151,11 @@
       "errors": {
         "RATE_LIMITED": "Hubo demasiados registros desde acá. Esperá unos minutos antes de volver a probar.",
         "INTERNAL": "No pudimos crear la cuenta. Intentá de nuevo."
+      },
+      "invite": {
+        "title": "No pudimos abrir tu invitación",
+        "requestAnother": "Pedí una invitación nueva",
+        "login": "Iniciá sesión"
       }
     },
     "forgotPassword": {

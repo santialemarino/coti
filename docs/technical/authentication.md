@@ -264,6 +264,7 @@ flood the database or someone's mailbox, and on the ones a **provider bills per 
 | `global`                             | `RATE_LIMIT_GLOBAL_MAX`               | all of `/v1`                                                                              |
 | `credentials`                        | `RATE_LIMIT_CREDENTIALS_MAX`          | login, reset-password, verify-email                                                       |
 | `signup`                             | `RATE_LIMIT_SIGNUP_MAX`               | public account registration                                                               |
+| `signup-invite`                      | `RATE_LIMIT_CREDENTIALS_MAX`          | the sign-up invite check                                                                  |
 | `mail`                               | `RATE_LIMIT_MAIL_MAX`                 | forgot-password, resend-verification, change-email, admin reset, invite create and resend |
 | `ai`                                 | `RATE_LIMIT_AI_MAX`                   | the RFQ text draft and the development intake                                             |
 | `contact-request`, `contact-confirm` | `RATE_LIMIT_CONTACT_VERIFICATION_MAX` | customer contact proof request and confirm, per customer and per address                  |

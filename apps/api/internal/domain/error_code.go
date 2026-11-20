@@ -129,6 +129,12 @@ const (
 	CodePortalNotConfigured ErrorCode = "PORTAL_NOT_CONFIGURED"
 	// WhatsApp takes free text only within 24 hours of the customer's last message.
 	CodeWhatsAppWindowClosed ErrorCode = "WHATSAPP_WINDOW_CLOSED"
+	// Public sign-up is closed and the registration carried no invite.
+	CodeSignupClosed ErrorCode = "SIGNUP_CLOSED"
+	// A presented sign-up invite that matches none, was already used, or has expired.
+	CodeSignupInviteInvalid ErrorCode = "SIGNUP_INVITE_INVALID"
+	CodeSignupInviteUsed    ErrorCode = "SIGNUP_INVITE_USED"
+	CodeSignupInviteExpired ErrorCode = "SIGNUP_INVITE_EXPIRED"
 )
 
 // The two an upload is refused with. The delivery layer raises both on its own, before any

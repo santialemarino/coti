@@ -6,8 +6,8 @@ export const ROUTES = {
   // Where a seller lands: the queue. The root belongs to the public site.
   home: '/inbox',
   landing: '/',
-  // The landing's sections, linked from the footer on every public page.
-  landingSection: (section: 'steps' | 'features' | 'faq') => `/#${section}`,
+  // The landing's sections, linked from the header and footer on every public page.
+  landingSection: (section: 'steps' | 'features' | 'faq' | 'probar') => `/#${section}`,
   privacy: '/privacy',
   terms: '/terms',
   settings: SETTINGS_ROOT,

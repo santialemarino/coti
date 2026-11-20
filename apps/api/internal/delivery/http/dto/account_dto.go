@@ -17,6 +17,14 @@ type SignupRequest struct {
 	AdminName     string  `json:"admin_name" binding:"required,min=1,max=255"`
 	AdminEmail    string  `json:"admin_email" binding:"required,email,max=255"`
 	AdminPassword string  `json:"admin_password" binding:"required,max=72"`
+	// The single-use invite the team handed over; required while public sign-up is closed.
+	InviteToken string `json:"invite_token" binding:"omitempty,max=255"`
+}
+
+// SignupInviteCheckRequest is the body for POST /v1/public/signup-invites/check. The token rides
+// the body so it stays out of request logs.
+type SignupInviteCheckRequest struct {
+	Token string `json:"token" binding:"required,max=255"`
 }
 
 // SignupResponse carries what registration created plus the session it opened, so the caller

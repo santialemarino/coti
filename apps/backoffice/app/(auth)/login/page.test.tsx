@@ -4,6 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROUTES } from '@/config/routes';
 import messages from '@/translations/es.json';
 
+const signupSwitch = vi.hoisted(() => ({ enabled: true }));
+
+vi.mock('@/lib/config', () => ({
+  get SIGNUP_ENABLED() {
+    return signupSwitch.enabled;
+  },
+}));
 vi.mock('@/app/(auth)/login/_components/login-form', () => ({ LoginForm: vi.fn(() => null) }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
@@ -26,6 +33,7 @@ async function renderPage(params: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  signupSwitch.enabled = true;
   vi.mocked(getTranslations).mockImplementation((async (namespace: string) =>
     translator(namespace)) as never);
 });
@@ -42,6 +50,16 @@ describe('LoginPage', () => {
     expect(link.textContent).toBe(copy.signup);
     expect(link.getAttribute('href')).toBe(ROUTES.signup);
     expect(link.closest('p')?.textContent).toBe(`${copy.noAccount} ${copy.signup}`);
+  });
+
+  // Closed, registering needs an invite the team hands over, so the screen offers no way to sign up.
+  it('offers no way to sign up while signup is closed', async () => {
+    signupSwitch.enabled = false;
+    const view = await renderPage();
+
+    expect(view.queryByText(copy.noAccount, { exact: false })).toBeNull();
+    expect(view.container.querySelector(`a[href="${ROUTES.signup}"]`)).toBeNull();
+    expect(view.getByRole('link', { name: copy.forgotPassword })).toBeTruthy();
   });
 
   it('offers password recovery as its own link', async () => {

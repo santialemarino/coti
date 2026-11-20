@@ -54,6 +54,7 @@ type Handlers struct {
 	QuoteFollowup         *handler.QuoteFollowupHandler
 	Client                *handler.ClientHandler
 	Account               *handler.AccountHandler
+	SignupInvite          *handler.SignupInviteHandler
 	CustomerPortal        *handler.CustomerPortalHandler
 	AccountLogo           *handler.BrandLogoHandler
 	Prices                *handler.ProductPriceHandler
@@ -189,6 +190,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	public.POST("/auth/resend-verification", mail, h.Verification.Resend)
 
 	public.POST("/accounts", limit("signup", cfg.RateLimit.Signup), h.Account.Register)
+	public.POST("/signup-invites/check", limit("signup-invite", cfg.RateLimit.Credentials), h.SignupInvite.Check)
 	public.GET("/product-images/:accountId/:productId/:imageId", h.Product.GetImage)
 	if h.AccountLogo != nil {
 		public.GET("/account-logos/:accountId/:logoId", h.AccountLogo.Get)

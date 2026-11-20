@@ -169,8 +169,8 @@ their context — `docker-compose.yml` says `context: .`, and the web ones copy 
 is the most likely first failure and it is the cheapest one to avoid.
 
 The api image carries **five** binaries and the migration chain: `/api/bin/api`,
-`/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/portal-backfill`, `/api/bin/goose`,
-and `/api/migrations`. That is
+`/api/bin/scheduled-job`, `/api/bin/catalog-embed`, `/api/bin/invite`, `/api/bin/portal-backfill`,
+`/api/bin/goose`, and `/api/migrations`. That is
 why one Dockerfile serves nine components.
 
 **Instance sizing.** The spec uses `apps-s-1vcpu-1gb` (1 shared vCPU, 1 GiB, $12/month). Nothing has
@@ -461,7 +461,11 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
    `attachment-extraction` declares no AI keys at all and runs on the defaults, which are off: the
    language model, embeddings and their keys have to be added to it too, or a file order the sweep
    picks up fails at extraction even with AI on everywhere else.
-9. Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
+9. Signup is closed (`SIGNUP_ENABLED=false` on `api` and `backoffice`), so onboard each corralón with
+   an invite: from a console on the api component, `/api/bin/invite --note "<corralón>"` prints the
+   single-use `${APP_URL}/signup?invite=…` link to hand over (see
+   [accounts-and-branches.md](accounts-and-branches.md#closed-signup-and-invites)).
+   Register the first account and let `catalog-embedding` embed its catalog within 15 minutes, or
    run `/api/bin/catalog-embed --account <uuid>` from a console on the api component to do it now
    (it is also what `--refresh-all` after a model change needs), and build the vector index once
    there are rows
@@ -473,7 +477,7 @@ The full list of keys, with defaults and what each bounds, is in the four `.env.
 ## What CI already proves
 
 `.github/workflows/ci.deploy.yml` builds all three images on every PR that touches them or what they
-copy, and boots every one of them. The api job goes further: it asserts the four binaries are in the
+copy, and boots every one of them. The api job goes further: it asserts the five binaries are in the
 image and applies the whole migration chain **from inside it** against a real Postgres, which is the
 PRE_DEPLOY job's exact command.
 

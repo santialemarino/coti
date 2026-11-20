@@ -138,6 +138,10 @@ services:
       - key: WEB_WEBAPP_URL
         scope: RUN_TIME
         type: SECRET
+      # Closed: a corralón registers only with an invite from /api/bin/invite. Mirrored on backoffice.
+      - key: SIGNUP_ENABLED
+        scope: RUN_TIME
+        value: 'false'
     git:
       repo_clone_url: https://github.com/santialemarino/coti.git
       branch: main
@@ -157,6 +161,10 @@ services:
       - key: WEB_TRUSTED_PROXY_HOPS
         scope: RUN_TIME
         value: '0'
+      # Hides every signup link and sends /signup without an invite to the plans. Mirrors api.
+      - key: SIGNUP_ENABLED
+        scope: RUN_TIME
+        value: 'false'
     git:
       repo_clone_url: https://github.com/santialemarino/coti.git
       branch: main

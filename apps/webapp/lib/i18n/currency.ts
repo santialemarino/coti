@@ -9,14 +9,24 @@ function currencyDecimals(currency: string): number {
   return CURRENCY_DECIMALS[currency] ?? 2;
 }
 
+export interface CurrencyOptions {
+  // Drops the cents, for a whole amount quoted as a headline (a plan's price), never for a total.
+  wholeUnits?: boolean;
+}
+
 // "1234.56" ARS → "$ 1.234,56". Money crosses the API as a decimal string matching NUMERIC(14,2);
 // this is the one place it becomes display text. Blank/non-numeric passes through, since Number('')
 // is 0 and would render a spurious "$ 0,00".
-export function formatCurrency(amount: string, locale?: string, currency = 'ARS'): string {
+export function formatCurrency(
+  amount: string,
+  locale?: string,
+  currency = 'ARS',
+  options: CurrencyOptions = {},
+): string {
   if (!amount.trim()) return amount;
   const num = Number(amount);
   if (Number.isNaN(num)) return amount;
-  const decimals = currencyDecimals(currency);
+  const decimals = options.wholeUnits ? 0 : currencyDecimals(currency);
   return numberFormat(getLocaleTag(locale), {
     style: 'currency',
     currency,

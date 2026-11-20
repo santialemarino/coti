@@ -3,40 +3,50 @@ import { getTranslations } from 'next-intl/server';
 
 import { Button } from '@repo/ui/components';
 import { demoContactHref } from '@/app/(public)/_components/demo-link';
-import { Reveal } from '@/app/(public)/_components/reveal';
 import { revealItem } from '@/app/(public)/_components/reveal-item';
 import { ROUTES } from '@/config/routes';
 
-export async function LandingCta() {
+interface LandingCtaProps {
+  signupEnabled: boolean;
+  // Where the card falls in its section's entrance.
+  revealIndex: number;
+}
+
+// The closing call to action, beside the plans. Asking for Coti is the main way in while signup is closed.
+export async function LandingCta({ signupEnabled, revealIndex }: LandingCtaProps) {
   const t = await getTranslations('landing.cta');
   const tDemo = await getTranslations('landing.demo');
   const demoHref = demoContactHref({ message: tDemo('message'), subject: tDemo('subject') });
 
   return (
-    <section aria-labelledby="cta-title" className="py-16 lg:py-24">
-      <Reveal className="flex flex-col w-full max-w-6xl mx-auto px-4 sm:px-6">
-        <div
-          {...revealItem(
-            0,
-            'flex flex-col items-start p-8 gap-y-5 bg-linear-to-br from-brand-800 to-brand-600 rounded-2xl text-primary-foreground sm:p-12 lg:flex-row lg:items-center lg:justify-between lg:gap-x-10',
-          )}
-        >
-          <div className="flex flex-col max-w-xl gap-y-2">
-            <h2 id="cta-title" className="text-heading-3">
-              {t('title')}
-            </h2>
-            <p className="text-paragraph text-brand-50">{t('description')}</p>
-          </div>
-          <div className="flex flex-wrap shrink-0 gap-3">
-            <Button asChild variant="secondary" size="lg">
-              <Link href={ROUTES.signup}>{t('action')}</Link>
-            </Button>
+    <div
+      {...revealItem(
+        revealIndex,
+        'flex flex-col items-start p-8 gap-y-5 bg-linear-to-br from-brand-800 to-brand-600 rounded-2xl text-primary-foreground sm:p-12 lg:flex-row lg:items-center lg:justify-between lg:gap-x-10',
+      )}
+    >
+      <div className="flex flex-col max-w-xl gap-y-2">
+        <h3 className="text-heading-3">{t('title')}</h3>
+        <p className="text-paragraph text-brand-50">{t('description')}</p>
+      </div>
+      {signupEnabled || demoHref ? (
+        <div className="flex flex-col shrink-0 items-start gap-y-2">
+          <div className="flex flex-wrap gap-3">
+            {signupEnabled ? (
+              <Button asChild variant="secondary" size="lg">
+                <Link href={ROUTES.signup}>{t('action')}</Link>
+              </Button>
+            ) : null}
             {demoHref ? (
               <Button
                 asChild
-                variant="ghost"
+                variant={signupEnabled ? 'ghost' : 'secondary'}
                 size="lg"
-                className="text-primary-foreground focus-visible:border-primary-foreground focus-visible:ring-primary-foreground/60"
+                className={
+                  signupEnabled
+                    ? 'text-primary-foreground focus-visible:border-primary-foreground focus-visible:ring-primary-foreground/60'
+                    : undefined
+                }
               >
                 <a href={demoHref} target="_blank" rel="noopener noreferrer">
                   {t('demo')}
@@ -44,8 +54,9 @@ export async function LandingCta() {
               </Button>
             ) : null}
           </div>
+          {demoHref ? <p className="text-paragraph-sm text-brand-100">{t('demoHint')}</p> : null}
         </div>
-      </Reveal>
-    </section>
+      ) : null}
+    </div>
   );
 }

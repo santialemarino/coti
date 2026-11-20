@@ -290,6 +290,23 @@ CREATE TABLE auth_token (
   CONSTRAINT uq_auth_token_hash UNIQUE (token_hash)
 );
 
+-- The single-use link the team hands a corralón so it can register while public sign-up is closed.
+-- Pre-account, so no row level security: only the owner role reads or writes it. Only the SHA-256
+-- of the token is stored, and account_id records which registration used it.
+CREATE TABLE signup_invite (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash  CHAR(64) NOT NULL,
+  email       VARCHAR(255),
+  note        VARCHAR(500),
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  account_id  UUID,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_signup_invite_token_hash UNIQUE (token_hash),
+  CONSTRAINT fk_signup_invite_account FOREIGN KEY (account_id) REFERENCES account(id),
+  CONSTRAINT ck_signup_invite_used CHECK ((used_at IS NULL) = (account_id IS NULL))
+);
+
 -- =============================================================================
 -- CATALOG
 -- =============================================================================
@@ -1502,6 +1519,9 @@ REVOKE UPDATE, DELETE ON ai_usage FROM coti_app;
 -- The grant above reaches every table, and job_run is an audit trail no request has any reason to
 -- read, let alone rewrite. Only the owner the scheduled jobs run as touches it.
 REVOKE ALL ON job_run FROM coti_app;
+
+-- A sign-up invite exists before any account does; registration and cmd/invite run as the owner.
+REVOKE ALL ON signup_invite FROM coti_app;
 
 -- account matches on its own id; everything else on its account_id column.
 ALTER TABLE account ENABLE ROW LEVEL SECURITY;
