@@ -319,13 +319,13 @@
     "received": "Pedido recibido",
     "preparing": "El corralón está preparando tu cotización.",
     "original": "Pedido original",
-    "back": "Mis pedidos",
     "previous": "Anterior",
     "next": "Siguiente",
     "statuses": {
       "RECEIVED": "Recibido",
       "SENT": "Cotización enviada",
       "ACCEPTED": "Aceptado",
+      "COMPLETED": "Finalizado",
       "REJECTED": "Rechazado",
       "CHANGE_REQUESTED": "Cambio solicitado",
       "QUOTED": "En preparación",
@@ -374,8 +374,7 @@
       "verificationInvalid": "El enlace o código no es válido o venció. Pedí uno nuevo.",
       "verificationLocked": "Hubo demasiados intentos con este contacto. Esperá un rato y probá de nuevo.",
       "tooManyRequests": "Hiciste muchos cambios seguidos. Esperá un minuto y probá de nuevo.",
-      "contactLimit": "Cargaste más contactos de los que admite la ficha. Quitá alguno y guardá de nuevo.",
-      "mainUnverified": "Solo podés elegir un contacto verificado."
+      "contactLimit": "Cargaste más contactos de los que admite la ficha. Quitá alguno y guardá de nuevo."
     },
     "ownershipUnproved": "Este CUIT/CUIL ya tenía una ficha en el corralón. Verificá un contacto que ya tenía la ficha para ver tus datos y pedidos anteriores.",
     "fiscalTitle": "Datos de facturación (opcional)",
@@ -399,14 +398,6 @@
     "codeInvalid": "Ingresá el código de 6 dígitos.",
     "verifying": "Verificando…",
     "confirmContact": "Confirmar contacto",
-    "verificationEmailSent": "Te enviamos un enlace para confirmar el correo.",
-    "main": {
-      "title": "Contacto principal",
-      "description": "Es el contacto que te proponemos para recuperar tu cuenta. Podés elegir cualquiera de tus contactos verificados.",
-      "empty": "Verificá un contacto para poder recuperar tu cuenta si olvidás la contraseña.",
-      "whatsapp": "WhatsApp {contact}",
-      "email": "Correo {contact}",
-      "saved": "Ahora {contact} es tu contacto principal."
-    }
+    "verificationEmailSent": "Te enviamos un enlace para confirmar el correo."
   }
 }
