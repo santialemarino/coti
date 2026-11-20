@@ -4,21 +4,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getClientDirectory, getQuoteClientAssociation } from '@/lib/api/clients-client';
 import type {
+  QuoteDeliveryMode,
+  QuoteDeliveryPreset,
   QuoteDeliveryResponse,
   QuoteSendResponse,
-  QuoteSendTrackingResponse,
   RfqDetailResponse,
 } from '@/lib/api/rfqs';
-import { draftQuoteFollowup, sendQuote } from '@/lib/api/rfqs-client';
+import { draftQuoteFollowup, fetchDeliveryPreset, sendQuote } from '@/lib/api/rfqs-client';
 import messages from '@/translations/es.json';
-import { SendQuoteDialog } from './send-quote-dialog';
+import { initialSelection, SendQuoteDialog } from './send-quote-dialog';
 
 vi.mock('@/lib/api/clients-client', () => ({
   getClientDirectory: vi.fn(),
   getQuoteClientAssociation: vi.fn(),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
-vi.mock('@/lib/api/rfqs-client', () => ({ sendQuote: vi.fn(), draftQuoteFollowup: vi.fn() }));
+vi.mock('@/lib/api/rfqs-client', () => ({
+  sendQuote: vi.fn(),
+  draftQuoteFollowup: vi.fn(),
+  fetchDeliveryPreset: vi.fn(),
+}));
 vi.mock('@/app/(protected)/rfqs/_components/rfq-list-context', () => ({
   useRfqList: () => ({ isAdmin: true }),
 }));
@@ -131,7 +136,7 @@ function sentResult(deliveries: QuoteDeliveryResponse[]): QuoteSendResponse {
 function renderDialog(
   inboundWhatsAppPhone: string | null = null,
   detail = makeDetail(inboundWhatsAppPhone),
-  mode: { resend?: boolean; followup?: boolean } = {},
+  mode: QuoteDeliveryMode = 'FIRST',
 ) {
   return render(
     <NextIntlClientProvider
@@ -140,7 +145,7 @@ function renderDialog(
       timeZone="America/Argentina/Buenos_Aires"
     >
       <SendQuoteDialog
-        {...mode}
+        mode={mode}
         detail={detail}
         branchId={BRANCH_ID}
         onSent={vi.fn().mockResolvedValue(undefined)}
@@ -149,8 +154,12 @@ function renderDialog(
   );
 }
 
-function openDialog(view: RenderResult) {
-  fireEvent.click(view.getByRole('button', { name: copy.button }));
+function openDialog(view: RenderResult, mode: Exclude<QuoteDeliveryMode, 'FOLLOWUP'> = 'FIRST') {
+  fireEvent.click(view.getByRole('button', { name: copy.modes[mode].trigger }));
+}
+
+function preset(overrides: Partial<QuoteDeliveryPreset> = {}): QuoteDeliveryPreset {
+  return { source: 'NONE', phones: [], emails: [], usedPhones: [], usedEmails: [], ...overrides };
 }
 
 const client = {
@@ -176,31 +185,12 @@ function association(
     contactHints: { name: null, phone: null, email: null },
   };
 }
-function tracking(
-  channel: string,
-  destination: string,
-  overrides: Partial<QuoteSendTrackingResponse> = {},
-): QuoteSendTrackingResponse {
-  return {
-    id: channel,
-    version_id: VERSION_ID,
-    operation_id: 'original',
-    channel,
-    destination,
-    format: 'WEBAPP_LINK',
-    tracking_status: 'SENT',
-    public_url: WHATSAPP_URL,
-    sent_at: BASE_TIME,
-    expires_at: '2026-09-22T12:00:00Z',
-    created_at: BASE_TIME,
-    ...overrides,
-  };
-}
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getClientDirectory).mockResolvedValue([]);
   vi.mocked(getQuoteClientAssociation).mockResolvedValue(association());
   vi.mocked(sendQuote).mockResolvedValue(sentResult([delivery({ channel: 'WHATSAPP' })]));
+  vi.mocked(fetchDeliveryPreset).mockResolvedValue(preset());
   vi.mocked(draftQuoteFollowup).mockResolvedValue({
     message: 'Mensaje de seguimiento',
     templateConfigured: false,
@@ -277,42 +267,93 @@ describe('seller delivery destinations', () => {
     );
     expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(true);
   });
-  it('blocks every successful channel for the current version, including earlier operations', async () => {
-    const detail = makeDetail();
-    detail.deliveries = [
-      tracking('WHATSAPP', PHONE),
-      tracking('EMAIL', client.email!, {
-        operation_id: 'other',
-        created_at: '2026-09-08T00:00:00Z',
-      }),
-    ];
-    const view = renderDialog(null, detail, { resend: true });
-    fireEvent.click(view.getByRole('button', { name: copy.resend }));
+  it('disables every medium the send cycle reached and points to «Reenviar»', async () => {
+    vi.mocked(fetchDeliveryPreset).mockResolvedValue(
+      preset({ usedPhones: [PHONE], usedEmails: [client.email!] }),
+    );
+    const view = renderDialog(null, makeDetail(), 'OTHER_MEDIUM');
+    openDialog(view, 'OTHER_MEDIUM');
     await view.findByText(client.name);
+    await view.findByText(copy.allUsed);
     for (const channel of [copy.sendWhatsApp, copy.alsoEmail]) {
-      expect(
-        view.getByRole('checkbox', { name: new RegExp(channel) }).hasAttribute('disabled'),
-      ).toBe(true);
-      expect(
-        view.getByRole('checkbox', { name: new RegExp(channel) }).getAttribute('aria-checked'),
-      ).toBe('false');
+      const box = view.getByRole('checkbox', { name: new RegExp(channel) });
+      expect(box.hasAttribute('disabled')).toBe(true);
+      expect(box.getAttribute('aria-checked')).toBe('false');
     }
+    expect(view.getByText(copy.usedOn.replace('{destinations}', PHONE))).toBeTruthy();
+    expect(view.getByRole('button', { name: copy.send }).hasAttribute('disabled')).toBe(true);
   });
-  it('ignores failed sends, reminders and previous versions when offering another channel', async () => {
-    const detail = makeDetail();
-    detail.deliveries = [
-      tracking('WHATSAPP', PHONE, { tracking_status: 'FAILED' }),
-      tracking('EMAIL', client.email!, { version_id: 'old' }),
-      tracking('WHATSAPP', PHONE, { purpose: 'FOLLOWUP' }),
-    ];
-    const view = renderDialog(null, detail, { resend: true });
-    fireEvent.click(view.getByRole('button', { name: copy.resend }));
+  it('offers the medium the cycle did not reach and sends it as another medium', async () => {
+    vi.mocked(fetchDeliveryPreset).mockResolvedValue(preset({ usedPhones: [PHONE] }));
+    const view = renderDialog(null, makeDetail(), 'OTHER_MEDIUM');
+    openDialog(view, 'OTHER_MEDIUM');
     await ready(view);
+    expect(view.getByRole('checkbox', { name: copy.alsoEmail }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    await submit(view);
+    expect(fetchDeliveryPreset).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, 'OTHER_MEDIUM', null);
+    expect(sendQuote).toHaveBeenCalledWith(
+      QUOTE_ID,
+      BRANCH_ID,
+      expect.objectContaining({
+        mode: 'OTHER_MEDIUM',
+        recipientPhones: [],
+        recipientEmails: [client.email],
+        clientAssociation: undefined,
+      }),
+      expect.any(String),
+    );
+  });
+  it('preselects exactly the destinations of the previous version and says so', async () => {
+    const earlier = '+5491155550999';
+    vi.mocked(fetchDeliveryPreset).mockResolvedValue(
+      preset({ source: 'PREVIOUS_VERSION', phones: [earlier], emails: [client.email!] }),
+    );
+    const view = renderDialog();
+    openDialog(view);
+    await ready(view);
+    expect(view.getByText(copy.presetSource.PREVIOUS_VERSION)).toBeTruthy();
+    for (const channel of [copy.sendWhatsApp, copy.alsoEmail]) {
+      expect(view.getByRole('checkbox', { name: channel }).getAttribute('aria-checked')).toBe(
+        'true',
+      );
+    }
     await submit(view);
     expect(sendQuote).toHaveBeenCalledWith(
       QUOTE_ID,
       BRANCH_ID,
-      expect.objectContaining({ otherChannelsOnly: true, recipientPhones: [PHONE] }),
+      expect.objectContaining({
+        mode: 'FIRST',
+        recipientPhones: [earlier],
+        recipientEmails: [client.email],
+      }),
+      expect.any(String),
+    );
+  });
+  it('asks the preset of the client chosen in the dialog', async () => {
+    const view = renderDialog();
+    openDialog(view);
+    await ready(view);
+    await waitFor(() =>
+      expect(fetchDeliveryPreset).toHaveBeenLastCalledWith(QUOTE_ID, BRANCH_ID, 'FIRST', client.id),
+    );
+  });
+  it('resends to what the cycle reached, all media open', async () => {
+    vi.mocked(fetchDeliveryPreset).mockResolvedValue(
+      preset({ source: 'VERSION', phones: [PHONE], usedPhones: [PHONE] }),
+    );
+    const view = renderDialog(null, makeDetail(), 'RESEND');
+    openDialog(view, 'RESEND');
+    await ready(view);
+    expect(view.getByRole('checkbox', { name: copy.sendWhatsApp }).hasAttribute('disabled')).toBe(
+      false,
+    );
+    await submit(view);
+    expect(sendQuote).toHaveBeenCalledWith(
+      QUOTE_ID,
+      BRANCH_ID,
+      expect.objectContaining({ mode: 'RESEND', recipientPhones: [PHONE] }),
       expect.any(String),
     );
   });
@@ -374,15 +415,53 @@ describe('seller delivery destinations', () => {
     openDialog(view);
     await submit(view);
     expect(view.queryByText(WHATSAPP_URL)).toBeNull();
-    expect(view.queryByRole('link', { name: copy.openQuote })).toBeNull();
+  });
+});
+
+describe('initialSelection', () => {
+  const both = { phones: [PHONE], emails: [client.email!] };
+  const cases: [
+    string,
+    Parameters<typeof initialSelection>,
+    ReturnType<typeof initialSelection>,
+  ][] = [
+    [
+      'WhatsApp alone when both are known, email still prefilled',
+      [both, preset(), 'FIRST'],
+      { ...both, whatsapp: true, email: false },
+    ],
+    [
+      'email when only email is known',
+      [{ phones: [], emails: both.emails }, preset(), 'FIRST'],
+      { phones: [], emails: both.emails, whatsapp: false, email: true },
+    ],
+    [
+      'nothing checked without data',
+      [{ phones: [], emails: [] }, preset(), 'FIRST'],
+      { phones: [], emails: [], whatsapp: false, email: false },
+    ],
+    [
+      'a preset selects exactly what it names',
+      [both, preset({ source: 'CLIENT_LAST', emails: ['otro@example.test'] }), 'FIRST'],
+      { phones: [], emails: ['otro@example.test'], whatsapp: false, email: true },
+    ],
+    [
+      'another medium skips the used one',
+      [both, preset({ usedPhones: [PHONE] }), 'OTHER_MEDIUM'],
+      { ...both, whatsapp: false, email: true },
+    ],
+  ];
+  it.each(cases)('%s', (_, args, want) => {
+    expect(initialSelection(...args)).toEqual(want);
   });
 });
 
 describe('seller-confirmed follow-up', () => {
   it('loads a deterministic template and sends only after confirmation, with the original recipients selected', async () => {
-    const detail = makeDetail();
-    detail.deliveries = [tracking('EMAIL', client.email!)];
-    const view = renderDialog(null, detail, { followup: true });
+    vi.mocked(fetchDeliveryPreset).mockResolvedValue(
+      preset({ source: 'VERSION', emails: [client.email!], usedEmails: [client.email!] }),
+    );
+    const view = renderDialog(null, makeDetail(), 'FOLLOWUP');
     fireEvent.click(
       view.getByRole('button', { name: messages.rfqs.detail.callouts.followup.send }),
     );
@@ -406,6 +485,7 @@ describe('seller-confirmed follow-up', () => {
       QUOTE_ID,
       BRANCH_ID,
       expect.objectContaining({
+        mode: 'FOLLOWUP',
         recipientEmails: [client.email],
         followupMessage: 'Mensaje personalizado',
       }),
@@ -417,7 +497,7 @@ describe('seller-confirmed follow-up', () => {
       message: 'Personalizado',
       templateConfigured: true,
     });
-    const view = renderDialog(null, makeDetail(), { followup: true });
+    const view = renderDialog(null, makeDetail(), 'FOLLOWUP');
     fireEvent.click(
       view.getByRole('button', { name: messages.rfqs.detail.callouts.followup.send }),
     );

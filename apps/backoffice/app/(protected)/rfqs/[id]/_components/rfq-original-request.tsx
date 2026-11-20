@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { InboxIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import {
   Button,
   Callout,
   Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -35,64 +39,75 @@ export function RfqOriginalRequest({ rfqId, branchId, text }: RfqOriginalRequest
   const [error, setError] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
-  const [pending, startRefresh] = useTransition();
-  useEffect(() => {
-    let active = true;
-    setLoaded(false);
+  const request = useRef(0);
+  const body = text?.trim() ? text : '';
+
+  // Links are signed and short-lived, so each opening fetches fresh ones instead of offering a refresh.
+  const load = useCallback(() => {
+    const current = ++request.current;
     setError(false);
-    setAttachments([]);
-    setOpen(false);
     void listRfqAttachments(rfqId, branchId)
       .then((files) => {
-        if (active) setAttachments(files);
+        if (current === request.current) setAttachments(files);
       })
       .catch(() => {
-        if (active) setError(true);
+        if (current === request.current) setError(true);
       })
       .finally(() => {
-        if (active) setLoaded(true);
+        if (current === request.current) setLoaded(true);
       });
-    return () => {
-      active = false;
-    };
   }, [rfqId, branchId]);
-  function refresh() {
-    startRefresh(async () => {
-      try {
-        setAttachments(await listRfqAttachments(rfqId, branchId));
-        setError(false);
-      } catch {
-        setError(true);
-      }
-    });
+
+  useEffect(() => {
+    request.current += 1;
+    setOpen(false);
+    setLoaded(false);
+    setAttachments([]);
+  }, [rfqId, branchId]);
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) load();
   }
+
   return (
     <Card>
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="h-auto w-full justify-between p-5">
-            <span className="text-heading-6">{t('title')}</span>
-            <DropdownChevron open={open} />
-          </Button>
-        </CollapsibleTrigger>
+      <Collapsible open={open} onOpenChange={handleOpenChange}>
+        <CardHeader>
+          <CollapsibleTrigger className="group/panel flex w-full items-center gap-x-2 rounded-md outline-none transition-colors duration-200 ease-out-soft hover:text-primary focus-visible:text-primary">
+            <InboxIcon aria-hidden="true" className="size-4 text-foreground-muted" />
+            <CardTitle>{t('title')}</CardTitle>
+            <DropdownChevron className="ml-auto group-data-[state=open]/panel:rotate-180" />
+          </CollapsibleTrigger>
+        </CardHeader>
         <CollapsibleContent>
-          <div className="flex flex-col px-5 pb-5 gap-4">
-            {text?.trim() ? (
-              <p className="p-4 bg-sunken rounded-lg whitespace-pre-wrap break-words text-paragraph-sm">
-                {text}
-              </p>
+          <CardContent className="flex flex-col pt-4 gap-y-4">
+            {body ? (
+              <p className="whitespace-pre-wrap break-words text-paragraph-sm">{body}</p>
             ) : null}
-            {!loaded ? <Skeleton className="h-9 w-full" /> : null}
-            {error ? <Callout tone="danger">{t('error')}</Callout> : null}
-            {loaded && !error && !text?.trim() && !attachments.length ? (
+            {!loaded && !error ? <Skeleton className="h-9 w-full" /> : null}
+            {error ? (
+              <Callout
+                tone="danger"
+                action={
+                  <Button variant="outline" size="sm" onClick={load}>
+                    {t('retry')}
+                  </Button>
+                }
+              >
+                {t('error')}
+              </Callout>
+            ) : null}
+            {loaded && !error && !body && !attachments.length ? (
               <p className="text-paragraph-sm text-foreground-muted">{t('unavailable')}</p>
             ) : null}
             {attachments.map((attachment) => {
               const url = safeURL(attachment.url);
+              const name = attachment.name || t('unnamed');
               return (
-                <div key={attachment.id} className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-paragraph-sm">{attachment.name || t('unnamed')}</span>
+                <div key={attachment.id} className="flex flex-col gap-y-3">
+                  <div className="flex items-center justify-between gap-x-2">
+                    <span className="min-w-0 text-paragraph-sm wrap-anywhere">{name}</span>
                     {url ? (
                       <Button asChild variant="outline" size="sm">
                         <a href={url} target="_blank" rel="noopener noreferrer">
@@ -107,7 +122,7 @@ export function RfqOriginalRequest({ rfqId, branchId, text }: RfqOriginalRequest
                   {url && attachment.type === 'IMAGE' ? (
                     <Image
                       src={url}
-                      alt={attachment.name || t('unnamed')}
+                      alt={name}
                       width={1200}
                       height={900}
                       unoptimized
@@ -115,23 +130,12 @@ export function RfqOriginalRequest({ rfqId, branchId, text }: RfqOriginalRequest
                     />
                   ) : null}
                   {url && attachment.type === 'AUDIO' ? (
-                    <audio
-                      src={url}
-                      controls
-                      preload="none"
-                      className="w-full"
-                      aria-label={attachment.name || t('unnamed')}
-                    />
+                    <audio src={url} controls preload="none" className="w-full" aria-label={name} />
                   ) : null}
                 </div>
               );
             })}
-            {attachments.length || error ? (
-              <Button variant="outline" size="sm" disabled={pending} onClick={refresh}>
-                {t('refresh')}
-              </Button>
-            ) : null}
-          </div>
+          </CardContent>
         </CollapsibleContent>
       </Collapsible>
     </Card>

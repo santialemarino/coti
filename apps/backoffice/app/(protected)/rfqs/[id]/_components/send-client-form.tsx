@@ -104,7 +104,8 @@ export function SendClientForm({
   });
   const values = useWatch({ control: form.control });
   const selected = directory.find((item) => item.client.id === values.clientId);
-  const fixedClient = locked && (context?.currentClient != null || selected != null);
+  // Only a client the quote already has is fixed; one picked here can still be changed.
+  const fixedClient = locked && context?.currentClient != null;
   const checked = schema.safeParse(values);
   const selection: SendClientSelection | null =
     context && checked.success && (checked.data.mode === 'existing' || newConfirmed)
@@ -168,8 +169,8 @@ export function SendClientForm({
           ...clients,
         ];
         const unique = [...new Map(candidates.map((item) => [item.client.id, item])).values()];
-        const taxId = association.currentClient?.client.taxId || '';
         const initial = association.currentClient;
+        const taxId = initial?.client.taxId || '';
         setDirectory(unique);
         setContext(association);
         form.reset({
@@ -236,17 +237,32 @@ export function SendClientForm({
             ) : (
               <span />
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                form.setValue('mode', 'new');
-                setNewOpen(true);
-              }}
-              disabled={disabled}
-            >
-              {t('clientNew')}
-            </Button>
+            <div className="flex items-center gap-x-2">
+              {values.mode === 'new' && newConfirmed ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setNewConfirmed(false);
+                    form.setValue('mode', 'existing', { shouldValidate: true });
+                  }}
+                  disabled={disabled}
+                >
+                  {t('clientChooseExisting')}
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  form.setValue('mode', 'new');
+                  setNewOpen(true);
+                }}
+                disabled={disabled}
+              >
+                {t(values.mode === 'new' && newConfirmed ? 'clientEdit' : 'clientNew')}
+              </Button>
+            </div>
           </div>
         )}
         {values.mode === 'existing' && !fixedClient ? (

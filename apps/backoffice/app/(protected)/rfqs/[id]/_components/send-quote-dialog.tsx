@@ -1,14 +1,15 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { isValidPhoneNumber } from 'libphonenumber-js/min';
-import { MailIcon, MessageCircleIcon, SendIcon } from 'lucide-react';
+import { MailIcon, MessageCircleIcon, RefreshCwIcon, SendIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import {
   Button,
+  Callout,
   Checkbox,
   CopyButton,
   Dialog,
@@ -32,120 +33,161 @@ import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { errorCodeOf } from '@/lib/api/errors';
 import {
   formatRfqReference,
+  type QuoteDeliveryMode,
+  type QuoteDeliveryPreset,
   type QuoteDeliveryResponse,
-  type QuoteSendTrackingResponse,
   type RfqDetailResponse,
   type SendClientSelection,
 } from '@/lib/api/rfqs';
-import { draftQuoteFollowup, sendQuote } from '@/lib/api/rfqs-client';
+import { draftQuoteFollowup, fetchDeliveryPreset, sendQuote } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
 
-export function successfulDeliveries(deliveries: QuoteSendTrackingResponse[], versionId?: string) {
-  return deliveries.filter(
-    (d) =>
-      d.purpose !== 'FOLLOWUP' &&
-      (!versionId || d.version_id === versionId) &&
-      ['SENT', 'DELIVERED', 'VIEWED'].includes(d.tracking_status),
-  );
-}
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-interface Contacts {
+export interface Contacts {
   phones: string[];
   emails: string[];
 }
+
+export interface DeliverySelection extends Contacts {
+  whatsapp: boolean;
+  email: boolean;
+}
+
+/*
+ * The one rule every send dialog starts from. A preset (this quote's earlier destinations, or the
+ * client's last quote) selects exactly what it names. Without one, every known contact is prefilled
+ * and only WhatsApp is checked when it has a number, else email when it has an address; a medium
+ * the cycle already reached is never checked in «otro medio», and nothing is checked with no data.
+ */
+export function initialSelection(
+  contacts: Contacts,
+  preset: QuoteDeliveryPreset | null,
+  mode: QuoteDeliveryMode,
+): DeliverySelection {
+  if (preset && preset.source !== 'NONE' && mode !== 'OTHER_MEDIUM') {
+    return {
+      phones: preset.phones,
+      emails: preset.emails,
+      whatsapp: preset.phones.length > 0,
+      email: preset.emails.length > 0,
+    };
+  }
+  const usedWhatsApp = mode === 'OTHER_MEDIUM' && (preset?.usedPhones.length ?? 0) > 0;
+  const usedEmail = mode === 'OTHER_MEDIUM' && (preset?.usedEmails.length ?? 0) > 0;
+  const phones = contacts.phones.slice(0, 1);
+  const emails = contacts.emails.slice(0, 1);
+  const whatsapp = !usedWhatsApp && phones.length > 0;
+  return { phones, emails, whatsapp, email: !whatsapp && !usedEmail && emails.length > 0 };
+}
+
 interface SendQuoteDialogProps {
   detail: RfqDetailResponse;
   branchId: string;
   onSent: () => Promise<void>;
-  showTrigger?: boolean;
+  mode?: QuoteDeliveryMode;
   branchMissesEmail?: boolean;
-  resend?: boolean;
-  followup?: boolean;
 }
 
 export function SendQuoteDialog({
   detail,
   branchId,
   onSent,
-  showTrigger = true,
+  mode = 'FIRST',
   branchMissesEmail = false,
-  resend = false,
-  followup = false,
 }: SendQuoteDialogProps) {
   const fmt = useFormatters();
   const t = useTranslations('rfqs.detail.send');
   const tf = useTranslations('rfqs.detail.callouts.followup');
   const tChannel = useTranslations('rfqs.channels');
-  const tPhone = useTranslations('common.phone');
   const message = useApiErrorMessage('rfqs.detail.send');
   const { isAdmin } = useRfqList();
   const [open, setOpen] = useState(false);
   const [clientSelection, setClientSelection] = useState<SendClientSelection | null>(null);
   const [contacts, setContacts] = useState<Contacts>({ phones: [], emails: [] });
-  const [phones, setPhones] = useState<string[]>([]);
-  const [emails, setEmails] = useState<string[]>([]);
-  const [sendWhatsApp, setSendWhatsApp] = useState(false);
-  const [alsoEmail, setAlsoEmail] = useState(false);
+  const [preset, setPreset] = useState<QuoteDeliveryPreset | null>(null);
+  const [selection, setSelection] = useState<DeliverySelection>({
+    phones: [],
+    emails: [],
+    whatsapp: false,
+    email: false,
+  });
   const [sending, setSending] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [draft, setDraft] = useState('');
   const [templateConfigured, setTemplateConfigured] = useState(true);
   const [editing, setEditing] = useState(false);
   const touched = useRef(false);
+  const presetRequest = useRef(0);
   const sendAttempt = useRef<{ payload: string; key: string } | null>(null);
+  const followup = mode === 'FOLLOWUP';
   const quoteId = detail.quote?.id ?? null;
-  const history = successfulDeliveries(detail.deliveries, detail.version?.id);
-  const blockedWhatsApp = resend && history.some((d) => d.channel === 'WHATSAPP');
-  const blockedEmail = resend && history.some((d) => d.channel === 'EMAIL');
+  const usedPhones = mode === 'OTHER_MEDIUM' ? (preset?.usedPhones ?? []) : [];
+  const usedEmails = mode === 'OTHER_MEDIUM' ? (preset?.usedEmails ?? []) : [];
+  const blockedWhatsApp = usedPhones.length > 0;
+  const blockedEmail = usedEmails.length > 0;
+  const allUsed = mode === 'OTHER_MEDIUM' && blockedWhatsApp && blockedEmail;
+  const phoneOptions = [...new Set([...selection.phones, ...contacts.phones])];
+  const emailOptions = [...new Set([...selection.emails, ...contacts.emails])];
   const canSend =
     !!quoteId &&
+    preset !== null &&
     !loadingTemplate &&
-    (clientSelection !== null || followup) &&
-    (sendWhatsApp || alsoEmail) &&
-    (!sendWhatsApp ||
-      (!blockedWhatsApp && phones.length > 0 && phones.every((p) => isValidPhoneNumber(p)))) &&
-    (!alsoEmail ||
+    (clientSelection !== null || mode !== 'FIRST') &&
+    (selection.whatsapp || selection.email) &&
+    (!selection.whatsapp ||
+      (!blockedWhatsApp &&
+        selection.phones.length > 0 &&
+        selection.phones.every((p) => isValidPhoneNumber(p)))) &&
+    (!selection.email ||
       (!blockedEmail &&
-        emails.length > 0 &&
-        emails.every((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)))) &&
+        selection.emails.length > 0 &&
+        selection.emails.every((e) => EMAIL_PATTERN.test(e)))) &&
     (!followup || draft.trim().length > 0);
 
   const adoptContacts = useCallback(
     (incoming: Contacts) => {
-      const successful = successfulDeliveries(detail.deliveries, detail.version?.id);
-      const previous = successfulDestinations(successful);
       const fallbackPhone = detail.inbound_whatsapp_phone || detail.publicRequest?.phone;
       const fallbackEmail = detail.inbound_email || detail.publicRequest?.email;
       const hasContacts = incoming.phones.length > 0 || incoming.emails.length > 0;
-      const next = hasContacts
-        ? incoming
-        : {
-            phones: fallbackPhone ? [fallbackPhone] : [],
-            emails: fallbackEmail ? [fallbackEmail] : [],
-          };
-      setContacts(next);
-      if (touched.current) return;
-      const blockedPhone = resend && successful.some((d) => d.channel === 'WHATSAPP');
-      const blockedMail = resend && successful.some((d) => d.channel === 'EMAIL');
-      const usePrevious = followup && (previous.phones.length > 0 || previous.emails.length > 0);
-      const selectedPhones = usePrevious ? previous.phones : next.phones.slice(0, 1);
-      const selectedEmails = usePrevious ? previous.emails : next.emails.slice(0, 1);
-      setPhones(selectedPhones);
-      setEmails(selectedEmails);
-      const whatsapp = !blockedPhone && selectedPhones.length > 0;
-      setSendWhatsApp(whatsapp);
-      setAlsoEmail(!blockedMail && selectedEmails.length > 0 && (usePrevious || !whatsapp));
+      setContacts(
+        hasContacts
+          ? incoming
+          : {
+              phones: fallbackPhone ? [fallbackPhone] : [],
+              emails: fallbackEmail ? [fallbackEmail] : [],
+            },
+      );
     },
-    [
-      detail.deliveries,
-      detail.version?.id,
-      detail.inbound_whatsapp_phone,
-      detail.inbound_email,
-      detail.publicRequest,
-      followup,
-      resend,
-    ],
+    [detail.inbound_whatsapp_phone, detail.inbound_email, detail.publicRequest],
   );
+
+  // The client chosen in the dialog decides a first send's preset; later modes keep the quote's.
+  const chosenClientId = mode === 'FIRST' ? (clientSelection?.clientId ?? null) : null;
+  useEffect(() => {
+    if (!open || !quoteId) return;
+    const request = ++presetRequest.current;
+    setPreset(null);
+    fetchDeliveryPreset(quoteId, branchId, mode, chosenClientId)
+      .then((next) => {
+        if (request === presetRequest.current) setPreset(next);
+      })
+      .catch((error) => {
+        if (request !== presetRequest.current) return;
+        toast.error(message(errorCodeOf(error)));
+        setOpen(false);
+      });
+  }, [open, quoteId, branchId, mode, chosenClientId, message]);
+
+  useEffect(() => {
+    if (!preset || touched.current) return;
+    setSelection(initialSelection(contacts, preset, mode));
+  }, [contacts, preset, mode]);
+
+  function update(next: Partial<DeliverySelection>) {
+    touched.current = true;
+    setSelection((current) => ({ ...current, ...next }));
+  }
 
   function handleOpenChange(next: boolean) {
     if (sending) return;
@@ -153,6 +195,7 @@ export function SendQuoteDialog({
       touched.current = false;
       sendAttempt.current = null;
       setClientSelection(null);
+      setPreset(null);
       setDraft('');
       setEditing(false);
       setTemplateConfigured(true);
@@ -179,10 +222,10 @@ export function SendQuoteDialog({
     setSending(true);
     try {
       const body = {
-        recipientPhones: sendWhatsApp ? phones : [],
-        recipientEmails: alsoEmail ? emails.map((e) => e.trim()) : [],
-        clientAssociation: clientSelection ?? undefined,
-        otherChannelsOnly: resend,
+        mode,
+        recipientPhones: selection.whatsapp ? selection.phones : [],
+        recipientEmails: selection.email ? selection.emails.map((e) => e.trim()) : [],
+        clientAssociation: mode === 'FIRST' ? (clientSelection ?? undefined) : undefined,
         ...(followup ? { followupMessage: draft.trim() } : {}),
       };
       const payload = JSON.stringify(body);
@@ -199,6 +242,7 @@ export function SendQuoteDialog({
       setSending(false);
     }
   }
+
   function reportOutcome(deliveries: QuoteDeliveryResponse[]) {
     const external = deliveries.filter((d) => d.channel !== 'WEBAPP');
     const failed = external.filter((d) => d.tracking_status === 'FAILED');
@@ -216,45 +260,48 @@ export function SendQuoteDialog({
       }),
     );
   }
+
+  const title = followup ? tf('send') : t(`modes.${mode}.title`);
+  const trigger = followup ? tf('send') : t(`modes.${mode}.trigger`);
+  const TriggerIcon = mode === 'RESEND' ? RefreshCwIcon : SendIcon;
+
   return (
     <>
-      {showTrigger ? (
-        <Button
-          type="button"
-          variant={resend || followup ? 'outline' : 'default'}
-          size={resend || followup ? 'sm' : 'default'}
-          onClick={() => handleOpenChange(true)}
-        >
-          <SendIcon className="size-4" />
-          {followup ? tf('send') : t(resend ? 'resend' : 'button')}
-        </Button>
-      ) : null}
+      <Button
+        type="button"
+        variant={mode === 'FIRST' ? 'default' : 'outline'}
+        size={mode === 'FIRST' ? 'default' : 'sm'}
+        onClick={() => handleOpenChange(true)}
+      >
+        <TriggerIcon className="size-4" />
+        {trigger}
+      </Button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-lg" closeOnClickOutside={!sending}>
           <DialogHeader>
-            <DialogTitle>{followup ? tf('send') : t('title')}</DialogTitle>
+            <DialogTitle>{title}</DialogTitle>
             <DialogDescription className="sr-only">
               {followup ? tf('description') : t('description')}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-y-4">
             {open && quoteId ? (
               <SendClientForm
                 quoteId={quoteId}
                 branchId={branchId}
                 disabled={sending}
                 locked={
-                  followup ||
+                  mode !== 'FIRST' ||
                   detail.rfq.channel.toLowerCase() === 'webapp' ||
                   detail.quote?.current_status === 'SENT'
                 }
-                hideTags={followup}
+                hideTags={mode !== 'FIRST'}
                 onChange={setClientSelection}
                 onContactsChange={adoptContacts}
               />
             ) : null}
             {followup ? (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-y-3">
                 {editing ? (
                   <Textarea
                     aria-label={tf('draft.label')}
@@ -292,110 +339,34 @@ export function SendQuoteDialog({
                 </div>
               </div>
             ) : null}
-            <fieldset disabled={sending} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label className="flex items-center gap-2">
-                  <Checkbox
-                    checked={sendWhatsApp}
-                    disabled={blockedWhatsApp}
-                    onCheckedChange={(v) => {
-                      touched.current = true;
-                      setSendWhatsApp(v === true);
-                    }}
-                  />
-                  <MessageCircleIcon aria-hidden="true" className="size-4" />
-                  {t('sendWhatsApp')}
-                  {blockedWhatsApp ? (
-                    <span className="text-paragraph-xs text-foreground-muted">
-                      {t('alreadySent')}
-                    </span>
-                  ) : null}
-                </Label>
-                <Label htmlFor="send-phone">{t('phoneLabel')}</Label>
-                {contacts.phones.length > 1 ? (
-                  <MultiCombobox
-                    id="send-phone"
-                    values={phones}
-                    onValuesChange={(v) => {
-                      touched.current = true;
-                      setPhones(v);
-                    }}
-                    options={contacts.phones.map((value) => ({ value, label: value }))}
-                    placeholder={t('phoneLabel')}
-                    summaryLabel={(count) => t('selectedRecipients', { count })}
-                    clearLabel={t('clearRecipients')}
-                    aria-label={t('phoneLabel')}
-                    disabled={blockedWhatsApp}
-                  />
-                ) : (
-                  <PhoneInput
-                    id="send-phone"
-                    value={phones[0] ?? ''}
-                    onChange={(v) => {
-                      touched.current = true;
-                      setPhones(v ? [v] : []);
-                    }}
-                    aria-label={t('phoneLabel')}
-                    disabled={blockedWhatsApp}
-                    countryLabel={tPhone('country')}
-                    countrySearchPlaceholder={tPhone('countrySearch')}
-                    countryEmptyLabel={tPhone('countryEmpty')}
-                    landlineNotice={{
-                      message: tPhone('landline'),
-                      action: (mobile) => tPhone('useMobile', { number: mobile }),
-                    }}
-                  />
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label className="flex items-center gap-2">
-                  <Checkbox
-                    checked={alsoEmail}
-                    disabled={blockedEmail}
-                    onCheckedChange={(v) => {
-                      touched.current = true;
-                      setAlsoEmail(v === true);
-                    }}
-                  />
-                  <MailIcon aria-hidden="true" className="size-4" />
-                  {t('alsoEmail')}
-                  {blockedEmail ? (
-                    <span className="text-paragraph-xs text-foreground-muted">
-                      {t('alreadySent')}
-                    </span>
-                  ) : null}
-                </Label>
-                {contacts.emails.length > 1 ? (
-                  <MultiCombobox
-                    values={emails}
-                    onValuesChange={(v) => {
-                      touched.current = true;
-                      setEmails(v);
-                    }}
-                    options={contacts.emails.map((value) => ({ value, label: value }))}
-                    placeholder={t('emailLabel')}
-                    summaryLabel={(count) => t('selectedRecipients', { count })}
-                    clearLabel={t('clearRecipients')}
-                    aria-label={t('emailLabel')}
-                    disabled={blockedEmail}
-                  />
-                ) : (
-                  <Input
-                    type="email"
-                    value={emails[0] ?? ''}
-                    onChange={(e) => {
-                      touched.current = true;
-                      setEmails(e.target.value ? [e.target.value] : []);
-                    }}
-                    aria-label={t('emailLabel')}
-                    placeholder={t('emailPlaceholder')}
-                    disabled={blockedEmail}
-                  />
-                )}
-                {alsoEmail && branchMissesEmail ? (
-                  <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
-                ) : null}
-              </div>
+            {allUsed ? <Callout tone="info">{t('allUsed')}</Callout> : null}
+            <fieldset disabled={sending || preset === null} className="flex flex-col gap-y-4">
+              <DestinationField
+                kind="whatsapp"
+                checked={selection.whatsapp}
+                values={selection.phones}
+                options={phoneOptions}
+                used={usedPhones}
+                onCheckedChange={(whatsapp) => update({ whatsapp })}
+                onValuesChange={(phones) => update({ phones })}
+              />
+              <DestinationField
+                kind="email"
+                checked={selection.email}
+                values={selection.emails}
+                options={emailOptions}
+                used={usedEmails}
+                onCheckedChange={(email) => update({ email })}
+                onValuesChange={(emails) => update({ emails })}
+              />
+              {selection.email && branchMissesEmail ? (
+                <SetupNotice issue="BRANCH_EMAIL" isAdmin={isAdmin} />
+              ) : null}
+              {preset && preset.source !== 'NONE' && mode !== 'OTHER_MEDIUM' ? (
+                <p className="text-paragraph-xs text-foreground-muted">
+                  {t(`presetSource.${preset.source}`)}
+                </p>
+              ) : null}
             </fieldset>
             {!followup ? (
               <div className="flex items-center justify-between p-3 bg-sunken rounded-lg text-paragraph-sm">
@@ -423,13 +394,150 @@ export function SendQuoteDialog({
     </>
   );
 }
-function successfulDestinations(deliveries: QuoteSendTrackingResponse[]): Contacts {
-  const latest = [...deliveries].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
-  const operation = deliveries.filter((d) => d.operation_id === latest?.operation_id);
-  return {
-    phones: [
-      ...new Set(operation.filter((d) => d.channel === 'WHATSAPP').map((d) => d.destination)),
-    ],
-    emails: [...new Set(operation.filter((d) => d.channel === 'EMAIL').map((d) => d.destination))],
+
+interface DestinationFieldProps {
+  kind: 'whatsapp' | 'email';
+  checked: boolean;
+  values: string[];
+  options: string[];
+  used: string[];
+  onCheckedChange: (checked: boolean) => void;
+  onValuesChange: (values: string[]) => void;
+}
+
+/*
+ * One medium: its checkbox, then a single field while there is at most one known value, or a
+ * multi-select of the known ones. Either way a new number or address can be added, and with several
+ * known a hint says only the selected ones receive it. A medium this cycle already reached shows
+ * where it went instead of an editable field.
+ */
+function DestinationField({
+  kind,
+  checked,
+  values,
+  options,
+  used,
+  onCheckedChange,
+  onValuesChange,
+}: DestinationFieldProps) {
+  const t = useTranslations('rfqs.detail.send');
+  const tPhone = useTranslations('common.phone');
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const whatsapp = kind === 'whatsapp';
+  const id = `send-${kind}`;
+  const label = t(whatsapp ? 'phoneLabel' : 'emailLabel');
+  const valid = (value: string) =>
+    whatsapp ? isValidPhoneNumber(value) : EMAIL_PATTERN.test(value.trim());
+  const multiple = options.length > 1;
+  const Icon = whatsapp ? MessageCircleIcon : MailIcon;
+  const landlineNotice = {
+    message: tPhone('landline'),
+    action: (mobile: string) => tPhone('useMobile', { number: mobile }),
   };
+
+  function add() {
+    const value = draft.trim();
+    if (!valid(value)) return;
+    onValuesChange([...new Set([...values, value])]);
+    onCheckedChange(true);
+    setDraft('');
+    setAdding(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-y-2">
+      <Label className="flex items-center gap-x-2">
+        <Checkbox
+          checked={checked && used.length === 0}
+          disabled={used.length > 0}
+          onCheckedChange={(v) => onCheckedChange(v === true)}
+        />
+        <Icon aria-hidden="true" className="size-4" />
+        {t(whatsapp ? 'sendWhatsApp' : 'alsoEmail')}
+      </Label>
+      {used.length > 0 ? (
+        <p className="text-paragraph-xs text-foreground-muted">
+          {t('usedOn', { destinations: used.join(', ') })}
+        </p>
+      ) : (
+        <>
+          {multiple ? (
+            <MultiCombobox
+              id={id}
+              values={values}
+              onValuesChange={onValuesChange}
+              options={options.map((value) => ({ value, label: value }))}
+              placeholder={label}
+              summaryLabel={(count) => t('selectedRecipients', { count })}
+              clearLabel={t('clearRecipients')}
+              aria-label={label}
+            />
+          ) : whatsapp ? (
+            <PhoneInput
+              id={id}
+              value={values[0] ?? ''}
+              onChange={(v) => onValuesChange(v ? [v] : [])}
+              aria-label={label}
+              countryLabel={tPhone('country')}
+              countrySearchPlaceholder={tPhone('countrySearch')}
+              countryEmptyLabel={tPhone('countryEmpty')}
+              landlineNotice={landlineNotice}
+            />
+          ) : (
+            <Input
+              id={id}
+              type="email"
+              value={values[0] ?? ''}
+              onChange={(e) => onValuesChange(e.target.value ? [e.target.value] : [])}
+              aria-label={label}
+              placeholder={t('emailPlaceholder')}
+            />
+          )}
+          {multiple ? (
+            <p className="text-paragraph-xs text-foreground-muted">
+              {t('onlySelected', { selected: values.length, total: options.length })}
+            </p>
+          ) : null}
+          {adding ? (
+            <div className="flex items-start gap-x-2">
+              <div className="min-w-0 flex-1">
+                {whatsapp ? (
+                  <PhoneInput
+                    value={draft}
+                    onChange={setDraft}
+                    aria-label={t('addPhone')}
+                    countryLabel={tPhone('country')}
+                    countrySearchPlaceholder={tPhone('countrySearch')}
+                    countryEmptyLabel={tPhone('countryEmpty')}
+                    landlineNotice={landlineNotice}
+                  />
+                ) : (
+                  <Input
+                    type="email"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    aria-label={t('addEmail')}
+                    placeholder={t('emailPlaceholder')}
+                  />
+                )}
+              </div>
+              <Button variant="outline" disabled={!valid(draft)} onClick={add}>
+                {t('add')}
+              </Button>
+            </div>
+          ) : values.length > 0 && values.every(valid) ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={() => setAdding(true)}
+            >
+              {t(whatsapp ? 'addPhone' : 'addEmail')}
+            </Button>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
 }

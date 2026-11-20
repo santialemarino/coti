@@ -139,9 +139,8 @@
   --status-draft-foreground: oklch(0.5 0.015 250);
 
   /* Follow-up: a quote gone quiet. Indigo, so it reads apart from the azure active row and the
-     sent badge. Foreground 5.36:1 on the subtle wash, 5.01:1 on its hover. */
+     sent badge. Foreground 5.36:1 on the subtle wash. */
   --followup-subtle: oklch(0.952 0.03 265);
-  --followup-hover: oklch(0.93 0.042 265);
   --followup-border: oklch(0.87 0.07 265);
   --followup-foreground: oklch(0.5 0.16 265);
 

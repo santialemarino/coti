@@ -16,13 +16,23 @@ import (
 )
 
 type captureQuoteDelivery struct {
-	input domain.QuoteDeliveryInput
+	input    domain.QuoteDeliveryInput
+	mode     domain.QuoteDeliveryMode
+	clientID *uuid.UUID
 }
 
 func (s *captureQuoteDelivery) Send(_ context.Context, _ domain.Tenant, quoteID uuid.UUID,
 	input domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error) {
 	s.input = input
 	return &domain.QuoteDeliveryResult{QuoteID: quoteID}, nil
+}
+
+func (s *captureQuoteDelivery) Preset(_ context.Context, _ domain.Tenant, _ uuid.UUID,
+	mode domain.QuoteDeliveryMode, clientID *uuid.UUID) (*domain.QuoteDeliveryPreset, error) {
+	s.mode, s.clientID = mode, clientID
+	return &domain.QuoteDeliveryPreset{Source: domain.QuoteDeliveryPresetVersion,
+		Phones: []string{"+5491100000000"}, Emails: []string{}, UsedPhones: []string{"+5491100000000"},
+		UsedEmails: []string{}}, nil
 }
 
 func (*captureQuoteDelivery) ResolvePublic(context.Context, string) (*domain.PublicQuoteRepresentation, error) {

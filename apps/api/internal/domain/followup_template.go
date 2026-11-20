@@ -33,5 +33,5 @@ func ValidateFollowupTemplate(value string) error {
 
 // RenderFollowupTemplate substitutes customer and quote references without a model call.
 func RenderFollowupTemplate(value, client string, number int64) string {
-	return strings.NewReplacer("{cliente}", client, "{cotizacion}", fmt.Sprintf("COT-%06d", number)).Replace(value)
+	return strings.NewReplacer("{cliente}", client, "{cotizacion}", QuoteReference(number)).Replace(value)
 }

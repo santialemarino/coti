@@ -103,7 +103,6 @@
 
   /* Follow-up: a quote that needs a nudge. */
   --color-followup-subtle: var(--followup-subtle);
-  --color-followup-hover: var(--followup-hover);
   --color-followup-border: var(--followup-border);
   --color-followup-foreground: var(--followup-foreground);
 

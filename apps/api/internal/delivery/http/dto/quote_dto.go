@@ -123,8 +123,19 @@ type SetQuoteItemRecommendationRequest struct {
 	SaveToCatalog bool      `json:"save_to_catalog"`
 }
 
-// QuoteSendRequest selects delivery destinations and an optional validity override.
+// QuoteDeliveryPresetResponse is what a send dialog preselects and what the send cycle already reached.
+type QuoteDeliveryPresetResponse struct {
+	Source     string   `json:"source" enums:"VERSION,PREVIOUS_VERSION,CLIENT_LAST,NONE"`
+	Phones     []string `json:"phones"`
+	Emails     []string `json:"emails"`
+	UsedPhones []string `json:"used_phones"`
+	UsedEmails []string `json:"used_emails"`
+}
+
+// QuoteSendRequest selects delivery destinations and an optional validity override. Mode names the
+// seller action; without it the quote's status decides between a first send and a resend.
 type QuoteSendRequest struct {
+	Mode              string                       `json:"mode" binding:"omitempty,oneof=FIRST OTHER_MEDIUM RESEND FOLLOWUP"`
 	RecipientPhones   []string                     `json:"recipient_phones" binding:"max=20,dive,max=32"`
 	RecipientEmails   []string                     `json:"recipient_emails" binding:"max=20,dive,email,max=255"`
 	OtherChannelsOnly bool                         `json:"other_channels_only"`

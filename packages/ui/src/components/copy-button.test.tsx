@@ -62,4 +62,13 @@ describe('CopyButton', () => {
     expect(onCopyError).toHaveBeenCalledOnce();
     expect(announced()).toBe('');
   });
+
+  it('shows only the icon when asked, keeping the name and the announcement', async () => {
+    render(<CopyButton value={URL} labels={LABELS} iconOnly />);
+    const button = screen.getByRole('button', { name: LABELS.copy });
+    expect(button.textContent).toBe('');
+    await click();
+
+    expect(announced()).toBe(LABELS.copied);
+  });
 });

@@ -38,6 +38,8 @@ type QuoteService interface {
 type QuoteDeliveryService interface {
 	Send(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
 		in domain.QuoteDeliveryInput) (*domain.QuoteDeliveryResult, error)
+	Preset(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, mode domain.QuoteDeliveryMode,
+		clientID *uuid.UUID) (*domain.QuoteDeliveryPreset, error)
 	PreviewPublic(ctx context.Context, token string,
 		selections []domain.ClientAlternativeSelection) (*domain.PublicQuoteSelectionPreview, error)
 	ResolvePublic(ctx context.Context, token string) (*domain.PublicQuoteRepresentation, error)
@@ -201,6 +203,54 @@ func (h *QuoteHandler) GenerateRepresentation(c *gin.Context) {
 	c.JSON(status, toQuoteRepresentationResponse(*result))
 }
 
+// DeliveryPreset returns what a send dialog preselects for one seller action.
+//
+//	@Summary		Get a quote's delivery preset
+//	@Description	Returns the destinations a send dialog preselects for the given mode (this version's, the last sent version's, or the client's last quote's) and the destinations the current send cycle already reached.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Param			mode		query		string	true	"FIRST, OTHER_MEDIUM, RESEND or FOLLOWUP"
+//	@Param			client_id	query		string	false	"Client chosen in the dialog"
+//	@Success		200			{object}	dto.QuoteDeliveryPresetResponse
+//	@Failure		400			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse
+//	@Router			/v1/quotes/{quoteId}/delivery-preset [get]
+func (h *QuoteHandler) DeliveryPreset(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+	var clientID *uuid.UUID
+	if raw := c.Query("client_id"); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			Respond(c, domain.ErrInvalidInput)
+			return
+		}
+		clientID = &parsed
+	}
+	if h.delivery == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	preset, err := h.delivery.Preset(c.Request.Context(), tenant, quoteID,
+		domain.QuoteDeliveryMode(c.Query("mode")), clientID)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.QuoteDeliveryPresetResponse{Source: string(preset.Source),
+		Phones: preset.Phones, Emails: preset.Emails, UsedPhones: preset.UsedPhones,
+		UsedEmails: preset.UsedEmails})
+}
+
 // Send delivers a frozen quote through the seller-selected channels.
 //
 //	@Summary		Send a quote to its client
@@ -250,7 +300,8 @@ func (h *QuoteHandler) Send(c *gin.Context) {
 	}
 	result, err := h.delivery.Send(c.Request.Context(), tenant, quoteID,
 		domain.QuoteDeliveryInput{IdempotencyKey: key, Phone: request.RecipientPhone, ClientAssociation: fromSendClientRequest(request.ClientAssociation),
-			Email: email, ExpiryDays: request.ExpiryDays, Phones: request.RecipientPhones, Emails: request.RecipientEmails, OtherChannelsOnly: request.OtherChannelsOnly, FollowupMessage: request.FollowupMessage})
+			Email: email, ExpiryDays: request.ExpiryDays, Phones: request.RecipientPhones, Emails: request.RecipientEmails, OtherChannelsOnly: request.OtherChannelsOnly, FollowupMessage: request.FollowupMessage,
+			Mode: domain.QuoteDeliveryMode(request.Mode)})
 	if err != nil {
 		Respond(c, err)
 		return

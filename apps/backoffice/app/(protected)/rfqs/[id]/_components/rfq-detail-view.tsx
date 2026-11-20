@@ -266,28 +266,6 @@ export function RfqDetailView({
         </Callout>
       ) : null}
 
-      {rfqStatus === 'FAILED' && !archived ? (
-        <div className="flex justify-end">
-          <PendingButton
-            variant="outline"
-            pending={unarchiving}
-            pendingLabel={t('list.actions.archive')}
-            onClick={() =>
-              startUnarchive(async () => {
-                try {
-                  await setFailedRfqArchived(detail.rfq.id, true, branchId);
-                  await refreshDetail();
-                } catch (error) {
-                  toast.error(message(errorCodeOf(error)));
-                }
-              })
-            }
-          >
-            <ArchiveIcon className="size-4" />
-            {t('list.actions.archive')}
-          </PendingButton>
-        </div>
-      ) : null}
       <RfqStatusTimeline detail={detail} />
 
       {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
@@ -438,13 +416,12 @@ export function RfqDetailView({
         }}
       />
 
-      {quoteId ? (
+      {quoteId && quoteStatus === 'QUOTED' && !archived ? (
         <div className="flex justify-end">
           <SendQuoteDialog
             detail={detail}
             branchId={branchId}
             onSent={refreshDetail}
-            showTrigger={quoteStatus === 'QUOTED' && !archived}
             branchMissesEmail={branchMissesEmail}
           />
         </div>

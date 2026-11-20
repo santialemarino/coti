@@ -232,7 +232,7 @@ describe('QuoteDeliveryCard live link', () => {
     );
 
     expect(view.getByText(copy.unavailable)).toBeTruthy();
-    expect(view.queryByRole('link', { name: copy.openQuote })).toBeNull();
+    expect(view.queryByRole('link')).toBeNull();
     expect(view.queryByRole('button', { name: copy.copyLink })).toBeNull();
   });
 });
@@ -243,6 +243,12 @@ describe('QuoteDeliveryCard send action', () => {
   it('leaves the initial send action to the bottom of the order', () => {
     renderCard(makeDetail({ quoteStatus: 'QUOTED' }));
     expect(SendDialog).not.toHaveBeenCalled();
+  });
+
+  it('offers another medium and a resend beside the link once sent', () => {
+    renderCard(makeDetail({ quoteStatus: 'SENT', deliveries: [tracking({})] }));
+    const modes = SendDialog.mock.calls.map(([props]) => props.mode);
+    expect(modes).toEqual(['OTHER_MEDIUM', 'RESEND']);
   });
 
   it('keeps send and lifecycle actions hidden while the quote is archived', () => {
