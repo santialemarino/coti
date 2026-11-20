@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,8 +81,7 @@ func (c destinationCustomer) request(destination string) error {
 
 func linkSecret(t *testing.T, message domain.ContactMessage) string {
 	t.Helper()
-	fields := strings.Fields(message.Body)
-	link, err := url.Parse(fields[len(fields)-1])
+	link, err := url.Parse(message.Link)
 	if err != nil {
 		t.Fatal(err)
 	}

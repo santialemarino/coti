@@ -353,21 +353,23 @@ func TestContactNameReply_EmailPromptAnswersAsTheSupplierMailbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	mailer := &captureMailer{}
-	delivery := services.NewClientContactDeliveryService(e.db, repository.NewClientContactRepository(), mailer, nil, nil, config.CustomerAuthConfig{})
+	delivery := services.NewClientContactDeliveryService(e.db, repository.NewClientContactRepository(), repository.NewAccountRepository(), mailer, nil, nil, config.CustomerAuthConfig{})
 	if _, err := delivery.SendContact(ctx, domain.ContactMessage{AccountID: account, BranchID: branch, ChannelID: channel, Purpose: domain.ContactPurposeNameRequest, Kind: domain.ChannelTypeEmail, To: "cliente@example.test", Body: "fixed", InReplyTo: "<order@mail.test>"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := delivery.SendContact(ctx, domain.ContactMessage{AccountID: account, Purpose: domain.ContactPurposeVerification, Kind: domain.ChannelTypeEmail, To: "cliente@example.test", Body: "link"}); err != nil {
+	link := "https://portal.test/c/norte/verify-contact?challenge=x&token=y"
+	if _, err := delivery.SendContact(ctx, domain.ContactMessage{AccountID: account, Purpose: domain.ContactPurposeVerification, Kind: domain.ChannelTypeEmail, To: "cliente@example.test", Link: link}); err != nil {
 		t.Fatal(err)
 	}
 	if len(mailer.sent) != 2 {
 		t.Fatalf("sent %d", len(mailer.sent))
 	}
 	prompt, proof := mailer.sent[0], mailer.sent[1]
-	if prompt.Subject != "Tu pedido a Corralón Norte" || prompt.FromName != "Corralón Norte" || prompt.ReplyTo != mailbox || prompt.ReplyToName != "Corralón Norte — Corralón Norte Centro" || prompt.InReplyTo != "<order@mail.test>" || strings.Contains(prompt.Subject, "Coti") {
+	if prompt.Subject != "Tu pedido a Corralón Norte" || prompt.FromName != "Corralón Norte" || prompt.ReplyTo != mailbox || prompt.ReplyToName != "Corralón Norte — Corralón Norte Centro" || prompt.InReplyTo != "<order@mail.test>" || strings.Contains(prompt.Subject, "Coti") || prompt.HTMLBody != "" {
 		t.Fatalf("prompt mail = %+v", prompt)
 	}
-	if proof.Subject == prompt.Subject || proof.ReplyTo != "" || proof.FromName != "" {
+	if proof.Subject == prompt.Subject || proof.ReplyTo != "" || proof.FromName != "Corralón Norte" ||
+		!strings.Contains(proof.HTMLBody, "/c/norte/verify-contact?challenge=x") || !strings.Contains(proof.TextBody, link) || !strings.Contains(proof.TextBody, "Corralón Norte") {
 		t.Fatalf("verification mail = %+v", proof)
 	}
 	if _, err := delivery.SendContact(ctx, domain.ContactMessage{AccountID: account, Kind: domain.ChannelTypeEmail, To: "cliente@example.test", Body: "x"}); err == nil {

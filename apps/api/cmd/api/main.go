@@ -217,7 +217,7 @@ func run() error {
 	inboundRoutingService := services.NewInboundRoutingService(db, channelRepo)
 	contactService := services.NewClientContactService(db, clientRepo, repository.NewClientContactRepository()).WithContactLimit(cfg.CustomerAuth.ProfileContactsMax)
 	customerAuthService.WithClientProfiles(contactService)
-	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
+	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), accountRepo, mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.LinkLocalOrigin()).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	customerAuthService.WithContactRecovery(contactVerification).WithContactProof(contactVerification)

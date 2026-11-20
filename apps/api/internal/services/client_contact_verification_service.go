@@ -121,13 +121,13 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		return nil, err
 	}
 	origin := customerSiteOrigin(hostname, s.cfg.LinkLocalOrigin())
-	body := contactVerificationLink(origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret))
-	code := ""
+	message := domain.ContactMessage{AccountID: p.AccountID, Purpose: domain.ContactPurposeVerification, Kind: kind, To: value}
 	if kind == domain.ChannelTypeWhatsApp {
-		code = secret
-		body = contactVerificationCode(secret)
+		message.Code, message.Body = secret, contactVerificationCode(secret)
+	} else {
+		message.Link = origin + "/verify-contact?challenge=" + c.ID.String() + "&token=" + url.QueryEscape(secret)
 	}
-	_, err = s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: p.AccountID, Purpose: domain.ContactPurposeVerification, Kind: kind, To: value, Body: body, Code: code})
+	_, err = s.messenger.SendContact(ctx, message)
 	if err != nil {
 		_ = s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error { return s.store.FinishChallenge(ctx, q, p, c.ID, true) })
 		return nil, err
