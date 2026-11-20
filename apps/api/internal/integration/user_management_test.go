@@ -122,6 +122,8 @@ func newEnvWithRFQProviders(
 			VerificationTTL:   48 * time.Hour,
 			InviteTTL:         168 * time.Hour,
 		},
+		// Open, as in development; the tests of a closed signup turn it off themselves.
+		Signup: config.SignupConfig{Enabled: true, InviteTTL: 14 * 24 * time.Hour},
 		CustomerAuth: config.CustomerAuthConfig{SessionTTL: 30 * 24 * time.Hour, MaxFailedAttempts: 5, LockoutDuration: 15 * time.Minute, PasswordMinLength: 12, OrderPageSize: 20, SignupTTL: 10 * time.Minute, RecoveryTTL: 15 * time.Minute, ContactVerificationTTL: 10 * time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3, ProfileContactsMax: 10,
 			ContactDestinationMax: 1000, ContactDestinationWindow: time.Hour, ContactFailureMax: 1000, ContactLockout: time.Hour, ContactSpamMax: 1000, ContactSpamWindow: time.Hour},
 		Catalog: config.CatalogConfig{DefaultPageSize: 50, MaxPageSize: 200},
@@ -301,7 +303,10 @@ func newEnvWithRFQProviders(
 			Client: handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
-				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
+				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo).
+				WithSignup(cfg.Signup, repository.NewSignupInviteRepository())),
+			SignupInvite: handler.NewSignupInviteHandler(services.NewSignupInviteService(db,
+				repository.NewSignupInviteRepository(), cfg.Signup, cfg.Web, nil)),
 			Invoice:        handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),

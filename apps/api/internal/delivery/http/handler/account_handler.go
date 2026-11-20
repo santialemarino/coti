@@ -55,13 +55,14 @@ func (h *AccountHandler) Get(c *gin.Context) {
 // Register opens an account with its first branch and administrator.
 //
 //	@Summary		Register a corralón
-//	@Description	Creates the account, its first branch with that branch's manual-entry channel, and the administrator, then returns a session.
+//	@Description	Creates the account, its first branch with that branch's manual-entry channel, and the administrator, then returns a session. While public sign-up is closed it needs a single-use invite.
 //	@Tags			accounts
 //	@Accept			json
 //	@Produce		json
 //	@Param			request	body		dto.SignupRequest	true	"Registration"
 //	@Success		201		{object}	dto.SignupResponse
 //	@Failure		400		{object}	dto.ErrorResponse
+//	@Failure		403		{object}	dto.ErrorResponse
 //	@Failure		409		{object}	dto.ErrorResponse
 //	@Failure		422		{object}	dto.ErrorResponse
 //	@Router			/v1/public/accounts [post]
@@ -81,6 +82,7 @@ func (h *AccountHandler) Register(c *gin.Context) {
 		AdminName:     body.AdminName,
 		AdminEmail:    body.AdminEmail,
 		AdminPassword: body.AdminPassword,
+		InviteToken:   body.InviteToken,
 	})
 	if err != nil {
 		Respond(c, err)

@@ -22,6 +22,35 @@ The response carries a token pair, so the caller has a session without a second 
 Onboarding starts after email verification rather than extending this transaction into a longer
 registration wizard. See [onboarding.md](onboarding.md).
 
+## Closed signup and invites
+
+`SIGNUP_ENABLED` (API and backoffice, default `true`; production sets `false`) decides whether anyone
+may register. Closed, `POST /v1/public/accounts` refuses a body without `invite_token` with
+`403 SIGNUP_CLOSED`, and the backoffice hides every way to sign up and sends `/signup` to the
+landing's plans (`/#probar`).
+
+The team onboards a corralón with a **single-use invite link** instead. `signup_invite` holds the
+SHA-256 of the token (never the token), an optional email and note for the team's reference, the
+expiry and, once used, `used_at` and the `account_id` it registered. It is pre-account, like
+`job_run`: no row level security, and `coti_app` has no grant on it, so only the owner role reads it
+— registration's `AdminTx`, the check route and the command below.
+
+- **Minting:** `pnpm signup:invite [--email <address>] [--note <text>]` (`apps/api/cmd/invite`)
+  stores an invite valid for `SIGNUP_INVITE_TTL_DAYS` (default 14) and prints
+  `${WEB_BACKOFFICE_URL}/signup?invite=<token>` — the only copy of the token. In production run
+  `/api/bin/invite --note "<corralón>"` from a console on the api component, which already carries
+  the database URLs and `WEB_BACKOFFICE_URL`.
+- **Checking:** `POST /v1/public/signup-invites/check` (`{"token": …}`, so the token stays out of
+  request logs) answers 204 or the refusal, and redeems nothing. `/signup?invite=…` calls it before
+  showing the wizard, so a dead link is told at once.
+- **Redeeming:** registration locks the invite row first (`FOR UPDATE`), refuses one that is unknown
+  (`SIGNUP_INVITE_INVALID`), used (`SIGNUP_INVITE_USED`) or expired (`SIGNUP_INVITE_EXPIRED`), all
+  `403`, and marks it used with the new account in the same transaction. The invite is checked
+  before the address, so without a usable invite a closed signup never says whether an address is
+  taken. The email on the invite is a note: the administrator may register with another address.
+- **Open signup still honours a link:** with `SIGNUP_ENABLED=true` the invite is optional, but one
+  that is sent is validated and spent the same way.
+
 **The administrator's address must be free across every account**, because login resolves a
 user by email alone and an address therefore has to identify exactly one row.
 `uq_app_user_email_global` on `lower(email)` enforces that; registration also checks it inside

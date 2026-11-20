@@ -3530,6 +3530,14 @@ definitions:
     required:
     - product_id
     type: object
+  dto.SignupInviteCheckRequest:
+    properties:
+      token:
+        maxLength: 255
+        type: string
+    required:
+    - token
+    type: object
   dto.SignupRequest:
     properties:
       account_name:
@@ -3552,6 +3560,11 @@ definitions:
       branch_name:
         maxLength: 255
         minLength: 1
+        type: string
+      invite_token:
+        description: The single-use invite the team handed over; required while public
+          sign-up is closed.
+        maxLength: 255
         type: string
       legal_name:
         maxLength: 255
@@ -8030,7 +8043,8 @@ paths:
       consumes:
       - application/json
       description: Creates the account, its first branch with that branch's manual-entry
-        channel, and the administrator, then returns a session.
+        channel, and the administrator, then returns a session. While public sign-up
+        is closed it needs a single-use invite.
       parameters:
       - description: Registration
         in: body
@@ -8047,6 +8061,10 @@ paths:
             $ref: '#/definitions/dto.SignupResponse'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/dto.ErrorResponse'
         "409":
@@ -8398,6 +8416,35 @@ paths:
       summary: Get a public RFQ site
       tags:
       - public-rfqs
+  /v1/public/signup-invites/check:
+    post:
+      consumes:
+      - application/json
+      description: 'Redeems nothing: registration checks the invite again and uses
+        it up.'
+      parameters:
+      - description: Invite token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SignupInviteCheckRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: The invite can register a corralón
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: SIGNUP_INVITE_INVALID, SIGNUP_INVITE_USED or SIGNUP_INVITE_EXPIRED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Check a sign-up invite
+      tags:
+      - accounts
   /v1/quotes/{quoteId}/accept-materials:
     post:
       description: 'Freezes each line''s unit price and discount floor from the prices

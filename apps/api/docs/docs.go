@@ -6217,7 +6217,7 @@ const docTemplate = `{
         },
         "/v1/public/accounts": {
             "post": {
-                "description": "Creates the account, its first branch with that branch's manual-entry channel, and the administrator, then returns a session.",
+                "description": "Creates the account, its first branch with that branch's manual-entry channel, and the administrator, then returns a session. While public sign-up is closed it needs a single-use invite.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6248,6 +6248,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -6763,6 +6769,49 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/public/signup-invites/check": {
+            "post": {
+                "description": "Redeems nothing: registration checks the invite again and uses it up.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "accounts"
+                ],
+                "summary": "Check a sign-up invite",
+                "parameters": [
+                    {
+                        "description": "Invite token",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SignupInviteCheckRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The invite can register a corralón"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "SIGNUP_INVITE_INVALID, SIGNUP_INVITE_USED or SIGNUP_INVITE_EXPIRED",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -15900,6 +15949,18 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SignupInviteCheckRequest": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
+                "token": {
+                    "type": "string",
+                    "maxLength": 255
+                }
+            }
+        },
         "dto.SignupRequest": {
             "type": "object",
             "required": [
@@ -15936,6 +15997,11 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 255,
                     "minLength": 1
+                },
+                "invite_token": {
+                    "description": "The single-use invite the team handed over; required while public sign-up is closed.",
+                    "type": "string",
+                    "maxLength": 255
                 },
                 "legal_name": {
                     "type": "string",

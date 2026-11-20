@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -91,6 +92,9 @@ type AccountService struct {
 	defaultExpiryDays int
 	logoStorage       domain.ObjectStorage
 	logoMaxBytes      int64
+	signup            config.SignupConfig
+	invites           signupInviteRepository
+	now               func() time.Time
 }
 
 // NewAccountService builds an AccountService.
@@ -113,6 +117,14 @@ func NewAccountService(
 // WithDefaultTags seeds the reusable client labels that every account starts with.
 func (s *AccountService) WithDefaultTags(tags signupTagRepository) *AccountService {
 	s.tags = tags
+	return s
+}
+
+// WithSignup opens or closes public registration. Unset, it is closed: a registration then needs an
+// invite, and with no invites wired none is accepted.
+func (s *AccountService) WithSignup(cfg config.SignupConfig, invites signupInviteRepository) *AccountService {
+	s.signup = cfg
+	s.invites = invites
 	return s
 }
 
@@ -155,6 +167,10 @@ func (s *AccountService) DownloadLogo(
 func (s *AccountService) Register(
 	ctx context.Context, in domain.Signup,
 ) (*domain.SignupResult, *domain.TokenPair, error) {
+	inviteToken := strings.TrimSpace(in.InviteToken)
+	if inviteToken == "" && !s.signup.Enabled {
+		return nil, nil, domain.WithCode(domain.CodeSignupClosed, domain.ErrForbidden)
+	}
 	email := domain.NormalizeEmail(in.AdminEmail)
 	if email == "" {
 		return nil, nil, fmt.Errorf("%w: email is required", domain.ErrInvalidInput)
@@ -178,6 +194,19 @@ func (s *AccountService) Register(
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Before anything that answers about other accounts: without a usable invite a closed signup
+	// must not say whether an address is taken. Locked, so two registrations cannot share one.
+	var invite *domain.SignupInvite
+	if inviteToken != "" {
+		if s.invites == nil {
+			return nil, nil, domain.WithCode(domain.CodeSignupInviteInvalid, domain.ErrForbidden)
+		}
+		invite, err = redeemableInvite(ctx, s.invites.GetByHashForUpdate, tx, inviteToken, s.clock())
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 
 	// Login resolves a user by email across every account, so an address already in use
 	// would make the resulting session ambiguous.
@@ -220,6 +249,11 @@ func (s *AccountService) Register(
 	}, string(hash))
 	if err != nil {
 		return nil, nil, err
+	}
+	if invite != nil {
+		if err := s.invites.MarkUsed(ctx, tx, invite.ID, account.ID, s.clock()); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
@@ -400,4 +434,11 @@ func taxIDOf(value *string) string {
 
 func brandLogoKey(accountID, logoID uuid.UUID) string {
 	return path.Join("accounts", accountID.String(), "brand", logoID.String())
+}
+
+func (s *AccountService) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }

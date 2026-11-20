@@ -163,10 +163,13 @@ func run() error {
 		cfg.Branch.DefaultExpiryDays)
 	arcaSetupRepo := repository.NewARCASetupRepository()
 	invoicingRepo := repository.NewInvoicingRepository()
+	signupInviteRepo := repository.NewSignupInviteRepository()
 	accountService := services.NewAccountService(db, accountRepo, arcaSetupRepo, invoicingRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
-		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
+		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize).
+		WithSignup(cfg.Signup, signupInviteRepo)
+	signupInviteService := services.NewSignupInviteService(db, signupInviteRepo, cfg.Signup, cfg.Web, nil)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
@@ -347,6 +350,7 @@ func run() error {
 			CatalogImport:  handler.NewCatalogImportHandler(catalogImportService, cfg.CatalogImport.MaxBytes),
 			DataExport:     handler.NewDataExportHandler(dataExportService),
 			Account:        handler.NewAccountHandler(accountService),
+			SignupInvite:   handler.NewSignupInviteHandler(signupInviteService),
 			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
