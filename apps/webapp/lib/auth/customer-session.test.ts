@@ -7,15 +7,24 @@ import {
   getCustomerSession,
   startCustomerSession,
 } from '@/lib/auth/customer-session';
+import { PORTAL_SLUG_HEADER } from '@/lib/portal/routing';
 
 const jar = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
 
 vi.mock('next/headers', () => ({
   cookies: async () => jar,
   headers: async () =>
-    new Headers({ host: 'supplier.coti.test:3001', 'x-forwarded-host': 'other.coti.test' }),
+    new Headers({
+      host: 'other.coti.test:3001',
+      'x-forwarded-host': 'other.coti.test',
+      [PORTAL_SLUG_HEADER]: 'supplier',
+    }),
 }));
 
+vi.mock('@/lib/config', async (original) => ({
+  ...(await original<typeof import('@/lib/config')>()),
+  PORTAL_BASE_HOSTNAME: 'coti.test',
+}));
 vi.mock('@/lib/config/server', () => ({ API_INTERNAL_URL: 'http://api.internal.test' }));
 
 const identity = {
@@ -54,7 +63,7 @@ describe('customer sessions', () => {
       password: 'Customer-pass123!',
     });
     expect(jar.set).toHaveBeenCalledWith(
-      CUSTOMER_SESSION_COOKIE,
+      `${CUSTOMER_SESSION_COOKIE}_supplier`,
       secret,
       expect.objectContaining({
         httpOnly: true,
@@ -114,7 +123,7 @@ describe('customer sessions', () => {
       expect.objectContaining({ method: 'POST', headers: { Authorization: `Bearer ${secret}` } }),
     );
     expect(jar.set).toHaveBeenCalledWith(
-      CUSTOMER_SESSION_COOKIE,
+      `${CUSTOMER_SESSION_COOKIE}_supplier`,
       '',
       expect.objectContaining({ httpOnly: true, expires: new Date(0) }),
     );

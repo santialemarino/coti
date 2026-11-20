@@ -1961,6 +1961,13 @@ CREATE TABLE client_merge_audit (
  -- NULL when the customer's own contact proof merged the profiles.
  merged_by UUID,
  merged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ -- A seller merge into a customer's account: its orders stay out of the portal until confirmed.
+ requires_customer_proof BOOLEAN NOT NULL DEFAULT FALSE,
+ -- When the customer proved one of the merged profile's contacts.
+ customer_confirmed_at TIMESTAMPTZ,
+ CONSTRAINT uq_client_merge_audit_account_id UNIQUE (account_id, id),
+ CONSTRAINT ck_client_merge_audit_confirmation
+   CHECK (customer_confirmed_at IS NULL OR requires_customer_proof),
  FOREIGN KEY (account_id,source_client_id) REFERENCES client(account_id,id),
  FOREIGN KEY (account_id,target_client_id) REFERENCES client(account_id,id),
  FOREIGN KEY (account_id,merged_by) REFERENCES app_user(account_id,id)
@@ -1968,4 +1975,19 @@ CREATE TABLE client_merge_audit (
 CREATE INDEX idx_client_merge_audit_target ON client_merge_audit(account_id,target_client_id);
 ALTER TABLE client_merge_audit ENABLE ROW LEVEL SECURITY;
 CREATE POLICY client_merge_audit_account_isolation ON client_merge_audit
+ USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+-- Orders a seller merged into a customer's account, kept out of the portal until the customer proves
+-- one of the merged profile's contacts.
+CREATE TABLE client_merge_rfq (
+ account_id UUID NOT NULL REFERENCES account(id),
+ merge_audit_id UUID NOT NULL,
+ rfq_id UUID NOT NULL,
+ PRIMARY KEY (account_id, merge_audit_id, rfq_id),
+ FOREIGN KEY (account_id, merge_audit_id) REFERENCES client_merge_audit(account_id, id),
+ FOREIGN KEY (account_id, rfq_id) REFERENCES rfq(account_id, id)
+);
+CREATE INDEX idx_client_merge_rfq_rfq ON client_merge_rfq(account_id, rfq_id);
+ALTER TABLE client_merge_rfq ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_merge_rfq_account_isolation ON client_merge_rfq
  USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());

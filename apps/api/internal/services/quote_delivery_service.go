@@ -47,6 +47,18 @@ type quoteDeliveryHistoryReader interface {
 	ListByQuote(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) ([]domain.QuoteSend, error)
 }
 
+// quoteStatusHistoryReader marks where a send cycle starts: a reactivated quote re-enters QUOTED
+// with the same version, and the sends before that no longer count as «used».
+type quoteStatusHistoryReader interface {
+	ListStatusChanges(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) ([]domain.QuoteStatusChange, error)
+}
+
+// quoteClientDeliveryReader finds the destinations a client's last sent quote reached.
+type quoteClientDeliveryReader interface {
+	ListClientLastQuoteSends(ctx context.Context, q repository.Querier, accountID, branchID, clientID,
+		excludeQuoteID uuid.UUID) ([]domain.QuoteSend, error)
+}
+
 type quoteDeliveryQuoteRepository interface {
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID,
 		id uuid.UUID) (*domain.Quote, error)
@@ -436,21 +448,28 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 			return validateReplay(prepared, version.ID, in, validityDays)
 		}
 
-		if in.OtherChannelsOnly {
-			history, ok := s.sends.(quoteDeliveryHistoryReader)
-			if !ok {
-				return domain.ErrNotConfigured
+		mode := in.Mode
+		if mode == "" {
+			mode = domain.QuoteDeliveryModeResend
+			if quote.CurrentStatus == domain.QuoteStatusQuoted {
+				mode = domain.QuoteDeliveryModeFirst
 			}
-			previous, err := history.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		}
+		if mode == domain.QuoteDeliveryModeFirst && quote.CurrentStatus != domain.QuoteStatusQuoted {
+			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
+		}
+		if mode != domain.QuoteDeliveryModeFirst && quote.CurrentStatus != domain.QuoteStatusSent {
+			return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+		}
+		if mode == domain.QuoteDeliveryModeOtherMedium {
+			used, err := s.cycleSends(ctx, q, tenant, quoteID, version.ID)
 			if err != nil {
 				return err
 			}
-			for _, send := range previous {
-				if send.VersionID != version.ID || send.Purpose == domain.QuoteDeliveryPurposeFollowup || !hasSuccessfulSend([]domain.QuoteSend{send}) {
-					continue
-				}
-				if (send.ChannelType == domain.ChannelTypeWhatsApp && len(deliveryPhones(in)) > 0) || (send.ChannelType == domain.ChannelTypeEmail && len(deliveryEmails(in)) > 0) {
-					return domain.WithCode(domain.CodeDeliveryChannel, domain.ErrConflict)
+			for _, send := range used {
+				if (send.ChannelType == domain.ChannelTypeWhatsApp && len(deliveryPhones(in)) > 0) ||
+					(send.ChannelType == domain.ChannelTypeEmail && len(deliveryEmails(in)) > 0) {
+					return domain.WithCode(domain.CodeChannelAlreadyUsed, domain.ErrConflict)
 				}
 			}
 		}
@@ -500,6 +519,190 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		return err
 	})
 	return prepared, quote, version, err
+}
+
+// Preset returns what the send dialog preselects for mode and the destinations the current send
+// cycle already reached. clientID is the client chosen in the dialog, when there is one.
+func (s *QuoteDeliveryService) Preset(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+	mode domain.QuoteDeliveryMode, clientID *uuid.UUID) (*domain.QuoteDeliveryPreset, error) {
+	if err := requireBranch(tenant, "a delivery preset"); err != nil {
+		return nil, err
+	}
+	if !mode.Valid() {
+		return nil, fmt.Errorf("%w: unknown delivery mode", domain.ErrInvalidInput)
+	}
+	history, ok := s.sends.(quoteDeliveryHistoryReader)
+	if !ok {
+		return nil, domain.ErrNotConfigured
+	}
+	var preset domain.QuoteDeliveryPreset
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		sends, err := history.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		start, err := s.cycleStart(ctx, q, tenant, quoteID)
+		if err != nil {
+			return err
+		}
+		sameClient := clientID == nil || quote.ClientID == nil || *clientID == *quote.ClientID
+		preset = deliveryPreset(mode, sends, version.ID, start, sameClient)
+		client := clientID
+		if client == nil {
+			client = quote.ClientID
+		}
+		reader, ok := s.sends.(quoteClientDeliveryReader)
+		if preset.Source != domain.QuoteDeliveryPresetNone || mode != domain.QuoteDeliveryModeFirst ||
+			client == nil || !ok {
+			return nil
+		}
+		last, err := reader.ListClientLastQuoteSends(ctx, q, tenant.AccountID, tenant.BranchID, *client, quoteID)
+		if err != nil {
+			return err
+		}
+		phones, emails := deliveryDestinations(last)
+		if len(phones)+len(emails) > 0 {
+			preset.Source, preset.Phones, preset.Emails = domain.QuoteDeliveryPresetClientLast, phones, emails
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &preset, nil
+}
+
+// cycleSends returns the successful quote sends of versionID since the quote last entered QUOTED.
+func (s *QuoteDeliveryService) cycleSends(ctx context.Context, q repository.Querier, tenant domain.Tenant,
+	quoteID, versionID uuid.UUID) ([]domain.QuoteSend, error) {
+	history, ok := s.sends.(quoteDeliveryHistoryReader)
+	if !ok {
+		return nil, domain.ErrNotConfigured
+	}
+	sends, err := history.ListByQuote(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	start, err := s.cycleStart(ctx, q, tenant, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	return currentCycle(sends, versionID, start), nil
+}
+
+// cycleStart is when the quote last entered QUOTED; zero when the log is not available.
+func (s *QuoteDeliveryService) cycleStart(ctx context.Context, q repository.Querier, tenant domain.Tenant,
+	quoteID uuid.UUID) (time.Time, error) {
+	reader, ok := s.quotes.(quoteStatusHistoryReader)
+	if !ok {
+		return time.Time{}, nil
+	}
+	changes, err := reader.ListStatusChanges(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	var start time.Time
+	for _, change := range changes {
+		if change.NewStatus == domain.QuoteStatusQuoted && change.ChangedAt.After(start) {
+			start = change.ChangedAt
+		}
+	}
+	return start, nil
+}
+
+// deliveryPreset applies the preset rules: a resend and a reminder reuse what this cycle reached;
+// a first send reuses the version's own earlier cycle, else the last sent version, but only while
+// the dialog keeps the quote's client; «otro medio» starts from nothing.
+func deliveryPreset(mode domain.QuoteDeliveryMode, sends []domain.QuoteSend, versionID uuid.UUID,
+	cycleStart time.Time, sameClient bool) domain.QuoteDeliveryPreset {
+	preset := domain.QuoteDeliveryPreset{Source: domain.QuoteDeliveryPresetNone}
+	preset.UsedPhones, preset.UsedEmails = deliveryDestinations(currentCycle(sends, versionID, cycleStart))
+	switch mode {
+	case domain.QuoteDeliveryModeResend, domain.QuoteDeliveryModeFollowup:
+		if len(preset.UsedPhones)+len(preset.UsedEmails) > 0 {
+			preset.Source = domain.QuoteDeliveryPresetVersion
+			preset.Phones, preset.Emails = preset.UsedPhones, preset.UsedEmails
+		}
+	case domain.QuoteDeliveryModeFirst:
+		if !sameClient {
+			return preset
+		}
+		successful := successfulQuoteSends(sends)
+		var own, previous []domain.QuoteSend
+		var previousVersion uuid.UUID
+		for _, send := range successful {
+			switch {
+			case send.VersionID == versionID:
+				own = append(own, send)
+			case previousVersion == uuid.Nil || send.VersionID == previousVersion:
+				previousVersion = send.VersionID
+				previous = append(previous, send)
+			}
+		}
+		if len(own) > 0 {
+			preset.Source = domain.QuoteDeliveryPresetVersion
+			preset.Phones, preset.Emails = deliveryDestinations(own)
+		} else if len(previous) > 0 {
+			preset.Source = domain.QuoteDeliveryPresetPreviousVersion
+			preset.Phones, preset.Emails = deliveryDestinations(previous)
+		}
+	}
+	return preset
+}
+
+// currentCycle keeps the successful quote sends of versionID made at or after start.
+func currentCycle(sends []domain.QuoteSend, versionID uuid.UUID, start time.Time) []domain.QuoteSend {
+	cycle := make([]domain.QuoteSend, 0, len(sends))
+	for _, send := range successfulQuoteSends(sends) {
+		at := send.CreatedAt
+		if send.SentAt != nil {
+			at = *send.SentAt
+		}
+		if send.VersionID == versionID && !at.Before(start) {
+			cycle = append(cycle, send)
+		}
+	}
+	return cycle
+}
+
+// successfulQuoteSends drops reminders and failed or pending attempts, keeping the input order.
+func successfulQuoteSends(sends []domain.QuoteSend) []domain.QuoteSend {
+	kept := make([]domain.QuoteSend, 0, len(sends))
+	for _, send := range sends {
+		if send.Purpose != domain.QuoteDeliveryPurposeFollowup && hasSuccessfulSend([]domain.QuoteSend{send}) {
+			kept = append(kept, send)
+		}
+	}
+	return kept
+}
+
+// deliveryDestinations lists the WhatsApp numbers and email addresses sends reached, each once, in
+// the sends' order; portal publications have no destination of their own.
+func deliveryDestinations(sends []domain.QuoteSend) (phones, emails []string) {
+	phones, emails = []string{}, []string{}
+	seen := map[string]bool{}
+	for _, send := range sends {
+		key := string(send.ChannelType) + ":" + send.Destination
+		if send.Destination == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		switch send.ChannelType {
+		case domain.ChannelTypeWhatsApp:
+			phones = append(phones, send.Destination)
+		case domain.ChannelTypeEmail:
+			emails = append(emails, send.Destination)
+		}
+	}
+	return phones, emails
 }
 
 func (s *QuoteDeliveryService) selectedChannels(ctx context.Context, q repository.Querier,
@@ -1191,9 +1394,25 @@ func normalizeQuoteDeliveryInput(in domain.QuoteDeliveryInput) (domain.QuoteDeli
 			return in, domain.ErrInvalidInput
 		}
 	}
+	if in.Mode == "" {
+		switch {
+		case in.FollowupMessage != nil:
+			in.Mode = domain.QuoteDeliveryModeFollowup
+		case in.OtherChannelsOnly:
+			in.Mode = domain.QuoteDeliveryModeOtherMedium
+		}
+	}
+	if in.Mode != "" && !in.Mode.Valid() {
+		return in, fmt.Errorf("%w: unknown delivery mode", domain.ErrInvalidInput)
+	}
+	if (in.Mode == domain.QuoteDeliveryModeFollowup) != (in.FollowupMessage != nil) ||
+		in.OtherChannelsOnly && in.Mode != domain.QuoteDeliveryModeOtherMedium {
+		return in, fmt.Errorf("%w: the delivery mode does not match its fields", domain.ErrInvalidInput)
+	}
+	in.OtherChannelsOnly = in.Mode == domain.QuoteDeliveryModeOtherMedium
 	if in.FollowupMessage != nil {
 		message := strings.TrimSpace(*in.FollowupMessage)
-		if message == "" || utf8.RuneCountInString(message) > 2000 || in.OtherChannelsOnly {
+		if message == "" || utf8.RuneCountInString(message) > 2000 {
 			return in, domain.ErrInvalidInput
 		}
 		in.FollowupMessage = &message

@@ -102,7 +102,7 @@ export function ComboSuggestions({ quoteId, branchId, items, onAdded }: ComboSug
           {suggestions.map((suggestion) => (
             <li
               key={suggestion.comboId}
-              className="flex flex-col p-4 gap-y-3 border border-border rounded-lg sm:flex-row sm:items-start sm:justify-between sm:gap-x-4"
+              className="flex flex-col p-4 gap-y-3 border border-border rounded-lg sm:flex-row sm:items-center sm:justify-between sm:gap-x-4"
             >
               <div className="flex flex-col min-w-0 gap-y-2">
                 <p className="text-paragraph-sm-medium text-foreground">{suggestion.name}</p>

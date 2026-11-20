@@ -289,8 +289,7 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	if len(messenger.messages) != 1 {
 		t.Fatal("verification was not dispatched")
 	}
-	fields := strings.Fields(messenger.messages[0].Body)
-	link, err := url.Parse(fields[len(fields)-1])
+	link, err := url.Parse(messenger.messages[0].Link)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,8 +378,7 @@ func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string,
 	}
 	secret := messenger.messages[0].Code
 	if kind == domain.ChannelTypeEmail {
-		fields := strings.Fields(messenger.messages[0].Body)
-		link, _ := url.Parse(fields[len(fields)-1])
+		link, _ := url.Parse(messenger.messages[0].Link)
 		secret = link.Query().Get("token")
 	}
 	if err := verifier.Confirm(ctx, p, proof.ID, secret); err != nil {
@@ -412,7 +410,7 @@ func TestClientContacts_RegistrationLinkUsesOwnedVerifiedContact(t *testing.T) {
 	if err := service.SendRegistrationLink(ctx, tenant, clientID, domain.ChannelTypeEmail); err != nil {
 		t.Fatal(err)
 	}
-	if len(messenger.messages) != 1 || messenger.messages[0].To != email || messenger.messages[0].AccountID != account || messenger.messages[0].BranchID != branch || !strings.Contains(messenger.messages[0].Body, "/login?next=%2Fprofile") {
+	if len(messenger.messages) != 1 || messenger.messages[0].To != email || messenger.messages[0].AccountID != account || messenger.messages[0].BranchID != branch || !strings.HasSuffix(messenger.messages[0].Link, "/login?next=%2Fprofile") {
 		t.Fatalf("profile link: %+v", messenger.messages)
 	}
 	foreign, _ := e.seedAccount(t, "Foreign profile link")

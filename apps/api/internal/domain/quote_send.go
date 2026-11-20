@@ -31,6 +31,55 @@ const (
 	QuoteDeliveryPurposeFollowup QuoteDeliveryPurpose = "FOLLOWUP"
 )
 
+// QuoteDeliveryMode names the seller action behind a delivery; each mode has its own state and
+// medium rules.
+type QuoteDeliveryMode string
+
+const (
+	// QuoteDeliveryModeFirst publishes a QUOTED version.
+	QuoteDeliveryModeFirst QuoteDeliveryMode = "FIRST"
+	// QuoteDeliveryModeOtherMedium reaches the customer of a SENT quote through a medium not used yet.
+	QuoteDeliveryModeOtherMedium QuoteDeliveryMode = "OTHER_MEDIUM"
+	// QuoteDeliveryModeResend repeats a SENT quote through any medium, keeping its expiry.
+	QuoteDeliveryModeResend QuoteDeliveryMode = "RESEND"
+	// QuoteDeliveryModeFollowup sends a seller-confirmed reminder for a SENT quote.
+	QuoteDeliveryModeFollowup QuoteDeliveryMode = "FOLLOWUP"
+)
+
+// Valid reports whether m is a known delivery mode.
+func (m QuoteDeliveryMode) Valid() bool {
+	switch m {
+	case QuoteDeliveryModeFirst, QuoteDeliveryModeOtherMedium, QuoteDeliveryModeResend,
+		QuoteDeliveryModeFollowup:
+		return true
+	}
+	return false
+}
+
+// QuoteDeliveryPresetSource says where a delivery preset's destinations come from.
+type QuoteDeliveryPresetSource string
+
+const (
+	// QuoteDeliveryPresetVersion reuses the destinations the current version reached.
+	QuoteDeliveryPresetVersion QuoteDeliveryPresetSource = "VERSION"
+	// QuoteDeliveryPresetPreviousVersion reuses the destinations of the quote's last sent version.
+	QuoteDeliveryPresetPreviousVersion QuoteDeliveryPresetSource = "PREVIOUS_VERSION"
+	// QuoteDeliveryPresetClientLast reuses the destinations of the client's last sent quote.
+	QuoteDeliveryPresetClientLast QuoteDeliveryPresetSource = "CLIENT_LAST"
+	// QuoteDeliveryPresetNone leaves the selection to the WhatsApp-first rule.
+	QuoteDeliveryPresetNone QuoteDeliveryPresetSource = "NONE"
+)
+
+// QuoteDeliveryPreset is what a send dialog preselects for one mode, and the destinations the
+// current send cycle already reached, which «otro medio» must not offer again.
+type QuoteDeliveryPreset struct {
+	Source     QuoteDeliveryPresetSource
+	Phones     []string
+	Emails     []string
+	UsedPhones []string
+	UsedEmails []string
+}
+
 // QuoteSend is one channel-specific attempt to deliver one frozen quote version.
 type QuoteSend struct {
 	Purpose     QuoteDeliveryPurpose
@@ -82,6 +131,7 @@ type QuoteSendOutcome struct {
 
 // QuoteDeliveryInput is the seller-approved delivery request.
 type QuoteDeliveryInput struct {
+	Mode              QuoteDeliveryMode
 	Phones            []string
 	Emails            []string
 	OtherChannelsOnly bool

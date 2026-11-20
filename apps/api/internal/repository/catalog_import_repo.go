@@ -121,30 +121,61 @@ func (r *CatalogImportRepository) DatabaseTime(ctx context.Context, q Querier) (
 	return databaseTime(ctx, q)
 }
 
-// ListExistingCodes returns the requested codes already owned by the account.
-func (r *CatalogImportRepository) ListExistingCodes(
-	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
-) (map[string]struct{}, error) {
+// ListImportState returns, per requested code the account owns, everything an import row can
+// change: the product, its availability and price in force at the branch, and its slots.
+func (r *CatalogImportRepository) ListImportState(
+	ctx context.Context, q Querier, accountID, branchID uuid.UUID, codes []string,
+) (map[string]domain.CatalogProductState, error) {
+	states := make(map[string]domain.CatalogProductState, len(codes))
+	if len(codes) == 0 {
+		return states, nil
+	}
 	rows, err := q.Query(ctx,
-		`SELECT code
-		 FROM product
-		 WHERE account_id = $1
-		   AND code = ANY($2)`,
-		accountID, codes)
+		`SELECT p.code, p.canonical_name, coalesce(p.description, ''), coalesce(p.unit, ''),
+		        p.family_id, p.subgroup_id, p.is_active, bp.is_active,
+		        pp.price::text, pp.min_price::text, economy.code, premium.code
+		 FROM product p
+		 LEFT JOIN branch_product bp
+		   ON bp.account_id = $1 AND bp.branch_id = $2 AND bp.product_id = p.id
+		 LEFT JOIN LATERAL (
+		   SELECT price, min_price
+		   FROM product_price
+		   WHERE account_id = $1 AND branch_id = $2 AND product_id = p.id
+		     AND valid_from <= now() AND (valid_to IS NULL OR valid_to > now())
+		   ORDER BY valid_from DESC
+		   LIMIT 1
+		 ) pp ON TRUE
+		 LEFT JOIN LATERAL (
+		   SELECT coalesce(alternative.code, '') AS code
+		   FROM product_alternative pa
+		   JOIN product alternative ON alternative.id = pa.alternative_product_id
+		     AND alternative.account_id = pa.account_id
+		   WHERE pa.account_id = $1 AND pa.base_product_id = p.id AND pa.type = 'ECONOMY'
+		 ) economy ON TRUE
+		 LEFT JOIN LATERAL (
+		   SELECT coalesce(alternative.code, '') AS code
+		   FROM product_alternative pa
+		   JOIN product alternative ON alternative.id = pa.alternative_product_id
+		     AND alternative.account_id = pa.account_id
+		   WHERE pa.account_id = $1 AND pa.base_product_id = p.id AND pa.type = 'PREMIUM'
+		 ) premium ON TRUE
+		 WHERE p.account_id = $1 AND p.code = ANY($3)`,
+		accountID, branchID, codes)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	existing := make(map[string]struct{}, len(codes))
 	for rows.Next() {
 		var code string
-		if err := rows.Scan(&code); err != nil {
+		var state domain.CatalogProductState
+		if err := rows.Scan(&code, &state.Name, &state.Description, &state.Unit, &state.FamilyID,
+			&state.SubgroupID, &state.IsActive, &state.BranchActive, &state.Price, &state.MinPrice,
+			&state.Slots.Economy, &state.Slots.Premium); err != nil {
 			return nil, err
 		}
-		existing[code] = struct{}{}
+		states[code] = state
 	}
-	return existing, rows.Err()
+	return states, rows.Err()
 }
 
 // ListProductsByCodes returns what an alternative check needs about each requested code the
@@ -174,43 +205,6 @@ func (r *CatalogImportRepository) ListProductsByCodes(
 		refs[code] = ref
 	}
 	return refs, rows.Err()
-}
-
-// ListRecommendationSlots returns, per requested product code, the codes its ECONOMY and PREMIUM
-// slots hold now, whatever state those products are in.
-func (r *CatalogImportRepository) ListRecommendationSlots(
-	ctx context.Context, q Querier, accountID uuid.UUID, codes []string,
-) (map[string]domain.CatalogSlots, error) {
-	slots := make(map[string]domain.CatalogSlots, len(codes))
-	if len(codes) == 0 {
-		return slots, nil
-	}
-	rows, err := q.Query(ctx,
-		`SELECT b.code, pa.type::text, a.code
-		 FROM product_alternative pa
-		 JOIN product b ON b.id = pa.base_product_id AND b.account_id = pa.account_id
-		 JOIN product a ON a.id = pa.alternative_product_id AND a.account_id = pa.account_id
-		 WHERE pa.account_id = $1 AND b.code = ANY($2) AND pa.type IN ('ECONOMY', 'PREMIUM')
-		   AND a.code IS NOT NULL`,
-		accountID, codes)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var base, kind, alternative string
-		if err := rows.Scan(&base, &kind, &alternative); err != nil {
-			return nil, err
-		}
-		current := slots[base]
-		if kind == string(domain.ProductAlternativeEconomy) {
-			current.Economy = &alternative
-		} else {
-			current.Premium = &alternative
-		}
-		slots[base] = current
-	}
-	return slots, rows.Err()
 }
 
 // ApplyImport upserts products, branch availability and changed prices in the caller's transaction.

@@ -12,6 +12,10 @@ vi.mock('next/headers', () => ({
   cookies: async () => context.jar,
   headers: async () => new Headers({ host: 'portal.test', [PORTAL_SLUG_HEADER]: context.slug }),
 }));
+vi.mock('@/lib/config', async (original) => ({
+  ...(await original<typeof import('@/lib/config')>()),
+  PORTAL_BASE_HOSTNAME: 'portal.test',
+}));
 vi.mock('@/lib/config/server', () => ({ API_INTERNAL_URL: 'http://api.test' }));
 afterEach(() => vi.unstubAllGlobals());
 

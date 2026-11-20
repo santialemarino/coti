@@ -36,26 +36,32 @@ type CatalogImportRowResponse struct {
 	MinPrice    *string `json:"min_price"`
 	IsActive    bool    `json:"is_active"`
 	// Null keeps the recommendation slot, an empty string clears it, a product code sets it.
-	EconomyAlternative *string  `json:"economy_alternative"`
-	PremiumAlternative *string  `json:"premium_alternative"`
-	Action             string   `json:"action"`
-	Errors             []string `json:"errors"`
+	EconomyAlternative *string `json:"economy_alternative"`
+	PremiumAlternative *string `json:"premium_alternative"`
+	// CREATE, UPDATE or UNCHANGED; an UNCHANGED row matches what is stored and is not written.
+	Action string   `json:"action" enums:"CREATE,UPDATE,UNCHANGED"`
+	Errors []string `json:"errors"`
 }
 
 // CatalogImportPreviewResponse is returned by POST /v1/products/import/preview.
 type CatalogImportPreviewResponse struct {
-	Rows        []CatalogImportRowResponse `json:"rows"`
-	ValidRows   int                        `json:"valid_rows"`
-	InvalidRows int                        `json:"invalid_rows"`
-	CanConfirm  bool                       `json:"can_confirm"`
-	PreviewedAt time.Time                  `json:"previewed_at"`
+	Rows          []CatalogImportRowResponse `json:"rows"`
+	ValidRows     int                        `json:"valid_rows"`
+	InvalidRows   int                        `json:"invalid_rows"`
+	CreateRows    int                        `json:"create_rows"`
+	UpdateRows    int                        `json:"update_rows"`
+	UnchangedRows int                        `json:"unchanged_rows"`
+	CanConfirm    bool                       `json:"can_confirm"`
+	PreviewedAt   time.Time                  `json:"previewed_at"`
 }
 
-// ConfirmCatalogImportResponse reports how many catalog rows were created, updated, or skipped.
+// ConfirmCatalogImportResponse reports how many catalog rows were created, updated, left as
+// stored, or skipped.
 type ConfirmCatalogImportResponse struct {
-	CreatedRows int `json:"created_rows"`
-	UpdatedRows int `json:"updated_rows"`
-	SkippedRows int `json:"skipped_rows"`
+	CreatedRows   int `json:"created_rows"`
+	UpdatedRows   int `json:"updated_rows"`
+	UnchangedRows int `json:"unchanged_rows"`
+	SkippedRows   int `json:"skipped_rows"`
 }
 
 // ProductSubgroupResponse is one taxonomy subgroup.

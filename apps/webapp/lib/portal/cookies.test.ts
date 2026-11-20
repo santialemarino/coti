@@ -23,12 +23,12 @@ it('reads, writes and clears cookies independently for two suppliers on the same
   context.jar = jar;
   context.slug = 'marko';
   expect(await getCustomerToken()).toBe('session-a');
-  expect(await getCustomerHostname()).toBe('marko.portal.test');
+  expect(await getCustomerHostname()).toBe('marko.localhost');
   (await customerCookies()).set(CUSTOMER_SESSION_COOKIE, '', { path: '/', expires: new Date(0) });
   expect(await getCustomerToken()).toBeUndefined();
   context.slug = 'other';
   expect(await getCustomerToken()).toBe('session-b');
-  expect(await getCustomerHostname()).toBe('other.portal.test');
+  expect(await getCustomerHostname()).toBe('other.localhost');
   context.slug = 'unknown';
   expect(await getCustomerToken()).toBeUndefined();
 });

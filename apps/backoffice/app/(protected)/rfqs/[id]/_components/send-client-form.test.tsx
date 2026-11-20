@@ -118,7 +118,21 @@ describe('send client selection', () => {
     const view = renderForm();
     await view.findByRole('button', { name: copy.clientNew });
     expect(view.onChange).toHaveBeenLastCalledWith(null);
-    expect(view.queryByLabelText(new RegExp(copy.clientTax))).toBeNull();
+    expect(view.queryByLabelText(/CUIT/)).toBeNull();
+  });
+  it('goes back to choosing an existing client after creating a new one', async () => {
+    const view = renderForm();
+    await view.findByRole('button', { name: copy.clientNew });
+    fireEvent.click(view.getByRole('button', { name: copy.clientNew }));
+    fireEvent.click(view.getByRole('button', { name: copy.clientUse }));
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ newClient: expect.anything() }),
+      ),
+    );
+    fireEvent.click(await view.findByRole('button', { name: copy.clientChooseExisting }));
+    await waitFor(() => expect(view.onChange).toHaveBeenLastCalledWith(null));
+    expect(view.getByRole('button', { name: copy.clientNew })).toBeTruthy();
   });
   it('requires a contact for a new provisional profile', async () => {
     const view = renderForm();

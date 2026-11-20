@@ -84,7 +84,7 @@ func (m *sellerMerge) order(t *testing.T, clientID, branch uuid.UUID) uuid.UUID 
 func (m *sellerMerge) merge(t *testing.T, target, source uuid.UUID) (int, string) {
 	t.Helper()
 	rec := m.e.do(t, request{method: http.MethodPost, path: "/v1/clients/" + target.String() + "/merge", token: m.token, body: map[string]any{"source_client_id": source}})
-	if rec.Code == http.StatusNoContent {
+	if rec.Code == http.StatusOK {
 		return rec.Code, ""
 	}
 	return rec.Code, errorCode(t, rec)
@@ -172,8 +172,11 @@ func TestSellerMerge_MergesTwoProvisionalProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if status, code := m.merge(t, target, source); status != http.StatusNoContent {
-		t.Fatalf("merge: status = %d (%s), want 204", status, code)
+	if status, code := m.merge(t, target, source); status != http.StatusOK {
+		t.Fatalf("merge: status = %d (%s), want 200", status, code)
+	}
+	if status, code := m.merge(t, target, source); status != http.StatusOK {
+		t.Fatalf("a retried merge: status = %d (%s), want 200", status, code)
 	}
 	if into := m.mergedInto(t, source); into == nil || *into != target {
 		t.Fatalf("source merged_into = %v, want %s", into, target)
@@ -218,8 +221,8 @@ func TestSellerMerge_MergesTwoProvisionalProfiles(t *testing.T) {
 
 	// A chain stays one hop: merging the survivor again repoints the profile merged into it.
 	third := m.profile(t, "Counter buyer (third)", "counter-three@example.test", nil)
-	if status, code := m.merge(t, third, target); status != http.StatusNoContent {
-		t.Fatalf("second merge: status = %d (%s), want 204", status, code)
+	if status, code := m.merge(t, third, target); status != http.StatusOK {
+		t.Fatalf("second merge: status = %d (%s), want 200", status, code)
 	}
 	if into := m.mergedInto(t, source); into == nil || *into != third {
 		t.Fatalf("the first source now merged_into = %v, want the latest survivor %s", into, third)
@@ -238,9 +241,11 @@ func TestSellerMerge_RefusesWhatNoSellerMerges(t *testing.T) {
 	elsewhere := m.profile(t, "Other branch buyer", "elsewhere@example.test", nil)
 	m.order(t, elsewhere, m.other)
 	merged := m.profile(t, "Already merged", "merged@example.test", nil)
-	if status, code := m.merge(t, target, merged); status != http.StatusNoContent {
+	elsewhereSurvivor := m.profile(t, "Other survivor", "other-survivor@example.test", nil)
+	if status, code := m.merge(t, elsewhereSurvivor, merged); status != http.StatusOK {
 		t.Fatalf("seed merge: status = %d (%s)", status, code)
 	}
+	otherRegistered := m.registered(t, "Other registered", "other-registered@example.test", "27111111110")
 	foreignAccount, _ := e.seedAccount(t, "Seller merge ajeno")
 	foreign := (&sellerMerge{e: e, account: foreignAccount}).profile(t, "Foreign", "foreign@example.test", nil)
 
@@ -250,8 +255,7 @@ func TestSellerMerge_RefusesWhatNoSellerMerges(t *testing.T) {
 		status         int
 		code           domain.ErrorCode
 	}{
-		{"registered source", target, registered, http.StatusForbidden, domain.CodeClientRegistered},
-		{"registered target", registered, target, http.StatusForbidden, domain.CodeClientRegistered},
+		{"two customer accounts", registered, otherRegistered, http.StatusForbidden, domain.CodeClientRegistered},
 		{"order in another branch", target, elsewhere, http.StatusForbidden, domain.CodeClientOutOfReach},
 		{"another account", target, foreign, http.StatusNotFound, domain.CodeNotFound},
 		{"already merged", target, merged, http.StatusConflict, domain.CodeClientMerged},
@@ -261,7 +265,7 @@ func TestSellerMerge_RefusesWhatNoSellerMerges(t *testing.T) {
 			t.Errorf("%s: status = %d (%s), want %d (%s)", tc.name, status, code, tc.status, tc.code)
 		}
 	}
-	for _, id := range []uuid.UUID{registered, elsewhere, foreign} {
+	for _, id := range []uuid.UUID{registered, otherRegistered, elsewhere, foreign} {
 		if into := m.mergedInto(t, id); into != nil {
 			t.Errorf("refused profile %s was merged into %s", id, *into)
 		}
@@ -277,10 +281,89 @@ func TestSellerMerge_RefusesWhatNoSellerMerges(t *testing.T) {
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &list) != nil {
 		t.Fatalf("merge candidates: status = %d, body = %s", rec.Code, rec.Body)
 	}
+	offersAccount := false
 	for _, item := range list.Items {
-		if item.ID == registered || item.ID == elsewhere || item.ID == merged || item.ID == foreign || item.ID == target {
+		if item.ID == elsewhere || item.ID == merged || item.ID == foreign || item.ID == target {
 			t.Fatalf("merge candidates offered %s, which no merge would accept", item.ID)
 		}
+		offersAccount = offersAccount || item.ID == registered
+	}
+	if !offersAccount {
+		t.Fatal("a profile without a CUIT must be offered the customer accounts it can merge into")
+	}
+}
+
+// A seller merges a profile into a customer's account: the seller sees the history together at once,
+// the customer's portal shows the merged orders only after the customer proves a merged contact.
+func TestSellerMerge_IntoCustomerAccountHoldsThePortal(t *testing.T) {
+	e := newEnv(t)
+	m := e.sellerMerge(t)
+	ctx := context.Background()
+	cuit := "20123456786"
+	account := m.registered(t, "Cliente Web", "web@example.test", cuit)
+	provisional := m.profile(t, "Cliente WhatsApp", "wa@example.test", nil)
+	order := m.order(t, provisional, m.branch)
+	var customer uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, m.account, cuit).Scan(&customer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO customer_contact_ownership(account_id,customer_id,contact_id,includes_profile_history)
+ SELECT account_id,$2,id,TRUE FROM client_contact WHERE account_id=$1 AND client_id=$3 AND retired_at IS NULL`, m.account, customer, account); err != nil {
+		t.Fatal(err)
+	}
+	visible := func() bool {
+		t.Helper()
+		var found bool
+		if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
+			orders, err := repository.NewCustomerOrderRepository().List(ctx, q, m.account, customer, 50, 0, domain.ARCAEnvironmentHomologation)
+			for _, o := range orders {
+				found = found || o.ID == order
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return found
+	}
+
+	// The seller names the account as the one merged away; the account survives anyway.
+	rec := e.do(t, request{method: http.MethodPost, path: "/v1/clients/" + provisional.String() + "/merge", token: m.token, body: map[string]any{"source_client_id": account}})
+	var body struct {
+		Survivor uuid.UUID `json:"survivor_client_id"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil || body.Survivor != account {
+		t.Fatalf("merge into the account: %d %s, want 200 naming %s", rec.Code, rec.Body, account)
+	}
+	var owner uuid.UUID
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT client_id FROM rfq WHERE id=$1`, order).Scan(&owner); err != nil || owner != account {
+		t.Fatalf("the order belongs to %s (%v), want the account %s", owner, err, account)
+	}
+	var verified, primary bool
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT verified_at IS NOT NULL,is_primary FROM client_contact WHERE client_id=$1 AND value='wa@example.test' AND retired_at IS NULL`, account).Scan(&verified, &primary); err != nil || verified || primary {
+		t.Fatalf("the merged contact arrived verified=%v primary=%v (%v), want neither", verified, primary, err)
+	}
+	if visible() {
+		t.Fatal("the merged order reached the customer's portal before any proof")
+	}
+	if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
+		contacts := repository.NewClientContactRepository()
+		if err := contacts.ConfirmCustomerProof(ctx, q, m.account, account, domain.ChannelTypeEmail, "other@example.test"); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if visible() {
+		t.Fatal("proving an unrelated contact released the merged orders")
+	}
+	if err := e.db.InTenantTx(ctx, domain.Tenant{AccountID: m.account}, func(q repository.Querier) error {
+		return repository.NewClientContactRepository().ConfirmCustomerProof(ctx, q, m.account, account, domain.ChannelTypeEmail, "wa@example.test")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !visible() {
+		t.Fatal("the customer proved the merged contact but still cannot see the merged order")
 	}
 }
 
@@ -349,7 +432,7 @@ func TestSellerMerge_ResolvesPendingObservations(t *testing.T) {
 	survivor := m.profile(t, "Shared survivor", "shared-survivor@example.test", nil)
 	shared := observe(left, right, "shared-right@example.test")
 	for _, source := range []uuid.UUID{left, right} {
-		if code, errCode := m.merge(t, survivor, source); code != http.StatusNoContent {
+		if code, errCode := m.merge(t, survivor, source); code != http.StatusOK {
 			t.Fatalf("seed merge into the survivor: %d %s", code, errCode)
 		}
 	}

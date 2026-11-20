@@ -159,7 +159,7 @@ jobs:
       # would ever discover it. What the image contains is a check, not a build artifact.
       - name: The image carries every binary the platform runs
         run: |
-          for bin in api catalog-embed goose invite scheduled-job; do
+          for bin in api catalog-embed goose invite portal-backfill scheduled-job; do
             docker run --rm --entrypoint ls coti-api:ci "/api/bin/$bin" > /dev/null \
               || { echo "The api image is missing /api/bin/$bin."; exit 1; }
           done

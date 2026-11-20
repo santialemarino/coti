@@ -24,11 +24,19 @@ func (catalogImportTestDB) InTenantTx(
 }
 
 type catalogImportTestRepository struct {
-	existing map[string]struct{}
-	slotsNow map[string]domain.CatalogSlots
-	stored   map[string]domain.CatalogProductRef
-	applied  []domain.CatalogImportRow
-	slots    []domain.CatalogSlotChange
+	states  map[string]domain.CatalogProductState
+	stored  map[string]domain.CatalogProductRef
+	applied []domain.CatalogImportRow
+	slots   []domain.CatalogSlotChange
+}
+
+// existingCodes stands for products stored with nothing in common with any row of a test file.
+func existingCodes(codes ...string) map[string]domain.CatalogProductState {
+	states := make(map[string]domain.CatalogProductState, len(codes))
+	for _, code := range codes {
+		states[code] = domain.CatalogProductState{}
+	}
+	return states
 }
 
 func (r *catalogImportTestRepository) ListProductsByCodes(
@@ -43,10 +51,10 @@ func (r *catalogImportTestRepository) ListProductsByCodes(
 	return refs, nil
 }
 
-func (r *catalogImportTestRepository) ListRecommendationSlots(
-	_ context.Context, _ repository.Querier, _ uuid.UUID, _ []string,
-) (map[string]domain.CatalogSlots, error) {
-	return r.slotsNow, nil
+func (r *catalogImportTestRepository) ListImportState(
+	_ context.Context, _ repository.Querier, _, _ uuid.UUID, _ []string,
+) (map[string]domain.CatalogProductState, error) {
+	return r.states, nil
 }
 
 func (r *catalogImportTestRepository) ApplyRecommendationSlots(
@@ -80,12 +88,6 @@ func (r *catalogImportTestRepository) ListTaxonomy(
 	}, nil
 }
 
-func (r *catalogImportTestRepository) ListExistingCodes(
-	_ context.Context, _ repository.Querier, _ uuid.UUID, _ []string,
-) (map[string]struct{}, error) {
-	return r.existing, nil
-}
-
 func (r *catalogImportTestRepository) DatabaseTime(_ context.Context, _ repository.Querier) (time.Time, error) {
 	return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC), nil
 }
@@ -100,7 +102,7 @@ func (r *catalogImportTestRepository) ApplyImport(
 
 func TestCatalogImportService_Preview_ReportsInvalidRowsWithoutBlockingValidOnes(t *testing.T) {
 	t.Parallel()
-	repo := &catalogImportTestRepository{existing: map[string]struct{}{"EXISTE": {}}}
+	repo := &catalogImportTestRepository{states: existingCodes("EXISTE")}
 	service := NewCatalogImportService(catalogImportTestDB{}, repo, func() time.Time {
 		return time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
 	})
@@ -139,7 +141,7 @@ func TestCatalogImportService_Preview_ReportsInvalidRowsWithoutBlockingValidOnes
 
 func TestCatalogImportService_Confirm_SkipsInvalidRowsAndAppliesValidRows(t *testing.T) {
 	t.Parallel()
-	repo := &catalogImportTestRepository{existing: map[string]struct{}{"EXISTE": {}}}
+	repo := &catalogImportTestRepository{states: existingCodes("EXISTE")}
 	service := NewCatalogImportService(catalogImportTestDB{}, repo, nil)
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 
@@ -182,7 +184,7 @@ func TestCatalogImportService_Preview_RejectsSubgroupFromAnotherFamily(t *testin
 
 func TestCatalogImportService_Preview_AllowsAnExistingProductWithoutABranchPrice(t *testing.T) {
 	t.Parallel()
-	repo := &catalogImportTestRepository{existing: map[string]struct{}{"SIN-PRECIO": {}}}
+	repo := &catalogImportTestRepository{states: existingCodes("SIN-PRECIO")}
 	service := NewCatalogImportService(catalogImportTestDB{}, repo, nil)
 	tenant := domain.Tenant{AccountID: uuid.New(), UserID: uuid.New(), BranchID: uuid.New()}
 	csvFile := "codigo;nombre;unidad;familia;precio;activo\n" +
@@ -443,7 +445,7 @@ func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing
 	t.Parallel()
 	// The economy slot points at a product deactivated since the export.
 	repo := &catalogImportTestRepository{
-		slotsNow: map[string]domain.CatalogSlots{"A": {Economy: ptr("OFF")}},
+		states: map[string]domain.CatalogProductState{"A": {Slots: domain.CatalogSlots{Economy: ptr("OFF")}}},
 		stored: map[string]domain.CatalogProductRef{
 			"OFF": {FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: false},
 		},
@@ -456,7 +458,7 @@ func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing
 	}
 
 	// The same product in both columns is refused, even when one slot holds it already.
-	repo.slotsNow = map[string]domain.CatalogSlots{"A": {Economy: ptr("OK")}}
+	repo.states = map[string]domain.CatalogProductState{"A": {Slots: domain.CatalogSlots{Economy: ptr("OK")}}}
 	repo.stored["OK"] = domain.CatalogProductRef{FamilyID: &testFamilyID, SubgroupID: &testSubgroupID, Unit: "m3", IsActive: true}
 	preview = previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OK;OK\n")
 	if !containsError(preview.Rows[0].Errors, "alternative_repeated") {
@@ -464,7 +466,7 @@ func TestCatalogImportService_Preview_KeepsASlotTheFileLeftAsExported(t *testing
 	}
 
 	// Naming that same product for a slot that does not hold it yet is still refused.
-	repo.slotsNow = nil
+	repo.states = nil
 	preview = previewAlternatives(t, repo, "A;Arena;m3;MATERIALES DE CONSTRUCCION;ARIDOS;5500;SI;OFF;\n")
 	if !containsError(preview.Rows[0].Errors, "economy_alternative_inactive") {
 		t.Fatalf("errors = %v, want an inactive alternative refused when it is a change", preview.Rows[0].Errors)

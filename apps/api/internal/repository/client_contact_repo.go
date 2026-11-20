@@ -19,10 +19,14 @@ func NewClientContactRepository() *ClientContactRepository { return &ClientConta
 
 // ListForCustomer projects verification performed by this credential rather than legacy contact trust.
 // Unless all is set, it returns only the contacts this customer entered, ordered by value so neither
-// order nor flags tell which of them the profile already had.
+// order nor flags tell which of them the profile already had. Unverified copies a seller merge brought
+// in stay hidden until the customer's proof, so a wrong merge shows no one else's phone or email.
 func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, all bool) ([]domain.ClientContact, error) {
 	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,c.id IS NOT DISTINCT FROM `+mainContact+`,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
  FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3)
+   AND NOT (c.verified_at IS NULL AND EXISTS(SELECT 1 FROM client_merge_audit a
+     JOIN client_contact s ON s.account_id=a.account_id AND s.client_id=a.source_client_id AND s.kind=c.kind AND s.value=c.value
+     WHERE a.account_id=$1 AND a.target_client_id=c.client_id AND a.requires_customer_proof AND a.customer_confirmed_at IS NULL))
  ORDER BY c.kind,($4 AND c.is_primary) DESC,CASE WHEN $4 THEN c.created_at END,c.value,c.id`, p.AccountID, clientID, p.CustomerID, all)
 	if err != nil {
 		return nil, err
@@ -76,20 +80,33 @@ func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querie
 	return &access, nil
 }
 
-// ListObservations reads pending suggestions within the staff caller's branch reach.
+// observationPair keys a case by its two surviving profiles in either order; a one-sided case keys on
+// itself, since LEAST and GREATEST skip a NULL and would fold it into another profile's cases.
+const observationPair = `CASE WHEN s.id IS NULL OR c.id IS NULL THEN o.id ELSE LEAST(s.id,c.id) END,
+ CASE WHEN s.id IS NULL OR c.id IS NULL THEN o.id ELSE GREATEST(s.id,c.id) END`
+
+// ListObservations reads pending suggestions within the staff caller's branch reach, one per pair of
+// surviving profiles (a join-ready one first, else the oldest), and none whose two sides a merge
+// already made one.
 func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
-	rows, err := q.Query(ctx, `SELECT o.id,o.branch_id,s.id,c.id,c.name,s.name,`+registered("s")+`,`+registered("c")+`,
+	rows, err := q.Query(ctx, `SELECT id,branch_id,source_id,candidate_id,candidate_name,source_name,source_registered,candidate_registered,join_ready,
+ tax_id,kind,value,declared_name,original_text,status,created_at FROM (
+ SELECT DISTINCT ON (`+observationPair+`)
+ o.id,o.branch_id,s.id AS source_id,c.id AS candidate_id,c.name AS candidate_name,s.name AS source_name,`+registered("s")+` AS source_registered,`+registered("c")+` AS candidate_registered,
  (`+registered("s")+`)<>(`+registered("c")+`) AND EXISTS(SELECT 1 FROM client r JOIN client_contact v ON v.account_id=r.account_id AND v.client_id=r.id
    JOIN customer_contact_ownership w ON w.account_id=v.account_id AND w.contact_id=v.id
    WHERE r.account_id=o.account_id AND r.id IN (s.id,c.id) AND `+registered("r")+`
-     AND v.kind=o.kind AND v.value=o.value AND v.verified_at IS NOT NULL AND v.retired_at IS NULL),
+     AND v.kind=o.kind AND v.value=o.value AND v.verified_at IS NOT NULL AND v.retired_at IS NULL) AS join_ready,
  o.tax_id,o.kind,o.value,o.declared_name,o.original_text,o.status,o.created_at
  FROM client_contact_observation o
  LEFT JOIN client original_candidate ON original_candidate.account_id=o.account_id AND original_candidate.id=o.candidate_client_id
  LEFT JOIN client original_source ON original_source.account_id=o.account_id AND original_source.id=o.source_client_id
  LEFT JOIN client c ON c.account_id=o.account_id AND c.id=COALESCE(original_candidate.merged_into,original_candidate.id)
  LEFT JOIN client s ON s.account_id=o.account_id AND s.id=COALESCE(original_source.merged_into,original_source.id)
- WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING' ORDER BY o.created_at,o.id`, tenant.AccountID, tenant.BranchFilter())
+ WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING'
+   AND (s.id IS NULL OR c.id IS NULL OR s.id<>c.id)
+ ORDER BY `+observationPair+`,join_ready DESC,o.created_at,o.id
+ ) pending ORDER BY created_at,id`, tenant.AccountID, tenant.BranchFilter())
 	if err != nil {
 		return nil, err
 	}
@@ -348,12 +365,30 @@ func (r *ClientContactRepository) UpdateCustomerName(ctx context.Context, q Quer
 	return err
 }
 
-// Decide retains the seller and outcome without deleting the original observation.
+// Decide retains the seller and outcome without deleting the original observation. Dismissing a case
+// also dismisses the other pending cases between the same two surviving profiles, which the list
+// shows as that one case.
 func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID, status string) error {
 	result, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5)) AND (status='PENDING' OR status=$3)`, tenant.AccountID, id, status, tenant.UserID, tenant.BranchFilter())
 	if err == nil && result.RowsAffected() != 1 {
 		return domain.ErrConflict
 	}
+	if err != nil || status != string(domain.ContactReviewSeparate) {
+		return err
+	}
+	_, err = q.Exec(ctx, `WITH decided AS (
+   SELECT COALESCE(s.merged_into,s.id) AS a,COALESCE(c.merged_into,c.id) AS b
+   FROM client_contact_observation o
+   JOIN client s ON s.account_id=o.account_id AND s.id=o.source_client_id
+   JOIN client c ON c.account_id=o.account_id AND c.id=o.candidate_client_id
+   WHERE o.account_id=$1 AND o.id=$2)
+ UPDATE client_contact_observation o SET status=$3,decided_by=$4,decided_at=now()
+ FROM decided,client s,client c
+ WHERE o.account_id=$1 AND o.id<>$2 AND o.status='PENDING' AND s.account_id=$1 AND c.account_id=$1
+   AND s.id=o.source_client_id AND c.id=o.candidate_client_id
+   AND LEAST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=LEAST(decided.a,decided.b)
+   AND GREATEST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=GREATEST(decided.a,decided.b)`,
+		tenant.AccountID, id, status, tenant.UserID)
 	return err
 }
 
@@ -390,8 +425,10 @@ func (r *ClientContactRepository) Lock(ctx context.Context, q Querier, accountID
 	return err
 }
 
-// Merge preserves the source profile while moving its commercial associations to the target.
-func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant domain.Tenant, source, target uuid.UUID) error {
+// Merge preserves the source profile while moving its commercial associations to the target. With
+// hold, the source's orders stay out of the target customer's portal until the customer proves one of
+// the source's contacts (ConfirmCustomerProof).
+func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant domain.Tenant, source, target uuid.UUID, hold bool) error {
 	var allowed bool
 	err := q.QueryRow(ctx, `SELECT EXISTS(
    SELECT 1 FROM client s JOIN client t ON t.account_id=s.account_id AND t.id=$3
@@ -404,6 +441,25 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	}
 	if !allowed {
 		return domain.ErrForbidden
+	}
+	var auditID uuid.UUID
+	if err = q.QueryRow(ctx, `INSERT INTO client_merge_audit(account_id,source_client_id,target_client_id,merged_by,requires_customer_proof) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+		tenant.AccountID, source, target, actorParam(tenant), hold).Scan(&auditID); err != nil {
+		return err
+	}
+	if hold {
+		if _, err = q.Exec(ctx, `INSERT INTO client_merge_rfq(account_id,merge_audit_id,rfq_id) SELECT account_id,$3,id FROM rfq
+ WHERE account_id=$1 AND (client_id=$2 OR id IN (SELECT rfq_id FROM quote WHERE account_id=$1 AND client_id=$2))`, tenant.AccountID, source, auditID); err != nil {
+			return err
+		}
+		// A contact of the source the customer already proved on the account is the proof itself.
+		if _, err = q.Exec(ctx, `UPDATE client_merge_audit SET customer_confirmed_at=now() WHERE account_id=$1 AND id=$4
+ AND EXISTS(SELECT 1 FROM client_contact s
+   JOIN client_contact t ON t.account_id=s.account_id AND t.client_id=$3 AND t.kind=s.kind AND t.value=s.value AND t.verified_at IS NOT NULL AND t.retired_at IS NULL
+   JOIN customer_contact_ownership o ON o.account_id=t.account_id AND o.contact_id=t.id
+   WHERE s.account_id=$1 AND s.client_id=$2)`, tenant.AccountID, source, target, auditID); err != nil {
+			return err
+		}
 	}
 	if err = r.CompleteNameRequests(ctx, q, tenant.AccountID, source); err != nil {
 		return err
@@ -433,15 +489,13 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if _, err = q.Exec(ctx, `UPDATE client SET merged_into=$3 WHERE account_id=$1 AND (id=$2 OR merged_into=$2)`, tenant.AccountID, source, target); err != nil {
 		return err
 	}
-	if _, err = q.Exec(ctx, `UPDATE client_contact_observation o SET status='MERGED',decided_by=$4,decided_at=now()
+	// Every branch's case between two profiles that are now one is settled: left pending elsewhere it
+	// would offer merging the survivor with itself.
+	_, err = q.Exec(ctx, `UPDATE client_contact_observation o SET status='MERGED',decided_by=$4,decided_at=now()
  FROM client s,client t WHERE o.account_id=$1 AND o.status='PENDING' AND s.account_id=$1 AND t.account_id=$1
  AND s.id=o.source_client_id AND t.id=o.candidate_client_id
  AND COALESCE(s.merged_into,s.id)=$3 AND COALESCE(t.merged_into,t.id)=$3
- AND (s.id=$2 OR t.id=$2 OR s.merged_into=$3 OR t.merged_into=$3)
- AND ($5::uuid[] IS NULL OR o.branch_id=ANY($5))`, tenant.AccountID, source, target, actorParam(tenant), tenant.BranchFilter()); err != nil {
-		return err
-	}
-	_, err = q.Exec(ctx, `INSERT INTO client_merge_audit(account_id,source_client_id,target_client_id,merged_by) VALUES($1,$2,$3,$4)`, tenant.AccountID, source, target, actorParam(tenant))
+ AND (s.id=$2 OR t.id=$2 OR s.merged_into=$3 OR t.merged_into=$3)`, tenant.AccountID, source, target, actorParam(tenant))
 	return err
 }
 

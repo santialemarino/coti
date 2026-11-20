@@ -37,6 +37,8 @@ interface SendClientFormProps {
   branchId: string;
   disabled: boolean;
   locked?: boolean;
+  // A send after the first one keeps the quote's client: it is shown, never chosen.
+  readOnly?: boolean;
   hideTags?: boolean;
   onContactsChange?: (contacts: { phones: string[]; emails: string[] }) => void;
   onChange: (selection: SendClientSelection | null) => void;
@@ -47,6 +49,7 @@ export function SendClientForm({
   branchId,
   disabled,
   locked = false,
+  readOnly = false,
   hideTags = false,
   onChange,
   onContactsChange,
@@ -104,7 +107,8 @@ export function SendClientForm({
   });
   const values = useWatch({ control: form.control });
   const selected = directory.find((item) => item.client.id === values.clientId);
-  const fixedClient = locked && (context?.currentClient != null || selected != null);
+  // Only a client the quote already has is fixed; one picked here can still be changed.
+  const fixedClient = (locked || readOnly) && context?.currentClient != null;
   const checked = schema.safeParse(values);
   const selection: SendClientSelection | null =
     context && checked.success && (checked.data.mode === 'existing' || newConfirmed)
@@ -168,8 +172,8 @@ export function SendClientForm({
           ...clients,
         ];
         const unique = [...new Map(candidates.map((item) => [item.client.id, item])).values()];
-        const taxId = association.currentClient?.client.taxId || '';
         const initial = association.currentClient;
+        const taxId = initial?.client.taxId || '';
         setDirectory(unique);
         setContext(association);
         form.reset({
@@ -229,6 +233,8 @@ export function SendClientForm({
               (context.currentClient || selected)?.client.email ||
               (context.currentClient || selected)?.client.phone}
           </p>
+        ) : readOnly ? (
+          <p className="text-paragraph-sm text-foreground-muted">{t('clientNone')}</p>
         ) : (
           <div className="flex items-center justify-between gap-2">
             {values.mode === 'new' && newConfirmed ? (
@@ -236,20 +242,35 @@ export function SendClientForm({
             ) : (
               <span />
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                form.setValue('mode', 'new');
-                setNewOpen(true);
-              }}
-              disabled={disabled}
-            >
-              {t('clientNew')}
-            </Button>
+            <div className="flex items-center gap-x-2">
+              {values.mode === 'new' && newConfirmed ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setNewConfirmed(false);
+                    form.setValue('mode', 'existing', { shouldValidate: true });
+                  }}
+                  disabled={disabled}
+                >
+                  {t('clientChooseExisting')}
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  form.setValue('mode', 'new');
+                  setNewOpen(true);
+                }}
+                disabled={disabled}
+              >
+                {t(values.mode === 'new' && newConfirmed ? 'clientEdit' : 'clientNew')}
+              </Button>
+            </div>
           </div>
         )}
-        {values.mode === 'existing' && !fixedClient ? (
+        {values.mode === 'existing' && !fixedClient && !readOnly ? (
           <FormField
             control={form.control}
             name="clientId"

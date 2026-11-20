@@ -15,7 +15,7 @@ import (
 type ProductPriceImportService interface {
 	Export(ctx context.Context, tenant domain.Tenant) (*domain.ProductPriceExportFile, error)
 	Preview(ctx context.Context, tenant domain.Tenant, src io.Reader) (*domain.ProductPriceImportPreview, error)
-	Confirm(ctx context.Context, tenant domain.Tenant, inputs []domain.ProductPriceImportInput) (int, error)
+	Confirm(ctx context.Context, tenant domain.Tenant, inputs []domain.ProductPriceImportInput) (*domain.ProductPriceImportResult, error)
 }
 
 // ProductPriceHandler serves the reviewed product-price import flow.
@@ -124,12 +124,14 @@ func (h *ProductPriceHandler) ConfirmImport(c *gin.Context) {
 		inputs[i] = domain.ProductPriceImportInput{Code: row.Code, Price: row.Price,
 			MinPrice: row.MinPrice}
 	}
-	importedRows, err := h.imports.Confirm(c.Request.Context(), tenant, inputs)
+	result, err := h.imports.Confirm(c.Request.Context(), tenant, inputs)
 	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto.ConfirmProductPriceImportResponse{ImportedRows: importedRows})
+	c.JSON(http.StatusCreated, dto.ConfirmProductPriceImportResponse{
+		ImportedRows: result.ImportedRows, UnchangedRows: result.UnchangedRows,
+	})
 }
 
 func toProductPriceImportPreviewResponse(preview *domain.ProductPriceImportPreview) dto.ProductPriceImportPreviewResponse {
@@ -139,11 +141,12 @@ func toProductPriceImportPreviewResponse(preview *domain.ProductPriceImportPrevi
 			RowNumber: row.RowNumber, Code: row.Code, ProductName: row.ProductName,
 			CurrentPrice: row.CurrentPrice, CurrentMinPrice: row.CurrentMinPrice,
 			Price: row.Price, MinPrice: row.MinPrice, Currency: row.Currency,
-			Errors: append([]string{}, row.Errors...),
+			Unchanged: row.Unchanged, Errors: append([]string{}, row.Errors...),
 		}
 	}
 	return dto.ProductPriceImportPreviewResponse{
 		Rows: rows, ValidRows: preview.ValidRows, InvalidRows: preview.InvalidRows,
-		CanConfirm: preview.CanConfirm, PreviewedAt: preview.PreviewedAt,
+		UnchangedRows: preview.UnchangedRows, CanConfirm: preview.CanConfirm,
+		PreviewedAt: preview.PreviewedAt,
 	}
 }

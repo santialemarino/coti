@@ -67,8 +67,26 @@ it('lists the files any channel received and flags material that needs manual re
 it('keeps the collapsed source section when a legacy order has no saved content', async () => {
   const fetcher = stubAttachments([]);
   const { container } = renderCard('   ');
-  await waitFor(() => expect(fetcher).toHaveBeenCalled());
   expect(container.textContent).toBe(messages.rfqs.originalRequest.title);
+  expect(fetcher).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: messages.rfqs.originalRequest.title }));
   expect(await screen.findByText(messages.rfqs.originalRequest.unavailable)).toBeTruthy();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('fetches fresh links every time the section opens and offers a retry only on failure', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+    .mockResolvedValue(new Response(JSON.stringify({ attachments: [] }), { status: 200 }));
+  vi.stubGlobal('fetch', fetcher);
+  renderCard('30 bolsas');
+  const trigger = screen.getByRole('button', { name: messages.rfqs.originalRequest.title });
+  expect(screen.queryByRole('button', { name: 'Actualizar enlaces' })).toBeNull();
+  fireEvent.click(trigger);
+  fireEvent.click(await screen.findByRole('button', { name: messages.rfqs.originalRequest.retry }));
+  await waitFor(() => expect(screen.queryByText(messages.rfqs.originalRequest.error)).toBeNull());
+  fireEvent.click(trigger);
+  fireEvent.click(trigger);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
 });

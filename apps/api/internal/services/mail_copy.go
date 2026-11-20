@@ -36,9 +36,19 @@ const (
 	// Decision 79: the same fixed text goes to every unknown sender, so it reveals no profile data.
 	contactNamePrompt = "Gracias por escribirnos. Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
 
-	contactVerificationSubject     = "Confirmá tu contacto"
-	contactRecoverySubject         = "Tu código para recuperar la cuenta"
+	contactVerificationSubject = "Confirmá tu correo"
+	contactVerificationHeading = "Confirmá tu correo"
+	contactVerificationAction  = "Confirmar correo"
+	contactVerificationIgnore  = "El enlace se puede usar una sola vez. Si no lo pediste, ignorá este correo."
+
+	contactRecoverySubject = "Tu código para recuperar la cuenta"
+	contactRecoveryHeading = "Recuperá tu cuenta"
+	contactRecoveryIgnore  = "Si no lo pediste, ignorá este correo: nadie puede entrar sin el código."
+
 	contactRegistrationLinkSubject = "Completá tus datos de facturación"
+	contactRegistrationLinkHeading = "Completá tus datos de facturación"
+	contactRegistrationLinkAction  = "Ingresar a mi cuenta"
+	contactRegistrationSameAccount = "Si ya tenés una cuenta con tu CUIT/CUIL, usá esa misma cuenta y agregá el contacto con el que hiciste el pedido."
 )
 
 // contactNamePromptSubject names the supplier, never the platform, because the prompt answers mail
@@ -47,9 +57,19 @@ func contactNamePromptSubject(supplier string) string {
 	return "Tu pedido a " + supplier
 }
 
-// contactVerificationLink invites the customer to open the one-use link that proves a contact.
-func contactVerificationLink(link string) string {
-	return "Confirmá tu contacto para asociarlo a tu cuenta: " + link
+// contactVerificationIntro says what confirming the address does, naming the supplier it is for.
+func contactVerificationIntro(supplier string) string {
+	return "Confirmá esta dirección para asociarla a tu cuenta de cliente en " + supplier + "."
+}
+
+// contactRecoveryCodeIntro carries the one-use recovery code inside the mail's copy.
+func contactRecoveryCodeIntro(supplier, code string) string {
+	return "Tu código para recuperar tu cuenta de cliente en " + supplier + " es " + code + "."
+}
+
+// contactRegistrationIntro sends the customer to the account where billing data is completed.
+func contactRegistrationIntro(supplier string) string {
+	return "Para completar tus datos de facturación, ingresá a tu cuenta de cliente en " + supplier + " o creala."
 }
 
 // contactVerificationCode carries the one-use code that proves a phone.

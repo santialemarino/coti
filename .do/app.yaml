@@ -230,6 +230,13 @@ services:
       - key: API_INTERNAL_URL
         scope: RUN_TIME
         value: ${APP_URL}/api
+      # The portal base follows the API's WEB_WEBAPP_URL; the landing is the backoffice's root.
+      - key: WEB_PORTAL_BASE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      - key: WEB_LANDING_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
 
 jobs:
   # Migrations run here rather than on API startup: startup migration races across instances, and a

@@ -156,6 +156,7 @@ describe('PriceImport partial confirmation', () => {
             price: '10000.00',
             minPrice: null,
             currency: 'ARS',
+            unchanged: false,
             errors: [],
           },
           {
@@ -167,11 +168,13 @@ describe('PriceImport partial confirmation', () => {
             price: '5000.00',
             minPrice: null,
             currency: 'ARS',
+            unchanged: false,
             errors: ['unknown_product'],
           },
         ],
         validRows: 1,
         invalidRows: 1,
+        unchangedRows: 0,
         canConfirm: true,
         previewedAt: '2026-08-05T12:00:00Z',
       },
@@ -201,6 +204,7 @@ describe('PriceImport preview rows', () => {
       price: '100.00',
       minPrice: null,
       currency: 'ARS',
+      unchanged: false,
       errors,
     };
   }
@@ -213,6 +217,7 @@ describe('PriceImport preview rows', () => {
         rows,
         validRows: rows.filter((candidate) => candidate.errors.length === 0).length,
         invalidRows: rows.filter((candidate) => candidate.errors.length > 0).length,
+        unchangedRows: 0,
         canConfirm: true,
         previewedAt: '2026-11-13T12:00:00Z',
       },

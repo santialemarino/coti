@@ -345,7 +345,22 @@ export interface SendClientSelection {
   tagIds: string[];
 }
 
+// The seller action behind a send; the API enforces each mode's state and media.
+export type QuoteDeliveryMode = 'FIRST' | 'OTHER_MEDIUM' | 'RESEND' | 'FOLLOWUP';
+
+export type QuoteDeliveryPresetSource = 'VERSION' | 'PREVIOUS_VERSION' | 'CLIENT_LAST' | 'NONE';
+
+// What a send dialog preselects for a mode, and what the current send cycle already reached.
+export interface QuoteDeliveryPreset {
+  source: QuoteDeliveryPresetSource;
+  phones: string[];
+  emails: string[];
+  usedPhones: string[];
+  usedEmails: string[];
+}
+
 export interface QuoteSendBody {
+  mode?: QuoteDeliveryMode;
   recipientPhones?: string[];
   recipientEmails?: string[];
   otherChannelsOnly?: boolean;

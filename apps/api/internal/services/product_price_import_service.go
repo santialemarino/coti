@@ -85,15 +85,16 @@ func (s *ProductPriceImportService) Preview(
 	return preview, nil
 }
 
-// Confirm validates the reviewed rows again and atomically creates the new price versions.
+// Confirm validates the reviewed rows again and atomically creates a price version for every row
+// that changes the price or floor in force; the rest are counted and left alone.
 func (s *ProductPriceImportService) Confirm(
 	ctx context.Context, tenant domain.Tenant, inputs []domain.ProductPriceImportInput,
-) (int, error) {
+) (*domain.ProductPriceImportResult, error) {
 	if !tenant.HasBranch() {
-		return 0, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: select a branch", domain.ErrInvalidInput)
 	}
 	if len(inputs) == 0 {
-		return 0, fmt.Errorf("%w: no rows to import", domain.ErrInvalidInput)
+		return nil, fmt.Errorf("%w: no rows to import", domain.ErrInvalidInput)
 	}
 	rawRows := make([]priceImportRawRow, len(inputs))
 	for i, input := range inputs {
@@ -107,15 +108,19 @@ func (s *ProductPriceImportService) Confirm(
 		}
 	}
 
-	importedRows := 0
+	result := &domain.ProductPriceImportResult{}
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		preview, prepareErr := s.prepare(ctx, q, tenant, rawRows)
 		if prepareErr != nil {
 			return prepareErr
 		}
-		updates := make([]domain.ProductPriceUpdate, 0, preview.ValidRows)
+		if preview.ValidRows == 0 {
+			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
+		}
+		result.UnchangedRows = preview.UnchangedRows
+		updates := make([]domain.ProductPriceUpdate, 0, preview.ValidRows-preview.UnchangedRows)
 		for _, row := range preview.Rows {
-			if len(row.Errors) > 0 {
+			if len(row.Errors) > 0 || row.Unchanged {
 				continue
 			}
 			updates = append(updates, domain.ProductPriceUpdate{
@@ -126,7 +131,7 @@ func (s *ProductPriceImportService) Confirm(
 			})
 		}
 		if len(updates) == 0 {
-			return fmt.Errorf("%w: import has no valid rows", domain.ErrInvalidInput)
+			return nil
 		}
 		// The database's clock, so the new prices are in force for the very next read.
 		effectiveAt, timeErr := s.prices.DatabaseTime(ctx, q)
@@ -136,12 +141,12 @@ func (s *ProductPriceImportService) Confirm(
 		if applyErr := s.prices.ApplyImport(ctx, q, tenant, effectiveAt.UTC(), updates); applyErr != nil {
 			return applyErr
 		}
-		importedRows = len(updates)
+		result.ImportedRows = len(updates)
 		return nil
 	}); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return importedRows, nil
+	return result, nil
 }
 
 func (s *ProductPriceImportService) prepare(
@@ -168,14 +173,18 @@ func (s *ProductPriceImportService) prepare(
 	}
 	for _, raw := range rawRows {
 		row := preparePriceImportRow(raw, products, seen)
-		if len(row.Errors) == 0 {
-			preview.ValidRows++
-		} else {
+		switch {
+		case len(row.Errors) > 0:
 			preview.InvalidRows++
+		case row.Unchanged:
+			preview.ValidRows++
+			preview.UnchangedRows++
+		default:
+			preview.ValidRows++
 		}
 		preview.Rows = append(preview.Rows, row)
 	}
-	preview.CanConfirm = preview.ValidRows > 0
+	preview.CanConfirm = preview.ValidRows > preview.UnchangedRows
 	return preview, nil
 }
 
@@ -209,7 +218,7 @@ func preparePriceImportRow(
 
 	price, priceValue, err := normalizeMoney(raw.price)
 	if err != nil || priceValue.Sign() <= 0 {
-		row.Errors = append(row.Errors, "invalid_price")
+		row.Errors = append(row.Errors, moneyError("price", err))
 	} else {
 		row.Price = price
 	}
@@ -217,7 +226,7 @@ func preparePriceImportRow(
 	if strings.TrimSpace(raw.minPrice) != "" {
 		minPrice, minPriceValue, minErr := normalizeMoney(raw.minPrice)
 		if minErr != nil || minPriceValue.Sign() <= 0 {
-			row.Errors = append(row.Errors, "invalid_min_price")
+			row.Errors = append(row.Errors, moneyError("min_price", minErr))
 		} else {
 			row.MinPrice = &minPrice
 			if err == nil && minPriceValue.Cmp(priceValue) > 0 {
@@ -226,5 +235,7 @@ func preparePriceImportRow(
 		}
 	}
 
+	row.Unchanged = len(row.Errors) == 0 && row.CurrentPrice != nil &&
+		sameMoney(row.Price, *row.CurrentPrice) && sameOptionalMoney(row.MinPrice, row.CurrentMinPrice)
 	return row
 }

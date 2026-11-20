@@ -69,6 +69,11 @@ type emailVerifier interface {
 	Send(ctx context.Context, user domain.AppUser) error
 }
 
+// defaultPortalAssigner names a new account's portal inside its registration transaction.
+type defaultPortalAssigner interface {
+	AssignDefault(ctx context.Context, q repository.Querier, accountID uuid.UUID, name string) (string, error)
+}
+
 type adminTxScoper interface {
 	tenantScoper
 	AdminTx(ctx context.Context) (pgx.Tx, error)
@@ -85,6 +90,7 @@ type AccountService struct {
 	users             signupUserRepository
 	onboarding        signupOnboardingRepository
 	tags              signupTagRepository
+	portals           defaultPortalAssigner
 	tokens            tokenIssuer
 	verifier          emailVerifier
 	log               *slog.Logger
@@ -117,6 +123,12 @@ func NewAccountService(
 // WithDefaultTags seeds the reusable client labels that every account starts with.
 func (s *AccountService) WithDefaultTags(tags signupTagRepository) *AccountService {
 	s.tags = tags
+	return s
+}
+
+// WithDefaultPortal gives every new account its /c/<label> customer portal at registration.
+func (s *AccountService) WithDefaultPortal(portals defaultPortalAssigner) *AccountService {
+	s.portals = portals
 	return s
 }
 
@@ -225,6 +237,11 @@ func (s *AccountService) Register(
 	}
 	if s.tags != nil {
 		if err := s.tags.CreateDefaults(ctx, tx, account.ID); err != nil {
+			return nil, nil, err
+		}
+	}
+	if s.portals != nil {
+		if _, err := s.portals.AssignDefault(ctx, tx, account.ID, account.Name); err != nil {
 			return nil, nil, err
 		}
 	}

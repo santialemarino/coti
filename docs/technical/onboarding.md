@@ -94,11 +94,14 @@ step without coupling them to registration or rewriting existing progress.
 
 ## Customer portal
 
-The optional portal step uses the same editor as Account settings, below the CUIT in the company
-section. It previews the server-configured base origin and checks availability without reserving a
-name. Continue saves the hostname, then records PORTAL as completed; Configure later records
-SKIPPED and does not write any hostname. Returning to the wizard reads the saved hostname. Existing
-accounts retain their lifecycle and access even when the new checklist item is pending.
+Registration already gives the account a working portal: a label derived from its name (see
+[public-rfq-intake.md](public-rfq-intake.md#supplier-routing)). The portal step is therefore a
+review, not a requirement. It uses the same editor as Account settings, below the CUIT in the company
+section, opens with that default label prefilled and still editable, previews the server-configured
+base origin and checks availability without reserving a name. Continue with the label unchanged
+records PORTAL as completed; changing it saves the new hostname first, after the editor's usual
+warning that the previous address stops working. Configure later keeps the default. Because the
+hostname exists from the start, the checklist counts PORTAL as done for every new account.
 
 Portal configuration is saved separately from the company form, so saving the brand or CUIT cannot
 overwrite it. See [public-rfq-intake.md](public-rfq-intake.md#self-service-portal-addresses).

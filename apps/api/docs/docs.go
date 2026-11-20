@@ -1578,10 +1578,13 @@ const docTemplate = `{
                 "consumes": [
                     "application/json"
                 ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "clients"
                 ],
-                "summary": "Merge two client profiles without a CUIT",
+                "summary": "Merge two client profiles",
                 "parameters": [
                     {
                         "type": "string",
@@ -1591,13 +1594,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Surviving client ID",
+                        "description": "Client the seller merges into",
                         "name": "clientId",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Profile merged into the surviving one",
+                        "description": "Profile merged into the other one",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -1607,8 +1610,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientMergeResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -4826,7 +4832,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Revalidates all rows, skips invalid ones, and atomically upserts products, availability, and changed prices.",
+                "description": "Revalidates all rows, skips invalid ones and those matching the catalog, and atomically upserts products, availability, and changed prices.",
                 "consumes": [
                     "application/json"
                 ],
@@ -7295,6 +7301,72 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/delivery-preset": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the destinations a send dialog preselects for the given mode (this version's, the last sent version's, or the client's last quote's) and the destinations the current send cycle already reached.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Get a quote's delivery preset",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "FIRST, OTHER_MEDIUM, RESEND or FOLLOWUP",
+                        "name": "mode",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client chosen in the dialog",
+                        "name": "client_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteDeliveryPresetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -11211,6 +11283,9 @@ const docTemplate = `{
                 "can_confirm": {
                     "type": "boolean"
                 },
+                "create_rows": {
+                    "type": "integer"
+                },
                 "invalid_rows": {
                     "type": "integer"
                 },
@@ -11223,6 +11298,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.CatalogImportRowResponse"
                     }
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
+                "update_rows": {
+                    "type": "integer"
+                },
                 "valid_rows": {
                     "type": "integer"
                 }
@@ -11232,7 +11313,13 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "action": {
-                    "type": "string"
+                    "description": "CREATE, UPDATE or UNCHANGED; an UNCHANGED row matches what is stored and is not written.",
+                    "type": "string",
+                    "enum": [
+                        "CREATE",
+                        "UPDATE",
+                        "UNCHANGED"
+                    ]
                 },
                 "code": {
                     "type": "string"
@@ -11560,6 +11647,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ClientResponse"
                     }
+                }
+            }
+        },
+        "dto.ClientMergeResponse": {
+            "type": "object",
+            "properties": {
+                "survivor_client_id": {
+                    "type": "string"
                 }
             }
         },
@@ -11940,6 +12035,9 @@ const docTemplate = `{
                 "skipped_rows": {
                     "type": "integer"
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
                 "updated_rows": {
                     "type": "integer"
                 }
@@ -11975,6 +12073,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "imported_rows": {
+                    "type": "integer"
+                },
+                "unchanged_rows": {
                     "type": "integer"
                 }
             }
@@ -13776,6 +13877,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.ProductPriceImportRowResponse"
                     }
                 },
+                "unchanged_rows": {
+                    "type": "integer"
+                },
                 "valid_rows": {
                     "type": "integer"
                 }
@@ -13813,6 +13917,10 @@ const docTemplate = `{
                 },
                 "row_number": {
                     "type": "integer"
+                },
+                "unchanged": {
+                    "description": "The row asks for the price and floor already in force; confirming writes nothing for it.",
+                    "type": "boolean"
                 }
             }
         },
@@ -14320,6 +14428,44 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.QuoteDeliveryPresetResponse": {
+            "type": "object",
+            "properties": {
+                "emails": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "phones": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "VERSION",
+                        "PREVIOUS_VERSION",
+                        "CLIENT_LAST",
+                        "NONE"
+                    ]
+                },
+                "used_emails": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "used_phones": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "dto.QuoteDeliveryResponse": {
             "type": "object",
             "properties": {
@@ -14809,6 +14955,15 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 2000,
                     "minLength": 1
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "FIRST",
+                        "OTHER_MEDIUM",
+                        "RESEND",
+                        "FOLLOWUP"
+                    ]
                 },
                 "other_channels_only": {
                     "type": "boolean"

@@ -23,11 +23,14 @@ const customerDeliveryContactProof = `EXISTS (
    AND contact.value=CASE WHEN destination_channel.type='EMAIL' THEN lower(delivered.destination) ELSE delivered.destination END
  )`
 
-// customerOrderFrom keeps request ownership separate from access to individual published offers.
-const customerOrderFrom = ` FROM rfq r
+// customerOrderFrom keeps request ownership separate from access to individual published offers,
+// and joins the facts that close a sale in the ARCA environment bound at envParam.
+func customerOrderFrom(envParam string) string {
+	return ` FROM rfq r
  JOIN branch b ON b.account_id=r.account_id AND b.id=r.branch_id
- LEFT JOIN quote qt ON qt.account_id=r.account_id AND qt.branch_id=r.branch_id AND qt.rfq_id=r.id
- LEFT JOIN client cl ON cl.account_id=r.account_id AND cl.id=COALESCE(qt.client_id,r.client_id)
+ JOIN account a ON a.id=r.account_id
+ LEFT JOIN quote q ON q.account_id=r.account_id AND q.branch_id=r.branch_id AND q.rfq_id=r.id
+ LEFT JOIN client cl ON cl.account_id=r.account_id AND cl.id=COALESCE(q.client_id,r.client_id)
  JOIN LATERAL (SELECT (
  EXISTS (SELECT 1 FROM inbound_channel_message own_message
    JOIN channel own_channel ON own_channel.account_id=own_message.account_id AND own_channel.branch_id=own_message.branch_id AND own_channel.id=own_message.channel_id AND own_channel.type='WEBAPP'
@@ -36,7 +39,10 @@ const customerOrderFrom = ` FROM rfq r
    SELECT 1 FROM customer_contact_ownership ownership
    JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
    WHERE ownership.account_id=$1 AND ownership.customer_id=$2 AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL
-   AND (ownership.includes_profile_history AND contact.client_id=cl.id OR EXISTS (
+   AND (ownership.includes_profile_history AND contact.client_id=cl.id AND NOT EXISTS (
+ SELECT 1 FROM client_merge_rfq held JOIN client_merge_audit hold ON hold.account_id=held.account_id AND hold.id=held.merge_audit_id
+ WHERE held.account_id=$1 AND held.rfq_id=r.id AND hold.customer_confirmed_at IS NULL
+ ) OR EXISTS (
  SELECT 1 FROM customer_contact_history history WHERE history.account_id=$1 AND history.customer_id=$2 AND history.rfq_id=r.id AND history.kind=contact.kind AND history.value=contact.value
  ) OR EXISTS (
      SELECT 1 FROM client_contact_observation observation
@@ -49,15 +55,18 @@ const customerOrderFrom = ` FROM rfq r
    SELECT s.public_token FROM quote_send s
    JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
    JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
-   WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
+   WHERE s.account_id=r.account_id AND v.quote_id=q.id AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
      AND (visibility.full_history OR ` + customerDeliveryContactProof + `)
    ORDER BY v.version_number DESC,s.sent_at DESC,s.id DESC LIMIT 1
  ) published ON TRUE
+ ` + saleInvoiceFacts(envParam) + `
  WHERE r.account_id=$1 AND (visibility.full_history OR published.public_token IS NOT NULL)`
+}
 
 const customerOrderColumns = `r.id,r.branch_id,b.name,r.received_at,
- CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN qt.current_status IN ('DRAFT','QUOTED') THEN 'SENT' ELSE qt.current_status::text END,
- COALESCE(r.raw_text,''),published.public_token`
+ CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN q.current_status IN ('DRAFT','QUOTED') THEN 'SENT' ELSE q.current_status::text END,
+ COALESCE(r.raw_text,''),published.public_token,
+ q.paid_at,q.invoice_waived_at,COALESCE(closure.invoiced,FALSE),COALESCE(closure.pending,FALSE),a.invoicing_enabled`
 
 // CustomerOrderRepository reads ownership-authorized requests within one supplier.
 type CustomerOrderRepository struct{}
@@ -66,8 +75,8 @@ type CustomerOrderRepository struct{}
 func NewCustomerOrderRepository() *CustomerOrderRepository { return &CustomerOrderRepository{} }
 
 // List returns a bounded page without loading internal quote drafts.
-func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID, customerID uuid.UUID, limit, offset int) ([]domain.CustomerOrder, error) {
-	rows, err := q.Query(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` ORDER BY r.received_at DESC,r.id DESC LIMIT $3 OFFSET $4`, accountID, customerID, limit, offset)
+func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID, customerID uuid.UUID, limit, offset int, env domain.ARCAEnvironment) ([]domain.CustomerOrder, error) {
+	rows, err := q.Query(ctx, `SELECT `+customerOrderColumns+customerOrderFrom("$5")+` ORDER BY r.received_at DESC,r.id DESC LIMIT $3 OFFSET $4`, accountID, customerID, limit, offset, env)
 	if err != nil {
 		return nil, err
 	}
@@ -84,22 +93,23 @@ func (r *CustomerOrderRepository) List(ctx context.Context, q Querier, accountID
 }
 
 // Get checks ownership independently of the caller's knowledge of a request ID.
-func (r *CustomerOrderRepository) Get(ctx context.Context, q Querier, accountID, customerID uuid.UUID, id uuid.UUID) (*domain.CustomerOrder, error) {
-	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND r.id=$3`, accountID, customerID, id))
+func (r *CustomerOrderRepository) Get(ctx context.Context, q Querier, accountID, customerID uuid.UUID, id uuid.UUID, env domain.ARCAEnvironment) (*domain.CustomerOrder, error) {
+	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom("$4")+` AND r.id=$3`, accountID, customerID, id, env))
 }
 
 // GetByToken authorizes both active and expired legacy links without exposing their contents.
-func (r *CustomerOrderRepository) GetByToken(ctx context.Context, q Querier, accountID, customerID uuid.UUID, token string) (*domain.CustomerOrder, error) {
-	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom+` AND EXISTS (
+func (r *CustomerOrderRepository) GetByToken(ctx context.Context, q Querier, accountID, customerID uuid.UUID, token string, env domain.ARCAEnvironment) (*domain.CustomerOrder, error) {
+	return scanCustomerOrder(q.QueryRow(ctx, `SELECT `+customerOrderColumns+customerOrderFrom("$4")+` AND EXISTS (
  SELECT 1 FROM quote_send s JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id AND v.is_immutable
  JOIN channel ch ON ch.account_id=s.account_id AND ch.branch_id=r.branch_id AND ch.id=s.channel_id
- WHERE s.account_id=r.account_id AND v.quote_id=qt.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
- AND (visibility.full_history OR `+customerDeliveryContactProof+`))`, accountID, customerID, token))
+ WHERE s.account_id=r.account_id AND v.quote_id=q.id AND s.public_token=$3 AND s.tracking_status IN ('SENT','DELIVERED','VIEWED')
+ AND (visibility.full_history OR `+customerDeliveryContactProof+`))`, accountID, customerID, token, env))
 }
 
 func scanCustomerOrder(row pgx.Row) (*domain.CustomerOrder, error) {
 	var item domain.CustomerOrder
-	err := row.Scan(&item.ID, &item.BranchID, &item.BranchName, &item.ReceivedAt, &item.Status, &item.OriginalText, &item.DeliveryToken)
+	err := row.Scan(&item.ID, &item.BranchID, &item.BranchName, &item.ReceivedAt, &item.Status, &item.OriginalText, &item.DeliveryToken,
+		&item.Closure.PaidAt, &item.Closure.InvoiceWaivedAt, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
