@@ -28,7 +28,8 @@ type contactStore interface {
 	ProjectPrimaries(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	SetMain(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	UpdateCustomerName(context.Context, repository.Querier, domain.CustomerPrincipal, string) error
-	Merge(context.Context, repository.Querier, domain.Tenant, uuid.UUID, uuid.UUID) error
+	Merge(context.Context, repository.Querier, domain.Tenant, uuid.UUID, uuid.UUID, bool) error
+	ConfirmCustomerProof(context.Context, repository.Querier, uuid.UUID, uuid.UUID, domain.ChannelType, string) error
 	List(context.Context, repository.Querier, uuid.UUID, []uuid.UUID) (map[uuid.UUID][]domain.ClientContact, error)
 	HasObservation(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
 	FindProfiles(context.Context, repository.Querier, uuid.UUID, string, domain.ChannelType, string) ([]domain.Client, error)
@@ -49,7 +50,7 @@ type contactStore interface {
 	Decide(context.Context, repository.Querier, domain.Tenant, uuid.UUID, string) error
 	ListMergeCandidates(context.Context, repository.Querier, domain.Tenant, uuid.UUID) ([]domain.Client, error)
 	LockMergeProfiles(context.Context, repository.Querier, domain.Tenant, []uuid.UUID) (map[uuid.UUID]domain.MergeProfile, error)
-	MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) error
+	MoveContacts(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error
 	CompleteNameRequests(context.Context, repository.Querier, uuid.UUID, uuid.UUID) error
 	Lock(context.Context, repository.Querier, uuid.UUID, ...string) error
 	GetFiscal(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (*domain.ClientFiscal, error)

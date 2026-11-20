@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import {
   Button,
+  Callout,
   Combobox,
   Dialog,
   DialogContent,
@@ -42,13 +43,15 @@ interface MergeValues {
 interface ClientMergeDialogProps {
   clientId: string;
   name: string;
+  taxId: string | null;
 }
 
 /*
- * Joins two provisional profiles of the same customer, such as a counter buyer who writes from two
- * numbers. Only profiles without a CUIT whose orders are all in the seller's branches are offered.
+ * Joins two profiles of the same customer, such as a counter buyer who writes from two numbers, or a
+ * seller-made profile and the customer's webapp account. The side with a CUIT always stays, so the
+ * seller only chooses between two profiles without one; the API answers which profile survived.
  */
-export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
+export function ClientMergeDialog({ clientId, name, taxId }: ClientMergeDialogProps) {
   const router = useRouter();
   const pendingRouter = usePendingRouter();
   const t = useTranslations('clients.merge');
@@ -64,6 +67,10 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
   const pending = form.formState.isSubmitting;
   const other = candidates?.find((candidate) => candidate.id === otherId) ?? null;
   const otherName = other ? clientDisplayName(other, tClients('unnamed')) : '';
+  const fixedSurvivor: Survivor | null = taxId ? 'this' : other?.taxId ? 'other' : null;
+  const kept = fixedSurvivor ?? survivor;
+  const keptName = kept === 'this' ? name : otherName;
+  const mergedName = kept === 'this' ? otherName : name;
 
   async function load() {
     setCandidates(null);
@@ -86,15 +93,17 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
 
   async function onConfirm() {
     if (!other) return;
-    const [target, source] = survivor === 'this' ? [clientId, other.id] : [other.id, clientId];
+    const [target, source] = kept === 'this' ? [clientId, other.id] : [other.id, clientId];
     try {
-      await mergeClient(target, source);
-      const kept = survivor === 'this' ? name : otherName;
-      toast.success(t('merged', { kept, merged: survivor === 'this' ? otherName : name }));
+      const survivorId = await mergeClient(target, source);
+      const stayed = survivorId === clientId;
+      toast.success(
+        t('merged', { kept: stayed ? name : otherName, merged: stayed ? otherName : name }),
+      );
       setOpen(false);
       window.dispatchEvent(new Event('client-contact-suggestions-changed'));
-      if (target === clientId) router.refresh();
-      else pendingRouter.push(ROUTES.clientDetail(target));
+      if (stayed) router.refresh();
+      else pendingRouter.push(ROUTES.clientDetail(survivorId));
     } catch (cause) {
       form.setError('root', { message: message(errorCodeOf(cause)) });
     }
@@ -151,6 +160,7 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
                       value: candidate.id,
                       label: [
                         clientDisplayName(candidate, tClients('unnamed')),
+                        candidate.taxId ? t('other.taxId', { taxId: candidate.taxId }) : null,
                         candidate.phone ?? candidate.email,
                       ]
                         .filter(Boolean)
@@ -159,7 +169,15 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
                   />
                 )}
               </div>
-              {other ? (
+              {other && fixedSurvivor ? (
+                <div className="flex flex-col gap-y-2">
+                  <p className="text-paragraph-sm-medium">{t('survivor.label')}</p>
+                  <p className="text-paragraph-sm">{keptName}</p>
+                  <Hint>{t('survivor.fixed', { kept: keptName, merged: mergedName })}</Hint>
+                  <Callout tone="info">{t('portalHold', { kept: keptName })}</Callout>
+                </div>
+              ) : null}
+              {other && !fixedSurvivor ? (
                 <div className="flex flex-col gap-y-2">
                   <Label id={`${fieldId}-survivor`}>{t('survivor.label')}</Label>
                   <RadioGroup
@@ -182,9 +200,7 @@ export function ClientMergeDialog({ clientId, name }: ClientMergeDialogProps) {
                       </div>
                     ))}
                   </RadioGroup>
-                  <Hint>
-                    {t('survivor.hint', { merged: survivor === 'this' ? otherName : name })}
-                  </Hint>
+                  <Hint>{t('survivor.hint', { merged: mergedName })}</Hint>
                 </div>
               ) : null}
               <FormRootMessage />

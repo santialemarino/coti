@@ -56,8 +56,8 @@ func (acceptingContacts) ListMergeCandidates(context.Context, domain.Tenant, uui
 func (acceptingContacts) RenameClient(context.Context, domain.Tenant, uuid.UUID, string) (*domain.Client, error) {
 	return &domain.Client{}, nil
 }
-func (acceptingContacts) MergeClients(context.Context, domain.Tenant, uuid.UUID, uuid.UUID) error {
-	return nil
+func (acceptingContacts) MergeClients(_ context.Context, _ domain.Tenant, target, _ uuid.UUID) (uuid.UUID, error) {
+	return target, nil
 }
 func (acceptingContacts) SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error {
 	return nil

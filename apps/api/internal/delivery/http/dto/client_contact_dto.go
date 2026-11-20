@@ -113,6 +113,11 @@ type MergeClientRequest struct {
 	SourceClientID uuid.UUID `json:"source_client_id" binding:"required"`
 }
 
+// ClientMergeResponse names the profile that survived a merge.
+type ClientMergeResponse struct {
+	SurvivorClientID uuid.UUID `json:"survivor_client_id"`
+}
+
 // ClientMergeCandidatesResponse is returned by GET /v1/clients/:id/merge-candidates.
 type ClientMergeCandidatesResponse struct {
 	Items []ClientResponse `json:"items"`

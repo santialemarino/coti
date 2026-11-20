@@ -536,6 +536,11 @@ definitions:
           $ref: '#/definitions/dto.ClientResponse'
         type: array
     type: object
+  dto.ClientMergeResponse:
+    properties:
+      survivor_client_id:
+        type: string
+    type: object
   dto.ClientMessageResponse:
     properties:
       body:
@@ -2432,6 +2437,32 @@ definitions:
           $ref: '#/definitions/dto.ClientMatchResponse'
         type: array
     type: object
+  dto.QuoteDeliveryPresetResponse:
+    properties:
+      emails:
+        items:
+          type: string
+        type: array
+      phones:
+        items:
+          type: string
+        type: array
+      source:
+        enum:
+        - VERSION
+        - PREVIOUS_VERSION
+        - CLIENT_LAST
+        - NONE
+        type: string
+      used_emails:
+        items:
+          type: string
+        type: array
+      used_phones:
+        items:
+          type: string
+        type: array
+    type: object
   dto.QuoteDeliveryResponse:
     properties:
       channel:
@@ -2765,6 +2796,13 @@ definitions:
       followup_message:
         maxLength: 2000
         minLength: 1
+        type: string
+      mode:
+        enum:
+        - FIRST
+        - OTHER_MEDIUM
+        - RESEND
+        - FOLLOWUP
         type: string
       other_channels_only:
         type: boolean
@@ -5008,20 +5046,24 @@ paths:
         in: header
         name: X-Branch-Id
         type: string
-      - description: Surviving client ID
+      - description: Client the seller merges into
         in: path
         name: clientId
         required: true
         type: string
-      - description: Profile merged into the surviving one
+      - description: Profile merged into the other one
         in: body
         name: body
         required: true
         schema:
           $ref: '#/definitions/dto.MergeClientRequest'
+      produces:
+      - application/json
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientMergeResponse'
         "400":
           description: Bad Request
           schema:
@@ -5048,7 +5090,7 @@ paths:
             $ref: '#/definitions/dto.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Merge two client profiles without a CUIT
+      summary: Merge two client profiles
       tags:
       - clients
   /v1/clients/{clientId}/merge-candidates:
@@ -8686,6 +8728,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a combo on a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/delivery-preset:
+    get:
+      description: Returns the destinations a send dialog preselects for the given
+        mode (this version's, the last sent version's, or the client's last quote's)
+        and the destinations the current send cycle already reached.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: FIRST, OTHER_MEDIUM, RESEND or FOLLOWUP
+        in: query
+        name: mode
+        required: true
+        type: string
+      - description: Client chosen in the dialog
+        in: query
+        name: client_id
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteDeliveryPresetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a quote's delivery preset
       tags:
       - quotes
   /v1/quotes/{quoteId}/discard-ai-changes:
