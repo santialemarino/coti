@@ -16,9 +16,8 @@ import (
 
 // fakeSignupInvites keeps invites by hash and records what was created.
 type fakeSignupInvites struct {
-	byHash    map[string]domain.SignupInvite
-	created   *domain.SignupInvite
-	createdAt time.Time
+	byHash  map[string]domain.SignupInvite
+	created *domain.SignupInvite
 }
 
 func (f *fakeSignupInvites) GetByHash(_ context.Context, _ repository.Querier, hash string) (*domain.SignupInvite, error) {
