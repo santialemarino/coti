@@ -301,7 +301,8 @@ func newEnvWithRFQProviders(
 			Client: handler.NewClientHandler(clientService),
 			Account: handler.NewAccountHandler(services.NewAccountService(db, accountRepo,
 				repository.NewARCASetupRepository(), repository.NewInvoicingRepository(), branchRepo, channelRepo, userRepo, onboardingRepo, authService, verificationService, quiet,
-				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo)),
+				cfg.Auth, cfg.Branch).WithDefaultTags(tagRepo).
+				WithDefaultPortal(services.NewDefaultPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal))),
 			Invoice:        handler.NewInvoiceHandler(invoiceService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			CustomerPortal: handler.NewCustomerPortalHandler(services.NewCustomerPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)),

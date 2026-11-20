@@ -166,6 +166,7 @@ func run() error {
 	accountService := services.NewAccountService(db, accountRepo, arcaSetupRepo, invoicingRepo, branchRepo, channelRepo,
 		userRepo, onboardingRepo, authService, verificationService, log, cfg.Auth, cfg.Branch).
 		WithDefaultTags(tagRepo).
+		WithDefaultPortal(services.NewDefaultPortalService(db, repository.NewCustomerPortalRepository(), cfg.CustomerPortal)).
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
 	onboardingService := services.NewOnboardingService(db, onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
