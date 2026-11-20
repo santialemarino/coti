@@ -19,10 +19,14 @@ func NewClientContactRepository() *ClientContactRepository { return &ClientConta
 
 // ListForCustomer projects verification performed by this credential rather than legacy contact trust.
 // Unless all is set, it returns only the contacts this customer entered, ordered by value so neither
-// order nor flags tell which of them the profile already had.
+// order nor flags tell which of them the profile already had. Unverified copies a seller merge brought
+// in stay hidden until the customer's proof, so a wrong merge shows no one else's phone or email.
 func (r *ClientContactRepository) ListForCustomer(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID, all bool) ([]domain.ClientContact, error) {
 	rows, err := q.Query(ctx, `SELECT c.id,c.kind,c.value,c.is_primary,c.id IS NOT DISTINCT FROM `+mainContact+`,EXISTS(SELECT 1 FROM customer_contact_ownership o WHERE o.account_id=c.account_id AND o.customer_id=$3 AND o.contact_id=c.id)
  FROM client_contact c WHERE c.account_id=$1 AND c.client_id=$2 AND c.retired_at IS NULL AND ($4 OR c.declared_by=$3)
+   AND NOT (c.verified_at IS NULL AND EXISTS(SELECT 1 FROM client_merge_audit a
+     JOIN client_contact s ON s.account_id=a.account_id AND s.client_id=a.source_client_id AND s.kind=c.kind AND s.value=c.value
+     WHERE a.account_id=$1 AND a.target_client_id=c.client_id AND a.requires_customer_proof AND a.customer_confirmed_at IS NULL))
  ORDER BY c.kind,($4 AND c.is_primary) DESC,CASE WHEN $4 THEN c.created_at END,c.value,c.id`, p.AccountID, clientID, p.CustomerID, all)
 	if err != nil {
 		return nil, err
@@ -82,7 +86,8 @@ const observationPair = `CASE WHEN s.id IS NULL OR c.id IS NULL THEN o.id ELSE L
  CASE WHEN s.id IS NULL OR c.id IS NULL THEN o.id ELSE GREATEST(s.id,c.id) END`
 
 // ListObservations reads pending suggestions within the staff caller's branch reach, one per pair of
-// surviving profiles (the oldest), and none whose two sides a merge already made one.
+// surviving profiles (a join-ready one first, else the oldest), and none whose two sides a merge
+// already made one.
 func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querier, tenant domain.Tenant) ([]domain.ContactObservation, error) {
 	rows, err := q.Query(ctx, `SELECT id,branch_id,source_id,candidate_id,candidate_name,source_name,source_registered,candidate_registered,join_ready,
  tax_id,kind,value,declared_name,original_text,status,created_at FROM (
@@ -100,7 +105,7 @@ func (r *ClientContactRepository) ListObservations(ctx context.Context, q Querie
  LEFT JOIN client s ON s.account_id=o.account_id AND s.id=COALESCE(original_source.merged_into,original_source.id)
  WHERE o.account_id=$1 AND ($2::uuid[] IS NULL OR o.branch_id=ANY($2)) AND o.status='PENDING'
    AND (s.id IS NULL OR c.id IS NULL OR s.id<>c.id)
- ORDER BY `+observationPair+`,o.created_at,o.id
+ ORDER BY `+observationPair+`,join_ready DESC,o.created_at,o.id
  ) pending ORDER BY created_at,id`, tenant.AccountID, tenant.BranchFilter())
 	if err != nil {
 		return nil, err
@@ -443,7 +448,16 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 		return err
 	}
 	if hold {
-		if _, err = q.Exec(ctx, `INSERT INTO client_merge_rfq(account_id,merge_audit_id,rfq_id) SELECT account_id,$3,id FROM rfq WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, auditID); err != nil {
+		if _, err = q.Exec(ctx, `INSERT INTO client_merge_rfq(account_id,merge_audit_id,rfq_id) SELECT account_id,$3,id FROM rfq
+ WHERE account_id=$1 AND (client_id=$2 OR id IN (SELECT rfq_id FROM quote WHERE account_id=$1 AND client_id=$2))`, tenant.AccountID, source, auditID); err != nil {
+			return err
+		}
+		// A contact of the source the customer already proved on the account is the proof itself.
+		if _, err = q.Exec(ctx, `UPDATE client_merge_audit SET customer_confirmed_at=now() WHERE account_id=$1 AND id=$4
+ AND EXISTS(SELECT 1 FROM client_contact s
+   JOIN client_contact t ON t.account_id=s.account_id AND t.client_id=$3 AND t.kind=s.kind AND t.value=s.value AND t.verified_at IS NOT NULL AND t.retired_at IS NULL
+   JOIN customer_contact_ownership o ON o.account_id=t.account_id AND o.contact_id=t.id
+   WHERE s.account_id=$1 AND s.client_id=$2)`, tenant.AccountID, source, target, auditID); err != nil {
 			return err
 		}
 	}

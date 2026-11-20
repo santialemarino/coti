@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 var presetBase = time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
@@ -106,6 +108,30 @@ func TestDeliveryPreset(t *testing.T) {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+type statusHistory struct {
+	quoteDeliveryQuoteRepository
+	changes []domain.QuoteStatusChange
+}
+
+func (s statusHistory) ListStatusChanges(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) ([]domain.QuoteStatusChange, error) {
+	return s.changes, nil
+}
+
+// A reactivated quote re-enters QUOTED with the same version: its send cycle starts there.
+func TestQuoteDeliveryService_CycleStartIsTheLastEntryIntoQuoted(t *testing.T) {
+	change := func(status domain.QuoteStatus, minutes int) domain.QuoteStatusChange {
+		return domain.QuoteStatusChange{NewStatus: status, ChangedAt: presetBase.Add(time.Duration(minutes) * time.Minute)}
+	}
+	service := &QuoteDeliveryService{quotes: statusHistory{changes: []domain.QuoteStatusChange{
+		change(domain.QuoteStatusQuoted, 10), change(domain.QuoteStatusSent, 20),
+		change(domain.QuoteStatusAccepted, 30), change(domain.QuoteStatusQuoted, 40), change(domain.QuoteStatusSent, 50),
+	}}}
+	start, err := service.cycleStart(context.Background(), nil, domain.Tenant{}, uuid.New())
+	if err != nil || !start.Equal(presetBase.Add(40*time.Minute)) {
+		t.Fatalf("cycle start = %v, %v; want the reactivation at +40m", start, err)
 	}
 }
 

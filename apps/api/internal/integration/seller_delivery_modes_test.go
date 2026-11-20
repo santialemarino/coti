@@ -83,6 +83,10 @@ func TestSellerDelivery_ModesAndPresets(t *testing.T) {
 		if err != nil || len(self) != 0 {
 			t.Fatalf("the quote itself counted as the client's last: %+v, %v", self, err)
 		}
+		elsewhere, err := sends.ListClientLastQuoteSends(ctx, q, seed.tenant.AccountID, uuid.New(), clientID, uuid.New())
+		if err != nil || len(elsewhere) != 0 {
+			t.Fatalf("another branch got this branch's destinations: %+v, %v", elsewhere, err)
+		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)

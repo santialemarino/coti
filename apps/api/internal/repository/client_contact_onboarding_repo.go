@@ -52,7 +52,19 @@ func (r *ClientContactRepository) AssociateObservedRequests(ctx context.Context,
 	if _, err := q.Exec(ctx, `UPDATE rfq r SET client_id=COALESCE(cl.merged_into,cl.id) FROM inbound_channel_message m JOIN client_contact_observation o ON o.account_id=m.account_id AND o.message_id=m.id JOIN client cl ON cl.account_id=o.account_id AND cl.id=o.source_client_id WHERE r.account_id=$1 AND m.account_id=$1 AND o.account_id=$1 AND o.kind=$2 AND o.value=$3 AND o.source_client_id IS NOT NULL AND r.id=m.rfq_id AND r.branch_id=m.branch_id AND r.client_id IS NULL`, accountID, kind, value); err != nil {
 		return err
 	}
-	_, err := q.Exec(ctx, `UPDATE quote qt SET client_id=r.client_id FROM rfq r WHERE qt.account_id=$1 AND r.account_id=$1 AND qt.rfq_id=r.id AND qt.branch_id=r.branch_id AND qt.client_id IS NULL AND r.client_id IS NOT NULL AND EXISTS(SELECT 1 FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id WHERE o.account_id=$1 AND o.kind=$2 AND o.value=$3 AND m.rfq_id=r.id)`, accountID, kind, value)
+	if _, err := q.Exec(ctx, `UPDATE quote qt SET client_id=r.client_id FROM rfq r WHERE qt.account_id=$1 AND r.account_id=$1 AND qt.rfq_id=r.id AND qt.branch_id=r.branch_id AND qt.client_id IS NULL AND r.client_id IS NOT NULL AND EXISTS(SELECT 1 FROM client_contact_observation o JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id WHERE o.account_id=$1 AND o.kind=$2 AND o.value=$3 AND m.rfq_id=r.id)`, accountID, kind, value); err != nil {
+		return err
+	}
+	// A merged contact keeps routing to the customer's account, but while that seller merge waits for the
+	// customer's proof the orders it brings stay held like the ones the merge moved.
+	_, err := q.Exec(ctx, `INSERT INTO client_merge_rfq(account_id,merge_audit_id,rfq_id)
+ SELECT a.account_id,a.id,r.id FROM client_contact_observation o
+ JOIN inbound_channel_message m ON m.account_id=o.account_id AND m.id=o.message_id
+ JOIN rfq r ON r.account_id=m.account_id AND r.branch_id=m.branch_id AND r.id=m.rfq_id
+ JOIN client_merge_audit a ON a.account_id=r.account_id AND a.target_client_id=r.client_id AND a.requires_customer_proof AND a.customer_confirmed_at IS NULL
+ WHERE o.account_id=$1 AND o.kind=$2 AND o.value=$3
+   AND EXISTS(SELECT 1 FROM client_contact s WHERE s.account_id=a.account_id AND s.client_id=a.source_client_id AND s.kind=o.kind AND s.value=o.value)
+ ON CONFLICT DO NOTHING`, accountID, kind, value)
 	return err
 }
 

@@ -56,8 +56,8 @@ export interface DeliverySelection extends Contacts {
 
 /*
  * The one rule every send dialog starts from. A preset (this quote's earlier destinations, or the
- * client's last quote) selects exactly what it names. Without one, every known contact is prefilled
- * and only WhatsApp is checked when it has a number, else email when it has an address; a medium
+ * client's last quote) selects exactly what it names. Without one, each medium is prefilled with its
+ * first known value and only WhatsApp is checked when it has a number, else email; a medium
  * the cycle already reached is never checked in «otro medio», and nothing is checked with no data.
  */
 export function initialSelection(

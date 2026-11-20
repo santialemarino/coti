@@ -152,9 +152,11 @@ its customer.
     the seller named: the account always survives. The seller sees the history together at once and
     new orders from the merged contacts route to the account, but the copies arrive unverified and
     never primary, and the merged orders are listed in `client_merge_rfq` and kept out of the
-    customer's portal while the audit row's `customer_confirmed_at` is NULL. Proving any contact the
-    merged profile held (the portal's contact verification) sets it, and the orders appear whole, as
-    with a proof merge. A wrong merge therefore never shows one person's orders to another; the
+    customer's portal while the audit row's `customer_confirmed_at` is NULL. Orders a merged contact
+    brings later are held the same way, and the portal profile does not list the unverified copies.
+    Proving any contact the merged profile held (the portal's contact verification, or a contact the
+    customer had already proved at merge time) sets `customer_confirmed_at`, and the orders appear
+    whole, as with a proof merge. A wrong merge therefore never shows one person's orders to another; the
     seller still sees everything. Two accounts are **403** `CLIENT_REGISTERED`.
 - **Coincidencias.** `GET /v1/client-contact-suggestions` lists the PENDING observations in the
   caller's branches, with both profiles' names and whether either is registered. Besides the shared
