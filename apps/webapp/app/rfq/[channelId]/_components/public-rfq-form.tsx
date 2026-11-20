@@ -161,7 +161,7 @@ export function PublicRfqForm({
         });
         return;
       }
-      form.reset({ ...EMPTY_PUBLIC_RFQ, taxId: taxId ?? '' });
+      form.reset({ ...EMPTY_PUBLIC_RFQ, ...initialContact, taxId: taxId ?? '' });
       lastSubmission.current = null;
       goTo('received');
     } catch {
