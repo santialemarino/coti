@@ -321,7 +321,7 @@ func run() error {
 			Health:         handler.NewHealthHandler(db),
 			Auth:           handler.NewAuthHandler(authService),
 			CustomerAuth:   handler.NewCustomerAuthHandler(customerAuthService),
-			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize)),
+			CustomerOrders: handler.NewCustomerOrderHandler(services.NewCustomerOrderService(db, repository.NewCustomerOrderRepository(), cfg.CustomerAuth.OrderPageSize).WithInvoicingEnvironment(arcaEnvironment)),
 			Password:       handler.NewPasswordHandler(passwordService, mailTargetLimiter),
 			Verification:   handler.NewVerificationHandler(verificationService, mailTargetLimiter),
 			User: handler.NewUserHandler(userService, handler.SessionPolicy{

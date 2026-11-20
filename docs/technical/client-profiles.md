@@ -208,6 +208,13 @@ GET /orders lists a request when any of these holds:
 It pages by `CUSTOMER_ORDER_PAGE_SIZE`, newest first, and answers `X-Has-More: true` when a later
 page exists; the portal offers «Siguiente» only then.
 
+Each order carries the status the customer sees: `RECEIVED` until a quotation is published to them,
+`SENT` while the seller works on it, then the quote's own status. An `ACCEPTED` sale reads
+`COMPLETED` («Finalizado») once it is complete by the backoffice's rule (`domain.SaleComplete`):
+paid, and invoiced in the server's ARCA environment or production, invoicing waived, or invoicing
+off for the account — a voucher still waiting for ARCA keeps it `ACCEPTED`. The portal shows no
+badge for a status it has no copy for rather than a raw key.
+
 Outgoing delivery grants only the matching send and its paired web publication (same supplier,
 branch, immutable version and idempotency operation). It does not prove ownership of the whole
 commercial profile or unlock older sends. The history chooses the latest publication that this
