@@ -6,11 +6,12 @@ import { redirect } from 'next/navigation';
 import { PORTAL_BASE_HOSTNAME, PORTAL_BASE_URL } from '@/lib/config';
 import { PORTAL_SLUG_HEADER, portalPath, portalSlug } from '@/lib/portal/routing';
 
-export function customerPortalURL(hostname: string, path: string): string {
+// The supplier's portal URL for path, or null when its hostname is not a `<label>.<base>` this
+// portal serves (a legacy bare-base or custom hostname until `portal-backfill` converts it).
+export function customerPortalURL(hostname: string, path: string): string | null {
   const suffix = '.' + PORTAL_BASE_HOSTNAME;
   const slug = hostname.endsWith(suffix) ? portalSlug(hostname.slice(0, -suffix.length)) : '';
-  if (!slug) return 'https://' + hostname + path;
-  return PORTAL_BASE_URL + portalPath(path, slug);
+  return slug ? PORTAL_BASE_URL + portalPath(path, slug) : null;
 }
 
 export async function getPortalSlug(): Promise<string> {

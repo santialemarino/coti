@@ -11,8 +11,12 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
   const { token } = await params;
   const hostname = await getDeliveryHostname(token);
   if (!hostname) notFound();
-  if (hostname !== (await getCustomerHostname()))
-    return await customerRedirect(customerPortalURL(hostname, ROUTES.quote(token)));
+  if (hostname !== (await getCustomerHostname())) {
+    // Redirecting to a hostname outside the portal base would land back here and loop.
+    const target = customerPortalURL(hostname, ROUTES.quote(token));
+    if (!target) notFound();
+    return await customerRedirect(target);
+  }
   await requireCustomer(ROUTES.quote(token));
   const order = await getCustomerOrderByToken(token);
   if (!order) {

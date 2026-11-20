@@ -36,7 +36,7 @@ it('routes a delivery to its supplier portal under the configured base', () => {
   expect(customerPortalURL('marko.portal.example.com', '/quotes/t')).toBe(
     'https://portal.example.com/c/marko/quotes/t',
   );
-  expect(customerPortalURL('corralon.example.org', '/quotes/t')).toBe(
-    'https://corralon.example.org/quotes/t',
-  );
+  // A hostname outside the base has no portal here; redirecting to it would loop on the bare base.
+  expect(customerPortalURL('corralon.example.org', '/quotes/t')).toBeNull();
+  expect(customerPortalURL('portal.example.com', '/quotes/t')).toBeNull();
 });
