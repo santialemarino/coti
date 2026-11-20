@@ -9,14 +9,26 @@ import { ROUTES } from '@/config/routes';
 
 interface LandingHeroProps {
   signedIn: boolean;
+  signupEnabled: boolean;
 }
 
-// The first screen answers what Coti does and for whom, with the way in visible before any scroll. A
-// seller already has the way back to the queue in the header, so the hero offers them nothing twice.
-export async function LandingHero({ signedIn }: LandingHeroProps) {
+/*
+ * The first screen answers what Coti does and for whom, with the way in visible before any scroll. A
+ * seller already has the way back to the queue in the header, so the hero offers them nothing twice.
+ * The way in is signing up while that is open, and asking for Coti while it is not.
+ */
+export async function LandingHero({ signedIn, signupEnabled }: LandingHeroProps) {
   const t = await getTranslations('landing.hero');
   const tDemo = await getTranslations('landing.demo');
   const demoHref = demoContactHref({ message: tDemo('message'), subject: tDemo('subject') });
+  const demo = demoHref ? (
+    <a href={demoHref} target="_blank" rel="noopener noreferrer">
+      {t('demo')}
+    </a>
+  ) : null;
+  const login = <Link href={ROUTES.login}>{t('login')}</Link>;
+  const primary = signupEnabled ? <Link href={ROUTES.signup}>{t('signup')}</Link> : demo;
+  const secondary = signupEnabled ? (demo ?? login) : login;
 
   return (
     <section aria-labelledby="hero-title" className="bg-linear-to-b from-accent to-body-background">
@@ -35,20 +47,14 @@ export async function LandingHero({ signedIn }: LandingHeroProps) {
           {signedIn ? null : (
             <>
               <div {...revealItem(3, 'flex flex-wrap gap-3')}>
-                <Button asChild size="lg">
-                  <Link href={ROUTES.signup}>{t('signup')}</Link>
+                {primary ? (
+                  <Button asChild size="lg">
+                    {primary}
+                  </Button>
+                ) : null}
+                <Button asChild variant="outline" size="lg">
+                  {secondary}
                 </Button>
-                {demoHref ? (
-                  <Button asChild variant="outline" size="lg">
-                    <a href={demoHref} target="_blank" rel="noopener noreferrer">
-                      {t('demo')}
-                    </a>
-                  </Button>
-                ) : (
-                  <Button asChild variant="outline" size="lg">
-                    <Link href={ROUTES.login}>{t('login')}</Link>
-                  </Button>
-                )}
               </div>
               <p {...revealItem(4, 'text-paragraph-sm text-foreground-subtle')}>{t('note')}</p>
             </>

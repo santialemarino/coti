@@ -26,14 +26,14 @@ const ADMIN = {
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
-function renderSignup() {
+function renderSignup(invite?: string) {
   const view = render(
     <NextIntlClientProvider
       locale="es"
       messages={messages}
       timeZone="America/Argentina/Buenos_Aires"
     >
-      <SignupForm />
+      <SignupForm invite={invite} />
     </NextIntlClientProvider>,
   );
   const form = view.container.querySelector('form');
@@ -244,14 +244,30 @@ describe('SignupForm steps', () => {
     fireEvent.submit(view.form);
 
     await waitFor(() => expect(signup).toHaveBeenCalledOnce());
-    expect(signup).toHaveBeenCalledWith({
-      ...ACCOUNT,
-      ...BRANCH,
-      ...ADMIN,
-      legalName: '',
-      taxId: '',
-      branchAddress: '',
-    });
+    expect(signup).toHaveBeenCalledWith(
+      {
+        ...ACCOUNT,
+        ...BRANCH,
+        ...ADMIN,
+        legalName: '',
+        taxId: '',
+        branchAddress: '',
+      },
+      undefined,
+    );
+  });
+
+  // The page holds the invite from the link; the wizard has to deliver it with the last step.
+  it('sends the invite it was opened with once the last step submits', async () => {
+    vi.mocked(signup).mockResolvedValue({ redirectTo: '/verify-email' });
+    const view = renderSignup('raw-token');
+
+    await reachAdminStep(view);
+    fill(view, ADMIN);
+    fireEvent.submit(view.form);
+
+    await waitFor(() => expect(signup).toHaveBeenCalledOnce());
+    expect(vi.mocked(signup).mock.calls[0]?.[1]).toBe('raw-token');
   });
 
   it('submits the CUIT as its digits', async () => {

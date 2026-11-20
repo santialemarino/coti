@@ -30,7 +30,8 @@ const FIELD_FOR: Partial<Record<ApiErrorCode, SignupField>> = {
   PASSWORD_POLICY: 'adminPassword',
 };
 
-export async function signup(values: SignupValues): Promise<SignupResult> {
+// invite is the single-use token from the link the team handed over; needed while signup is closed.
+export async function signup(values: SignupValues, invite?: string): Promise<SignupResult> {
   // Re-validated server-side: the client's schema is a courtesy, not a guarantee.
   const parsed = signupSchema().safeParse(values);
   if (!parsed.success) return { error: 'INVALID_BODY' };
@@ -47,6 +48,7 @@ export async function signup(values: SignupValues): Promise<SignupResult> {
     admin_name: data.adminName,
     admin_email: data.adminEmail,
     admin_password: data.adminPassword,
+    invite_token: invite || undefined,
   };
 
   let created: SignupRaw;

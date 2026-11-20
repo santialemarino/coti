@@ -1,4 +1,4 @@
-import { formatCurrency } from '@/lib/i18n/currency';
+import { formatCurrency, type CurrencyOptions } from '@/lib/i18n/currency';
 import {
   formatDate,
   formatDateNumeric,
@@ -22,7 +22,8 @@ export function createFormatters(locale: string, timeZone?: string) {
     locale,
     value: (value: number, options?: Omit<FormatValueOptions, 'locale'>) =>
       formatValue(value, { ...options, locale }),
-    currency: (amount: string, currency?: string) => formatCurrency(amount, locale, currency),
+    currency: (amount: string, currency?: string, options?: CurrencyOptions) =>
+      formatCurrency(amount, locale, currency, options),
     signedValue: (value: number) => formatSignedValue(value, locale),
     ratePct: (ratio: number) => formatRatePct(ratio, locale),
     date: (iso: string) => formatDate(iso, locale),

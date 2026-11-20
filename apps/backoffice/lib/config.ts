@@ -52,6 +52,12 @@ export const RESEND_COOLDOWN_SECONDS = readInt(
   DEFAULT_RESEND_COOLDOWN_SECONDS,
 );
 
+/*
+ * Whether anyone may register a corralón from /signup. Mirrors the API's SIGNUP_ENABLED, which is what
+ * actually refuses: closed, every way to sign up disappears and /signup needs an invite link.
+ */
+export const SIGNUP_ENABLED = readBool(process.env.SIGNUP_ENABLED, true);
+
 // Where «Pedí una demo» on the public site leads. Read on the server; the button stays hidden while both are unset.
 export const LANDING_DEMO_WHATSAPP = process.env.LANDING_DEMO_WHATSAPP?.trim() || undefined;
 export const LANDING_DEMO_EMAIL = process.env.LANDING_DEMO_EMAIL?.trim() || undefined;
@@ -61,6 +67,13 @@ export const ARCA_CERTIFICATE_RENEWAL_DAYS = readInt(
   process.env.ARCA_CERTIFICATE_RENEWAL_DAYS,
   DEFAULT_ARCA_CERTIFICATE_RENEWAL_DAYS,
 );
+
+function readBool(raw: string | undefined, fallback: boolean): boolean {
+  const value = raw?.trim().toLowerCase();
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
+}
 
 function readInt(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? '', 10);

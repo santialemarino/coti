@@ -238,6 +238,13 @@ abandons the wizard has created nothing.
 On 201 the answer carries a token pair, so the action opens a session and sends the caller to
 `/verify-email`: signed in, with an address the API has not confirmed yet.
 
+**An invite rides the URL, not the form.** `/signup?invite=<token>` is the link `cmd/invite` prints.
+The page checks it with the API before rendering the wizard and shows the refusal instead (used,
+expired or unknown, each worded from its error code); a live one is handed to the form, which sends
+it as `invite_token` with the last step. With `SIGNUP_ENABLED=false` a `/signup` without an invite
+redirects to the landing's plans (`/#probar`). See
+[accounts-and-branches.md](accounts-and-branches.md#closed-signup-and-invites).
+
 After verification, an administrator whose account onboarding is still `IN_PROGRESS` is redirected
 to `/onboarding`. Completed and dismissed setup do not block the protected application. The flow and
 its resumable state are described in [onboarding.md](onboarding.md).

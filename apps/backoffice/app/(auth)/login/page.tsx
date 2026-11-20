@@ -5,6 +5,7 @@ import { Callout, InlineLink } from '@repo/ui/components';
 import { AuthCard } from '@/app/(auth)/_components/auth-card';
 import { LoginForm } from '@/app/(auth)/login/_components/login-form';
 import { LOCKED_REASON, NEXT_PARAM, REASON_PARAM, ROUTES, safeNextPath } from '@/config/routes';
+import { SIGNUP_ENABLED } from '@/lib/config';
 import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('login');
@@ -27,12 +28,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <InlineLink asChild tone="muted">
             <Link href={ROUTES.forgotPassword}>{t('forgotPassword')}</Link>
           </InlineLink>
-          <p className="text-paragraph-sm text-foreground-muted">
-            {t('noAccount')}{' '}
-            <InlineLink asChild>
-              <Link href={ROUTES.signup}>{t('signup')}</Link>
-            </InlineLink>
-          </p>
+          {SIGNUP_ENABLED ? (
+            <p className="text-paragraph-sm text-foreground-muted">
+              {t('noAccount')}{' '}
+              <InlineLink asChild>
+                <Link href={ROUTES.signup}>{t('signup')}</Link>
+              </InlineLink>
+            </p>
+          ) : null}
         </div>
       }
     >
