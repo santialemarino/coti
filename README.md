@@ -129,7 +129,9 @@ MAIL_SMTP_STARTTLS=false
 
 To test quote delivery in development, run `pnpm db:seed` so both seeded branches have
 outbound channels. Use `MAIL_PROVIDER=smtp` with Mailpit and select email in the
-send dialog. WhatsApp requires a configured Cloud API channel and app secret; see
+send dialog. Administrators configure each branch's WhatsApp number in **Settings → Branches → View
+channels**. The form supports initial setup, switching to a registered real number, and rotating an
+access token while keeping existing credentials. WhatsApp requires a configured Cloud API channel and app secret; see
 [WhatsApp Cloud API](docs/technical/whatsapp-cloud-api.md) and the [Meta App development testing
 guide](docs/technical/meta-app-development-testing.md). A console mailer does not count as delivery,
 and Mailpit captures messages locally without contacting the recipient.
@@ -159,6 +161,10 @@ requires Google OAuth credentials and an encryption key; see [Gmail intake](docs
 | `pnpm serve:rfq`                  | Serve the interactive RFQ QA Lab on port 4173  |
 
 ### RFQ engine tests
+
+RFQ extraction separates product search terms from explicit lowest- or highest-price preferences. The
+backend compares current branch prices for compatible products and leaves incomplete comparisons
+for seller review. See [RFQ price selection](docs/technical/rfq-pipeline.md#explicit-price-selection).
 
 The fast RFQ suite uses fixed AI doubles and needs no credentials or database:
 

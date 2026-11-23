@@ -6,12 +6,14 @@ vi.mock('@/app/(protected)/settings/account/_components/account-form', () => ({
 }));
 vi.mock('@/lib/api/account', () => ({ getAccount: vi.fn() }));
 vi.mock('@/lib/api/arca-setup', () => ({ getARCASetup: vi.fn() }));
+vi.mock('@/lib/api/branches', () => ({ getBranches: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getTranslations: vi.fn() }));
 
 const { AccountForm } = await import('@/app/(protected)/settings/account/_components/account-form');
 const { getAccount } = await import('@/lib/api/account');
 const { getARCASetup } = await import('@/lib/api/arca-setup');
+const { getBranches } = await import('@/lib/api/branches');
 const { requireAdmin } = await import('@/lib/auth/session');
 const { getTranslations } = await import('next-intl/server');
 const { default: AccountSettingsPage } = await import('@/app/(protected)/settings/account/page');
@@ -48,6 +50,17 @@ beforeEach(() => {
   });
   vi.mocked(getTranslations).mockResolvedValue(((key: string) => key) as never);
   vi.mocked(getAccount).mockResolvedValue(ACCOUNT);
+  vi.mocked(getBranches).mockResolvedValue([
+    {
+      id: 'b1',
+      name: 'Central',
+      email: 'pedidos@corralon.test',
+      address: null,
+      defaultExpiryDays: 7,
+      isActive: true,
+    },
+    { id: 'b2', name: 'Moron', email: null, address: null, defaultExpiryDays: 7, isActive: true },
+  ]);
   vi.mocked(getARCASetup).mockResolvedValue({
     enabled: true,
     environment: 'HOMOLOGATION',
@@ -85,7 +98,7 @@ describe('AccountSettingsPage', () => {
     expect(props?.arcaConnection).toBe('inProgress');
   });
 
-  it('offers email and password changes after the account form', async () => {
+  it('offers email and password changes in the access section', async () => {
     await renderPage();
 
     expect(screen.getByRole('link', { name: 'access.changeEmail' }).getAttribute('href')).toBe(
@@ -94,5 +107,33 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByRole('link', { name: 'access.changePassword' }).getAttribute('href')).toBe(
       '/settings/password',
     );
+  });
+
+  it('shows the current user email and verification state beside the access actions', async () => {
+    await renderPage();
+    expect(screen.getByText('ana@corralon.test')).toBeTruthy();
+    expect(screen.getByText('access.verified')).toBeTruthy();
+    expect(screen.queryByText('access.unverified')).toBeNull();
+  });
+
+  it('does not label an unverified email as verified', async () => {
+    const session = await requireAdmin();
+    vi.mocked(requireAdmin).mockResolvedValue({ ...session, emailVerified: false });
+    await renderPage();
+    expect(screen.getByText('access.unverified')).toBeTruthy();
+    expect(screen.queryByText('access.verified')).toBeNull();
+  });
+
+  it('shows the incoming branch mailboxes separately from the signed-in user email', async () => {
+    await renderPage();
+    const section = screen.getByRole('region', { name: 'mailboxes.title' });
+    expect(section.textContent).toContain('pedidos@corralon.test');
+    expect(section.textContent).not.toContain('ana@corralon.test');
+    expect(section.textContent).toContain('mailboxes.missing');
+    expect(
+      screen
+        .getAllByRole('link', { name: 'mailboxes.configure' })
+        .map((link) => link.getAttribute('href')),
+    ).toEqual(['/settings/branches/b1/channels', '/settings/branches/b2/channels']);
   });
 });

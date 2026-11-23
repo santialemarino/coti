@@ -3973,6 +3973,24 @@ definitions:
     - name
     - role
     type: object
+  dto.UpdateWhatsAppChannelRequest:
+    properties:
+      access_token:
+        type: string
+      business_account_id:
+        maxLength: 255
+        type: string
+      identifier:
+        maxLength: 255
+        type: string
+      is_active:
+        type: boolean
+      phone_number_id:
+        maxLength: 255
+        type: string
+      webhook_verify_token:
+        type: string
+    type: object
   dto.UploadARCACertificateRequest:
     properties:
       certificate:
@@ -4839,6 +4857,71 @@ paths:
       security:
       - BearerAuth: []
       summary: Authorize a branch Gmail mailbox
+      tags:
+      - channels
+  /v1/channels/{channelId}/whatsapp:
+    patch:
+      consumes:
+      - application/json
+      description: Updates supplied WhatsApp settings. Omitted or null fields preserve
+        stored values. Blank credentials are rejected. Changing the sending number
+        requires both Meta identifiers and a new access token. Initial setup also
+        requires a webhook verification token.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Changed settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateWhatsAppChannelRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChannelResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update WhatsApp settings
       tags:
       - channels
   /v1/client-contact-suggestions:

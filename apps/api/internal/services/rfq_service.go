@@ -174,6 +174,7 @@ type RFQService struct {
 	sellers             sellerReach
 	extractor           domain.RFQExtractor
 	matcher             catalogMatcher
+	priceSelector       rfqPriceSelector
 	productAlternatives productAlternativeReader
 	combos              comboSuggestionReader
 	memories            interpretationMemoryFinder
@@ -234,6 +235,12 @@ func (s *RFQService) WithDiscounts(discounts quoteDiscountRepository) *RFQServic
 // WithPrices lets a line on a priced quote take the branch price of the product chosen for it.
 func (s *RFQService) WithPrices(prices branchPriceReader) *RFQService {
 	s.prices = prices
+	return s
+}
+
+// WithPriceSelection enables deterministic resolution of explicit price preferences.
+func (s *RFQService) WithPriceSelection(selector rfqPriceSelector) *RFQService {
+	s.priceSelector = selector
 	return s
 }
 
@@ -1532,11 +1539,11 @@ func (s *RFQService) quoteItemsFromExtraction(
 	if len(items) == 0 {
 		return extraction, nil, nil, nil
 	}
-	return extraction, items, s.applyMatches(ctx, tenant, items), nil
+	return extraction, items, s.applyMatches(ctx, tenant, items, extraction.Lines), nil
 }
 
 func (s *RFQService) applyMatches(
-	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
+	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem, lines []domain.ExtractedRFQLine,
 ) []domain.NewQuoteItemAlternative {
 	if s.matcher == nil {
 		return nil
@@ -1544,6 +1551,9 @@ func (s *RFQService) applyMatches(
 	descriptions := make([]string, len(items))
 	for i, item := range items {
 		descriptions[i] = item.RequestedDescription
+		if search := strings.TrimSpace(lines[i].SearchDescription); search != "" && pricePreferenceWording[lines[i].SelectionPreference] != nil {
+			descriptions[i] = search
+		}
 	}
 	matches, err := s.matcher.Match(ctx, tenant, descriptions)
 	if err != nil {
@@ -1557,6 +1567,16 @@ func (s *RFQService) applyMatches(
 		return nil
 	}
 	var alternatives []domain.NewQuoteItemAlternative
+	for i, line := range lines {
+		if pricePreferenceWording[line.SelectionPreference] != nil && matches[i].ProductID != nil {
+			matches[i].MatchStatus = domain.ItemMatchStatusAmbiguous
+		}
+	}
+	if s.priceSelector != nil {
+		if err := s.priceSelector.Select(ctx, tenant, lines, matches); err != nil {
+			s.log.WarnContext(ctx, "RFQ price selection did not run; price preferences stay flagged", slog.Any("error", err))
+		}
+	}
 	for i, match := range matches {
 		items[i].ProductID = match.ProductID
 		items[i].MatchStatus = match.MatchStatus
@@ -2025,6 +2045,9 @@ func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuo
 	items := make([]domain.NewQuoteItem, 0, len(lines))
 	for i, line := range lines {
 		field := fmt.Sprintf("items[%d]", i)
+		if err := validateRFQSelection(line, field); err != nil {
+			return nil, err
+		}
 		description, err := requiredText(line.RequestedDescription, field+".requested_description")
 		if err != nil {
 			return nil, err

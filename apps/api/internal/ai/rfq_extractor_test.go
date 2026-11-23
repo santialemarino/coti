@@ -115,6 +115,38 @@ func TestRFQExtractor_Extract_MapsEverySource(t *testing.T) {
 	}
 }
 
+func TestRFQExtractor_Extract_SeparatesProductIdentityFromLowestPricePreference(t *testing.T) {
+	generator := &fakeGenerator{answer: `{"items":[
+		{"requested_description":"bolsas de cal","search_description":"cal","selection_preference":"NONE",
+		 "quantity":"10","unit":"bolsa","quantity_source":"EXPLICIT","quantity_rationale":"Diez bolsas."},
+		{"requested_description":"plasticor","search_description":"plasticor","selection_preference":"NONE",
+		 "quantity":"2","unit":"bolsa","quantity_source":"EXPLICIT","quantity_rationale":"Dos bolsas."},
+		{"requested_description":"cemento mas barato que tengas","search_description":"cemento","selection_preference":"LOWEST_PRICE",
+		 "quantity":"5","unit":"bolsa","quantity_source":"EXPLICIT","quantity_rationale":"Cinco bolsas."}
+	]}`}
+	extraction, err := NewRFQExtractor(generator, 50).Extract(context.Background(),
+		"Hola necesito 10 bolsas de cal, 2 de plasticor y 5 de cemento mas barato que tengas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(extraction.Lines) != 3 {
+		t.Fatalf("lines = %d, want 3", len(extraction.Lines))
+	}
+	cement := extraction.Lines[2]
+	if cement.SearchDescription != "cemento" || cement.SelectionPreference != domain.RFQSelectionLowestPrice ||
+		cement.RequestedDescription != "cemento mas barato que tengas" || !cement.Quantity.Equal(decimal.NewFromInt(5)) {
+		t.Fatalf("cement = %+v", cement)
+	}
+	if extraction.Lines[0].SelectionPreference != domain.RFQSelectionNone || extraction.Lines[1].SelectionPreference != domain.RFQSelectionNone {
+		t.Fatal("the price preference leaked into another material")
+	}
+	properties := itemSchema(t, generator.req.Schema)["properties"].(map[string]any)
+	preference := properties["selection_preference"].(map[string]any)
+	if !reflect.DeepEqual(preference["enum"], []string{"NONE", "LOWEST_PRICE", "HIGHEST_PRICE"}) {
+		t.Fatalf("selection preference is not a closed enum: %v", preference)
+	}
+}
+
 func TestRFQExtractor_ExtractWithExamples_KeepsExamplesSeparateFromNewOrder(t *testing.T) {
 	generator := &fakeGenerator{answer: `{"items":[]}`}
 	extractor := NewRFQExtractor(generator, 50)
@@ -180,8 +212,9 @@ func TestRFQExtractor_Extract_PassesTheProviderFailureThrough(t *testing.T) {
 func TestRFQExtractor_Extract_SendsTheOrderAsTheVariableHalf(t *testing.T) {
 	generator := &fakeGenerator{answer: `{"items":[]}`}
 	extractor := NewRFQExtractor(generator, 42)
+	const order = "17 bolsas de cemento CPN40 para la obra QA-EXTRACTION"
 
-	if _, err := extractor.Extract(context.Background(), "10 bolsas de cemento"); err != nil {
+	if _, err := extractor.Extract(context.Background(), order); err != nil {
 		t.Fatalf("Extract returned %v", err)
 	}
 	req := generator.req
@@ -189,11 +222,11 @@ func TestRFQExtractor_Extract_SendsTheOrderAsTheVariableHalf(t *testing.T) {
 		t.Fatalf("the request the extractor built is invalid: %v", err)
 	}
 	if len(req.Input) != 1 || req.Input[0].Kind != domain.ContentKindText ||
-		req.Input[0].Text != "10 bolsas de cemento" {
+		req.Input[0].Text != order {
 		t.Errorf("request input %+v, want the order as one text block", req.Input)
 	}
 	// The order rides Input, never Instructions: a prompt that changes per request caches nothing.
-	if strings.Contains(req.Instructions, "10 bolsas de cemento") {
+	if strings.Contains(req.Instructions, order) {
 		t.Error("the order was built into the instructions, which breaks the cached prefix")
 	}
 	// The cap the service enforces is the number the model is asked to aim under.

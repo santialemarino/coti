@@ -146,7 +146,9 @@ type ExtractedRFQLine struct {
 	Source   QuantitySource
 	// QuantityRationale is why the quantity is what it is, and is required on every line: a
 	// seller reads it instead of reopening the message, and it names what is missing.
-	QuantityRationale string
+	QuantityRationale   string
+	SearchDescription   string
+	SelectionPreference RFQSelectionPreference
 }
 
 // RFQExtraction is one reproducible model answer and the metadata needed to compare it with

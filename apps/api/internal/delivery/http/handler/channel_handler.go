@@ -17,6 +17,7 @@ type ChannelService interface {
 	ListAllChannels(ctx context.Context, tenant domain.Tenant) ([]domain.Channel, error)
 	CreateChannel(ctx context.Context, tenant domain.Tenant, in domain.NewChannel) (*domain.Channel, error)
 	UpdateChannel(ctx context.Context, tenant domain.Tenant, channelID uuid.UUID, in domain.ChannelUpdate) (*domain.Channel, error)
+	UpdateWhatsAppChannel(ctx context.Context, tenant domain.Tenant, channelID uuid.UUID, in domain.WhatsAppChannelUpdate) (*domain.Channel, error)
 	DeactivateChannel(ctx context.Context, tenant domain.Tenant, channelID uuid.UUID) error
 }
 
@@ -162,6 +163,51 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 			IsActive:   body.IsActive,
 			Config:     body.Config,
 		})
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toChannelResponse(*channel))
+}
+
+// UpdateWhatsApp preserves omitted settings and never returns stored credentials.
+//
+//	@Summary Update WhatsApp settings
+//	@Description Updates supplied WhatsApp settings. Omitted or null fields preserve stored values. Blank credentials are rejected. Changing the sending number requires both Meta identifiers and a new access token. Initial setup also requires a webhook verification token.
+//	@Tags channels
+//	@Accept json
+//	@Produce json
+//	@Security BearerAuth
+//	@Param X-Branch-Id header string true "Active branch"
+//	@Param channelId path string true "Channel id"
+//	@Param request body dto.UpdateWhatsAppChannelRequest true "Changed settings"
+//	@Success 200 {object} dto.ChannelResponse
+//	@Failure 400 {object} dto.ErrorResponse
+//	@Failure 401 {object} dto.ErrorResponse
+//	@Failure 403 {object} dto.ErrorResponse
+//	@Failure 404 {object} dto.ErrorResponse
+//	@Failure 409 {object} dto.ErrorResponse
+//	@Failure 422 {object} dto.ErrorResponse
+//	@Failure 503 {object} dto.ErrorResponse
+//	@Router /v1/channels/{channelId}/whatsapp [patch]
+func (h *ChannelHandler) UpdateWhatsApp(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	channelID, ok := pathUUID(c, "channelId")
+	if !ok {
+		return
+	}
+	var body dto.UpdateWhatsAppChannelRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	channel, err := h.channels.UpdateWhatsAppChannel(c.Request.Context(), tenant, channelID,
+		domain.WhatsAppChannelUpdate{Identifier: body.Identifier, IsActive: body.IsActive,
+			PhoneNumberID: body.PhoneNumberID, BusinessAccountID: body.BusinessAccountID,
+			AccessToken: body.AccessToken, WebhookVerifyToken: body.WebhookVerifyToken})
 	if err != nil {
 		Respond(c, err)
 		return

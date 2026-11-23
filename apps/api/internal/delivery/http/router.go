@@ -246,10 +246,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	channelAdmin := channels.Group("", middleware.RequireAdmin())
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
+	channelAdmin.PATCH("/:channelId/whatsapp", h.Channel.UpdateWhatsApp)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
+	gmailStart := gin.HandlerFunc(func(c *gin.Context) { handler.Respond(c, domain.ErrNotConfigured) })
 	if h.Gmail != nil {
-		channelAdmin.POST("/:channelId/gmail/authorization", limit("gmail-oauth", cfg.RateLimit.Credentials), h.Gmail.Start)
+		gmailStart = h.Gmail.Start
 	}
+	channelAdmin.POST("/:channelId/gmail/authorization", limit("gmail-oauth", cfg.RateLimit.Credentials), gmailStart)
 
 	// Accepting the materials is what prices the quote, so the route names the seller's action
 	// rather than the calculation behind it. It reaches no provider, so it needs no allowance of

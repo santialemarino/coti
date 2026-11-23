@@ -15,16 +15,28 @@ import (
 )
 
 type fakeChannelStore struct {
-	channels  []domain.Channel
-	current   *domain.Channel
-	err       error
-	accountID uuid.UUID
-	branchID  uuid.UUID
-	listedAll bool
-	created   *domain.NewChannel
-	updated   *domain.ChannelUpdate
-	updatedID uuid.UUID
-	closedID  uuid.UUID
+	configuration []byte
+	channels      []domain.Channel
+	current       *domain.Channel
+	err           error
+	accountID     uuid.UUID
+	branchID      uuid.UUID
+	listedAll     bool
+	created       *domain.NewChannel
+	updated       *domain.ChannelUpdate
+	updatedID     uuid.UUID
+	closedID      uuid.UUID
+}
+
+func (f *fakeChannelStore) GetConfigurationByIDForUpdate(
+	_ context.Context, _ repository.Querier, accountID, branchID, channelID uuid.UUID,
+) (*domain.ChannelConfiguration, error) {
+	f.accountID, f.branchID = accountID, branchID
+	if f.current == nil {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.ChannelConfiguration{ChannelID: channelID, AccountID: accountID,
+		BranchID: branchID, Type: f.current.Type, Config: f.configuration}, f.err
 }
 
 func (f *fakeChannelStore) ListActiveByBranch(

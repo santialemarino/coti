@@ -411,6 +411,7 @@
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "CHANNEL_ALREADY_USED": "Esta versión de la cotización ya se envió por ese medio.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
+    "CHANNEL_CONFIG_SHAPE": "Revisá la configuración del canal e intentá de nuevo.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",
@@ -515,6 +516,10 @@
     "branchSettings": {
       "title": "Sucursales",
       "description": "Alta y administración de las sucursales del corralón."
+    },
+    "branchChannels": {
+      "title": "Canales de la sucursal",
+      "description": "Configurá el correo y WhatsApp de cada sucursal."
     },
     "onboardingSettings": {
       "title": "Configuración inicial",
@@ -2506,7 +2511,8 @@
     },
     "backToInvoicing": "Volver a Facturación",
     "backToPromotions": "Volver a Promociones",
-    "backToCombos": "Volver a Combos"
+    "backToCombos": "Volver a Combos",
+    "backToBranches": "Volver a sucursales"
   },
   "branches": {
     "title": "Sucursales",
@@ -2516,6 +2522,8 @@
       "caption": "Sucursales activas del corralón",
       "name": "Nombre",
       "address": "Dirección",
+      "contact": "Correo y canales",
+      "channels": "Ver canales",
       "expiry": "Vencimiento",
       "status": "Estado",
       "actions": "Acciones",
@@ -2531,10 +2539,13 @@
       "action": "Reabrir"
     },
     "gmail": {
-      "connect": "Conectar Gmail de la sucursal",
+      "connect": "Autorizar recepción con Gmail",
       "connected": "Conectamos la casilla de Google con la sucursal.",
       "failed": "No pudimos conectar la casilla. Verificá que elegiste el correo de la sucursal e intentá de nuevo.",
-      "startFailed": "No pudimos iniciar la conexión con Google. Revisá la configuración de la sucursal e intentá de nuevo."
+      "errors": {
+        "NOT_CONFIGURED": "La recepción por Gmail todavía no está habilitada en este entorno de Coti. Contactá al equipo de Coti para configurarla.",
+        "NOT_FOUND": "La casilla de esta sucursal ya no está disponible. Actualizá la página."
+      }
     },
     "empty": {
       "title": "Todavía no hay sucursales",
@@ -2572,8 +2583,8 @@
     },
     "email": {
       "label": "Correo de la sucursal",
-      "placeholder": "ventas@tucorralon.com",
-      "hint": "Las respuestas de tus clientes a una cotización llegan a esta dirección."
+      "placeholder": "Ingresá el correo de la sucursal",
+      "hint": "Tus clientes envían pedidos y responden cotizaciones a esta dirección. Conectala con Gmail para que los pedidos ingresen a Coti."
     },
     "defaultExpiryDays": {
       "label": "Días de vencimiento de las cotizaciones",
@@ -2597,13 +2608,97 @@
       "unset": "Sin configurar"
     }
   },
+  "branchChannels": {
+    "title": "Canales de {name}",
+    "description": "Administrá los medios por los que esta sucursal recibe pedidos y envía cotizaciones.",
+    "whatsapp": "WhatsApp",
+    "whatsappDescription": "El número de WhatsApp Business asociado a esta sucursal.",
+    "email": "Correo de la sucursal",
+    "emailDescription": "Tus clientes envían sus pedidos a esta casilla. Conectala con Gmail o Google Workspace para que aparezcan en Coti.",
+    "status": {
+      "configured": "Configurado",
+      "missing": "Sin configurar",
+      "inactive": "Inactivo"
+    },
+    "statusHint": "Configurado indica que guardaste las credenciales. No comprueba si el token de Meta sigue vigente.",
+    "noNumber": "Sin número de WhatsApp",
+    "noEmail": "Sin correo",
+    "configure": "Configurar WhatsApp",
+    "update": "Actualizar configuración",
+    "formTitle": "WhatsApp de {name}",
+    "formDescription": "Completá los datos del número de WhatsApp Business de esta sucursal. Las credenciales se guardan cifradas y no se muestran al volver a abrir este formulario.",
+    "editDescription": "Completá solo lo que querés actualizar. Los campos vacíos conservan su valor guardado. Si cambiás de número o cuenta, ingresá ambos identificadores de Meta y el token de acceso de esa línea.",
+    "keepSetting": "Dejá vacío para conservar el valor guardado",
+    "productionHint": "Para usar una línea real, registrala en WhatsApp Business y usá un token de acceso de usuario del sistema con los permisos correspondientes. El token temporal de pruebas vence y debe renovarse.",
+    "webhookHint": "El token de verificación del webhook es el valor que elegiste al configurar la recepción en Meta. No es el token de acceso; al renovar el acceso podés conservarlo.",
+    "numberChangeRequired": "Para cambiar de número, ingresá ambos identificadores de Meta y el token de acceso de esa línea.",
+    "number": {
+      "label": "Número de WhatsApp",
+      "placeholder": "Ingresá el número de WhatsApp",
+      "required": "Ingresá el número de WhatsApp.",
+      "invalid": "Revisá el número: no parece un teléfono válido."
+    },
+    "phoneNumberId": {
+      "label": "Identificador del número en Meta (Phone Number ID)",
+      "placeholder": "Ingresá el identificador del número",
+      "required": "Ingresá el identificador del número en Meta."
+    },
+    "businessAccountId": {
+      "label": "Identificador de la cuenta de WhatsApp Business",
+      "placeholder": "Ingresá el identificador de la cuenta",
+      "required": "Ingresá el identificador de la cuenta de WhatsApp Business."
+    },
+    "metaId": { "invalid": "Ingresá el identificador con dígitos únicamente." },
+    "accessToken": {
+      "label": "Token de acceso de Meta",
+      "placeholder": "Ingresá el token de acceso",
+      "required": "Ingresá el token de acceso de Meta."
+    },
+    "webhookVerifyToken": {
+      "label": "Token de verificación del webhook",
+      "placeholder": "Ingresá el token de verificación",
+      "required": "Ingresá el token de verificación del webhook."
+    },
+    "active": "Canal activo",
+    "cancel": "Cancelar",
+    "save": "Guardar configuración",
+    "saving": "Guardando…",
+    "saved": "Guardamos la configuración de WhatsApp de «{name}».",
+    "editEmail": "Editar correo",
+    "connectGmail": "Autorizar recepción con Gmail",
+    "secretTooLong": "El token supera el tamaño permitido.",
+    "connecting": "Conectando…",
+    "gmailHint": "Google te va a pedir permiso para que Coti lea los correos y adjuntos de esta casilla y los convierta en pedidos. Elegí la cuenta que coincide con el correo de la sucursal.",
+    "emailRegistered": "Casilla registrada",
+    "testMailbox": "Esta es una dirección de prueba. Cargá una casilla real de Gmail o Google Workspace para conectar la recepción.",
+    "emailRequired": "Primero cargá el correo de la sucursal para conectar Gmail.",
+    "noWhatsAppChannel": "Esta sucursal no tiene un canal de WhatsApp disponible. Contactá al administrador de Coti.",
+    "errors": {
+      "CHANNEL_IDENTIFIER": "Revisá el número de WhatsApp.",
+      "CHANNEL_CONFIG_SHAPE": "Revisá los datos de Meta. Si cambiaste de número o cuenta, completá ambos identificadores y el token de acceso. En la primera conexión también necesitás el token de verificación.",
+      "INVALID_INPUT": "Revisá los datos de Meta e intentá de nuevo.",
+      "NOT_CONFIGURED": "La conexión con WhatsApp todavía no está habilitada en Coti. Contactá al administrador de Coti.",
+      "CONFLICT": "Ese número o identificador ya está asociado a otro canal.",
+      "NOT_FOUND": "El canal ya no está disponible en esta sucursal. Actualizá la página."
+    }
+  },
   "account": {
     "title": "Cuenta",
+    "mailboxes": {
+      "title": "Correos para recibir pedidos",
+      "description": "Los clientes envían sus pedidos a la casilla de cada sucursal. Para que esos mails ingresen a Coti, conectá la casilla con Gmail o Google Workspace.",
+      "missing": "Sin correo para recibir pedidos",
+      "configure": "Configurar recepción"
+    },
     "company": {
       "title": "Datos del corralón"
     },
     "access": {
       "title": "Acceso",
+      "email": "Correo de acceso",
+      "description": "Estos datos pertenecen a tu usuario. Los canales para recibir pedidos se configuran en cada sucursal.",
+      "verified": "Verificado",
+      "unverified": "Sin verificar",
       "changeEmail": "Cambiar correo",
       "changePassword": "Cambiar contraseña"
     },

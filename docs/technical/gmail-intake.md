@@ -1,7 +1,12 @@
 # Gmail intake
 
 An administrator connects one Gmail or Google Workspace mailbox to each branch email channel in
-branch settings. The Google account's primary address must match the branch email address. The
+**Settings → Branches → View channels**. The page displays the branch address and lets the
+administrator edit it or authorize Gmail intake. The action opens Google's permission screen so
+Coti can read incoming messages and attachments and create RFQs. Reserved `.test` addresses display
+a setup notice instead of offering authorization. A registered address alone does not confirm an
+active Gmail connection. The Google account's primary address
+must match the branch email address. The
 connection is only for incoming requests; outbound quote delivery uses the configured mail
 transport and requires the seller's action.
 
@@ -16,7 +21,9 @@ For the DigitalOcean App Platform ingress in this repository, the public callbac
 the request to the API.
 Set `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REDIRECT_URL` and the
 32-byte base64 `CHANNEL_CONFIG_ENCRYPTION_KEY` on the API. With all Gmail OAuth settings empty,
-the connector is disabled. Keep the client secret and encryption key outside source control.
+the connector is disabled. The authenticated, administrator-only authorization endpoint then
+returns `503 NOT_CONFIGURED`, which the backoffice explains as unavailable Gmail intake in that
+environment. Keep the client secret and encryption key outside source control.
 
 The connector requests `https://www.googleapis.com/auth/gmail.readonly`, a restricted Google scope.
 Google's verification requirements and, where applicable, security assessment must be completed

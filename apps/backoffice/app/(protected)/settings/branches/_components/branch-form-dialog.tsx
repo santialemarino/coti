@@ -20,6 +20,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormRootMessage,
   Input,
   PendingButton,
 } from '@repo/ui/components';
@@ -39,6 +40,7 @@ interface BranchFormDialogProps {
   branch: Branch | null;
   onSubmit: (values: BranchValues) => void;
   pending: boolean;
+  error?: string | null;
 }
 
 /*
@@ -55,6 +57,7 @@ export function BranchFormDialog({
   branch,
   onSubmit,
   pending,
+  error,
 }: BranchFormDialogProps) {
   const t = useTranslations('branches');
   const tErrors = useTranslations('common.form.errors');
@@ -90,7 +93,10 @@ export function BranchFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" closeOnClickOutside={!pending}>
+      <DialogContent
+        className="sm:max-w-md"
+        closeOnClickOutside={!pending && !form.formState.isDirty}
+      >
         <DialogHeader>
           <DialogTitle>{t(`${copy}.title`)}</DialogTitle>
           <DialogDescription>{t(`${copy}.description`)}</DialogDescription>
@@ -181,6 +187,7 @@ export function BranchFormDialog({
               )}
             />
 
+            <FormRootMessage>{error}</FormRootMessage>
             <DialogFooter>
               <Button
                 type="button"

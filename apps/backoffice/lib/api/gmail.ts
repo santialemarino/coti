@@ -1,11 +1,12 @@
 import { listChannels } from '@/lib/api/channels';
+import { ApiError, throwApiError } from '@/lib/api/errors';
 
 export async function startGmailAuthorization(branchId: string, address: string): Promise<string> {
   const channels = await listChannels(branchId);
   const channel = channels.find(
     (item) => item.type === 'EMAIL' && item.identifier?.toLowerCase() === address.toLowerCase(),
   );
-  if (!channel) throw new Error('The branch email channel is unavailable');
+  if (!channel) throw new ApiError('NOT_FOUND', 404);
   const response = await fetch(
     `/api/channels/${encodeURIComponent(channel.id)}/gmail/authorization`,
     {
@@ -14,7 +15,7 @@ export async function startGmailAuthorization(branchId: string, address: string)
       cache: 'no-store',
     },
   );
-  if (!response.ok) throw new Error('Gmail authorization is unavailable');
+  if (!response.ok) await throwApiError(response);
   const result = (await response.json()) as { authorization_url: string };
   const url = new URL(result.authorization_url);
   if (url.origin !== 'https://accounts.google.com' || url.username || url.password) {

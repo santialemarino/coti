@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import {
   BuildingIcon,
   MailIcon,
@@ -17,6 +18,7 @@ import {
   Button,
   Callout,
   ConfirmDialog,
+  InlineLink,
   RowActionButton,
   Table,
   TableBody,
@@ -35,12 +37,14 @@ import {
   updateBranch,
 } from '@/app/(protected)/settings/branches/actions';
 import type { BranchValues } from '@/app/(protected)/settings/branches/form-schema';
+import { ROUTES } from '@/config/routes';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { Branch } from '@/lib/api/branches';
+import { errorCodeOf } from '@/lib/api/errors';
 import { startGmailAuthorization } from '@/lib/api/gmail';
-import { missesBranchEmail } from '@/lib/utils/setup-issues';
+import { isTestMailbox } from '@/lib/utils/mailbox';
 
-const COLUMN_COUNT = 6;
+const COLUMN_COUNT = 7;
 
 interface BranchTableProps {
   branches: Branch[];
@@ -50,6 +54,7 @@ interface BranchTableProps {
 export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
   const t = useTranslations('branches');
   const message = useApiErrorMessage('branches');
+  const gmailMessage = useApiErrorMessage('branches.gmail');
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; branch: Branch | null } | null>(null);
   const [closing, setClosing] = useState<Branch | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +78,8 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
       try {
         const url = await startGmailAuthorization(branch.id, address);
         window.location.assign(url);
-      } catch {
-        setError(t('gmail.startFailed'));
+      } catch (error) {
+        setError(gmailMessage(errorCodeOf(error)));
       }
     });
   }
@@ -151,6 +156,7 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
           <TableRow>
             <TableHead kind="text">{t('table.name')}</TableHead>
             <TableHead kind="text">{t('table.address')}</TableHead>
+            <TableHead kind="text">{t('table.contact')}</TableHead>
             <TableHead kind="count">{t('table.expiry')}</TableHead>
             <TableHead kind="count">{t('billing.pointOfSale')}</TableHead>
             <TableHead kind="status">{t('table.status')}</TableHead>
@@ -169,18 +175,20 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
             branches.map((branch) => (
               <TableRow key={branch.id}>
                 <TableCell className="text-paragraph-sm-medium text-foreground">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {branch.name}
-                    {/* A closed branch sends nothing, so its missing mailbox is not news. */}
-                    {branch.isActive && missesBranchEmail(branch) ? (
-                      <Badge tone="warning" size="sm" dot>
-                        {t('table.noEmail')}
-                      </Badge>
-                    ) : null}
-                  </span>
+                  {branch.name}
                 </TableCell>
                 <TableCell className={branch.address ? undefined : 'text-foreground-subtle'}>
                   {branch.address ?? t('table.noAddress')}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col items-start gap-y-1">
+                    <span className="wrap-anywhere">{branch.email ?? t('table.noEmail')}</span>
+                    {branch.isActive ? (
+                      <InlineLink asChild>
+                        <Link href={ROUTES.branchChannels(branch.id)}>{t('table.channels')}</Link>
+                      </InlineLink>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell kind="count">
                   {t('expiryDays', { count: branch.defaultExpiryDays })}
@@ -193,7 +201,7 @@ export function BranchTable({ branches, gmailStatus }: BranchTableProps) {
                 </TableCell>
                 <TableCell kind="actionsWide">
                   <div className="flex justify-center gap-x-1">
-                    {branch.isActive && branch.email ? (
+                    {branch.isActive && branch.email && !isTestMailbox(branch.email) ? (
                       <RowActionButton
                         icon={MailIcon}
                         label={t('gmail.connect')}

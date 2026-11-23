@@ -83,6 +83,16 @@ describe('the shared catalog', () => {
 });
 
 describe('throwApiError', () => {
+  it('preserves a channel configuration rejection instead of reducing it to invalid input', async () => {
+    const response = new Response(JSON.stringify({ code: 'CHANNEL_CONFIG_SHAPE' }), {
+      status: 422,
+    });
+
+    const error = await throwApiError(response).catch((thrown: unknown) => thrown);
+
+    expect(error).toMatchObject({ code: 'CHANNEL_CONFIG_SHAPE', status: 422 });
+  });
+
   it('keeps the code, the detail and the issues the envelope carries', async () => {
     const response = new Response(
       JSON.stringify({ code: 'INVOICE_REJECTED', error: 'rejected', issues: ['10016: fecha'] }),
