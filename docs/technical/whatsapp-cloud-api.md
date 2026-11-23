@@ -26,7 +26,7 @@ do not place them in source control, a browser client, or a log.
 The channel's `identifier` is the human-facing number; Meta's `phone_number_id` is not a phone
 number and belongs only in the configuration.
 
-For a development test number, configure the active `WHATSAPP` channel with its number as
+For a test or registered production number, configure the active `WHATSAPP` channel with its number as
 `identifier` and this JSON shape, substituting local secret values:
 
 ```json
@@ -60,9 +60,34 @@ human-readable number in E.164 form as `identifier` whenever a configuration is 
 }
 ```
 
-There is no channel-settings screen in the backoffice yet; this guarded administrator API is the
-configuration surface until that UI is built. Its response confirms only `is_configured`, never the
-credentials.
+Administrators open **Settings → Branches → View channels** to see the branch mailbox and WhatsApp
+number. The WhatsApp form uses the administrator-only
+`PATCH /v1/channels/{channelId}/whatsapp` endpoint with the selected branch header. Its flat body
+accepts `identifier`, `is_active`, `phone_number_id`, `business_account_id`, `access_token`, and
+`webhook_verify_token`. Omitted or null fields retain their stored values; explicitly blank settings
+are rejected. The form omits fields left blank, so rotating an access token preserves the existing
+webhook verifier and Meta identifiers. Credentials are never returned or prefilled.
+
+Initial setup requires both Meta identifiers, the access token, and a webhook verification token.
+Changing the number or either Meta identifier requires both Meta identifiers and an access token
+together, preventing an accidental mix of two sending accounts. An existing webhook verification
+token can be retained. Settings are read under a tenant-scoped row lock and merged in the same
+transaction; only supplied credentials are encrypted again. The existing generic `PUT` endpoint
+still replaces the entire configuration.
+
+For a real line, register the number in WhatsApp Business and use an appropriately authorized
+system-user token rather than the temporary token from API Setup. Follow
+[Meta's system-user token setup](https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started#step-5-create-a-system-user-and-generate-a-permanent-access-token).
+Changing the Meta app also requires the deployment's app secret and public webhook configuration
+to match that app. Saving this form does not register a number or configure the Meta dashboard.
+Neither this form nor outbound delivery adds or removes Argentina's mobile prefix to work around
+a test-recipient allowlist; the selected sending number and the provider recipient remain distinct.
+
+Meta identifiers are numeric strings capped at 255 characters. Credential validation enforces the
+API's 4096-byte UTF-8 limit, including when a verification token contains multibyte characters.
+
+**Configured** means credentials have been saved, not that Meta has verified the number or that the
+token is still valid. App-level configuration and the public Meta callback remain deployment setup.
 
 ## Meta callback
 

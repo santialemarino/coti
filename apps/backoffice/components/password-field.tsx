@@ -26,6 +26,10 @@ interface PasswordFieldProps<T extends FieldValues> {
   existing?: boolean;
   /* Only under the field where the password is chosen — never under its confirmation. */
   meter?: boolean;
+  maxLength?: number;
+  autoComplete?: string;
+  disabled?: boolean;
+  required?: boolean;
 }
 
 /* Every password input in the app, so the cap, the reveal toggle and the meter cannot drift apart. */
@@ -36,6 +40,10 @@ export function PasswordField<T extends FieldValues>({
   placeholder,
   existing = false,
   meter = false,
+  maxLength,
+  autoComplete,
+  disabled = false,
+  required = true,
 }: PasswordFieldProps<T>) {
   const tCommon = useTranslations('common');
   const value = useWatch({ control, name });
@@ -46,12 +54,13 @@ export function PasswordField<T extends FieldValues>({
       name={name}
       render={({ field, fieldState }) => (
         <FormItem>
-          <FormLabel required>{label}</FormLabel>
+          <FormLabel required={required}>{label}</FormLabel>
           <FormControl>
             <Input
               type="password"
-              autoComplete={existing ? 'current-password' : 'new-password'}
-              maxLength={existing ? SECRET_MAX_LENGTH : PASSWORD_MAX_LENGTH}
+              autoComplete={autoComplete ?? (existing ? 'current-password' : 'new-password')}
+              maxLength={maxLength ?? (existing ? SECRET_MAX_LENGTH : PASSWORD_MAX_LENGTH)}
+              disabled={disabled}
               placeholder={placeholder}
               passwordToggleLabel={tCommon('form.togglePassword')}
               {...field}

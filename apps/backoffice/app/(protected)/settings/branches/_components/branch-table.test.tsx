@@ -103,20 +103,28 @@ describe('BranchTable listing', () => {
     expect(view.getByText('30 días')).toBeTruthy();
   });
 
-  // The table has no mailbox column, so the badge is the only place the gap shows.
-  it('marks an open branch without a mailbox, and only that one', () => {
+  it('shows each branch mailbox or its absence directly in the contact column', () => {
     const view = renderTable([{ ...CENTRAL, email: 'centro@corralon.test' }, MORON, CLOSED]);
 
     expect(within(rowOf(view, MORON.name)).queryByText(copy.table.noEmail)).toBeTruthy();
     expect(within(rowOf(view, CENTRAL.name)).queryByText(copy.table.noEmail)).toBeNull();
-    expect(within(rowOf(view, CLOSED.name)).queryByText(copy.table.noEmail)).toBeNull();
+    expect(within(rowOf(view, CLOSED.name)).queryByText(copy.table.noEmail)).toBeTruthy();
+    expect(within(rowOf(view, CENTRAL.name)).getByText('centro@corralon.test')).toBeTruthy();
+    expect(
+      within(rowOf(view, CENTRAL.name))
+        .getByRole('link', { name: copy.table.channels })
+        .getAttribute('href'),
+    ).toBe('/settings/branches/b1/channels');
+    expect(
+      within(rowOf(view, CLOSED.name)).queryByRole('link', { name: copy.table.channels }),
+    ).toBeNull();
   });
 
-  it('offers Google connection only for an active branch with an email address', () => {
+  it('offers Google connection only for an active branch with a real email address', () => {
     const view = renderTable([
-      { ...CENTRAL, email: 'centro@corralon.test' },
+      { ...CENTRAL, email: 'centro@gmail.com' },
       MORON,
-      { ...CLOSED, email: 'closed@corralon.test' },
+      { ...CLOSED, email: 'closed@gmail.com' },
     ]);
     expect(
       within(rowOf(view, CENTRAL.name)).getByRole('button', { name: copy.gmail.connect }),
@@ -127,6 +135,12 @@ describe('BranchTable listing', () => {
     expect(
       within(rowOf(view, CLOSED.name)).queryByRole('button', { name: copy.gmail.connect }),
     ).toBeNull();
+  });
+
+  it('does not offer Google connection for a reserved test address', () => {
+    const view = renderTable([{ ...CENTRAL, email: 'admin@corralon.test' }]);
+    expect(view.queryByRole('button', { name: copy.gmail.connect })).toBeNull();
+    expect(view.getByText('admin@corralon.test')).toBeTruthy();
   });
 
   // A branch with no address must read as one, not as an empty cell that looks like a render bug.

@@ -85,6 +85,21 @@ describe('PhoneInput', () => {
     expect(national().value).toBe('93515550101');
   });
 
+  it('keeps a shared calling code when the national exchange identifies no country', () => {
+    render(<Harness initial="+15556530731" onValue={vi.fn()} />);
+    expect(country().textContent).toContain('+1');
+    expect(national().value).toBe('5556530731');
+  });
+
+  it('pastes an international NANP number without changing its calling code to Argentina', () => {
+    const onValue = vi.fn();
+    render(<Harness onValue={onValue} />);
+    fireEvent.change(national(), { target: { value: '+15556530731' } });
+    expect(country().textContent).toContain('+1');
+    expect(national().value).toBe('5556530731');
+    expect(onValue).toHaveBeenLastCalledWith('+15556530731');
+  });
+
   it('takes a value the caller resets, rather than keeping what was typed', () => {
     render(<Harness onValue={vi.fn()} />);
     fireEvent.change(national(), { target: { value: '11 15 5555-0101' } });

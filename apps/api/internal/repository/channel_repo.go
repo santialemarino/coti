@@ -223,6 +223,25 @@ func (r *ChannelRepository) GetByID(
 		accountID, branchID, channelID)
 }
 
+// GetConfigurationByIDForUpdate locks encrypted settings while a service merges an update.
+func (r *ChannelRepository) GetConfigurationByIDForUpdate(
+	ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID,
+) (*domain.ChannelConfiguration, error) {
+	var configuration domain.ChannelConfiguration
+	err := q.QueryRow(ctx,
+		`SELECT id, account_id, branch_id, type, config FROM channel
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 FOR UPDATE`,
+		accountID, branchID, channelID).Scan(&configuration.ChannelID, &configuration.AccountID,
+		&configuration.BranchID, &configuration.Type, &configuration.Config)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &configuration, nil
+}
+
 // Create opens a channel on the branch. Returns domain.ErrConflict when the branch already holds
 // one of that type and identifier, the absent identifier included.
 func (r *ChannelRepository) Create(

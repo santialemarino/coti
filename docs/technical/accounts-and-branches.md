@@ -58,6 +58,14 @@ its own transaction so the caller gets a precise `409` instead of a bare constra
 
 ## Every branch opens with its channels
 
+The account settings **Access** section shows the signed-in administrator's email and verification
+state. This is a user credential, separate from the branch mailbox used for customer requests.
+The same page lists incoming request mailboxes by active branch above the access section, with a
+link to configure each one. A listed address does not imply that Gmail authorization is complete.
+The branch list displays that mailbox and links to its administrator-only channel settings at
+`/settings/branches/{branchId}/channels`. Channel reads and writes explicitly carry that branch,
+independently of the branch selected in the header.
+
 Both paths that create a branch — registration and `POST /v1/branches` — open four channels in the
 same transaction as the branch: MANUAL_ENTRY, WHATSAPP, EMAIL and WEBAPP. **The manual-entry one is not
 optional**: `rfq.channel_id` is `NOT NULL`, and a counter, phone or unintegrated-messaging order has
@@ -204,6 +212,13 @@ arrives.
 field is absent, and removes it on an explicit `null`. Absent cannot mean "remove" here, unlike
 every other field on the route: the API returns no credential, so a form has nothing to send back
 and editing an identifier would otherwise discard a token silently.
+
+For WhatsApp, `PATCH /v1/channels/{channelId}/whatsapp` is the administrator-only partial update
+surface. Omitted or null settings retain their stored values; explicitly blank credentials are
+refused. A token can be rotated without replacing the webhook verifier. A change of sending number
+or either Meta identifier requires both Meta identifiers and its access token together. The service
+locks the scoped channel row before merging and preserves omitted credentials as encrypted values.
+See [WhatsApp configuration](whatsapp-cloud-api.md#configuration) for initial setup and real numbers.
 
 **The identifier does not get that exemption**, because a response does return it: `PUT` replaces
 it, so **omitting it clears it** — the same rule as `address` on a branch and the logo on an
