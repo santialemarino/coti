@@ -206,6 +206,7 @@ func run() error {
 		WithDiscounts(quoteDiscountRepo).
 		WithPromotions(promotionRepo).
 		WithPrices(productPriceRepo).
+		WithPriceSelection(services.NewRFQPriceSelectionService(db, productRepo, productPriceRepo, cfg.Catalog)).
 		WithProductAlternatives(productAlternativeRepo).
 		WithCombos(comboRepo).
 		WithClientActions(clientActionRepo).
