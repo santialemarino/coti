@@ -46,6 +46,7 @@ export const ROUTES = {
   invoicingSection: (section: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing#${section}`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
   branchSettings: `${SETTINGS_ROOT}/branches`,
+  branchChannels: (id: string) => `${SETTINGS_ROOT}/branches/${encodeURIComponent(id)}/channels`,
   userSettings: `${SETTINGS_ROOT}/users`,
   onboardingSettings: `${SETTINGS_ROOT}/onboarding`,
   branchReset: '/branch-reset',

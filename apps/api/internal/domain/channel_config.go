@@ -33,6 +33,43 @@ type WhatsAppChannelConfig struct {
 	WebhookVerifyToken string `json:"webhook_verify_token,omitempty"`
 }
 
+// WhatsAppChannelUpdate carries only the settings an administrator wants to change.
+type WhatsAppChannelUpdate struct {
+	Identifier         *string
+	IsActive           *bool
+	PhoneNumberID      *string
+	BusinessAccountID  *string
+	AccessToken        *string
+	WebhookVerifyToken *string
+}
+
+// Validate checks supplied settings before any stored credential is reused.
+func (u WhatsAppChannelUpdate) Validate() error {
+	for _, field := range []struct {
+		name  string
+		value *string
+		limit int
+	}{
+		{"phone_number_id", u.PhoneNumberID, maxChannelFieldLength},
+		{"business_account_id", u.BusinessAccountID, maxChannelFieldLength},
+		{"access_token", u.AccessToken, maxChannelSecretLength},
+		{"webhook_verify_token", u.WebhookVerifyToken, maxChannelSecretLength},
+	} {
+		if field.value == nil {
+			continue
+		}
+		if err := requireChannelField(field.name, *field.value, field.limit); err != nil {
+			return err
+		}
+	}
+	for _, id := range []*string{u.PhoneNumberID, u.BusinessAccountID} {
+		if id != nil && strings.IndexFunc(*id, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return channelConfigError("Meta identifiers must contain only digits")
+		}
+	}
+	return nil
+}
+
 // EmailChannelConfig is what an EMAIL channel stores: the credentials that send from its mailbox.
 // The mailbox itself is channel.identifier and is not repeated here — channel uniqueness rests on
 // that column.

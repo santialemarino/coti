@@ -179,8 +179,8 @@ This pull request deliberately excludes:
 
 - Publishing the Meta app, registering a production number, business verification, billing, or
   communication with arbitrary real customers.
-- A backoffice screen for editing WhatsApp channel credentials; configuration remains the guarded
-  administrator API.
+- Automated Meta onboarding; administrators enter channel credentials in the backoffice branch
+  channel settings, backed by the guarded administrator API.
 - Inbound media extraction through Meta, message-template management, a shared Meta inbox, and
   delivery-status processing beyond acknowledgement.
 - Autonomous customer communication, autonomous quote approval, and AI pricing. Seller review and

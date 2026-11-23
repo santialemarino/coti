@@ -49,3 +49,13 @@ type UpdateChannelRequest struct {
 	IsActive   *bool           `json:"is_active"`
 	Config     json.RawMessage `json:"config" swaggertype:"object"`
 }
+
+// UpdateWhatsAppChannelRequest preserves every omitted or null setting.
+type UpdateWhatsAppChannelRequest struct {
+	Identifier         *string `json:"identifier" binding:"omitempty,max=255"`
+	IsActive           *bool   `json:"is_active"`
+	PhoneNumberID      *string `json:"phone_number_id" binding:"omitempty,max=255"`
+	BusinessAccountID  *string `json:"business_account_id" binding:"omitempty,max=255"`
+	AccessToken        *string `json:"access_token"`
+	WebhookVerifyToken *string `json:"webhook_verify_token"`
+}

@@ -16,13 +16,13 @@ type channelStore interface {
 	ListActiveByBranch(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) ([]domain.Channel, error)
 	ListAllByBranch(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID) ([]domain.Channel, error)
 	GetByID(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.Channel, error)
+	GetConfigurationByIDForUpdate(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.ChannelConfiguration, error)
 	Create(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID, in domain.NewChannel) (*domain.Channel, error)
 	Update(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID, in domain.ChannelUpdate) (*domain.Channel, error)
 	Deactivate(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) error
 }
 
-// configSealer encrypts a channel credential on its way to the database. There is no matching read:
-// the API never returns a credential, so a configuration is replaced whole rather than edited.
+// configSealer encrypts new credentials without opening stored ones.
 type configSealer interface {
 	Enabled() bool
 	Seal(plaintext string) (string, error)
@@ -171,6 +171,87 @@ func (s *ChannelService) UpdateChannel(
 	return channel, nil
 }
 
+// UpdateWhatsAppChannel changes supplied settings while retaining omitted encrypted credentials.
+func (s *ChannelService) UpdateWhatsAppChannel(
+	ctx context.Context, tenant domain.Tenant, channelID uuid.UUID, in domain.WhatsAppChannelUpdate,
+) (*domain.Channel, error) {
+	if !tenant.IsAdmin() {
+		return nil, domain.ErrForbidden
+	}
+	if err := requireBranch(tenant, "a WhatsApp channel"); err != nil {
+		return nil, err
+	}
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	var channel *domain.Channel
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		stored, err := s.channels.GetConfigurationByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, channelID)
+		if err != nil {
+			return err
+		}
+		if stored.Type != domain.ChannelTypeWhatsApp {
+			return domain.ErrNotFound
+		}
+		current, err := s.channels.GetByID(ctx, q, tenant.AccountID, tenant.BranchID, channelID)
+		if err != nil {
+			return err
+		}
+		var next domain.WhatsAppChannelConfig
+		if len(stored.Config) > 0 {
+			if err := json.Unmarshal(stored.Config, &next); err != nil {
+				return fmt.Errorf("decode stored WhatsApp settings: %w", err)
+			}
+		}
+		identifier := current.Identifier
+		if in.Identifier != nil {
+			identifier = domain.NormalizeChannelIdentifier(in.Identifier)
+		}
+		changingNumber := in.Identifier != nil && (current.Identifier == nil || identifier == nil || *identifier != *current.Identifier)
+		changingNumber = changingNumber || (in.PhoneNumberID != nil && *in.PhoneNumberID != next.PhoneNumberID)
+		changingNumber = changingNumber || (in.BusinessAccountID != nil && *in.BusinessAccountID != next.BusinessAccountID)
+		if changingNumber || next.PhoneNumberID == "" || next.AccessToken == "" {
+			if in.PhoneNumberID == nil || in.BusinessAccountID == nil || in.AccessToken == nil {
+				return domain.WithCode(domain.CodeChannelConfigShape, fmt.Errorf(
+					"%w: changing the sending number requires its Meta identifiers and access token", domain.ErrInvalidInput))
+			}
+		}
+		if next.WebhookVerifyToken == "" && in.WebhookVerifyToken == nil {
+			return domain.WithCode(domain.CodeChannelConfigShape, fmt.Errorf(
+				"%w: webhook_verify_token is required for initial setup", domain.ErrInvalidInput))
+		}
+		if err := domain.ValidateChannelIdentifier(domain.ChannelTypeWhatsApp, identifier, true); err != nil {
+			return err
+		}
+		if in.PhoneNumberID != nil {
+			next.PhoneNumberID = *in.PhoneNumberID
+		}
+		if in.BusinessAccountID != nil {
+			next.BusinessAccountID = *in.BusinessAccountID
+		}
+		if in.AccessToken != nil {
+			next.AccessToken, err = s.sealSecret(*in.AccessToken)
+			if err != nil {
+				return err
+			}
+		}
+		if in.WebhookVerifyToken != nil {
+			next.WebhookVerifyToken, err = s.sealSecret(*in.WebhookVerifyToken)
+			if err != nil {
+				return err
+			}
+		}
+		raw, err := json.Marshal(next)
+		if err != nil {
+			return err
+		}
+		channel, err = s.channels.Update(ctx, q, tenant.AccountID, tenant.BranchID, channelID,
+			domain.ChannelUpdate{Identifier: identifier, IsActive: in.IsActive, Config: raw})
+		return err
+	})
+	return channel, err
+}
+
 // DeactivateChannel closes a channel, refusing to close the branch's manual-entry route.
 func (s *ChannelService) DeactivateChannel(
 	ctx context.Context, tenant domain.Tenant, channelID uuid.UUID,
@@ -199,16 +280,17 @@ func (s *ChannelService) seal(config domain.ChannelConfig) ([]byte, error) {
 	}
 	// Refused on the credential itself rather than on the config holding one, so the rule stays
 	// true of a shape whose credentials are all optional.
-	if err := config.MapSecrets(func(plaintext string) (string, error) {
-		if !s.sealer.Enabled() {
-			return "", fmt.Errorf("%w: CHANNEL_CONFIG_ENCRYPTION_KEY is unset, so a channel "+
-				"credential cannot be stored", domain.ErrNotConfigured)
-		}
-		return s.sealer.Seal(plaintext)
-	}); err != nil {
+	if err := config.MapSecrets(s.sealSecret); err != nil {
 		return nil, err
 	}
 	return json.Marshal(config)
+}
+
+func (s *ChannelService) sealSecret(plaintext string) (string, error) {
+	if !s.sealer.Enabled() {
+		return "", fmt.Errorf("%w: CHANNEL_CONFIG_ENCRYPTION_KEY is unset", domain.ErrNotConfigured)
+	}
+	return s.sealer.Seal(plaintext)
 }
 
 // assertChannelClosable refuses to close a branch's manual-entry channel: rfq.channel_id is NOT

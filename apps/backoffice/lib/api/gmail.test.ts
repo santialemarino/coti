@@ -5,6 +5,35 @@ import { startGmailAuthorization } from '@/lib/api/gmail';
 afterEach(() => vi.unstubAllGlobals());
 
 describe('startGmailAuthorization', () => {
+  it('preserves the setup error code returned by the API', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'email-channel',
+                  type: 'EMAIL',
+                  identifier: 'sales@gmail.com',
+                  is_active: true,
+                },
+              ],
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ code: 'NOT_CONFIGURED' }), { status: 503 }),
+        ),
+    );
+    await expect(startGmailAuthorization('branch-1', 'sales@gmail.com')).rejects.toMatchObject({
+      code: 'NOT_CONFIGURED',
+      status: 503,
+    });
+  });
+
   it('selects the matching branch email channel and forwards the branch on authorization', async () => {
     const fetcher = vi
       .fn()

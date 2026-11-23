@@ -20,7 +20,7 @@ import { API_URL } from '@/lib/config';
 
 export interface ApiRequest {
   path: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   // Sent as JSON. Keys stay snake_case here: this is the wire contract, not app code.
   body?: unknown;
   formData?: FormData;

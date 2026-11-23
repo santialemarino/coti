@@ -6,6 +6,7 @@ import {
   getCountryCallingCode,
   parsePhoneNumberFromString,
   type CountryCode,
+  type PhoneNumber,
 } from 'libphonenumber-js/min';
 
 import { useCaretPlacement } from '../hooks/use-caret-placement';
@@ -45,9 +46,15 @@ function flagOf(country: CountryCode) {
   return String.fromCodePoint(...[...country].map((letter) => 0x1f1a5 + letter.charCodeAt(0)));
 }
 
+function countryOf(parsed: PhoneNumber | undefined): CountryCode | undefined {
+  // A shared calling code can be known before its country is, such as an unassigned NANP exchange.
+  return parsed?.country ?? (parsed?.countryCallingCode === '1' ? 'US' : undefined);
+}
+
 function readValue(value: string): { country: CountryCode; national: string } {
   const parsed = value ? parsePhoneNumberFromString(value) : undefined;
-  if (parsed?.country) return { country: parsed.country, national: parsed.nationalNumber };
+  const country = countryOf(parsed);
+  if (parsed && country) return { country, national: parsed.nationalNumber };
   return { country: DEFAULT_PHONE_COUNTRY, national: value };
 }
 
@@ -141,14 +148,16 @@ export function PhoneInput({
     const international = kept.value.trim().startsWith('+')
       ? parsePhoneNumberFromString(kept.value)
       : undefined;
-    const to = international?.country
-      ? {
-          value: international.nationalNumber,
-          start: international.nationalNumber.length,
-          end: international.nationalNumber.length,
-          context: international.country,
-        }
-      : { value: kept.value, start: kept.caret, end: kept.caret, context: field.country };
+    const internationalCountry = countryOf(international);
+    const to =
+      international && internationalCountry
+        ? {
+            value: international.nationalNumber,
+            start: international.nationalNumber.length,
+            end: international.nationalNumber.length,
+            context: internationalCountry,
+          }
+        : { value: kept.value, start: kept.caret, end: kept.caret, context: field.country };
     history.record(editKind(event.nativeEvent), history.before(), to);
     show(input, to);
   }

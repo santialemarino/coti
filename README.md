@@ -129,7 +129,9 @@ MAIL_SMTP_STARTTLS=false
 
 To test quote delivery in development, run `pnpm db:seed` so both seeded branches have
 outbound channels. Use `MAIL_PROVIDER=smtp` with Mailpit and select email in the
-send dialog. WhatsApp requires a configured Cloud API channel and app secret; see
+send dialog. Administrators configure each branch's WhatsApp number in **Settings → Branches → View
+channels**. The form supports initial setup, switching to a registered real number, and rotating an
+access token while keeping existing credentials. WhatsApp requires a configured Cloud API channel and app secret; see
 [WhatsApp Cloud API](docs/technical/whatsapp-cloud-api.md) and the [Meta App development testing
 guide](docs/technical/meta-app-development-testing.md). A console mailer does not count as delivery,
 and Mailpit captures messages locally without contacting the recipient.
