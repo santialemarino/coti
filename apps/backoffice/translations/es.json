@@ -411,6 +411,7 @@
     "DELIVERY_CHANNEL": "Esta sucursal no tiene los canales de envío necesarios configurados.",
     "CHANNEL_ALREADY_USED": "Esta versión de la cotización ya se envió por ese medio.",
     "CHANNEL_IDENTIFIER": "Revisá la dirección: no es un correo válido.",
+    "CHANNEL_CONFIG_SHAPE": "Revisá la configuración del canal e intentá de nuevo.",
     "DELIVERY_UNAVAILABLE": "No se pudo entregar por ningún canal. Revisá la configuración de envío o intentá más tarde.",
     "UNSUPPORTED_FILE_TYPE": "Ese tipo de archivo no está soportado.",
     "LEGACY_EXCEL_FILE": "No podemos leer archivos .xls. Guardalo como .xlsx o .csv y volvé a subirlo.",

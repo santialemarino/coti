@@ -66,6 +66,12 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage(reader(), undefined)).toBe(messages.errors.INTERNAL);
   });
 
+  it('explains the Meta fields required by a rejected WhatsApp configuration', () => {
+    expect(apiErrorMessage(reader(), 'branchChannels', 'CHANNEL_CONFIG_SHAPE')).toBe(
+      messages.branchChannels.errors.CHANNEL_CONFIG_SHAPE,
+    );
+  });
+
   it('words every code for every namespace a screen binds', () => {
     const namespaces = [
       undefined,
@@ -78,6 +84,7 @@ describe('apiErrorMessage', () => {
       'auth.verifyEmail.resend',
       'account',
       'branches',
+      'branchChannels',
       'rfqs.detail.items',
       'users',
       'users.passwordReset',
