@@ -113,6 +113,38 @@ that from an order for nothing.
 calls; the persist that follows runs on the request's own context. Sharing one deadline would throw
 away an extraction that was already paid for, at the last step.
 
+## Explicit price selection
+
+The extraction schema carries `search_description` and the closed `selection_preference` enum
+(`NONE`, `LOWEST_PRICE`, `HIGHEST_PRICE`) alongside the client's original `requested_description`. Search uses the
+product description without conversational wording or the preference. Explicit brands, sizes,
+colours and product variants remain constraints. The service validates the preference and refuses
+a price preference that drops or invents product constraints. Shared preferences apply to each
+qualified item even when the preference is outside its verbatim description. Minor spelling
+corrections are allowed; figures and units must agree exactly. Ordinary matching uses the original
+description when no price preference applies.
+
+For either price preference, `RFQPriceSelectionService` expands the matched product to every active product
+in its family and subgroup carried by the same branch, beyond the search shortlist. Products must
+cover all search terms through their names or curated synonyms, use compatible units and have the same explicit presentation in their
+catalog names. Package presentation is determined from stated measurements; a grade number alone
+does not establish a bag's weight. No package or quantity conversion is performed.
+
+Current branch prices are loaded in one batch within the same tenant transaction. The backend
+selects the lowest or highest decimal unit price before discounts in a single currency, with name and product ID
+breaking ties. Missing prices, different currencies, unknown or mixed presentations, absent
+classification and selection failures leave the line flagged for seller review. An unmatched
+material remains `NO_MATCH`. Lines without a preference retain ordinary matching behavior.
+
+This selection only proposes a product: draft prices remain empty until the seller accepts
+materials. Each generation reevaluates current prices. The extraction identity is
+`rfq-extraction-prompt-v6` / `rfq-extraction-schema-v3`; search descriptions and preferences are
+transient extraction data, while the original wording and selected product remain in the draft
+and generation snapshot.
+
+Highest price does not establish product quality. A request for sand in metres remains flagged
+when the catalog sells it in cubic metres: price selection never converts length into volume.
+
 ## Quantities: the schema's escape value
 
 The extraction schema forces a closed enum, `quantity_source`, on every line:

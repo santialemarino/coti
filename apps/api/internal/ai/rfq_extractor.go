@@ -16,8 +16,8 @@ var (
 )
 
 const (
-	rfqExtractionPromptVersion = "rfq-extraction-prompt-v3"
-	rfqExtractionSchemaVersion = "rfq-extraction-schema-v1"
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v6"
+	rfqExtractionSchemaVersion = "rfq-extraction-schema-v3"
 )
 
 // RFQExtractor reads the materials out of an informal order. It is provider-agnostic: the prompt
@@ -101,6 +101,8 @@ func (e *RFQExtractor) extract(ctx context.Context,
 			Unit:                 item.Unit,
 			Source:               source,
 			QuantityRationale:    item.QuantityRationale,
+			SearchDescription:    item.SearchDescription,
+			SelectionPreference:  domain.RFQSelectionPreference(item.SelectionPreference),
 		})
 	}
 	return &domain.RFQExtraction{
@@ -119,6 +121,8 @@ func (e *RFQExtractor) instructions() string {
 Return one item per material, in the order the client mentions them, at most %d of them.
 
 - requested_description: the client's own words for that material, copied across and trimmed only of surrounding whitespace. Do not normalise, translate, expand or correct it, and keep it under 512 characters. The one addition: when the client names a material once and lists more of it by size alone ("20 caños de 110 y 10 de 63"), carry the material's name into each of those items ("caños de 63"), because an item has to say what it is.
+- search_description: the material to search for, under 512 characters, without the ordered quantity, conversational filler or selection preferences. Preserve every explicit brand, material type, size, presentation, colour and other product constraint. Correct obvious spelling slips such as "semento" to "cemento" without changing identity. Never add an unspecified attribute or replace a requested brand with a substitute.
+- selection_preference: LOWEST_PRICE only when the client explicitly requests the lowest price for this item (such as "más barato" or "de la más económica"); HIGHEST_PRICE only for the highest price (such as "del más caro"); otherwise NONE. A budget, a discount request, "barato" without a lowest-price comparison, and a request for better quality are NONE. Highest price does not imply higher quality. Apply a preference only to the items its wording qualifies. A shared instruction such as "ambos de lo más económico" applies LOWEST_PRICE to both preceding materials. "Al precio más bajo" means LOWEST_PRICE; "más costoso" and "al precio más alto" mean HIGHEST_PRICE. Separate it from product identity: "5 de cemento más barato que tengas" means search_description "cemento", quantity "5", selection_preference LOWEST_PRICE; "cemento Loma Negra de 50 kg más barato" retains "cemento Loma Negra de 50 kg". "10 mt de arena de la más económica y 10 bolsas de cemento del más caro" assigns LOWEST_PRICE to arena and HIGHEST_PRICE to cemento; keep "mt" as the arena unit, without converting it to m3. The backend compares current prices; never infer which brand or product is cheaper or more expensive.
 - quantity_source: EXPLICIT when the client stated the number, DERIVED when it follows from what they wrote (3 pallets of 50 bags is 150 bags), UNRESOLVED when the message gives no number you could defend to the seller.
 - quantity: a positive decimal with at most two decimals, as a string. Send "0" on UNRESOLVED.
 - unit: the unit the client used, as they wrote it, or null when they gave none. Under 64 characters.
@@ -142,6 +146,8 @@ type rfqExtractionAnswer struct {
 
 type rfqExtractedItem struct {
 	RequestedDescription string  `json:"requested_description"`
+	SearchDescription    string  `json:"search_description"`
+	SelectionPreference  string  `json:"selection_preference"`
 	Quantity             string  `json:"quantity"`
 	Unit                 *string `json:"unit"`
 	QuantitySource       string  `json:"quantity_source"`
@@ -164,8 +170,17 @@ func rfqExtractionSchema() map[string]any {
 					"required": []string{
 						"requested_description", "quantity", "unit", "quantity_source",
 						"quantity_rationale",
+						"search_description", "selection_preference",
 					},
 					"properties": map[string]any{
+						"search_description": map[string]any{
+							"type":        "string",
+							"description": "The requested material without quantity or selection preferences, retaining every explicit product constraint.",
+						},
+						"selection_preference": map[string]any{
+							"type": "string",
+							"enum": []string{string(domain.RFQSelectionNone), string(domain.RFQSelectionLowestPrice), string(domain.RFQSelectionHighestPrice)},
+						},
 						"requested_description": map[string]any{
 							"type":        "string",
 							"description": "The material as the client wrote it, verbatim.",

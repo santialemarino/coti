@@ -162,6 +162,10 @@ requires Google OAuth credentials and an encryption key; see [Gmail intake](docs
 
 ### RFQ engine tests
 
+RFQ extraction separates product search terms from explicit lowest- or highest-price preferences. The
+backend compares current branch prices for compatible products and leaves incomplete comparisons
+for seller review. See [RFQ price selection](docs/technical/rfq-pipeline.md#explicit-price-selection).
+
 The fast RFQ suite uses fixed AI doubles and needs no credentials or database:
 
 ```bash
