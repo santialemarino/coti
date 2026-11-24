@@ -87,10 +87,10 @@ prefetch or a session-clearing route:
 | any other failure, elsewhere        | through — a 5xx or a rate limit keeps the cookies for the next request            |
 | API unreachable                     | through — the cookies survive and the next request retries                        |
 
-So past the gate, still holding the session cookies means holding a live session. The public header,
-the landing and the 404 read exactly that (`isAuthenticated` in `lib/auth/session.ts`), which is why a
-seller is never offered a login they are already past. A revoked session whose access token has not
-expired yet still reads as signed in until its next protected request, which the gate then refuses.
+Past the gate, holding the session cookies still does not prove a live session: a revoked session keeps
+an unexpired access token, and an outage keeps the cookies. So the public header, the landing and the
+404 ask the API (`isAuthenticated` in `lib/auth/session.ts`, one `GET /v1/me` per request): a session it
+confirms is offered the way back to the queue, and anything else, an outage included, reads as a visitor.
 
 `?next=` is honoured only for a same-origin path to a protected route (`safeNextPath`): it is only ever
 produced to bring someone back to a guarded page, so nothing else is ours to follow.

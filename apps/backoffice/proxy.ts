@@ -65,9 +65,9 @@ export async function proxy(request: NextRequest) {
   if (request.headers.get('next-router-prefetch') === '1') return NextResponse.next({ request });
 
   /*
-   * An expired access token is not an expired session. Renewing it on every page, the public ones
-   * included, settles the question once per request: past this point, still holding the cookies
-   * means holding a live session, which is all the header, the landing and the 404 need to read.
+   * An expired access token is not an expired session, so it is renewed on every page, the public
+   * ones included. Holding the cookies past this point still does not prove a live session: a public
+   * page confirms it with the API (`isAuthenticated`).
    */
   const renewed = refreshToken
     ? await requestRefresh(refreshToken, forwardedClientAddress(request.headers))
