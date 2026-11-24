@@ -121,11 +121,35 @@ describe('getAccessToken', () => {
 });
 
 describe('isAuthenticated', () => {
-  // The access cookie lapses long before the refresh one; someone holding only that is still signed in.
-  it('counts a refresh token alone as a session', async () => {
-    jar({ [REFRESH_COOKIE]: 'refresh' });
+  it('reports a session the API confirms', async () => {
+    jar();
+    vi.mocked(apiRequest).mockResolvedValue(ADMIN);
 
     await expect(isAuthenticated()).resolves.toBe(true);
+    expect(apiRequest).toHaveBeenCalledWith({ path: '/v1/me', branchScoped: false });
+  });
+
+  // A token the gate did not need to renew can still belong to a session the API has ended.
+  it('reports no session when the API no longer knows the token', async () => {
+    jar();
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('UNAUTHENTICATED', 401));
+
+    await expect(isAuthenticated()).resolves.toBe(false);
+  });
+
+  // The gate keeps the cookies through an outage; a public page offers the way in, not an error.
+  it('reports no session when the API cannot answer', async () => {
+    jar();
+    vi.mocked(apiRequest).mockRejectedValue(new ApiError('INTERNAL', 504));
+
+    await expect(isAuthenticated()).resolves.toBe(false);
+  });
+
+  it('does not ask the API without an access token', async () => {
+    jar({ [REFRESH_COOKIE]: 'refresh' });
+
+    await expect(isAuthenticated()).resolves.toBe(false);
+    expect(apiRequest).not.toHaveBeenCalled();
   });
 
   it('reports no session once the cookies have been cleared in this request', async () => {

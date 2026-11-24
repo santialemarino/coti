@@ -15,10 +15,8 @@ export const generateMetadata = () => generatePageMetadata('notFound');
  * to reach — so it brings its own frame. The gate lets a signed-out caller reach it directly, so the
  * way out depends on who is looking: the queue for a seller, the public site for anyone else.
  *
- * The session is read from the cookies rather than validated against the API: this is a guess about
- * where to send someone, not an authorization decision, and `getSession` throws when the API is
- * unreachable — which would replace "this page does not exist" with an error screen over an outage
- * that has nothing to do with it. A stale token costs one bounce off the gate, which handles it.
+ * `isAuthenticated` rather than `getSession`: the latter throws when the API is unreachable, which
+ * would replace "this page does not exist" with an error screen over an unrelated outage.
  */
 export default async function NotFound() {
   const t = await getTranslations('notFound');

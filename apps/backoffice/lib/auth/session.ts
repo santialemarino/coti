@@ -100,13 +100,19 @@ export async function getAccessToken(): Promise<string | undefined> {
 }
 
 /*
- * Whether this browser holds a session, for choosing which way in or out to offer — never an
- * authorization. The gate renews a lapsed session on every page and clears the cookies of one it
- * cannot renew, so holding them here means holding a live session.
+ * Whether the API confirms this browser's session, for choosing which way in or out to offer on a
+ * public page — never an authorization. A cookie alone is not enough: the gate renews a token only
+ * near its expiry and keeps the cookies through an outage, so an ended or unverifiable session
+ * reads as signed out. It never throws, because a public page must not fail over an outage.
  */
 export const isAuthenticated = cache(async (): Promise<boolean> => {
-  const jar = await cookies();
-  return Boolean(jar.get(ACCESS_COOKIE)?.value || jar.get(REFRESH_COOKIE)?.value);
+  if (!(await getAccessToken())) return false;
+  try {
+    await apiRequest<MeRaw>({ path: '/v1/me', branchScoped: false });
+    return true;
+  } catch {
+    return false;
+  }
 });
 
 // Next allows a cookie write only from a server action or a route handler, which is
