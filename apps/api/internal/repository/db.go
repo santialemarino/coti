@@ -128,6 +128,11 @@ func (db *DB) CrossAccount() Querier {
 
 // WithAdvisoryLock serializes one external side effect without holding a business transaction.
 func (db *DB) WithAdvisoryLock(ctx context.Context, key string, fn func() error) error {
+	return db.WithAdvisoryQuerier(ctx, key, func(Querier) error { return fn() })
+}
+
+// WithAdvisoryQuerier serializes a side effect and shares its owner connection for scoped checks.
+func (db *DB) WithAdvisoryQuerier(ctx context.Context, key string, fn func(Querier) error) error {
 	tx, err := db.admin.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin advisory lock: %w", err)
@@ -136,7 +141,7 @@ func (db *DB) WithAdvisoryLock(ctx context.Context, key string, fn func() error)
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key); err != nil {
 		return fmt.Errorf("acquire advisory lock: %w", err)
 	}
-	return fn()
+	return fn(tx)
 }
 
 // AdminTx begins a transaction on the owner pool for multi-step writes that

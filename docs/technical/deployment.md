@@ -545,3 +545,38 @@ An opaque state plus a validated supplier hint selects the pending cookie; the c
 checks the full single-use state, PKCE verifier and nonce before accepting an identity. No callback
 registration is required for individual suppliers. Enable the release by merging dev into main and
 deploying both apps; development alone never changes deployed data, DNS or storage.
+
+## WhatsApp Embedded Signup
+
+The backoffice branch Channels screen can launch Meta's Embedded Signup v4. The
+branch administrator chooses or verifies the number in Meta. Coti exchanges the
+single-use code server-side, checks that the number belongs to the selected
+Messaging account, subscribes the app, and registers the number if necessary.
+The business token is encrypted with the existing channel key. The receipt
+check only passes once the selected number has delivered an intake message
+associated with a saved RFQ in that branch.
+
+Before enabling it:
+
+1. Complete the [Meta Tech Provider setup](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-customers-as-a-tech-provider)
+   and obtain Advanced Access to `whatsapp_business_management` and
+   `whatsapp_business_messaging` for external businesses.
+2. Register the backoffice HTTPS origin and redirect URI in Facebook Login for
+   Business. Create a WhatsApp Embedded Signup v4 configuration. Enable Meta's
+   Coexistence flow if administrators should connect an existing WhatsApp
+   Business app number.
+3. Configure the app webhook at the API's public `/v1/webhooks/whatsapp` route
+   (through `/api/v1/webhooks/whatsapp` on DigitalOcean) and subscribe to
+   `messages` and `account_update`. Use a unique app-level verify token. The
+   application imports new text messages and does not synchronize past chats.
+4. Set `WHATSAPP_SIGNUP_APP_ID`, `WHATSAPP_SIGNUP_CONFIG_ID`, and
+   `WHATSAPP_SIGNUP_VERIFY_TOKEN` on the API. Use the same Meta app for
+   `WHATSAPP_APP_SECRET` and keep `CHANNEL_CONFIG_ENCRYPTION_KEY` configured.
+   The IDs are public SDK settings. Keep the app secret and verify token server-side.
+5. As an administrator, connect a test line from the target branch. Send a text
+   order from a different handset and use **Comprobar recepción**. Check that the
+   order appeared in that branch and still awaits seller review.
+
+Use an allowlisted HTTPS development URL for a real Meta popup test. Regular
+local development can leave the three signup variables blank. For business
+tokens with an expiry, reconnect from the channel settings before expiration.

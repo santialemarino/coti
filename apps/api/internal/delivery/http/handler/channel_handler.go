@@ -24,6 +24,7 @@ type ChannelService interface {
 // ChannelHandler serves intake channel discovery and administration.
 type ChannelHandler struct {
 	channels ChannelService
+	signup   *WhatsAppSignupHandler
 }
 
 // NewChannelHandler builds a ChannelHandler.

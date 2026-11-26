@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -175,6 +176,12 @@ func (s *ChannelService) UpdateChannel(
 func (s *ChannelService) UpdateWhatsAppChannel(
 	ctx context.Context, tenant domain.Tenant, channelID uuid.UUID, in domain.WhatsAppChannelUpdate,
 ) (*domain.Channel, error) {
+	return s.updateWhatsAppChannel(ctx, tenant, channelID, in, nil)
+}
+
+func (s *ChannelService) updateWhatsAppChannel(
+	ctx context.Context, tenant domain.Tenant, channelID uuid.UUID, in domain.WhatsAppChannelUpdate, expected *time.Time,
+) (*domain.Channel, error) {
 	if !tenant.IsAdmin() {
 		return nil, domain.ErrForbidden
 	}
@@ -197,6 +204,9 @@ func (s *ChannelService) UpdateWhatsAppChannel(
 		if err != nil {
 			return err
 		}
+		if expected != nil && !current.UpdatedAt.Equal(*expected) {
+			return domain.ErrConflict
+		}
 		var next domain.WhatsAppChannelConfig
 		if len(stored.Config) > 0 {
 			if err := json.Unmarshal(stored.Config, &next); err != nil {
@@ -216,7 +226,8 @@ func (s *ChannelService) UpdateWhatsAppChannel(
 					"%w: changing the sending number requires its Meta identifiers and access token", domain.ErrInvalidInput))
 			}
 		}
-		if next.WebhookVerifyToken == "" && in.WebhookVerifyToken == nil {
+		next.EmbeddedSignup = expected != nil || (next.EmbeddedSignup && !changingNumber)
+		if next.WebhookVerifyToken == "" && in.WebhookVerifyToken == nil && !next.EmbeddedSignup {
 			return domain.WithCode(domain.CodeChannelConfigShape, fmt.Errorf(
 				"%w: webhook_verify_token is required for initial setup", domain.ErrInvalidInput))
 		}

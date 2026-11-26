@@ -31,6 +31,7 @@ type WhatsAppChannelConfig struct {
 	BusinessAccountID  string `json:"business_account_id,omitempty"`
 	AccessToken        string `json:"access_token"`
 	WebhookVerifyToken string `json:"webhook_verify_token,omitempty"`
+	EmbeddedSignup     bool   `json:"embedded_signup,omitempty"`
 }
 
 // WhatsAppChannelUpdate carries only the settings an administrator wants to change.

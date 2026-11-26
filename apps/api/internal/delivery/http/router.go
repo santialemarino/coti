@@ -247,6 +247,8 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	channelAdmin.POST("", h.Channel.Create)
 	channelAdmin.PUT("/:channelId", h.Channel.Update)
 	channelAdmin.PATCH("/:channelId/whatsapp", h.Channel.UpdateWhatsApp)
+	channelAdmin.GET("/:channelId/whatsapp/signup", h.Channel.GetWhatsAppSignup)
+	channelAdmin.POST("/:channelId/whatsapp/signup", limit("whatsapp-signup", cfg.RateLimit.Credentials), h.Channel.ConnectWhatsAppSignup)
 	channelAdmin.DELETE("/:channelId", h.Channel.Delete)
 	gmailStart := gin.HandlerFunc(func(c *gin.Context) { handler.Respond(c, domain.ErrNotConfigured) })
 	if h.Gmail != nil {

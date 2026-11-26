@@ -40,16 +40,22 @@ import {
 import { PasswordField } from '@/components/password-field';
 import { PhoneInput } from '@/components/phone-input';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
-import type { BranchChannel } from '@/lib/api/branch-channels';
+import type { BranchChannel, WhatsAppSignupSettings } from '@/lib/api/branch-channels';
 import { TEXT_FIELD_MAX_LENGTH } from '@/lib/constants/forms';
 import { FORM_VALIDATION } from '@/lib/forms/options';
+import { WhatsAppSignup } from './whatsapp-signup';
 
 interface WhatsAppChannelSettingsProps {
   branchName: string;
   channel: BranchChannel;
+  signup?: WhatsAppSignupSettings;
 }
 
-export function WhatsAppChannelSettings({ branchName, channel }: WhatsAppChannelSettingsProps) {
+export function WhatsAppChannelSettings({
+  branchName,
+  channel,
+  signup,
+}: WhatsAppChannelSettingsProps) {
   const t = useTranslations('branchChannels');
   const tErrors = useTranslations('common.form.errors');
   const phoneCopy = useTranslations('common.phone');
@@ -126,8 +132,9 @@ export function WhatsAppChannelSettings({ branchName, channel }: WhatsAppChannel
           {channel.identifier ?? t('noNumber')}
         </p>
         <p className="text-paragraph-sm text-foreground-muted">{t('statusHint')}</p>
-        <Button variant="outline" onClick={onOpen}>
-          {t(channel.isConfigured ? 'update' : 'configure')}
+        {signup ? <WhatsAppSignup channel={channel} settings={signup} /> : null}
+        <Button variant={signup?.appId ? 'ghost' : 'outline'} onClick={onOpen}>
+          {t(signup?.appId ? 'manualConfiguration' : channel.isConfigured ? 'update' : 'configure')}
         </Button>
       </CardContent>
       <Dialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
