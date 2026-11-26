@@ -223,14 +223,25 @@ type ChannelConfig struct {
 
 // WhatsAppConfig holds app-wide WhatsApp Cloud API settings.
 type WhatsAppConfig struct {
-	AppSecret       string
-	GraphAPIVersion string
-	RequestTimeout  time.Duration
-	WebhookMaxBytes int64
+	AppSecret         string
+	SignupAppID       string
+	SignupConfigID    string
+	SignupVerifyToken string
+	GraphAPIVersion   string
+	RequestTimeout    time.Duration
+	WebhookMaxBytes   int64
+}
+
+// SignupEnabled reports whether the app-wide Embedded Signup configuration is present.
+func (w WhatsAppConfig) SignupEnabled() bool {
+	return w.SignupAppID != "" && w.SignupConfigID != "" && w.SignupVerifyToken != "" && w.AppSecret != ""
 }
 
 func (w WhatsAppConfig) problems() []string {
 	var problems []string
+	if (w.SignupAppID != "" || w.SignupConfigID != "" || w.SignupVerifyToken != "") && !w.SignupEnabled() {
+		problems = append(problems, "WhatsApp Embedded Signup requires WHATSAPP_SIGNUP_APP_ID, WHATSAPP_SIGNUP_CONFIG_ID, WHATSAPP_SIGNUP_VERIFY_TOKEN and WHATSAPP_APP_SECRET")
+	}
 	if !isGraphAPIVersion(w.GraphAPIVersion) {
 		problems = append(problems, "WHATSAPP_GRAPH_API_VERSION must look like v25.0")
 	}
@@ -1048,10 +1059,13 @@ func Load() (*Config, error) {
 			EncryptionKey: getBase64Key("CHANNEL_CONFIG_ENCRYPTION_KEY", channelKeyLength, &problems),
 		},
 		WhatsApp: WhatsAppConfig{
-			AppSecret:       getString("WHATSAPP_APP_SECRET", ""),
-			GraphAPIVersion: getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
-			RequestTimeout:  getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
-			WebhookMaxBytes: int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
+			AppSecret:         getString("WHATSAPP_APP_SECRET", ""),
+			SignupAppID:       getString("WHATSAPP_SIGNUP_APP_ID", ""),
+			SignupConfigID:    getString("WHATSAPP_SIGNUP_CONFIG_ID", ""),
+			SignupVerifyToken: getString("WHATSAPP_SIGNUP_VERIFY_TOKEN", ""),
+			GraphAPIVersion:   getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
+			RequestTimeout:    getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
+			WebhookMaxBytes:   int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
 		},
 		Gmail: GmailConfig{
 			ClientID:       getString("GMAIL_OAUTH_CLIENT_ID", ""),
@@ -1173,6 +1187,9 @@ func Load() (*Config, error) {
 	problems = append(problems, cfg.Reports.problems()...)
 	problems = append(problems, cfg.Storage.problems()...)
 	problems = append(problems, cfg.WhatsApp.problems()...)
+	if cfg.WhatsApp.SignupEnabled() && len(cfg.Channel.EncryptionKey) == 0 {
+		problems = append(problems, "CHANNEL_CONFIG_ENCRYPTION_KEY is required when WhatsApp Embedded Signup is configured")
+	}
 	problems = append(problems, cfg.Gmail.problems()...)
 	if cfg.Gmail.Enabled() && len(cfg.Channel.EncryptionKey) == 0 {
 		problems = append(problems, "CHANNEL_CONFIG_ENCRYPTION_KEY is required when Gmail is configured")

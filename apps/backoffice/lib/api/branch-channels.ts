@@ -40,3 +40,28 @@ export async function getBranchChannels(branchId: string): Promise<BranchChannel
   });
   return items.map(mapChannel);
 }
+
+export interface WhatsAppSignupSettings {
+  appId?: string;
+  configurationId?: string;
+  graphVersion?: string;
+  received: boolean;
+}
+
+export async function getWhatsAppSignupSettings(
+  branchId: string,
+  channelId: string,
+): Promise<WhatsAppSignupSettings> {
+  const result = await apiRequest<{
+    app_id?: string;
+    configuration_id?: string;
+    graph_version?: string;
+    received: boolean;
+  }>({ path: `/v1/channels/${channelId}/whatsapp/signup`, branchId });
+  return {
+    appId: result.app_id,
+    configurationId: result.configuration_id,
+    graphVersion: result.graph_version,
+    received: result.received,
+  };
+}
