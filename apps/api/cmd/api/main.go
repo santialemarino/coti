@@ -181,6 +181,13 @@ func run() error {
 	catalogImportService := services.NewCatalogImportService(db, catalogImportRepo, nil)
 	dataExportService := services.NewDataExportService(db, dataExportRepo)
 	channelService := services.NewChannelService(db, channelRepo, channelSealer)
+	signup := services.NewWhatsAppSignupService(db, channelRepo, nil, channelService, "")
+	signupEnabled := cfg.WhatsApp.SignupEnabled() && channelSealer.Enabled()
+	if signupEnabled {
+		client := &http.Client{Timeout: cfg.WhatsApp.RequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		provider := whatsapp.NewMetaSignup(client, cfg.WhatsApp.GraphAPIVersion, cfg.WhatsApp.SignupAppID, cfg.WhatsApp.AppSecret)
+		signup = services.NewWhatsAppSignupService(db, channelRepo, provider, channelService, cfg.WhatsApp.AppSecret)
+	}
 	arcaCipher, err := secrets.NewAESGCM(cfg.ARCA.EncryptionKey)
 	if err != nil {
 		return err
@@ -334,7 +341,7 @@ func run() error {
 			}, deliveryhttp.MailAllowance(cfg, rateLimit)),
 			Branch:        handler.NewBranchHandler(branchService),
 			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
-			Channel:       handler.NewChannelHandler(channelService),
+			Channel:       handler.NewChannelHandler(channelService).WithWhatsAppSignup(signup, signupEnabled, cfg.WhatsApp.SignupAppID, cfg.WhatsApp.SignupConfigID, cfg.WhatsApp.GraphAPIVersion),
 			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
 			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
 			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
@@ -357,7 +364,7 @@ func run() error {
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
-				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService),
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken),
 			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),

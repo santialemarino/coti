@@ -836,6 +836,22 @@ definitions:
       unchanged_rows:
         type: integer
     type: object
+  dto.ConnectWhatsAppSignupRequest:
+    properties:
+      business_account_id:
+        maxLength: 32
+        type: string
+      code:
+        maxLength: 4096
+        type: string
+      phone_number_id:
+        maxLength: 32
+        type: string
+    required:
+    - business_account_id
+    - code
+    - phone_number_id
+    type: object
   dto.ContactRegistrationLinkRequest:
     properties:
       kind:
@@ -4067,6 +4083,17 @@ definitions:
       type:
         type: string
     type: object
+  dto.WhatsAppSignupResponse:
+    properties:
+      app_id:
+        type: string
+      configuration_id:
+        type: string
+      graph_version:
+        type: string
+      received:
+        type: boolean
+    type: object
 info:
   contact: {}
   description: Every /v1 route outside /public needs an access token. The active branch
@@ -4922,6 +4949,89 @@ paths:
       security:
       - BearerAuth: []
       summary: Update WhatsApp settings
+      tags:
+      - channels
+  /v1/channels/{channelId}/whatsapp/signup:
+    get:
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WhatsAppSignupResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get WhatsApp signup settings
+      tags:
+      - channels
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Channel id
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Meta signup result
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConnectWhatsAppSignupRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Connect a WhatsApp number from Meta
       tags:
       - channels
   /v1/client-contact-suggestions:

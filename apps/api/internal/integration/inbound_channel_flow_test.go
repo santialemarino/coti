@@ -33,6 +33,7 @@ func TestInboundChannelFlow_UsesTheDestinationBranchCatalogAndPrices(t *testing.
 	firstChannel := e.seedWhatsAppInbox(t, accountID, firstBranch)
 	secondChannel := e.seedWhatsAppInbox(t, accountID, secondBranch)
 	admin := e.seedUser(t, accountID, domain.UserRoleAdmin)
+	signup := services.NewWhatsAppSignupService(e.db, repository.NewChannelRepository(), nil, nil, "")
 
 	cement, membrane := uuid.New(), uuid.New()
 	for _, product := range []struct {
@@ -82,6 +83,11 @@ func TestInboundChannelFlow_UsesTheDestinationBranchCatalogAndPrices(t *testing.
 		{"second branch", secondChannel, secondBranch, false, "400.00"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			tenant := domain.Tenant{AccountID: accountID, BranchID: test.branch, Role: domain.UserRoleAdmin}
+			if received, err := signup.GetReceipt(ctx, tenant, test.channel.id); err != nil || received {
+				t.Fatalf("receipt before inbound delivery = %t, %v", received, err)
+			}
+
 			externalID := "wamid." + test.channel.phoneNumberID
 			body := []byte(fmt.Sprintf(`{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages","value":{"metadata":{"phone_number_id":%q},"messages":[{"from":"5491112345678","id":%q,"type":"text","text":{"body":"2 bolsas de cemento y 1 membrana liquida"}}]}}]}]}`,
 				test.channel.phoneNumberID, externalID))
@@ -97,6 +103,15 @@ func TestInboundChannelFlow_UsesTheDestinationBranchCatalogAndPrices(t *testing.
 				if response.Code != http.StatusOK {
 					t.Fatalf("webhook attempt %d = %d, want 200", attempt+1, response.Code)
 				}
+			}
+
+			receipt, err := signup.GetReceipt(ctx, tenant, test.channel.id)
+			if err != nil || !receipt {
+				t.Fatalf("receipt after inbound delivery = %t, %v", receipt, err)
+			}
+			tenant.BranchID = uuid.New()
+			if _, err := signup.GetReceipt(ctx, tenant, test.channel.id); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("other branch read = %v, want not found", err)
 			}
 
 			var rfqID, quoteID, versionID, rfqBranch, quoteBranch, channelID uuid.UUID

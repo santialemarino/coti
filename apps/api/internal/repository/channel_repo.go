@@ -349,6 +349,23 @@ func (r *ChannelRepository) getByID(
 	return &channel, nil
 }
 
+// HasWhatsAppReceipt reports whether the current phone delivered an RFQ in the scoped branch.
+func (r *ChannelRepository) HasWhatsAppReceipt(ctx context.Context, q Querier, accountID, branchID, channelID uuid.UUID) (bool, error) {
+	var received bool
+	err := q.QueryRow(ctx, `
+ SELECT EXISTS (
+  SELECT 1 FROM channel c
+  JOIN inbound_channel_message m ON m.channel_id=c.id AND m.account_id=c.account_id AND m.branch_id=c.branch_id
+  JOIN rfq r ON r.id=m.rfq_id AND r.account_id=m.account_id AND r.branch_id=m.branch_id
+  WHERE c.account_id=$1 AND c.branch_id=$2 AND c.id=$3 AND c.type='WHATSAPP' AND c.is_active
+    AND c.config->>'phone_number_id'=m.payload->'metadata'->>'phone_number_id'
+ )`, accountID, branchID, channelID).Scan(&received)
+	if err != nil {
+		return false, fmt.Errorf("get WhatsApp receipt: %w", err)
+	}
+	return received, nil
+}
+
 func (r *ChannelRepository) getActiveInboundChannels(
 	ctx context.Context, q Querier, query string, identifiers []string,
 ) (map[string]domain.Channel, error) {

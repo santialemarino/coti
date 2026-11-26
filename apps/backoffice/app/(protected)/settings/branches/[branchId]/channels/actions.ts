@@ -66,3 +66,42 @@ export async function saveWhatsAppChannel(
   revalidatePath(ROUTES.branchSettings);
   return { ok: true };
 }
+
+const signupResultSchema = z.object({
+  code: z.string().trim().min(1).max(4096),
+  businessAccountId: z.string().regex(/^\d{1,32}$/),
+  phoneNumberId: z.string().regex(/^\d{1,32}$/),
+});
+
+export async function connectWhatsAppSignup(
+  branchId: string,
+  channelId: string,
+  result: { code: string; businessAccountId: string; phoneNumberId: string },
+): Promise<ChannelResult> {
+  await requireAdmin();
+  const parsed = signupResultSchema.safeParse(result);
+  if (
+    !z.uuid().safeParse(branchId).success ||
+    !z.uuid().safeParse(channelId).success ||
+    !parsed.success
+  ) {
+    return { error: 'INVALID_BODY' };
+  }
+  try {
+    await apiRequest({
+      path: `/v1/channels/${channelId}/whatsapp/signup`,
+      method: 'POST',
+      branchId,
+      body: {
+        code: parsed.data.code,
+        business_account_id: parsed.data.businessAccountId,
+        phone_number_id: parsed.data.phoneNumberId,
+      },
+    });
+  } catch (error) {
+    return { error: errorCodeOf(error) };
+  }
+  revalidatePath(ROUTES.branchChannels(branchId));
+  revalidatePath(ROUTES.branchSettings);
+  return { ok: true };
+}

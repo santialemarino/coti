@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"io"
 	"net/http"
@@ -21,9 +22,10 @@ type WhatsAppWebhookService interface {
 
 // WhatsAppWebhookHandler serves the public Meta verification and message webhook endpoints.
 type WhatsAppWebhookHandler struct {
-	appSecret string
-	maxBytes  int64
-	service   WhatsAppWebhookService
+	appSecret         string
+	signupVerifyToken string
+	maxBytes          int64
+	service           WhatsAppWebhookService
 }
 
 // NewWhatsAppWebhookHandler builds a WhatsAppWebhookHandler.
@@ -31,6 +33,12 @@ func NewWhatsAppWebhookHandler(appSecret string, maxBytes int64,
 	service WhatsAppWebhookService,
 ) *WhatsAppWebhookHandler {
 	return &WhatsAppWebhookHandler{appSecret: appSecret, maxBytes: maxBytes, service: service}
+}
+
+// WithSignupVerifyToken enables the app-wide verification challenge.
+func (h *WhatsAppWebhookHandler) WithSignupVerifyToken(token string) *WhatsAppWebhookHandler {
+	h.signupVerifyToken = token
+	return h
 }
 
 // Verify answers Meta's callback challenge after matching a configured channel token.
@@ -44,7 +52,12 @@ func (h *WhatsAppWebhookHandler) Verify(c *gin.Context) {
 		c.Status(http.StatusBadRequest)
 		return
 	}
-	verified, err := h.service.Verify(c.Request.Context(), c.Query("hub.verify_token"))
+	token := c.Query("hub.verify_token")
+	if h.signupVerifyToken != "" && subtle.ConstantTimeCompare([]byte(h.signupVerifyToken), []byte(token)) == 1 {
+		c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(challenge))
+		return
+	}
+	verified, err := h.service.Verify(c.Request.Context(), token)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
