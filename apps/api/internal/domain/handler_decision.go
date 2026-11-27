@@ -129,6 +129,9 @@ type HandlerProposalRecord struct {
 	DecisionConfidencePercent *int              `json:"decision_confidence_percent,omitempty"`
 	Conditional               bool              `json:"conditional,omitempty"`
 	PartialOrAlternative      bool              `json:"partial_or_alternative,omitempty"`
+	// ReplyAcceptance is what an acceptance became, and AcceptanceHolds why it was not automatic.
+	ReplyAcceptance *ReplyAcceptance      `json:"reply_acceptance,omitempty"`
+	AcceptanceHolds []ReplyAcceptanceHold `json:"acceptance_holds,omitempty"`
 }
 
 // NewHandlerDecision is one unreviewed AI proposal recorded for pilot quality metrics.

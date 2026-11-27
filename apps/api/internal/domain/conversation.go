@@ -70,6 +70,8 @@ type NewQuoteMessage struct {
 	ReceivedAt   time.Time
 	// OtherLiveQuotes counts the other quotes an inbound sender could have meant.
 	OtherLiveQuotes int
+	// Recorded only: a message on an accepted quote opens no window, so no handler reads it.
+	RecordedOnly bool
 }
 
 // MessageBatch is a quote's conversation window and, once closed, its place in the FIFO queue.
@@ -116,6 +118,9 @@ type ConversationRoute struct {
 	// OtherLiveQuotes counts the other quotes the sender could have meant; above zero the seller
 	// should confirm the routing.
 	OtherLiveQuotes int
+	// Accepted is a quote the customer already accepted: the message is recorded for the seller
+	// and opens no window.
+	Accepted bool
 }
 
 // InboundSenderDestinations returns every quote_send.destination form an inbound sender may have

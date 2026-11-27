@@ -59,6 +59,13 @@ func (s *QuoteDeliveryService) notifySellerOfOutcome(ctx context.Context, accoun
 	}
 }
 
+// NotifySellerOfOutcome tells the quote's seller about a customer decision another flow committed,
+// such as an acceptance read from a WhatsApp reply.
+func (s *QuoteDeliveryService) NotifySellerOfOutcome(ctx context.Context, accountID uuid.UUID,
+	outcome domain.ClientQuoteOutcome) {
+	s.notifySellerOfOutcome(ctx, accountID, outcome)
+}
+
 func quoteOutcomeEvent(action domain.ClientActionType) domain.NotificationEvent {
 	if action == domain.ClientActionAccept {
 		return domain.NotificationEventQuoteAccepted

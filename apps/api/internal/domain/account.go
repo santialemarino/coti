@@ -24,9 +24,12 @@ type Account struct {
 	HasInvoices bool
 	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
 	InvoiceOnPayment bool
-	IsActive         bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// WhatsAppAutoAccept lets an acceptance the backend confirms become ACCEPTED on its own; off,
+	// it waits for the seller.
+	WhatsAppAutoAccept bool
+	IsActive           bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // AccountUpdate replaces an account's editable fields. The brand pair is what the client
@@ -40,6 +43,8 @@ type AccountUpdate struct {
 	BrandColor       *string
 	// PreferredLowerPriceStrategy nil keeps the stored one.
 	PreferredLowerPriceStrategy *HandlerStrategy
+	// WhatsAppAutoAccept nil keeps the stored one.
+	WhatsAppAutoAccept *bool
 	// DisconnectARCA confirms that a new CUIT may remove the ARCA connection made with the old one.
 	DisconnectARCA bool
 }

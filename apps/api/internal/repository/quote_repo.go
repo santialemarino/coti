@@ -17,7 +17,7 @@ import (
 const quoteColumns = `id, account_id, number, branch_id, client_id, rfq_id, seller_id,
 	current_version_id, current_status, expires_at, archived_at, needs_followup,
 	followup_flagged_at, created_at, updated_at, paid_at, paid_by_user_id, invoice_waived_at,
-	invoice_waived_by_user_id`
+	invoice_waived_by_user_id, acceptance_unconfirmed_at`
 
 const quoteVersionColumns = `id, account_id, quote_id, author_id, version_number, currency, total,
 	is_immutable, frozen_at, comment, created_at`
@@ -170,13 +170,16 @@ func (r *QuoteRepository) UpdateCurrentVersion(
 
 // UpdateStatus moves the quote's derived status, and only from the status the caller read. Matching
 // no row is a conflict rather than an absence: the transition is atomic because of that predicate.
+// Leaving ACCEPTED drops a pending confirmation with it.
 func (r *QuoteRepository) UpdateStatus(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
 	from, to domain.QuoteStatus,
 ) (*domain.Quote, error) {
 	quote, err := scanQuote(q.QueryRow(ctx,
 		`UPDATE quote
-		 SET current_status = $5
+		 SET current_status = $5,
+		     acceptance_unconfirmed_at = CASE WHEN $5::quote_status = 'ACCEPTED'
+		       THEN acceptance_unconfirmed_at END
 		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND current_status = $4
 		 RETURNING `+quoteColumns,
 		accountID, branchID, quoteID, from, to))
@@ -184,6 +187,42 @@ func (r *QuoteRepository) UpdateStatus(
 		return nil, domain.ErrConflict
 	}
 	return quote, err
+}
+
+// SetAcceptanceUnconfirmed marks an accepted quote as waiting for the seller's confirmation, or
+// clears the mark when at is nil.
+func (r *QuoteRepository) SetAcceptanceUnconfirmed(
+	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID, at *time.Time,
+) (*domain.Quote, error) {
+	return scanQuote(q.QueryRow(ctx,
+		`UPDATE quote SET acceptance_unconfirmed_at = $4
+		 WHERE account_id = $1 AND branch_id = $2 AND id = $3 AND current_status = 'ACCEPTED'
+		 RETURNING `+quoteColumns,
+		accountID, branchID, quoteID, at))
+}
+
+// DeleteDraftVersion removes a quote's mutable version once nothing points at it: its lines,
+// alternatives and discounts are the caller's to remove first.
+func (r *QuoteRepository) DeleteDraftVersion(
+	ctx context.Context, q Querier, accountID, quoteID, versionID uuid.UUID,
+) error {
+	if _, err := q.Exec(ctx,
+		`DELETE FROM quote_representation
+		 WHERE account_id = $1 AND quote_id = $2 AND version_id = $3`,
+		accountID, quoteID, versionID); err != nil {
+		return err
+	}
+	tag, err := q.Exec(ctx,
+		`DELETE FROM quote_version
+		 WHERE account_id = $1 AND quote_id = $2 AND id = $3 AND is_immutable = FALSE`,
+		accountID, quoteID, versionID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return domain.ErrConflict
+	}
+	return nil
 }
 
 // Archive flags a quote as archived in whatever status it is. Archived is an orthogonal flag, not
@@ -1367,7 +1406,7 @@ func scanQuote(row pgx.Row) (*domain.Quote, error) {
 		&quote.SellerID, &quote.CurrentVersionID, &quote.CurrentStatus, &quote.ExpiresAt,
 		&quote.ArchivedAt, &quote.NeedsFollowup, &quote.FollowupFlaggedAt, &quote.CreatedAt,
 		&quote.UpdatedAt, &quote.PaidAt, &quote.PaidByUserID, &quote.InvoiceWaivedAt,
-		&quote.InvoiceWaivedByUserID)
+		&quote.InvoiceWaivedByUserID, &quote.AcceptanceUnconfirmedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

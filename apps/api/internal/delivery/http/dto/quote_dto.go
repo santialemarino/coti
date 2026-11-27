@@ -47,6 +47,9 @@ type QuoteResponse struct {
 	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
 	InvoiceWaivedAt       *time.Time `json:"invoice_waived_at"`
 	InvoiceWaivedByUserID *uuid.UUID `json:"invoice_waived_by_user_id"`
+	// AcceptanceUnconfirmedAt marks an acceptance read from a WhatsApp reply that waits for the
+	// seller; null otherwise.
+	AcceptanceUnconfirmedAt *time.Time `json:"acceptance_unconfirmed_at"`
 }
 
 // QuoteVersionResponse represents a reviewable quote version.
@@ -189,6 +192,9 @@ type PublicQuoteSendResponse struct {
 	CustomerStatus *string `json:"customer_status,omitempty"`
 	// AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.
 	AcceptedVersion bool `json:"accepted_version,omitempty"`
+	// InReview is an acceptance read from the customer's reply that the supplier has not
+	// confirmed yet.
+	InReview bool `json:"in_review"`
 }
 
 // PublicQuoteActionRequest is the customer's response to the frozen quote.

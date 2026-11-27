@@ -205,6 +205,8 @@ type PublicQuoteRepresentation struct {
 	CustomerStatus *ClientActionType
 	// AcceptedVersion says the payload is the version the customer's choices froze, not the sent one.
 	AcceptedVersion bool
+	// InReview is an acceptance read from the customer's reply that the seller has not confirmed.
+	InReview bool
 }
 
 // PublicQuoteSelectionPreview is the client-safe price result for a tentative alternative choice.

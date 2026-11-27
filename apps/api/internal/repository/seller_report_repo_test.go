@@ -611,6 +611,7 @@ func TestSellerReportRepositoryMeasuresConversionAsACohort(t *testing.T) {
 	earlierToo, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	converted, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	open, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	undone, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 
 	day := func(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, time.UTC) }
 	change := func(quoteID uuid.UUID, status string, at time.Time) {
@@ -626,15 +627,21 @@ func TestSellerReportRepositoryMeasuresConversionAsACohort(t *testing.T) {
 	change(converted, "SENT", day(1, 13))
 	change(converted, "ACCEPTED", day(10, 12))
 	change(open, "SENT", day(2, 13))
+	// An acceptance the seller undid no longer counts.
+	change(undone, "SENT", day(2, 14))
+	change(undone, "ACCEPTED", day(3, 12))
+	reportExec(t, db, "undo", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'ACCEPTED', 'SENT', $3)`, accountID, undone, day(3, 13))
 
 	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
 	kpis := report.KPIs
-	if kpis.QuotesSent != 2 || kpis.SentAccepted != 1 || kpis.QuotesAccepted != 2 {
-		t.Fatalf("KPIs = %+v, want two sent, one of them accepted since, two acceptances in the period",
-			kpis)
+	if kpis.QuotesSent != 3 || kpis.SentAccepted != 1 || kpis.QuotesAccepted != 2 {
+		t.Fatalf("KPIs = %+v, want three sent, one of them accepted since, two standing acceptances "+
+			"in the period", kpis)
 	}
-	if kpis.ConversionRate == nil || kpis.ConversionRate.StringFixed(2) != "0.50" {
-		t.Fatalf("conversion = %v, want the cohort share 0.50", kpis.ConversionRate)
+	if kpis.ConversionRate == nil || kpis.ConversionRate.StringFixed(2) != "0.33" {
+		t.Fatalf("conversion = %v, want the cohort share 0.33", kpis.ConversionRate)
 	}
 
 	other := buildReport(t, db, domain.Tenant{AccountID: otherAccountID}, reportQuery(otherAccountID))

@@ -7406,6 +7406,201 @@
                 }
             }
         },
+        "/v1/quotes/{quoteId}/accept-sent-version": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Discards the open draft and accepts the version the customer received, as the seller.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Accept the sent version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_CHANGE_REQUESTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/acceptance/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the pending confirmation, so the sale can be marked paid and invoiced. Repeating it changes nothing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Confirm an acceptance read from a reply",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/acceptance/undo": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves the quote back to SENT and lets the customer answer again; only while unpaid, uninvoiced and with its send live.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Undo an acceptance read from a reply",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ACCEPTANCE_NOT_UNDOABLE, QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/archive": {
             "post": {
                 "security": [
@@ -11523,6 +11718,10 @@
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "whatsapp_auto_accept": {
+                    "description": "Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own.",
+                    "type": "boolean"
                 }
             }
         },
@@ -15013,6 +15212,10 @@
                 "expires_at": {
                     "type": "string"
                 },
+                "in_review": {
+                    "description": "InReview is an acceptance read from the customer's reply that the supplier has not\nconfirmed yet.",
+                    "type": "boolean"
+                },
                 "message": {
                     "type": "string"
                 },
@@ -15618,6 +15821,10 @@
         "dto.QuoteResponse": {
             "type": "object",
             "properties": {
+                "acceptance_unconfirmed_at": {
+                    "description": "AcceptanceUnconfirmedAt marks an acceptance read from a WhatsApp reply that waits for the\nseller; null otherwise.",
+                    "type": "string"
+                },
                 "archived_at": {
                     "type": "string"
                 },
@@ -17123,6 +17330,10 @@
                 "tax_id": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "whatsapp_auto_accept": {
+                    "description": "Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own; omitted keeps it.",
+                    "type": "boolean"
                 }
             }
         },

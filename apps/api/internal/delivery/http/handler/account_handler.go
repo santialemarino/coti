@@ -136,6 +136,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		BrandColor:                  body.BrandColor,
 		DisconnectARCA:              body.DisconnectARCA,
 		PreferredLowerPriceStrategy: strategy, FollowupTemplate: body.FollowupTemplate,
+		WhatsAppAutoAccept: body.WhatsAppAutoAccept,
 	})
 	if err != nil {
 		Respond(c, err)
@@ -186,11 +187,12 @@ func toAccountResponse(a domain.Account) dto.AccountResponse {
 		BrandLogoURL:                a.BrandLogoURL,
 		BrandColor:                  a.BrandColor,
 		PreferredLowerPriceStrategy: string(a.PreferredLowerPriceStrategy), FollowupTemplate: a.FollowupTemplate,
-		InvoicingEnabled: a.InvoicingEnabled,
-		HasInvoices:      a.HasInvoices,
-		InvoiceOnPayment: a.InvoiceOnPayment,
-		IsActive:         a.IsActive,
-		CreatedAt:        a.CreatedAt,
-		UpdatedAt:        a.UpdatedAt,
+		InvoicingEnabled:   a.InvoicingEnabled,
+		HasInvoices:        a.HasInvoices,
+		InvoiceOnPayment:   a.InvoiceOnPayment,
+		WhatsAppAutoAccept: a.WhatsAppAutoAccept,
+		IsActive:           a.IsActive,
+		CreatedAt:          a.CreatedAt,
+		UpdatedAt:          a.UpdatedAt,
 	}
 }

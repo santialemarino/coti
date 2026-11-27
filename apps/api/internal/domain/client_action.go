@@ -37,6 +37,9 @@ type ClientAction struct {
 	Type          ClientActionType
 	Comment       *string
 	CreatedAt     time.Time
+	// MessageBatchID is the conversation batch an acceptance was read from; nil for a click.
+	MessageBatchID *uuid.UUID
+	RevokedAt      *time.Time
 }
 
 // NewClientAction is a validated customer response ready for its insert.
@@ -49,6 +52,8 @@ type NewClientAction struct {
 	VersionID   uuid.UUID
 	Type        ClientActionType
 	Comment     *string
+	// MessageBatchID ties an acceptance read from a conversation to its batch.
+	MessageBatchID *uuid.UUID
 }
 
 // ClientActionInput is the public-page response the service validates before persisting it.
@@ -82,4 +87,7 @@ type ClientQuoteOutcome struct {
 	Action    ClientActionType
 	// SellerID is nil on a quote nobody has taken, which has nobody to notify.
 	SellerID *uuid.UUID
+	// ByReply is an acceptance read from the customer's reply; Unconfirmed waits for the seller.
+	ByReply     bool
+	Unconfirmed bool
 }
