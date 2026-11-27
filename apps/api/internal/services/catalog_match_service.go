@@ -132,7 +132,8 @@ func (s *CatalogMatchService) MatchQueries(
 
 	matches := make([]domain.LineMatch, len(results))
 	for i, result := range results {
-		matches[i] = s.decide(lineTokens(texts[i]), result.Candidates)
+		matches[i] = s.decide(scoringTokens(texts[i], originals[i], result.Candidates),
+			result.Candidates)
 	}
 	s.review(ctx, originals, matches)
 	return matches, nil
@@ -220,6 +221,37 @@ func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 		}
 	}
 	return false
+}
+
+// scoringTokens is the line a candidate is scored against: the search text, unless it dropped a
+// word of the client's that some candidate carries. A dropped "para revocar" names no product and
+// is filler; a dropped "Avellaneda" tells two cements apart, and scoring without it would rank the
+// wrong brand as confidently as the right one.
+func scoringTokens(text, original string, candidates []domain.CatalogCandidate) []matchToken {
+	search := lineTokens(text)
+	if text == original {
+		return search
+	}
+	asked := lineTokens(original)
+	for _, word := range asked {
+		if word.kind != tokenWord || word.packaging || covered(word, search) {
+			continue
+		}
+		for _, candidate := range candidates {
+			if covered(word, candidateTokens(candidate)) {
+				return asked
+			}
+		}
+	}
+	return search
+}
+
+// covered reports whether some token of document answers word at least as well as a one-letter
+// slip would.
+func covered(word matchToken, document []matchToken) bool {
+	return slices.ContainsFunc(document, func(d matchToken) bool {
+		return tokenCredit(word, d) >= editDistanceCredit
+	})
 }
 
 // rankedCandidate carries the coverage and unasked-spec share behind a score, for contested.

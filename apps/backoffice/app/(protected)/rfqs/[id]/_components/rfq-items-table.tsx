@@ -776,6 +776,11 @@ export function RfqItemsTable({
                             })}
                           </span>
                         )}
+                        {item.taught_by_seller && (
+                          <span className="text-paragraph-xs text-foreground-muted">
+                            {t('detail.items.taughtBySeller')}
+                          </span>
+                        )}
                         {canResolve && item.match_status === 'AMBIGUOUS' && (
                           <Button
                             type="button"

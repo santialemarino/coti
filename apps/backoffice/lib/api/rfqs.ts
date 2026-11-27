@@ -253,6 +253,7 @@ export interface QuoteItemResponse {
   pricing_unavailable: boolean | null;
   quantity_rationale: string | null;
   unit_mismatch: boolean;
+  taught_by_seller: boolean;
   created_at: string;
 }
 

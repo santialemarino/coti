@@ -14921,6 +14921,10 @@ const docTemplate = `{
                 "subtotal": {
                     "type": "string"
                 },
+                "taught_by_seller": {
+                    "description": "TaughtBySeller marks a line decided because a seller already resolved this exact wording to\nits product.",
+                    "type": "boolean"
+                },
                 "unit": {
                     "type": "string"
                 },

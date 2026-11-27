@@ -78,6 +78,7 @@ const PRICED_ITEM: QuoteItemResponse = {
   pricing_unavailable: false,
   quantity_rationale: null,
   unit_mismatch: false,
+  taught_by_seller: false,
   created_at: '2026-09-07T20:45:00.000Z',
 };
 
@@ -968,8 +969,14 @@ describe('RfqItemsTable unit mismatch', () => {
     expect(view.getByText('Pedido en bolsa · se vende por m3')).toBeTruthy();
   });
 
+  it('says why a line a seller already taught was decided', () => {
+    const view = renderItems(BRANCH_ID, 'GENERATED', [{ ...PRICED_ITEM, taught_by_seller: true }]);
+    expect(view.getByText('Elegido por una corrección de un vendedor')).toBeTruthy();
+  });
+
   it('says nothing when the units agree', () => {
     const view = renderItems();
     expect(view.queryByText(/se vende por/)).toBeNull();
+    expect(view.queryByText(/corrección de un vendedor/)).toBeNull();
   });
 });

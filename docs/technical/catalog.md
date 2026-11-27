@@ -400,7 +400,14 @@ client's own words, which seller corrections are looked up by and the review rea
 passes the extractor's cleaned `search_description` as the first when it is safe to (see
 rfq-pipeline.md), and every other caller passes the same text twice. A quantity word opening a
 line ("medio metro de arena", "un par de bolsas") is read like a leading figure: it says how many,
-and it and a unit bound to it are not counted against the products.
+and it and a unit bound to it are not counted against the products. The line is scored on the
+cleaned text too, unless it dropped a word of the client's that some candidate carries: a dropped
+purpose ("para revocar") names no product, a dropped brand tells two products apart.
+
+**Every item says when a seller already decided it.** `taught_by_seller` is read with the line:
+true when the correction memory holds a ready teaching of the line's exact wording, normalised the
+way the memory keys it, to the product the line carries. A teaching the search reached through a
+near phrase is not shown, since the line does not record which memory led it.
 
 ### Confidence: what the name accounts for, and how close the vector sits
 
@@ -459,8 +466,9 @@ contesting `PVC CUPLA 110` for `cupla pvc 110`.
 
 A seller-taught leader is contested differently, because its score is the memory's, not the
 text's. Two taught answers for one phrase are always a rival. So is a product that clears the
-match floor and answers the whole line while the taught one does not: that is what a substitution
-leaves behind. A seller who swapped in what was in stock taught `cemento loma negra` the other
+match floor and answers the whole line at least as fully as the taught one: a substitution leaves
+one behind, and so does a generic term the catalog answers several ways (`ladrillos`, taught once
+as the common brick, still names the hollow one). A seller who swapped in what was in stock taught `cemento loma negra` the other
 brand, and the line still names the original. The taught answer still leads, and the seller
 settles it one of two ways, both remembered:
 

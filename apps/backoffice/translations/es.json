@@ -1664,6 +1664,7 @@
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
         "unitMismatch": "Pedido en {requested} · se vende por {sold}",
+        "taughtBySeller": "Elegido por una corrección de un vendedor",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "recommendationType": {

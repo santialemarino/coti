@@ -910,3 +910,38 @@ func TestCatalogMatchService_DoesNotReviewAConflictBetweenSellerAnswers(t *testi
 		t.Errorf("review calls = %d, want none for a seller conflict", len(reviewer.asked))
 	}
 }
+
+// A search text that dropped the brand the client named is not what the line is scored on: the
+// other brand must not lead as confidently as if the client had asked for it.
+func TestCatalogMatchService_ScoresOnTheClientsWordsWhenTheSearchDroppedABrandACandidateCarries(t *testing.T) {
+	asked := semantic("Cemento Avellaneda 50kg", 0.30)
+	other := semantic("Cemento Loma Negra 50kg", 0.10)
+	service := NewCatalogMatchService(&fakeSearcher{perLine: [][]domain.CatalogCandidate{
+		{other, asked}}}, testMatchConfig())
+
+	got, err := service.MatchQueries(context.Background(), testSearchTenant(), []domain.MatchQuery{
+		{Text: "cemento", Original: "cemento avellaneda"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].ProductID == nil || *got[0].ProductID != asked.ProductID {
+		t.Fatalf("leader = %v, want the brand the client named", got[0].ProductID)
+	}
+}
+
+// A dropped purpose no product carries stays dropped, so the cleaned text is what scores.
+func TestCatalogMatchService_ScoresOnTheSearchTextWhenTheDroppedWordsNameNoProduct(t *testing.T) {
+	sand := semantic("Arena fina", 0.15)
+	service := NewCatalogMatchService(&fakeSearcher{perLine: [][]domain.CatalogCandidate{
+		{sand}}}, testMatchConfig())
+
+	got, err := service.MatchQueries(context.Background(), testSearchTenant(), []domain.MatchQuery{
+		{Text: "arena", Original: "arena para revocar"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].MatchStatus != domain.ItemMatchStatusMatched {
+		t.Fatalf("status = %s at %s, want MATCHED on the cleaned text", got[0].MatchStatus,
+			got[0].Confidence)
+	}
+}
