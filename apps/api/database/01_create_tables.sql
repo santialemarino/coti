@@ -1520,7 +1520,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
-REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
+REVOKE UPDATE ON quote_representation FROM coti_app;
 
 -- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
@@ -1571,6 +1571,12 @@ BEGIN
   END LOOP;
 END $$;
 
+
+-- A frozen version's representation stays immutable; only a draft's preview may be deleted.
+CREATE POLICY quote_representation_draft_delete ON quote_representation AS RESTRICTIVE FOR DELETE
+  USING (EXISTS (SELECT 1 FROM quote_version version
+    WHERE version.account_id = quote_representation.account_id
+      AND version.id = quote_representation.version_id AND NOT version.is_immutable));
 
 ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
 CREATE TABLE arca_setup (
