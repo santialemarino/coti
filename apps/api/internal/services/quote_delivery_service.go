@@ -1028,6 +1028,24 @@ func (s *QuoteDeliveryService) acceptedVersion(ctx context.Context, accountID uu
 	if !ok {
 		return send.VersionID, false
 	}
+	// The answer and the version its alternatives froze are written in one transaction, so they
+	// share now(): a version made any other way (a reactivation, a later send) never matches.
+	var producedByThisAnswer bool
+	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q repository.Querier) error {
+		action, err := s.actions.GetBySend(ctx, q, accountID, send.ID)
+		if err != nil {
+			return err
+		}
+		current, err := s.quotes.GetCurrentVersion(ctx, q, accountID, quote.BranchID, quote.ID)
+		if err != nil {
+			return err
+		}
+		producedByThisAnswer = current.ID == *quote.CurrentVersionID && current.CreatedAt.Equal(action.CreatedAt)
+		return nil
+	})
+	if err != nil || !producedByThisAnswer {
+		return send.VersionID, false
+	}
 	tenant := domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}
 	if _, err := ensurer.EnsureAccepted(ctx, tenant, quote.ID, *quote.CurrentVersionID); err != nil {
 		s.log.WarnContext(ctx, "accepted version unavailable; showing the sent one",
