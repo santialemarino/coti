@@ -76,6 +76,15 @@ the same supplier-scoped customer prefix. Email uses a random link capability; W
 six-digit code through an approved authentication copy-code template. Email confirmation requires
 an explicit action on /verify-contact; loading the page does not consume the capability.
 
+A request may carry `next`, the portal page to return to (`/quotes/{token}`, `/orders/{id}`,
+`/orders`, `/new-request`, `/profile`; anything else is dropped). It is stored with the challenge
+(`next_path`) and never travels in the emailed link: confirming returns it, and GET
+/profile/contacts/verification/{id} tells the customer which contact a proof is for, its state
+(`PENDING`, `VERIFIED`, `EXPIRED`) and where it returns. Sign-up sends the proofs at once with the
+destination it came for. A quote link that the account cannot open yet leads to /verify-contact
+with the quote as `next`; once a contact is proved the page continues there, and a quote still not
+visible (a seller-typed contact awaiting «Coincidencias») gets a screen saying so instead of a 404.
+
 Challenges store only hashes, are bound to the customer, profile and supplier, expire, enforce a
 resend cooldown and count failed attempts. Invalid attempts commit their count without transferring
 history. A proof for a destination owned by another fiscal profile is refused. A verified destination

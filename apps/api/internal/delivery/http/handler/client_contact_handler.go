@@ -64,8 +64,9 @@ type ClientContactHandler struct {
 }
 
 type contactVerificationService interface {
-	Request(context.Context, domain.CustomerPrincipal, domain.ChannelType, string) (*domain.ContactChallenge, error)
-	Confirm(context.Context, domain.CustomerPrincipal, uuid.UUID, string) error
+	Request(context.Context, domain.CustomerPrincipal, domain.ChannelType, string, string) (*domain.ContactChallenge, error)
+	Confirm(context.Context, domain.CustomerPrincipal, uuid.UUID, string) (string, error)
+	Describe(context.Context, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallengeView, error)
 }
 
 // NewClientContactHandler builds the commercial contact handler.
@@ -106,7 +107,7 @@ func (h *ClientContactHandler) RequestVerification(c *gin.Context) {
 		Respond(c, domain.ErrInvalidInput)
 		return
 	}
-	challenge, err := h.verification.Request(c.Request.Context(), p, domain.ChannelType(in.Kind), in.Value)
+	challenge, err := h.verification.Request(c.Request.Context(), p, domain.ChannelType(in.Kind), in.Value, in.Next)
 	if err != nil {
 		Respond(c, err)
 		return
@@ -121,7 +122,7 @@ func (h *ClientContactHandler) RequestVerification(c *gin.Context) {
 // @Security BearerAuth
 // @Param hostname path string true "Registered supplier hostname"
 // @Param body body dto.ContactVerificationConfirmation true "Challenge and received proof"
-// @Success 204
+// @Success 200 {object} dto.ContactVerificationConfirmed
 // @Failure 401,403,404,409,422 {object} dto.ErrorResponse
 // @Failure 429 {object} dto.RateLimitResponse "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout"
 // @Router /v1/customer/sites/{hostname}/profile/contacts/verification/confirm [post]
@@ -140,11 +141,54 @@ func (h *ClientContactHandler) ConfirmVerification(c *gin.Context) {
 		Respond(c, domain.ErrInvalidInput)
 		return
 	}
-	if err := h.verification.Confirm(c.Request.Context(), p, in.ID, in.Token); err != nil {
+	next, err := h.verification.Confirm(c.Request.Context(), p, in.ID, in.Token)
+	if err != nil {
 		Respond(c, err)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	response := dto.ContactVerificationConfirmed{}
+	if next != "" {
+		response.Next = &next
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+// GetVerification tells the customer which of their contacts a verification is for and its state.
+// @Summary Read a customer contact verification
+// @Tags customer-profile
+// @Produce json
+// @Security BearerAuth
+// @Param hostname path string true "Registered supplier hostname"
+// @Param id path string true "Verification identifier"
+// @Success 200 {object} dto.ContactVerificationStatusResponse
+// @Failure 400,401,404 {object} dto.ErrorResponse
+// @Router /v1/customer/sites/{hostname}/profile/contacts/verification/{id} [get]
+func (h *ClientContactHandler) GetVerification(c *gin.Context) {
+	p, ok := middleware.CustomerFrom(c)
+	if !ok {
+		Respond(c, domain.ErrUnauthenticated)
+		return
+	}
+	if h.verification == nil {
+		Respond(c, domain.ErrNotConfigured)
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+	view, err := h.verification.Describe(c.Request.Context(), p, id)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	response := dto.ContactVerificationStatusResponse{Kind: string(view.Kind), Value: view.Value, Status: string(view.Status)}
+	if view.NextPath != "" {
+		response.Next = &view.NextPath
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, response)
 }
 
 // GetProfile returns the authenticated customer's commercial data.

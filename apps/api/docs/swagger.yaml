@@ -909,12 +909,22 @@ definitions:
     - id
     - token
     type: object
+  dto.ContactVerificationConfirmed:
+    properties:
+      next:
+        type: string
+    type: object
   dto.ContactVerificationRequest:
     properties:
       kind:
         enum:
         - EMAIL
         - WHATSAPP
+        type: string
+      next:
+        description: Next is the portal page the confirmation returns to; any other
+          value is ignored.
+        maxLength: 255
         type: string
       value:
         maxLength: 255
@@ -928,6 +938,21 @@ definitions:
       expires_at:
         type: string
       id:
+        type: string
+    type: object
+  dto.ContactVerificationStatusResponse:
+    properties:
+      kind:
+        type: string
+      next:
+        type: string
+      status:
+        enum:
+        - PENDING
+        - VERIFIED
+        - EXPIRED
+        type: string
+      value:
         type: string
     type: object
   dto.ConversationBatchResponse:
@@ -6280,6 +6305,43 @@ paths:
       summary: Request customer contact verification
       tags:
       - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification/{id}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verification identifier
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a customer contact verification
+      tags:
+      - customer-profile
   /v1/customer/sites/{hostname}/profile/contacts/verification/confirm:
     post:
       consumes:
@@ -6297,8 +6359,10 @@ paths:
         schema:
           $ref: '#/definitions/dto.ContactVerificationConfirmation'
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationConfirmed'
         "401":
           description: Unauthorized
           schema:

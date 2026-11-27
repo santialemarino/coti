@@ -62,11 +62,14 @@ func (acceptingContacts) MergeClients(_ context.Context, _ domain.Tenant, target
 func (acceptingContacts) SendRegistrationLink(context.Context, domain.Tenant, uuid.UUID, domain.ChannelType) error {
 	return nil
 }
-func (acceptingContacts) Request(context.Context, domain.CustomerPrincipal, domain.ChannelType, string) (*domain.ContactChallenge, error) {
+func (acceptingContacts) Request(context.Context, domain.CustomerPrincipal, domain.ChannelType, string, string) (*domain.ContactChallenge, error) {
 	return &domain.ContactChallenge{ID: uuid.New(), ExpiresAt: time.Now()}, nil
 }
-func (acceptingContacts) Confirm(context.Context, domain.CustomerPrincipal, uuid.UUID, string) error {
-	return nil
+func (acceptingContacts) Confirm(context.Context, domain.CustomerPrincipal, uuid.UUID, string) (string, error) {
+	return "", nil
+}
+func (acceptingContacts) Describe(context.Context, domain.CustomerPrincipal, uuid.UUID) (*domain.ContactChallengeView, error) {
+	return &domain.ContactChallengeView{}, nil
 }
 
 func contactLimitRouter() http.Handler {
