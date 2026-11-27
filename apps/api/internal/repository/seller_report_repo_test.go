@@ -945,19 +945,24 @@ func TestSellerReportRepositoryMeasuresTheAssistantAndFollowUp(t *testing.T) {
 	reportExec(t, db, "unmatched line", `INSERT INTO quote_item
 	   (account_id, version_id, requested_description, quantity, match_status)
 	   VALUES ($1, $2, 'clavos', 3, 'NO_MATCH')`, accountID, versionID)
+	// A reply that changed nothing is recorded, never decided, and proposes nothing.
+	keptReply := `{"outcome":"NO_MATCH","no_match_reason":"CUSTOMER_ACCEPTS","operations":[]}`
 	for _, seed := range []struct {
 		decision *string
 		at       time.Time
+		proposal *string
 	}{
-		{strPtr("APPROVED_AS_IS"), inPeriod},
-		{strPtr("APPROVED_AS_IS"), inPeriod},
-		{strPtr("REJECTED"), inPeriod},
-		{nil, inPeriod},
-		{strPtr("APPROVED_AS_IS"), time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)},
+		{strPtr("APPROVED_AS_IS"), inPeriod, nil},
+		{strPtr("APPROVED_AS_IS"), inPeriod, nil},
+		{strPtr("REJECTED"), inPeriod, nil},
+		{nil, inPeriod, nil},
+		{nil, inPeriod, &keptReply},
+		{strPtr("APPROVED_AS_IS"), time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC), nil},
 	} {
 		reportExec(t, db, "decision", `INSERT INTO handler_decision
-		   (account_id, quote_version_id, seller_decision, created_at)
-		   VALUES ($1, $2, $3::handler_seller_decision, $4)`, accountID, versionID, seed.decision, seed.at)
+		   (account_id, quote_version_id, seller_decision, created_at, ai_proposal)
+		   VALUES ($1, $2, $3::handler_seller_decision, $4, $5)`, accountID, versionID, seed.decision,
+			seed.at, seed.proposal)
 	}
 	reportExec(t, db, "sent", `INSERT INTO quote_status_change
 	   (account_id, quote_id, previous_status, new_status, changed_at)

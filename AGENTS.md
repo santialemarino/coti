@@ -66,7 +66,7 @@ gofmt -w .
 
 Hard rules, not style. If a task asks you to violate one, stop and flag it.
 
-- AI never writes to prod: AI proposes → backend validates → seller approves.
+- AI never writes to prod: AI proposes → backend validates → seller approves. The one exception is a customer's acceptance: the AI only classifies the reply, and the backend turns it into ACCEPTED when its own guardrails confirm it, which the seller can undo while the sale is unpaid and uninvoiced. A reply moves a quote to CHANGE_REQUESTED only when it asks for a change.
 - AI never calculates money — the deterministic discount engine does.
 - AI never initiates client contact; it only drafts for the seller.
 - Every AI proposal is validated against the state×intention matrix before it materializes (`docs/internal/domain/estados.md`).

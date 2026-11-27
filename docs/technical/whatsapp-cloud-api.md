@@ -209,7 +209,9 @@ bind the batch change handler ([rfq-pipeline.md](rfq-pipeline.md#conversation-ba
 handler error wrapping `domain.ErrBatchUnprocessable` — the quote was archived or closed after its
 window closed — spends the batch's last attempt at once and leaves it `FAILED` with the reason in
 `last_error` and `failure_reason = UNPROCESSABLE`; one that ran out of attempts is
-`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
+`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. Either way the failed
+batch goes back to the handler, which moves a still-`SENT` quote to `CHANGE_REQUESTED` with its
+draft open, so a reply nobody read still reaches the seller. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
 transaction.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
