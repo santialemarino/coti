@@ -87,9 +87,12 @@ type QuoteItemResponse struct {
 	Alternatives []QuoteItemAlternativeResponse `json:"alternatives"`
 	// PricingUnavailable names a line that matched a product the branch cannot price. It is null
 	// until the materials are accepted, because until then no line has been priced at all.
-	PricingUnavailable *bool     `json:"pricing_unavailable"`
-	QuantityRationale  *string   `json:"quantity_rationale"`
-	CreatedAt          time.Time `json:"created_at"`
+	PricingUnavailable *bool   `json:"pricing_unavailable"`
+	QuantityRationale  *string `json:"quantity_rationale"`
+	// UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a
+	// product priced by the cubic metre, so its quantity needs the seller's conversion.
+	UnitMismatch bool      `json:"unit_mismatch"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // QuoteItemAlternativeResponse is one candidate or configured recommendation offered for a line.

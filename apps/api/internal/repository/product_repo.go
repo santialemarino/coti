@@ -273,8 +273,9 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 // distance means the product has no vector rather than that it was not among the closest.
 //
 // The text half asks for every word first and, only when no product or synonym has them all, for
-// any of them: "bolsa de arena" must still reach a product called "Arena fina", and a product with
-// no vector yet is reachable through its text alone. Seller corrections are looked up by the
+// any of them among the products with no vector yet: "bolsa de arena" must still reach a
+// "Arena fina" the embedding job has not reached. A product with a vector is already found loosely
+// by the semantic half, and letting every one sharing a word in would crowd it out of the pool. Seller corrections are looked up by the
 // client's original words ($7, $8), which is what they were recorded against.
 //
 // Kept as a const so the test that reads its execution plan measures this statement rather than
@@ -328,6 +329,7 @@ const searchCandidatesQuery = `
 	           NULL::text AS term
 	    FROM product p, ask
 	    WHERE p.account_id = $1 AND p.is_active = TRUE
+	      AND p.embedding IS NULL
 	      AND NOT EXISTS (SELECT 1 FROM every_term_hit)
 	      AND p.search_document @@ ask.any_term_query
 	),

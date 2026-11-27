@@ -912,6 +912,7 @@ func toQuoteItemResponse(
 		Alternatives:         toQuoteItemAlternativeResponses(alternatives),
 		PricingUnavailable:   pricingUnavailable,
 		QuantityRationale:    item.QuantityRationale,
+		UnitMismatch:         domain.UnitsConflict(item.Unit, item.ProductUnit),
 		CreatedAt:            item.CreatedAt,
 	}
 }

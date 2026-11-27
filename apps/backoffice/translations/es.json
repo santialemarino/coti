@@ -1663,6 +1663,7 @@
         "generating": "Aprobando productos…",
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
+        "unitMismatch": "Pedido en {requested} · se vende por {sold}",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "recommendationType": {

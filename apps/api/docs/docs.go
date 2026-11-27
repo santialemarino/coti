@@ -14924,6 +14924,10 @@ const docTemplate = `{
                 "unit": {
                     "type": "string"
                 },
+                "unit_mismatch": {
+                    "description": "UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a\nproduct priced by the cubic metre, so its quantity needs the seller's conversion.",
+                    "type": "boolean"
+                },
                 "unit_price_snapshot": {
                     "type": "string"
                 },

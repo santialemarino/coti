@@ -223,8 +223,8 @@ func TestProductRepository_SearchCandidatesFallsBackToAnyWordWhenNoProductHasThe
 	}
 }
 
-// The fallback only runs when no product has every word: a line some product answers in full is
-// not diluted with products that share one of its words.
+// The fallback only runs when no product has every word, and only reaches products the semantic
+// half cannot: a line some product answers in full is not diluted with products sharing a word.
 func TestProductRepository_SearchCandidatesKeepsToEveryWordWhenAProductHasThemAll(t *testing.T) {
 	db := testDB(t)
 	account := seedAccount(t, db, "Corralon Bolsa")
@@ -237,6 +237,24 @@ func TestProductRepository_SearchCandidatesKeepsToEveryWordWhenAProductHasThemAl
 	candidates := searchCandidates(t, db, account, branch, "bolsa de arena", 10)
 	if names := nameOf(candidates); !slices.Equal(names, []string{"Arena en bolsa 15kg"}) {
 		t.Fatalf("candidates = %v, want only the product with every word", names)
+	}
+}
+
+// An embedded product sharing one word is the semantic half's to find; the fallback leaves it out.
+func TestProductRepository_SearchCandidatesFallsBackOnlyToProductsWithNoVector(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Vector")
+	branch := branchOf(t, db, account)
+	embedded := seedCatalogProduct(t, db, account, "Arena gruesa", "")
+	stockBranch(t, db, account, branch, embedded, true)
+	writeEmbedding(t, db, account, embedded, alignedVector(0.1))
+	pending := seedCatalogProduct(t, db, account, "Arena fina", "")
+	stockBranch(t, db, account, branch, pending, true)
+
+	for _, c := range searchCandidates(t, db, account, branch, "bolsa de arena", 10) {
+		if c.CanonicalName == "Arena gruesa" && c.LexicalScore != nil {
+			t.Fatalf("Arena gruesa = %+v, want it found by its vector only", c)
+		}
 	}
 }
 
