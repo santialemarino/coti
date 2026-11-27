@@ -197,6 +197,25 @@ function compareItem(failures, item, expected, index, label = 'items') {
       ),
     );
   }
+  if (
+    expected.product_contains !== undefined &&
+    !includesText(item.product_name, expected.product_contains)
+  ) {
+    failures.push(
+      checkFailure(
+        'catalog_matching',
+        `${label}[${index}].product_name ${show(item.product_name)} does not contain ${show(expected.product_contains)}`,
+      ),
+    );
+  }
+  if (expected.unit_mismatch !== undefined && item.unit_mismatch !== expected.unit_mismatch) {
+    failures.push(
+      checkFailure(
+        'catalog_matching',
+        `${label}[${index}].unit_mismatch ${show(item.unit_mismatch)}, want ${show(expected.unit_mismatch)}`,
+      ),
+    );
+  }
   if (expected.match_status !== undefined && item.match_status !== expected.match_status) {
     failures.push(
       checkFailure(

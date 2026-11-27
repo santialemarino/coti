@@ -346,6 +346,10 @@ carries the exact trade vocabulary that a vector model has no way to know.
   `spanish_unaccent` text search configuration, a copy of
   `spanish` with `unaccent` in front of the stemmer: informal request text drops accents
   constantly, and under the stock configuration "hormigon" would never reach "hormigón".
+  It asks for every word of the line first. Only when no product and no synonym has them all does
+  it settle for any of them, and then only among products with no vector yet: "bolsa de arena"
+  still reaches an "Arena fina" the embedding job has not reached, while a product with a vector is
+  left to the semantic half, which already finds it loosely and is not crowded out of the pool.
 - **The semantic half** orders `product.embedding` by cosine distance (`<=>`).
 - **Both halves are account-scoped in the query**, and the result is joined against
   `branch_product` so a search can only ever offer what the active branch carries. A search with
@@ -390,6 +394,13 @@ the matcher, never which candidate leads.
 
 Its caller is the plain-text RFQ pipeline — see [rfq-pipeline.md](rfq-pipeline.md), which also
 describes what a line looks like when matching cannot answer at all.
+
+A line can be matched on two texts at once: the one the catalog is searched and scored on, and the
+client's own words, which seller corrections are looked up by and the review reads. The pipeline
+passes the extractor's cleaned `search_description` as the first when it is safe to (see
+rfq-pipeline.md), and every other caller passes the same text twice. A quantity word opening a
+line ("medio metro de arena", "un par de bolsas") is read like a leading figure: it says how many,
+and it and a unit bound to it are not counted against the products.
 
 ### Confidence: what the name accounts for, and how close the vector sits
 

@@ -19,7 +19,11 @@
       ],
       "priced_quote_status": "QUOTED",
       "total_nonzero": true,
-      "priced_items": [{ "pricing_unavailable": false }]
+      "priced_items": [
+        {
+          "pricing_unavailable": false
+        }
+      ]
     }
   },
   {
@@ -116,6 +120,68 @@
           "quantity": "2.00",
           "unit_contains": "rollo",
           "match_status": "NO_MATCH",
+          "rationale_present": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "bag-of-sand-without-vector-unit",
+    "description": "Un pedido en bolsas de un producto que se vende por m3 se encuentra y queda para confirmar",
+    "message": "Hola, necesito una bolsa de arena",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 1,
+      "items": [
+        {
+          "description_contains": "arena",
+          "quantity": "1.00",
+          "product_contains": "Arena fina",
+          "match_status": "AMBIGUOUS",
+          "unit_mismatch": true,
+          "rationale_present": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "colloquial-quantities",
+    "description": "Diminutivos y medio metro se leen como cantidad y unidad, no como material",
+    "message": "che pasame una bolsita de cal y medio metro de arena para revocar",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 2,
+      "items": [
+        {
+          "description_contains": "cal",
+          "quantity": "1.00",
+          "product_contains": "Cal",
+          "rationale_present": true
+        },
+        {
+          "description_contains": "arena",
+          "quantity": "0.50",
+          "product_contains": "Arena fina",
+          "rationale_present": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "bad-price-preference-kept",
+    "description": "Una preferencia de precio mal separada no hace fallar el pedido",
+    "message": "5 bolsas de cemento Loma Negra más barato",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 1,
+      "items": [
+        {
+          "description_contains": "cemento",
+          "quantity": "5.00",
+          "match_status": "AMBIGUOUS",
           "rationale_present": true
         }
       ]

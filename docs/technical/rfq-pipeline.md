@@ -118,11 +118,14 @@ away an extraction that was already paid for, at the last step.
 The extraction schema carries `search_description` and the closed `selection_preference` enum
 (`NONE`, `LOWEST_PRICE`, `HIGHEST_PRICE`) alongside the client's original `requested_description`. Search uses the
 product description without conversational wording or the preference. Explicit brands, sizes,
-colours and product variants remain constraints. The service validates the preference and refuses
-a price preference that drops or invents product constraints. Shared preferences apply to each
-qualified item even when the preference is outside its verbatim description. Minor spelling
-corrections are allowed; figures and units must agree exactly. Ordinary matching uses the original
-description when no price preference applies.
+colours and product variants remain constraints. A price preference that drops or invents a
+product constraint is discarded: the line falls back to `NONE` and to the client's own words, and
+is left `AMBIGUOUS`. Shared preferences apply to each qualified item even when the preference is
+outside its verbatim description. Minor spelling corrections are allowed; figures and units must
+agree exactly. A line without a price preference searches its `search_description` when that text
+names nothing the client did not and keeps every size and measure the client wrote ("arena para
+revocar" searches "arena"); otherwise it searches the client's words. Seller corrections are always
+looked up by the client's words, which is what they were recorded against.
 
 For either price preference, `RFQPriceSelectionService` expands the matched product to every active product
 in its family and subgroup carried by the same branch, beyond the search shortlist. Products must
@@ -162,9 +165,18 @@ The extraction schema forces a closed enum, `quantity_source`, on every line:
 for, and dropping the line to avoid an awkward zero loses it.
 
 The service does not trust the pair. `EXPLICIT` and `DERIVED` must carry a positive quantity, and
-`UNRESOLVED` must carry zero — a line that contradicts itself is refused, and the adapter zeroes an
-unresolved quantity before the service ever sees it. So a number the model was told not to send
-cannot reach a quote through either layer.
+`UNRESOLVED` must carry zero. A line that contradicts itself is repaired rather than refused: it is
+written `UNRESOLVED` with a zero quantity and left `AMBIGUOUS`, so a number the model was told not
+to send cannot reach a quote, and one bad line never fails the rest of the order. The same holds for
+every other slip on a line — a description over 512 characters is cut, a unit over 64 is dropped,
+a missing description takes the search text — and only a line with no words at all is left out.
+
+**A line asked for in a unit its product is not sold in waits for the seller.** A bag of a product
+priced by the cubic metre, or a cubic metre of one priced by the kilo, would otherwise be priced
+silently at the wrong scale, so such a match is `AMBIGUOUS`, and every item response carries
+`unit_mismatch` (read from the line's unit against the product's, so it follows a product the
+seller picks later). A bare metre is how clients ask for sand or flooring by the cubic or square
+metre, so it conflicts only with a count or a weight.
 
 **Quantities are never inferred from a plan.** `rfq.work_type` is context for the seller's
 recommendations, not an input: computing bags of cement from a surface in square metres is a
