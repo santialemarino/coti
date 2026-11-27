@@ -426,14 +426,15 @@ func TestCatalogMatchService_ARivalUnderTheFloorDoesNotContestATaughtAnswer(t *t
 	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
 }
 
-// When the taught product answers the line as fully as its rival, the words take no side.
-func TestCatalogMatchService_ATaughtAnswerThatCoversTheLineIsNotContested(t *testing.T) {
-	taught := learned("Cemento Loma Negra 50kg", 0.05)
-	rival := semantic("Cemento Loma Negra 25kg", 0.10)
+// A generic term the catalog answers with several products stays for the seller until a teaching
+// is confirmed: «ladrillos» taught once as the common brick still names the hollow one.
+func TestCatalogMatchService_AnUnconfirmedTeachingIsContestedByAnEqualAnswer(t *testing.T) {
+	taught := learned("Ladrillo común", 0.05)
+	rival := semantic("Ladrillo hueco 12x18x33", 0.10)
 
-	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{rival, taught})
+	got := matchOne(t, "ladrillos", []domain.CatalogCandidate{rival, taught})
 
-	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.95", &taught.ProductID)
 }
 
 // A seller who taught a phrase and later kept the answer on a flagged line chose it twice: that

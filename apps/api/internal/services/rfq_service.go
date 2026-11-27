@@ -2113,6 +2113,8 @@ func sanitizeRFQLines(lines []domain.ExtractedRFQLine) ([]domain.ExtractedRFQLin
 		if validateQuantitySource(line, "item") != nil ||
 			validateAmount(line.Quantity, "item.quantity") != nil {
 			line.Source, line.Quantity, repaired = domain.QuantitySourceUnresolved, decimal.Zero, true
+			// The model's rationale explains the number just discarded.
+			line.QuantityRationale = ""
 		}
 		if unit := optionalText(line.Unit); unit != nil && utf8.RuneCountInString(*unit) > 64 {
 			line.Unit, repaired = nil, true

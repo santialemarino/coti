@@ -913,6 +913,7 @@ func toQuoteItemResponse(
 		PricingUnavailable:   pricingUnavailable,
 		QuantityRationale:    item.QuantityRationale,
 		UnitMismatch:         domain.UnitsConflict(item.Unit, item.ProductUnit),
+		TaughtBySeller:       item.TaughtBySeller,
 		CreatedAt:            item.CreatedAt,
 	}
 }

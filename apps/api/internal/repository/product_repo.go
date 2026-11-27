@@ -275,8 +275,9 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 // The text half asks for every word first and, only when no product or synonym has them all, for
 // any of them among the products with no vector yet: "bolsa de arena" must still reach a
 // "Arena fina" the embedding job has not reached. A product with a vector is already found loosely
-// by the semantic half, and letting every one sharing a word in would crowd it out of the pool. Seller corrections are looked up by the
-// client's original words ($7, $8), which is what they were recorded against.
+// by the semantic half, and letting every one sharing a word in would crowd it out of the pool.
+// Seller corrections are looked up by the client's original words ($7, $8), which is what they
+// were recorded against.
 //
 // Kept as a const so the test that reads its execution plan measures this statement rather than
 // a copy of it.
@@ -330,7 +331,9 @@ const searchCandidatesQuery = `
 	    FROM product p, ask
 	    WHERE p.account_id = $1 AND p.is_active = TRUE
 	      AND p.embedding IS NULL
-	      AND NOT EXISTS (SELECT 1 FROM every_term_hit)
+	      AND NOT EXISTS (SELECT 1 FROM every_term_hit h
+	                      JOIN branch_product hb ON hb.product_id = h.product_id
+	                       AND hb.account_id = $1 AND hb.branch_id = $2 AND hb.is_active = TRUE)
 	      AND p.search_document @@ ask.any_term_query
 	),
 	lexical AS (

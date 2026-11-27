@@ -188,6 +188,192 @@
     }
   },
   {
+    "id": "tc07-twenty-lines",
+    "description": "QA TC-07: veinte artículos con marca y medida quedan 20/20 asociados a su producto",
+    "message": "Hola, necesito una cotización para un pedido nuevo con estos 20 artículos:\n1. 2 m3 de Arena fina.\n2. 6 bolsas de Cal hidratada 25 kg.\n3. 3 unidades de Caño PVC 110 mm x 4 m.\n4. 4 unidades de Caño termofusión 20 mm x 4 m.\n5. 10 bolsas de Cemento Avellaneda 50 kg.\n6. 5 bolsas de Cemento Loma Negra 50 kg.\n7. 12 m2 de Cerámico 45x45 esmaltado.\n8. 3 unidades de Chapa acanalada C25 x 3 m.\n9. 2 baldes de Hidrófugo 20 kg.\n10. 8 barras de Hierro aletado 10 mm.\n11. 12 barras de Hierro aletado 8 mm.\n12. 4 barras de Hierro aleteado de 16mm.\n13. 200 unidades de Ladrillo común.\n14. 100 unidades de Ladrillo hueco 12x18x33.\n15. 2 latas de Látex interior 4 L.\n16. 3 paneles de Malla Q188 6x2,15.\n17. 2 rollos de Membrana asfáltica 4 mm.\n18. 6 bolsas de Pegamento para cerámicos 25 kg.\n19. 8 unidades de Perfil montante 70 mm.\n20. 1 m3 de Piedra partida 6-20.\nGracias.",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 20,
+      "items": [
+        {
+          "quantity": "2.00",
+          "product_contains": "Arena fina",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "6.00",
+          "product_contains": "Cal hidratada 25 kg",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "3.00",
+          "product_contains": "Caño PVC 110",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "4.00",
+          "product_contains": "Caño termofusión 20",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "10.00",
+          "product_contains": "Cemento Avellaneda",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "5.00",
+          "product_contains": "Cemento Loma Negra",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "12.00",
+          "product_contains": "Cerámico 45x45",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "3.00",
+          "product_contains": "Chapa acanalada C25",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "2.00",
+          "product_contains": "Hidrófugo 20 kg",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "8.00",
+          "product_contains": "Hierro aletado 10 mm",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "12.00",
+          "product_contains": "Hierro aletado 8 mm",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "4.00",
+          "product_contains": "Hierro aletado 16 mm",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "200.00",
+          "product_contains": "Ladrillo común",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "100.00",
+          "product_contains": "Ladrillo hueco 12x18x33",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "2.00",
+          "product_contains": "Látex interior 4 L",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "3.00",
+          "product_contains": "Malla Q188",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "2.00",
+          "product_contains": "Membrana asfáltica 4 mm",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "6.00",
+          "product_contains": "Pegamento para cerámicos",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "8.00",
+          "product_contains": "Perfil montante 70",
+          "unit_mismatch": false,
+          "rationale_present": true
+        },
+        {
+          "quantity": "1.00",
+          "product_contains": "Piedra partida 6-20",
+          "unit_mismatch": false,
+          "rationale_present": true
+        }
+      ]
+    }
+  },
+  {
+    "id": "tc08-generic-terms",
+    "description": "QA TC-08: un término genérico que el catálogo resuelve con varias variantes queda para confirmar",
+    "message": "Hola, necesito cotizar un pedido nuevo: 10 bolsas de cemento, 6 barras de hierro y 100 ladrillos. Gracias.",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 3,
+      "items": [
+        {
+          "description_contains": "cemento",
+          "quantity": "10.00",
+          "match_status": "AMBIGUOUS"
+        },
+        {
+          "description_contains": "hierro",
+          "quantity": "6.00",
+          "match_status": "AMBIGUOUS"
+        },
+        {
+          "description_contains": "ladrillo",
+          "quantity": "100.00",
+          "match_status": "AMBIGUOUS"
+        }
+      ]
+    }
+  },
+  {
+    "id": "tc09-no-quantities",
+    "description": "QA TC-09: productos sin cantidad se asocian y las medidas no se leen como cantidad",
+    "message": "Hola, necesito cotizar otro pedido nuevo: Cemento Avellaneda de 50 kg, Hidrófugo de 20 kg y Ladrillo hueco 12x18x33. Gracias.",
+    "expected": {
+      "rfq_status": "GENERATED",
+      "quote_status": "DRAFT",
+      "item_count": 3,
+      "items": [
+        {
+          "quantity": "0.00",
+          "product_contains": "Cemento Avellaneda",
+          "rationale_present": true
+        },
+        {
+          "quantity": "0.00",
+          "product_contains": "Hidrófugo",
+          "rationale_present": true
+        },
+        {
+          "quantity": "0.00",
+          "product_contains": "Ladrillo hueco",
+          "rationale_present": true
+        }
+      ]
+    }
+  },
+  {
     "id": "no-materials",
     "description": "Un mensaje que no es un pedido se guarda sin inventar una cotización",
     "message": "Hola, me pasas la direccion y el horario de hoy?",

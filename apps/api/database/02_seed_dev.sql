@@ -75,6 +75,7 @@ WITH products (id, account_id, code, canonical_name, description, unit, legacy_c
   ('d0000000-0000-4000-8000-000000000007', 'a0000000-0000-4000-8000-000000000001', 'LAD-COM', 'Ladrillo común', 'Ladrillo macizo de campo', 'unidad', 'Mampostería'),
   ('d0000000-0000-4000-8000-000000000008', 'a0000000-0000-4000-8000-000000000001', 'HIE-8', 'Hierro aletado 8 mm', 'Barra conformada ADN 420, 12 m', 'barra', 'Hierros'),
   ('d0000000-0000-4000-8000-000000000009', 'a0000000-0000-4000-8000-000000000001', 'HIE-10', 'Hierro aletado 10 mm', 'Barra conformada ADN 420, 12 m', 'barra', 'Hierros'),
+  ('d0000000-0000-4000-8000-000000000021', 'a0000000-0000-4000-8000-000000000001', 'HIE-16', 'Hierro aletado 16 mm', 'Barra conformada ADN 420, 12 m', 'barra', 'Hierros'),
   ('d0000000-0000-4000-8000-000000000010', 'a0000000-0000-4000-8000-000000000001', 'MAL-Q188', 'Malla Q188 6x2,15', 'Malla soldada para contrapiso', 'panel', 'Hierros'),
   ('d0000000-0000-4000-8000-000000000011', 'a0000000-0000-4000-8000-000000000001', 'CHA-C25', 'Chapa acanalada C25 x 3 m', 'Chapa galvanizada sinusoidal', 'unidad', 'Chapas'),
   ('d0000000-0000-4000-8000-000000000012', 'a0000000-0000-4000-8000-000000000001', 'MEM-4MM', 'Membrana asfáltica 4 mm', 'Membrana con aluminio, rollo 10 m2', 'rollo', 'Impermeabilizantes'),
@@ -176,7 +177,8 @@ JOIN (VALUES
   ('d0000000-0000-4000-8000-000000000017'::uuid, 21500.00),
   ('d0000000-0000-4000-8000-000000000018'::uuid, 7400.00),
   ('d0000000-0000-4000-8000-000000000019'::uuid, 26800.00),
-  ('d0000000-0000-4000-8000-000000000020'::uuid, 18900.00)
+  ('d0000000-0000-4000-8000-000000000020'::uuid, 18900.00),
+  ('d0000000-0000-4000-8000-000000000021'::uuid, 46500.00)
 ) AS v(product_id, price) ON v.product_id = bp.product_id
 WHERE bp.branch_id = 'b0000000-0000-4000-8000-000000000001'
   AND NOT EXISTS (SELECT 1 FROM product_price pp WHERE pp.product_id = bp.product_id AND pp.branch_id = bp.branch_id);

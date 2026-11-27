@@ -124,10 +124,10 @@ var sideWords = map[string]string{
 
 // packagingWords are what a client counts a material in ("10 bolsas", "rollos de cinta"). Keyed by
 // stem, built through the same stemmer the tokens go through so the two cannot drift apart.
-var packagingWords = stems("bol", "bolsa", "bolsas", "bolsita", "bolsitas", "bolson", "bolsones", "pallet", "pallets",
-	"palet", "palets", "rollo", "rollos", "unidad", "unidades", "unid", "uds", "ud", "lata",
-	"latas", "caja", "cajas", "barra", "barras", "balde", "baldes", "paquete", "paquetes", "tira",
-	"tiras", "tonelada", "toneladas", "viaje", "viajes")
+var packagingWords = stems("bol", "bolsa", "bolsas", "bolsita", "bolsitas", "bolson",
+	"bolsones", "pallet", "pallets", "palet", "palets", "rollo", "rollos", "unidad", "unidades",
+	"unid", "uds", "ud", "lata", "latas", "caja", "cajas", "barra", "barras", "balde", "baldes",
+	"paquete", "paquetes", "tira", "tiras", "tonelada", "toneladas", "viaje", "viajes")
 
 // phoneticFolder collapses the spellings Spanish pronounces alike; "c" left over becomes "k" after.
 var phoneticFolder = strings.NewReplacer(

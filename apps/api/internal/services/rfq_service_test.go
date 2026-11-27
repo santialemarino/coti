@@ -1771,7 +1771,7 @@ func TestRFQService_CreateTextDraft_RepairsAContradictoryLineAndFlagsIt(t *testi
 				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",
 			},
 			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
-			wantQty: "0", wantLength: 7,
+			wantQty: "0", wantLength: 7, wantNoRatio: true,
 		},
 		{
 			name: "an unresolved line carrying a number",
@@ -1780,7 +1780,7 @@ func TestRFQService_CreateTextDraft_RepairsAContradictoryLineAndFlagsIt(t *testi
 				Source: domain.QuantitySourceUnresolved, QuantityRationale: "no dijo cuántas",
 			},
 			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
-			wantQty: "0", wantLength: 7,
+			wantQty: "0", wantLength: 7, wantNoRatio: true,
 		},
 		{
 			name: "a source outside the closed set",
@@ -1789,7 +1789,7 @@ func TestRFQService_CreateTextDraft_RepairsAContradictoryLineAndFlagsIt(t *testi
 				Source: domain.QuantitySource("GUESSED"), QuantityRationale: "estimado",
 			},
 			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
-			wantQty: "0", wantLength: 7,
+			wantQty: "0", wantLength: 7, wantNoRatio: true,
 		},
 		{
 			name: "no rationale",

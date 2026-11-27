@@ -91,8 +91,11 @@ type QuoteItemResponse struct {
 	QuantityRationale  *string `json:"quantity_rationale"`
 	// UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a
 	// product priced by the cubic metre, so its quantity needs the seller's conversion.
-	UnitMismatch bool      `json:"unit_mismatch"`
-	CreatedAt    time.Time `json:"created_at"`
+	UnitMismatch bool `json:"unit_mismatch"`
+	// TaughtBySeller marks a line decided because a seller already resolved this exact wording to
+	// its product.
+	TaughtBySeller bool      `json:"taught_by_seller"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // QuoteItemAlternativeResponse is one candidate or configured recommendation offered for a line.

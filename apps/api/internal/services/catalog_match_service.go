@@ -200,8 +200,8 @@ func (s *CatalogMatchService) contested(ranked []rankedCandidate) bool {
 	return false
 }
 
-// contradicted reports whether a seller-taught leader needs confirming: another taught answer, or a
-// product answering the whole line the taught one does not, which is what a substitution leaves.
+// contradicted reports whether a seller-taught leader needs confirming: another taught answer, or,
+// until the seller confirms it, a product answering the whole line at least as fully.
 func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 	leader := ranked[0]
 	for _, rival := range ranked[1:] {
@@ -212,8 +212,10 @@ func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 		if leader.LearnedConfirmed || rival.Confidence.LessThan(s.minConfidence) {
 			continue
 		}
+		// Answering the whole line as fully is enough: "ladrillos" taught once as the common brick
+		// still names the hollow one too, until the seller confirms the choice.
 		if rival.coverage >= 1-coverageTieTolerance &&
-			rival.coverage-leader.coverage > coverageTieTolerance {
+			rival.coverage >= leader.coverage-coverageTieTolerance {
 			return true
 		}
 	}
