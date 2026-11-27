@@ -148,6 +148,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 			customers.PUT("/profile", append(customerLimit("customer-profile", cfg.RateLimit.Profile), h.ClientContacts.UpdateProfile)...)
 			customers.POST("/profile/contacts/verification", append(customerLimit("contact-request", cfg.RateLimit.ContactVerification), h.ClientContacts.RequestVerification)...)
 			customers.POST("/profile/contacts/verification/confirm", append(customerLimit("contact-confirm", cfg.RateLimit.ContactVerification), h.ClientContacts.ConfirmVerification)...)
+			customers.GET("/profile/contacts/verification/:id", h.ClientContacts.GetVerification)
 		}
 		customers.POST("/auth/logout", h.CustomerAuth.Logout)
 		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)

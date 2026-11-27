@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { beforeEach, expect, it, vi } from 'vitest';
 
+import { QuoteNotInAccount } from '@/app/quotes/[token]/_components/quote-not-in-account';
 import PublicQuotePage from '@/app/quotes/[token]/page';
 import { getCustomerOrderByToken, getDeliveryHostname } from '@/lib/api/customer-orders';
 import { getCustomerProfile } from '@/lib/api/customer-profile';
@@ -13,6 +14,9 @@ vi.mock('@/lib/api/customer-orders', () => ({
 vi.mock('@/lib/auth/customer-flow', () => ({ requireCustomer: vi.fn() }));
 vi.mock('next/headers', () => ({ headers: vi.fn() }));
 vi.mock('@/lib/api/customer-profile', () => ({ getCustomerProfile: vi.fn() }));
+vi.mock('@/app/quotes/[token]/_components/quote-not-in-account', () => ({
+  QuoteNotInAccount: () => null,
+}));
 vi.mock('next/navigation', () => ({
   redirect: (path: string) => {
     throw new Error('redirect:' + path);
@@ -78,7 +82,7 @@ it('preserves the original link expiry reference in the unified detail', async (
     PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
   ).rejects.toThrow('redirect:/orders/order-id?delivery=legacy-token');
 });
-it('does not reveal an unauthorized request', async () => {
+it('answers a proved customer the quote is not theirs yet without revealing anything of it', async () => {
   vi.mocked(requireCustomer).mockResolvedValue({
     customerId: 'c',
     taxId: '20123456786',
@@ -86,11 +90,11 @@ it('does not reveal an unauthorized request', async () => {
     sessionExpiresAt: '2030-01-01T00:00:00Z',
   });
   vi.mocked(getCustomerOrderByToken).mockResolvedValue(null);
-  await expect(
-    PublicQuotePage({ params: Promise.resolve({ token: 'other-token' }) }),
-  ).rejects.toThrow('not-found');
+  const page = await PublicQuotePage({ params: Promise.resolve({ token: 'other-token' }) });
+  expect(page.type).toBe(QuoteNotInAccount);
+  expect(page.props).toEqual({});
 });
-it('takes an unproved customer to the history verification guidance without revealing the quote', async () => {
+it('sends an unproved customer to prove a contact, keeping the quote to return to', async () => {
   vi.mocked(requireCustomer).mockResolvedValue({
     customerId: 'c',
     taxId: '20123456786',
@@ -107,9 +111,9 @@ it('takes an unproved customer to the history verification guidance without reve
   });
   await expect(
     PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
-  ).rejects.toThrow('redirect:/orders');
+  ).rejects.toThrow('redirect:/verify-contact?next=%2Fquotes%2Flegacy-token');
 });
-it('keeps the supplier prefix when an unproved customer returns to history', async () => {
+it('keeps the supplier prefix when an unproved customer goes to prove a contact', async () => {
   vi.mocked(headers).mockResolvedValue(
     new Headers({ host: 'localhost:3001', 'x-coti-portal-slug': 'supplier' }),
   );
@@ -129,5 +133,5 @@ it('keeps the supplier prefix when an unproved customer returns to history', asy
   });
   await expect(
     PublicQuotePage({ params: Promise.resolve({ token: 'legacy-token' }) }),
-  ).rejects.toThrow('redirect:/c/supplier/orders');
+  ).rejects.toThrow('redirect:/c/supplier/verify-contact?next=%2Fquotes%2Flegacy-token');
 });
