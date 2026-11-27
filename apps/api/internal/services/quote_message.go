@@ -3,11 +3,17 @@ package services
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
+
+// contactLikeName matches a name that is only a phone number.
+var contactLikeName = regexp.MustCompile(`^\+?[0-9 ()-]+$`)
 
 // quoteMessageMaxItems is how many lines a quote message lists before «y N más».
 const quoteMessageMaxItems = 8
@@ -28,6 +34,7 @@ type quoteMessageContent struct {
 	Intro    string
 	Items    []string
 	More     string
+	Discount string
 	Total    string
 	Validity string
 }
@@ -37,8 +44,22 @@ func newQuoteMessageContent(payload domain.QuoteRepresentationPayload, validUnti
 		Intro: payload.Supplier.Name + " te envía la cotización de tu pedido:",
 		Total: "Total: " + formatCommercialMoney(payload.Currency, payload.Total),
 	}
-	if payload.Customer.Name != nil && strings.TrimSpace(*payload.Customer.Name) != "" {
-		content.Greeting = "Hola, " + strings.TrimSpace(*payload.Customer.Name) + "."
+	// A profile named after its phone or email is not greeted by it.
+	if payload.Customer.Name != nil {
+		name := strings.TrimSpace(*payload.Customer.Name)
+		if name != "" && !strings.Contains(name, "@") && !contactLikeName.MatchString(name) {
+			content.Greeting = "Hola, " + name + "."
+		}
+	}
+	// The lines carry their prices before discounts, so the discount is stated for them to add up.
+	discount := decimal.Zero
+	for _, applied := range payload.Discounts {
+		if amount, err := decimal.NewFromString(applied.Amount); err == nil {
+			discount = discount.Add(amount)
+		}
+	}
+	if discount.IsPositive() {
+		content.Discount = "Descuentos: −" + formatCommercialMoney(payload.Currency, discount.StringFixed(domain.MoneyScale))
 	}
 	for i, item := range payload.Items {
 		if i == quoteMessageMaxItems {
@@ -73,7 +94,11 @@ func buildQuoteWhatsAppMessage(payload domain.QuoteRepresentationPayload, validU
 	if content.More != "" {
 		b.WriteString(content.More + "\n")
 	}
-	b.WriteString("\n" + content.Total + "\n" + content.Validity + "\n\n")
+	b.WriteString("\n")
+	if content.Discount != "" {
+		b.WriteString(content.Discount + "\n")
+	}
+	b.WriteString(content.Total + "\n" + content.Validity + "\n\n")
 	if stage == quoteMessageInvitation {
 		b.WriteString("Para aceptarla y seguir tus pedidos online, creá tu cuenta en " +
 			payload.Supplier.Name + ":\n" + domain.QuotePublicURLPlaceholder +
@@ -90,6 +115,7 @@ type quoteEmailContent struct {
 	Heading     string
 	Paragraphs  []string
 	Items       []string
+	Closing     []string
 	ActionLabel string
 }
 
@@ -108,17 +134,19 @@ func buildQuoteEmail(payload domain.QuoteRepresentationPayload, validUntil *time
 		email.Items = append(email.Items, content.More)
 	}
 	summary := content.Total + ". " + content.Validity
+	if content.Discount != "" {
+		summary = content.Discount + ". " + summary
+	}
 	if withPDF {
 		summary += " Te adjuntamos el PDF con el detalle completo."
 	}
+	email.Closing = []string{summary}
 	if stage == quoteMessageInvitation {
-		email.Paragraphs = append(email.Paragraphs, summary,
+		email.Closing = append(email.Closing,
 			"Para aceptarla y seguir tus pedidos online, creá tu cuenta en "+payload.Supplier.Name+
 				". También podés responder este correo para confirmarla o pedir cambios.")
 		email.ActionLabel = "Crear mi cuenta"
-		return email
 	}
-	email.Paragraphs = append(email.Paragraphs, summary)
 	return email
 }
 

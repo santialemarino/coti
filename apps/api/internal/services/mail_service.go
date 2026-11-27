@@ -28,8 +28,9 @@ type OutboundMail struct {
 	Subject    string
 	Heading    string
 	Paragraphs []string
-	// Items is a short list shown between the paragraphs and the call to action.
+	// Items is a short list shown after the paragraphs; Closing follows it, before the action.
 	Items       []string
+	Closing     []string
 	ActionLabel string
 	ActionURL   string
 	Attachments []domain.EmailAttachment

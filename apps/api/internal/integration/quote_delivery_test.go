@@ -55,6 +55,7 @@ type stagedQuoteEmailSender struct {
 	names   []string
 	senders []string
 	links   []string
+	closing [][]string
 	files   [][]domain.EmailAttachment
 	err     error
 }
@@ -74,6 +75,7 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	s.names = append(s.names, mail.ReplyToName)
 	s.senders = append(s.senders, mail.FromName)
 	s.links = append(s.links, mail.ActionURL)
+	s.closing = append(s.closing, mail.Closing)
 	s.files = append(s.files, mail.Attachments)
 	return s.err
 }

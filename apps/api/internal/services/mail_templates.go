@@ -26,6 +26,7 @@ type emailView struct {
 	Heading        string
 	Paragraphs     []string
 	Items          []string
+	Closing        []string
 	ActionLabel    string
 	ActionURL      string
 	ActionFallback string
@@ -50,6 +51,8 @@ var emailHTMLTemplate = template.Must(template.New("email").Parse(
 {{range .Items}}<li>{{.}}</li>
 {{end}}</ul>
 {{end}}
+{{range .Closing}}<p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#374151;">{{.}}</p>
+{{end}}
 {{if .ActionURL}}<p style="margin:22px 0;"><a href="{{.ActionURL}}" style="display:inline-block;background:{{.BrandColor}};color:#FFFFFF;text-decoration:none;padding:12px 22px;border-radius:6px;font-size:15px;">{{.ActionLabel}}</a></p>
 <p style="margin:0;font-size:13px;color:#6B7280;">{{.ActionFallback}}<br>{{.ActionURL}}</p>
 {{end}}
@@ -71,6 +74,7 @@ func renderEmail(account domain.Account, out OutboundMail) (domain.EmailMessage,
 		Heading:        out.Heading,
 		Paragraphs:     out.Paragraphs,
 		Items:          out.Items,
+		Closing:        out.Closing,
 		ActionLabel:    out.ActionLabel,
 		ActionURL:      out.ActionURL,
 		ActionFallback: mailActionFallback,
@@ -117,6 +121,10 @@ func renderEmailText(view emailView) string {
 	}
 	if len(view.Items) > 0 {
 		b.WriteString("\n")
+	}
+	for _, p := range view.Closing {
+		b.WriteString(p)
+		b.WriteString("\n\n")
 	}
 	if view.ActionURL != "" {
 		b.WriteString(view.ActionLabel)

@@ -69,7 +69,7 @@ func TestBuildQuoteEmail_NamesThePDFOnlyWhenAttached(t *testing.T) {
 	t.Parallel()
 	for _, withPDF := range []bool{true, false} {
 		email := buildQuoteEmail(quoteMessagePayload(9), nil, quoteMessageInvitation, withPDF)
-		joined := strings.Join(email.Paragraphs, "\n")
+		joined := strings.Join(email.Closing, "\n")
 		if strings.Contains(joined, "Te adjuntamos el PDF") != withPDF {
 			t.Errorf("withPDF=%v: paragraphs = %q", withPDF, joined)
 		}
@@ -96,6 +96,32 @@ func TestFormatQuantity_DropsTrailingZeros(t *testing.T) {
 	for raw, want := range map[string]string{"10.00": "10", "2.50": "2,5", "0.75": "0,75", "3": "3"} {
 		if got := formatQuantity(raw); got != want {
 			t.Errorf("formatQuantity(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestBuildQuoteWhatsAppMessage_StatesTheDiscountTheLinesCarry(t *testing.T) {
+	t.Parallel()
+	payload := quoteMessagePayload(2)
+	payload.Discounts = []domain.QuoteRepresentationDiscount{{Description: "Promo", Amount: "20.00"},
+		{Description: "Otra", Amount: "5.50"}}
+	message := buildQuoteWhatsAppMessage(payload, nil, quoteMessageOrderLink)
+	if !strings.Contains(message, "Descuentos: −ARS 25,50\nTotal:") {
+		t.Errorf("message does not state the discount before the total:\n%s", message)
+	}
+	if strings.Contains(buildQuoteWhatsAppMessage(quoteMessagePayload(2), nil, quoteMessageOrderLink), "Descuentos") {
+		t.Errorf("a quote without discounts states one")
+	}
+}
+
+func TestBuildQuoteWhatsAppMessage_NeverGreetsByAContact(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{"+5491155550000": "Hola.\n", "obra@cliente.test": "Hola.\n",
+		"Juan Obra": "Hola, Juan Obra.\n", "Corralón 9 de Julio": "Hola, Corralón 9 de Julio.\n"} {
+		payload := quoteMessagePayload(1)
+		payload.Customer.Name = &name
+		if message := buildQuoteWhatsAppMessage(payload, nil, quoteMessageOrderLink); !strings.HasPrefix(message, want) {
+			t.Errorf("name %q greets %q, want %q", name, strings.SplitN(message, "\n", 2)[0], want)
 		}
 	}
 }

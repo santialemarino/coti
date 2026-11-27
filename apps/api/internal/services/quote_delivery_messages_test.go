@@ -110,7 +110,7 @@ func TestQuoteDeliveryService_SendMessages_EmailsWithoutAnUnreadablePDF(t *testi
 		t.Fatalf("sendMessages() = %v", err)
 	}
 	mail := messages[sends[2].ID]
-	if len(mail.Attachments) != 0 || strings.Contains(strings.Join(mail.Email.Paragraphs, " "), "adjuntamos") {
+	if len(mail.Attachments) != 0 || strings.Contains(strings.Join(mail.Email.Closing, " "), "adjuntamos") {
 		t.Errorf("email promises or carries a PDF it could not read: %+v", mail)
 	}
 }

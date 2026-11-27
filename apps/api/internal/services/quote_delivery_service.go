@@ -868,7 +868,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
 					FromName: fromName, ReplyTo: replyTo, ReplyToName: replyToName,
 					Subject: content.Subject, Heading: content.Heading,
-					Paragraphs: content.Paragraphs, Items: content.Items,
+					Paragraphs: content.Paragraphs, Items: content.Items, Closing: content.Closing,
 					ActionLabel: content.ActionLabel, ActionURL: message.Link,
 					Attachments: message.Attachments})
 			default:
