@@ -110,7 +110,8 @@ func newEnvWithRFQProviders(
 	}
 
 	cfg := &config.Config{
-		Environment: "test",
+		Environment:    "test",
+		ClientTagRules: config.DefaultClientTagRules(),
 		Auth: config.AuthConfig{
 			JWTSecret:         testJWTSecret,
 			AccessTTL:         15 * time.Minute,
@@ -209,7 +210,7 @@ func newEnvWithRFQProviders(
 	contactMessenger := &captureContactMessenger{}
 	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
 	customerAuth.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
-	tagRepo := repository.NewTagRepository()
+	tagRepo := repository.NewTagRepository(cfg.ClientTagRules)
 	extractor := providers.extractor
 	if extractor == nil {
 		extractor = ai.NewRFQExtractor(ai.DisabledGenerator{}, cfg.RFQ.MaxItems)
@@ -403,6 +404,7 @@ func (e *env) seedAccount(t *testing.T, name string) (accountID, branchID uuid.U
 			`DELETE FROM branch_combo WHERE account_id = $1`,
 			`DELETE FROM combo_item WHERE account_id = $1`,
 			`DELETE FROM combo WHERE account_id = $1`,
+			`DELETE FROM client_tag_exclusion WHERE account_id = $1`,
 			`DELETE FROM client_tag WHERE account_id = $1`,
 			`DELETE FROM tag WHERE account_id = $1`,
 			`DELETE FROM client WHERE account_id = $1`,

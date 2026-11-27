@@ -495,6 +495,11 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 	if _, err = q.Exec(ctx, `INSERT INTO client_tag(account_id,client_id,tag_id) SELECT account_id,$3,tag_id FROM client_tag WHERE account_id=$1 AND client_id=$2 ON CONFLICT(client_id,tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
 		return err
 	}
+	if _, err = q.Exec(ctx, `INSERT INTO client_tag_exclusion (account_id, client_id, tag_id)
+		SELECT account_id, $3, tag_id FROM client_tag_exclusion WHERE account_id = $1 AND client_id = $2
+		ON CONFLICT (account_id, client_id, tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
 	if _, err = q.Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {
 		return err
 	}

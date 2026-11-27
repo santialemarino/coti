@@ -1571,7 +1571,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns account-level client profiles. Tags are account-wide; accepted sale counts and dates are limited to the branches and seller assignments the caller may inspect.",
+                "description": "Returns account-level client profiles. Manual tags are account-wide. Automatic tags and sales activity use the caller's branch and seller reach.",
                 "produces": [
                     "application/json"
                 ],
@@ -1616,7 +1616,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns one account-level profile and its currently accepted quotes inside the caller's branch and seller reach.",
+                "description": "Returns the profile, its manual and automatic labels, and currently accepted quotes in the caller's branch and seller reach.",
                 "produces": [
                     "application/json"
                 ],
@@ -2092,6 +2092,76 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/tag-exclusions/{tagId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Set or clear a client's automatic tag exclusion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Automatic tag id",
+                        "name": "tagId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Exclusion state",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetClientTagExclusionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -10696,6 +10766,115 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/tags/rules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List automatic client tag rules",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientTagRulesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tags/rules/{kind}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update an automatic client tag rule",
+                "parameters": [
+                    {
+                        "enum": [
+                            "RECURRING",
+                            "ABANDONER"
+                        ],
+                        "type": "string",
+                        "description": "Rule kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rule settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientTagRuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -11960,6 +12139,12 @@ const docTemplate = `{
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
+                "excluded_tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientTagResponse"
+                    }
+                },
                 "registered": {
                     "description": "Registered is true when a customer account manages the profile; no seller renames or merges it.",
                     "type": "boolean"
@@ -12116,6 +12301,9 @@ const docTemplate = `{
         "dto.ClientTagResponse": {
             "type": "object",
             "properties": {
+                "automatic": {
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -12124,6 +12312,38 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ClientTagRuleResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "RECURRING",
+                        "ABANDONER"
+                    ]
+                },
+                "minimum": {
+                    "type": "integer"
+                },
+                "window_days": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ClientTagRulesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientTagRuleResponse"
+                    }
                 }
             }
         },
@@ -16397,6 +16617,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SetClientTagExclusionRequest": {
+            "type": "object",
+            "required": [
+                "excluded"
+            ],
+            "properties": {
+                "excluded": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.SetInvoicingEnabledRequest": {
             "type": "object",
             "required": [
@@ -16735,6 +16966,26 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateClientTagRuleRequest": {
+            "type": "object",
+            "required": [
+                "enabled",
+                "window_days"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "minimum": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "window_days": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },

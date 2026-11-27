@@ -112,6 +112,24 @@ func (f *fakeClientTags) List(
 	return f.available, nil
 }
 
+func (f *fakeClientTags) ListAutomaticByClientIDs(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ []uuid.UUID,
+) (map[uuid.UUID]domain.AutomaticClientTags, error) {
+	return nil, nil
+}
+
+func (f *fakeClientTags) ListRules(context.Context, repository.Querier, uuid.UUID) ([]domain.ClientTagRule, error) {
+	return nil, nil
+}
+
+func (f *fakeClientTags) UpdateRule(context.Context, repository.Querier, uuid.UUID, domain.ClientTagRule) error {
+	return nil
+}
+
+func (f *fakeClientTags) SetExclusion(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error {
+	return nil
+}
+
 func (f *fakeClientTags) ListByClientIDs(_ context.Context, _ repository.Querier, _ uuid.UUID,
 	clientIDs []uuid.UUID) (map[uuid.UUID][]domain.ClientTag, error) {
 	result := make(map[uuid.UUID][]domain.ClientTag, len(clientIDs))
