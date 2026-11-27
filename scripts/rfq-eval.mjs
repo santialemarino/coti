@@ -82,6 +82,12 @@ export function evaluateDraft(expected, status, body) {
   return evaluateDraftChecks(expected, status, body).map((check) => check.message);
 }
 
+export function needsCatalogIdentity(expected) {
+  return (expected.items ?? []).some(
+    (item) => item.product_contains !== undefined || item.unit_mismatch !== undefined,
+  );
+}
+
 export function evaluateDraftChecks(expected, status, body) {
   const failures = [];
   const expectedStatus = expected.http_status ?? 201;
@@ -502,6 +508,18 @@ async function runCase(entry, cfg, token) {
       timeoutMs: cfg.timeoutMs,
       token,
     });
+    // The draft answer carries no catalog identity; the order's detail reads it with the line.
+    if (needsCatalogIdentity(entry.expected) && draft.body?.rfq?.id) {
+      const detail = await requestJSON(`${cfg.apiURL}/v1/rfqs/${draft.body.rfq.id}`, {
+        method: 'GET',
+        branchID: cfg.branchID,
+        timeoutMs: cfg.timeoutMs,
+        token,
+      });
+      if (detail.status === 200 && Array.isArray(detail.body?.items)) {
+        draft.body.items = detail.body.items;
+      }
+    }
     const draftChecks = evaluateDraftChecks(entry.expected, draft.status, draft.body);
     activeFinish(
       draft.status === (entry.expected.http_status ?? 201) ? 'PASSED' : 'FAILED',

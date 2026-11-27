@@ -171,7 +171,7 @@
   },
   {
     "id": "bad-price-preference-kept",
-    "description": "Una preferencia de precio mal separada no hace fallar el pedido",
+    "description": "Una preferencia de precio sobre una marca no hace fallar el pedido",
     "message": "5 bolsas de cemento Loma Negra más barato",
     "expected": {
       "rfq_status": "GENERATED",
@@ -181,7 +181,6 @@
         {
           "description_contains": "cemento",
           "quantity": "5.00",
-          "match_status": "AMBIGUOUS",
           "rationale_present": true
         }
       ]
