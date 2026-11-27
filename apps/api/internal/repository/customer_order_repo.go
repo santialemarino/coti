@@ -10,6 +10,8 @@ import (
 )
 
 // customerDeliveryContactProof also covers the web publication paired with a proved recipient's send.
+// A send made before the proof opens only through decision 95: a proof born from a link to that same
+// quote and destination, and only while the send is live.
 const customerDeliveryContactProof = `EXISTS (
  SELECT 1 FROM quote_send delivered
  JOIN channel destination_channel ON destination_channel.account_id=delivered.account_id
@@ -18,9 +20,19 @@ const customerDeliveryContactProof = `EXISTS (
  JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
  WHERE delivered.account_id=r.account_id AND delivered.version_id=s.version_id
    AND (delivered.id=s.id OR (ch.type='WEBAPP' AND delivered.idempotency_key=s.idempotency_key))
-   AND delivered.tracking_status IN ('SENT','DELIVERED','VIEWED') AND delivered.sent_at>=ownership.verified_at
+   AND delivered.tracking_status IN ('SENT','DELIVERED','VIEWED')
    AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL AND contact.kind=destination_channel.type
    AND contact.value=CASE WHEN destination_channel.type='EMAIL' THEN lower(delivered.destination) ELSE delivered.destination END
+   AND (delivered.sent_at>=ownership.verified_at OR (delivered.expires_at>now() AND EXISTS (
+     SELECT 1 FROM client_contact_challenge proof
+     JOIN quote_send invited ON invited.account_id=proof.account_id AND proof.next_path='/quotes/'||invited.public_token
+     JOIN quote_version invited_version ON invited_version.account_id=invited.account_id AND invited_version.id=invited.version_id
+     JOIN quote_version delivered_version ON delivered_version.account_id=delivered.account_id AND delivered_version.id=delivered.version_id
+     WHERE proof.account_id=delivered.account_id AND proof.customer_id=$2 AND proof.purpose='VERIFY' AND proof.proved_at IS NOT NULL
+       AND proof.kind=contact.kind AND proof.value=contact.value
+       AND contact.value=CASE WHEN destination_channel.type='EMAIL' THEN lower(invited.destination) ELSE invited.destination END
+       AND invited_version.quote_id=delivered_version.quote_id
+   )))
  )`
 
 // customerOrderFrom keeps request ownership separate from access to individual published offers,

@@ -83,7 +83,15 @@ A request may carry `next`, the portal page to return to (`/quotes/{token}`, `/o
 (`PENDING`, `VERIFIED`, `EXPIRED`) and where it returns. Sign-up sends the proofs at once with the
 destination it came for. A quote link that the account cannot open yet leads to /verify-contact
 with the quote as `next`; once a contact is proved the page continues there, and a quote still not
-visible (a seller-typed contact awaiting «Coincidencias») gets a screen saying so instead of a 404.
+visible gets a screen saying so instead of a 404.
+
+A proof born from a quote's link opens that quote at once, even when it was sent before the contact
+was verified: the delivery proof in `customer_order_repo.go` also accepts a live send (`expires_at`
+in the future) of the same quote to the same destination when the customer holds a proved challenge
+(`proved_at`, set only on a successful confirm, never when a newer request cancels it) whose
+`next_path` is `/quotes/{token}` of a send of that quote to that destination. Earlier sends to the
+contact, expired sends, other destinations and other quotes keep the rule that a send must follow
+the contact's verification, so they wait for «Coincidencias» or the seller's merge.
 
 Challenges store only hashes, are bound to the customer, profile and supplier, expire, enforce a
 resend cooldown and count failed attempts. Invalid attempts commit their count without transferring

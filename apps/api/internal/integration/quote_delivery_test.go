@@ -149,6 +149,31 @@ func (e *env) seedSendableQuote(t *testing.T, name string, corrected bool) senda
 	return sendableQuote{tenant: tenant, draft: draft}
 }
 
+// seedSendableQuoteIn adds a second sendable quote to the account and branch of seed.
+func (e *env) seedSendableQuoteIn(t *testing.T, seed sendableQuote, name string) sendableQuote {
+	t.Helper()
+	tenant := seed.tenant
+	productID := e.seedPricedProduct(t, tenant.AccountID, tenant.BranchID, name+" cement", "50", nil)
+	e.embedOn(t, productID, 1, 0.98)
+	unit := "bag"
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{{
+		RequestedDescription: "two cement bags", Quantity: decimal.NewFromInt(2), Unit: &unit,
+		Source: domain.QuantitySourceExplicit, QuantityRationale: "two bags were requested",
+	}}}, map[string]int{"two cement bags": 1}).CreateTextDraft(context.Background(), tenant,
+		domain.TextRFQDraftInput{ChannelID: seed.draft.RFQ.ChannelID, RawText: "two cement bags"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := quoteService.AcceptMaterials(context.Background(), tenant, draft.Quote.ID); err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	e.seedKnownDeliveryClient(t, tenant, draft.Quote.ID, draft.RFQ.ID)
+	return sendableQuote{tenant: tenant, draft: draft}
+}
+
 func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSender,
 	email interface {
 		Send(context.Context, services.OutboundMail) error

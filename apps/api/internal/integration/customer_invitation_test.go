@@ -19,18 +19,21 @@ import (
 )
 
 // A customer invited by a quote signs up and verifies the address it went to. The verification keeps
-// the quote as its destination server-side, never in the link. Whether the quote then opens follows
-// the visibility rule: a delivery made before the proof is only reachable through history, which a
-// contact the customer wrote in from brings with it and one a seller typed does not, until the seller
-// confirms the match.
+// the quote as its destination server-side, never in the link. A delivery made before the proof opens
+// through the history a contact the customer wrote in from brings with it, or (decision 95) because
+// the proof was born from that quote's own link; a seller-typed contact proved any other way waits
+// for the seller to confirm the match.
 func TestCustomerInvitation_VerificationReturnsToTheQuoteItWasFor(t *testing.T) {
 	for _, tc := range []struct {
 		label    string
 		wroteIn  bool
+		requests []string // the destinations asked for, in order; the last proof is confirmed
 		wantSeen int
 	}{
-		{"contact the customer wrote in from", true, http.StatusOK},
-		{"contact a seller typed", false, http.StatusNotFound},
+		{"contact the customer wrote in from", true, []string{"quote"}, http.StatusOK},
+		{"contact a seller typed, proved from the quote's link", false, []string{"quote"}, http.StatusOK},
+		{"contact a seller typed, proved from the profile", false, []string{"/profile"}, http.StatusNotFound},
+		{"a quote-link proof replaced by one from the profile", false, []string{"quote", "/profile"}, http.StatusNotFound},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			e := newEnv(t)
@@ -77,7 +80,12 @@ func TestCustomerInvitation_VerificationReturnsToTheQuoteItWasFor(t *testing.T) 
 					token = delivery.PublicToken
 				}
 			}
-			next := "/quotes/" + token
+			destination := func(request string) string {
+				if request == "quote" {
+					return "/quotes/" + token
+				}
+				return request
+			}
 
 			host, session := e.registerCustomer(t, account, "20123456786")
 			p := domain.CustomerPrincipal{AccountID: account, TaxID: "20123456786"}
@@ -88,16 +96,22 @@ func TestCustomerInvitation_VerificationReturnsToTheQuoteItWasFor(t *testing.T) 
 				t.Fatal(err)
 			}
 			messenger := &captureContactMessenger{}
-			verifier := services.NewClientContactVerificationService(contacts, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3}))
-			proof, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email, next)
+			verifier := services.NewClientContactVerificationService(contacts, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Nanosecond, ContactVerificationAttempts: 3}))
+			var proof *domain.ContactChallenge
+			var next string
+			for _, request := range tc.requests {
+				time.Sleep(time.Millisecond)
+				next = destination(request)
+				var err error
+				if proof, err = verifier.Request(ctx, p, domain.ChannelTypeEmail, email, next); err != nil {
+					t.Fatal(err)
+				}
+			}
+			link, err := url.Parse(messenger.messages[len(messenger.messages)-1].Link)
 			if err != nil {
 				t.Fatal(err)
 			}
-			link, err := url.Parse(messenger.messages[0].Link)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(link.String(), token) || len(link.Query()) != 2 {
+			if strings.Contains(link.String(), token) || strings.Contains(link.String(), "profile") || len(link.Query()) != 2 {
 				t.Fatalf("verification link %q carries more than the challenge and its secret", link)
 			}
 			view, err := verifier.Describe(ctx, p, proof.ID)
@@ -166,5 +180,105 @@ func TestCustomerInvitation_StoresOnlyAPortalDestination(t *testing.T) {
 	}
 	if _, err := verifier.Describe(ctx, other, proof.ID); err == nil {
 		t.Fatal("another customer read the verification")
+	}
+}
+
+// TC-10 (decision 95): a WhatsApp-only customer opens the quote they were sent by proving that very
+// number from its link. Only that quote's live send to that number opens: another quote sent earlier
+// to the same number, the same quote's send to another number, and an expired send stay hidden.
+func TestCustomerInvitation_ProofFromAQuoteLinkOpensThatQuoteOnly(t *testing.T) {
+	e := newEnv(t)
+	invited := e.seedSendableQuote(t, "Quote link proof", false)
+	earlier := e.seedSendableQuoteIn(t, invited, "Quote link proof earlier")
+	ctx := context.Background()
+	account := invited.tenant.AccountID
+	profiles := repository.NewClientRepository()
+	store := repository.NewClientContactRepository()
+	contacts := services.NewClientContactService(e.db, profiles, store)
+	name, phone, other := "Typed buyer", "+5491155550191", "+5491155550192"
+	var source uuid.UUID
+	if err := e.db.InTenantTx(ctx, invited.tenant, func(q repository.Querier) error {
+		c, err := profiles.Create(ctx, q, account, domain.NewClient{Name: &name, Phone: &phone})
+		if err == nil {
+			source = c.ID
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range []sendableQuote{invited, earlier} {
+		if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote SET client_id=$2 WHERE account_id=$3 AND id=$1`, seed.draft.Quote.ID, source, account); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE rfq SET client_id=$2 WHERE account_id=$3 AND id=$1`, seed.draft.RFQ.ID, source, account); err != nil {
+			t.Fatal(err)
+		}
+	}
+	delivery := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
+	tokenFor := func(seed sendableQuote, to string) string {
+		t.Helper()
+		sent, err := delivery.Send(ctx, seed.tenant, seed.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: to})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range sent.Deliveries {
+			if d.ChannelType == domain.ChannelTypeWhatsApp {
+				return d.PublicToken
+			}
+		}
+		t.Fatal("no WhatsApp delivery")
+		return ""
+	}
+	earlierToken := tokenFor(earlier, phone)
+	invitedToken := tokenFor(invited, phone)
+	otherNumberToken := tokenFor(invited, other)
+
+	host, session := e.registerCustomer(t, account, "20123456786")
+	p := domain.CustomerPrincipal{AccountID: account, TaxID: "20123456786"}
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, p.TaxID).Scan(&p.CustomerID); err != nil {
+		t.Fatal(err)
+	}
+	if err := contacts.UpdateProfile(ctx, p, domain.ClientContactUpdate{Name: "Registered Name", Contacts: []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: phone, Primary: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	opens := func(token string) int {
+		t.Helper()
+		return e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/quote-sends/" + token + "/order", token: session}).Code
+	}
+	if code := opens(invitedToken); code != http.StatusNotFound {
+		t.Fatalf("the quote opened before any proof: %d", code)
+	}
+
+	messenger := &captureContactMessenger{}
+	verifier := services.NewClientContactVerificationService(contacts, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3}))
+	proof, err := verifier.Request(ctx, p, domain.ChannelTypeWhatsApp, phone, "/quotes/"+invitedToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifier.Confirm(ctx, p, proof.ID, messenger.messages[0].Code); err != nil {
+		t.Fatal(err)
+	}
+
+	for label, tc := range map[string]struct {
+		token string
+		want  int
+	}{
+		"the quote whose link the proof came from":      {invitedToken, http.StatusOK},
+		"another quote sent earlier to the same number": {earlierToken, http.StatusNotFound},
+		"the same quote sent to another number":         {otherNumberToken, http.StatusNotFound},
+	} {
+		if code := opens(tc.token); code != tc.want {
+			t.Errorf("%s: %d, want %d", label, code, tc.want)
+		}
+	}
+	orders := e.customerOrderIDs(t, host, session)
+	if !orders[invited.draft.RFQ.ID] || orders[earlier.draft.RFQ.ID] {
+		t.Errorf("orders = %v, want the invited request and not the earlier one", orders)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE quote_send SET expires_at=now()-interval '1 hour' WHERE account_id=$1 AND public_token=$2`, account, invitedToken); err != nil {
+		t.Fatal(err)
+	}
+	if code := opens(invitedToken); code != http.StatusNotFound {
+		t.Errorf("an expired send still opens through the proof: %d", code)
 	}
 }
