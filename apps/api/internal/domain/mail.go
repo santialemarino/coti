@@ -15,7 +15,15 @@ type EmailMessage struct {
 	// FromName replaces the platform's display name; the sending address never changes.
 	FromName string
 	// InReplyTo is a validated Message-ID the message threads under, blank otherwise.
-	InReplyTo string
+	InReplyTo   string
+	Attachments []EmailAttachment
+}
+
+// EmailAttachment is a file delivered with a message, such as a quotation's PDF.
+type EmailAttachment struct {
+	Filename    string
+	ContentType string
+	Content     []byte
 }
 
 // Mailer delivers a rendered message. Adapters live in internal/mail and are bound in the

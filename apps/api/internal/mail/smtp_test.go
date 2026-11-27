@@ -188,6 +188,81 @@ func TestSMTPMailer_Send_SendsATextOnlyMessageAsOnePlainPart(t *testing.T) {
 	}
 }
 
+// A quotation travels with its PDF: the readable body stays the first part, untouched, and the file
+// follows it intact, so a client that ignores attachments still shows the message.
+func TestSMTPMailer_Send_AttachesFilesAfterTheBody(t *testing.T) {
+	t.Parallel()
+	server := startFakeSMTP(t, nil)
+	pdf := bytes.Repeat([]byte("%PDF-1.7 cotización\x00\xff"), 40)
+
+	err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(), domain.EmailMessage{
+		To: testTo, Subject: smtpSubject, TextBody: smtpText, HTMLBody: smtpHTML,
+		Attachments: []domain.EmailAttachment{{Filename: "Cotización COT-12.pdf",
+			ContentType: "application/pdf", Content: pdf}},
+	})
+	if err != nil {
+		t.Fatalf("Send() = %v, want no error", err)
+	}
+
+	msg, err := netmail.ReadMessage(strings.NewReader(server.delivered(t).data))
+	if err != nil {
+		t.Fatalf("the adapter wrote no parseable message: %v", err)
+	}
+	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/mixed" {
+		t.Fatalf("Content-Type = %q (%v), want multipart/mixed", msg.Header.Get("Content-Type"), err)
+	}
+	parts := multipart.NewReader(msg.Body, params["boundary"])
+
+	body, err := parts.NextPart()
+	if err != nil {
+		t.Fatalf("the message carries no body part: %v", err)
+	}
+	bodyType, bodyParams, err := mime.ParseMediaType(body.Header.Get("Content-Type"))
+	if err != nil || bodyType != "multipart/alternative" {
+		t.Fatalf("first part Content-Type = %q, want multipart/alternative", body.Header.Get("Content-Type"))
+	}
+	alternatives := multipart.NewReader(body, bodyParams["boundary"])
+	for _, want := range []string{"text/plain", "text/html"} {
+		part, err := alternatives.NextPart()
+		if err != nil {
+			t.Fatalf("the body carries no %s alternative: %v", want, err)
+		}
+		if got, _, _ := mime.ParseMediaType(part.Header.Get("Content-Type")); got != want {
+			t.Errorf("alternative Content-Type = %q, want %q", got, want)
+		}
+	}
+
+	file, err := parts.NextRawPart()
+	if err != nil {
+		t.Fatalf("the message carries no attachment: %v", err)
+	}
+	if encoding := file.Header.Get("Content-Transfer-Encoding"); encoding != "base64" {
+		t.Errorf("attachment Content-Transfer-Encoding = %q, want base64", encoding)
+	}
+	disposition, dispositionParams, err := mime.ParseMediaType(file.Header.Get("Content-Disposition"))
+	if err != nil || disposition != "attachment" || dispositionParams["filename"] != "Cotización COT-12.pdf" {
+		t.Errorf("Content-Disposition = %q, want attachment with the original filename",
+			file.Header.Get("Content-Disposition"))
+	}
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatalf("attachment does not read: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\r\n"), "\r\n") {
+		if len(line) > 76 {
+			t.Fatalf("attachment line is %d characters, want at most 76", len(line))
+		}
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(string(raw), "\r\n", ""))
+	if err != nil || !bytes.Equal(decoded, pdf) {
+		t.Errorf("attachment does not round-trip (%v)", err)
+	}
+	if _, err := parts.NextRawPart(); !errors.Is(err, io.EOF) {
+		t.Errorf("the message carries a part after the attachment, want none")
+	}
+}
+
 // A client answering the quote should reach the branch mailbox, while the message still comes
 // from the platform's own sender, the only address the provider lets us send as.
 func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
