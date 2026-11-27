@@ -122,7 +122,7 @@ acknowledged but do not create RFQs.
 Before a message becomes an order, `ConversationService.Route` checks whether its sender is
 answering a quote. Within the branch the channel resolves to, a candidate is a quote whose latest
 successful `quote_send` on **the same channel** went to the sender, where that send has not expired
-and the quote is `SENT` or `CHANGE_REQUESTED` and not archived. `client.phone` plays no part: the
+and the quote is `SENT`, `CHANGE_REQUESTED` or `ACCEPTED` and not archived. `client.phone` plays no part: the
 send's destination is the address the quote actually reached.
 
 - **The sender's forms.** Meta's `wa_id` is digits only, and an Argentine mobile is written both
@@ -134,6 +134,9 @@ send's destination is the address the quote actually reached.
 - **Locks.** The candidate read is unlocked, so each candidate is locked (`SELECT … FOR UPDATE`, the
   same row lock the edit paths take first) and re-checked in recency order; one a seller accepted or
   archived meanwhile is skipped.
+- **An accepted quote** still takes its customer's messages: they join its conversation as recorded
+  messages that open no window, so no handler reads them and the seller sees what was said after
+  the acceptance.
 - **No match** creates the RFQ exactly as before.
 
 A joined message is written in one tenant transaction with its reservation: the `CLIENT`
