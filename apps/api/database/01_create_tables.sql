@@ -1839,6 +1839,8 @@ CREATE TABLE client_contact_challenge (
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
  -- The portal page a verification returns to, so an emailed link leads back to the quote it was for.
  next_path VARCHAR(255),
+ -- Set only when this proof succeeded; a newer request consumes a proof without proving it.
+ proved_at TIMESTAMPTZ,
  FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id),
  FOREIGN KEY(account_id,client_id) REFERENCES client(account_id,id)
 );
