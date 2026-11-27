@@ -372,6 +372,47 @@ func TestClientService_ConfirmForSend_NewProfileRaisesContactMatches(t *testing.
 	}
 }
 
+// Decision 92: a send no longer needs a name; an unnamed profile takes the request's profile name,
+// then the number, then the email.
+func TestClientService_ConfirmForSend_NamesAnUnnamedProfileFromWhatTheRequestCarried(t *testing.T) {
+	profileName, phone, email := "Juan Obra", "+54 11 5555-0000", "compras@cliente.test"
+	for _, tc := range []struct {
+		label        string
+		requestName  *string
+		phone, email *string
+		want         *string
+	}{
+		{"profile name", &profileName, &phone, &email, &profileName},
+		{"phone", nil, &phone, &email, ptr("+5491155550000")},
+		{"email", nil, nil, &email, &email},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			h := newClientServiceHarness()
+			h.clients.requestContact = domain.ClientContactHints{Name: tc.requestName}
+			err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+				&domain.AssociateQuoteClientInput{New: &domain.NewClient{Phone: tc.phone, Email: tc.email}})
+			if err != nil {
+				t.Fatalf("ConfirmForSend() = %v, want no error", err)
+			}
+			if h.clients.created == nil || h.clients.created.Name == nil || *h.clients.created.Name != *tc.want {
+				t.Fatalf("created profile = %+v, want name %q", h.clients.created, *tc.want)
+			}
+		})
+	}
+}
+
+func TestClientService_ValidateForSend_AcceptsAnUnnamedProfileWithAContact(t *testing.T) {
+	h := newClientServiceHarness()
+	clientID := uuid.New()
+	phone := "+5491155550000"
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID, Phone: &phone}
+	h.quotes.quote.ClientID = &clientID
+
+	if err := h.service.ValidateForSend(context.Background(), nil, branchTenant(), *h.quotes.quote, nil); err != nil {
+		t.Fatalf("ValidateForSend() = %v, want no error for a profile without a name", err)
+	}
+}
+
 func TestClientService_ConfirmForSend_ExistingProfileRaisesNoMatches(t *testing.T) {
 	h := newClientServiceHarness()
 	clientID := uuid.New()

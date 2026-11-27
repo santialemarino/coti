@@ -47,7 +47,8 @@ func NewClientContactVerificationService(contacts *ClientContactService, store c
 }
 
 // Request sends a bound, expiring proof only for a destination in the customer's own saved profile.
-func (s *ClientContactVerificationService) Request(ctx context.Context, p domain.CustomerPrincipal, kind domain.ChannelType, value string) (*domain.ContactChallenge, error) {
+// next is the portal page the confirmation returns to; anything that is not one is dropped.
+func (s *ClientContactVerificationService) Request(ctx context.Context, p domain.CustomerPrincipal, kind domain.ChannelType, value, next string) (*domain.ContactChallenge, error) {
 	if p.CustomerID == uuid.Nil || s.messenger == nil {
 		return nil, domain.ErrUnauthenticated
 	}
@@ -66,7 +67,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 		}
 		secret = fmt.Sprintf("%06d", n.Int64())
 	}
-	c := &domain.ContactChallenge{ID: uuid.New(), AccountID: p.AccountID, CustomerID: p.CustomerID, Purpose: domain.ContactChallengeVerify, Kind: kind, Value: value, ExpiresAt: s.now().Add(s.cfg.ContactVerificationTTL)}
+	c := &domain.ContactChallenge{ID: uuid.New(), AccountID: p.AccountID, CustomerID: p.CustomerID, Purpose: domain.ContactChallengeVerify, Kind: kind, Value: value, ExpiresAt: s.now().Add(s.cfg.ContactVerificationTTL), NextPath: domain.CustomerNextPath(next)}
 	c.TokenHash = hashToken(c.ID.String() + ":" + secret)
 	hostname := ""
 	err = s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
@@ -136,11 +137,13 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 }
 
 // Confirm validates proof and moves provisional history in the same transaction as verification.
-func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain.CustomerPrincipal, id uuid.UUID, secret string) error {
+// Returns the portal page the request asked to return to, empty for the default.
+func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain.CustomerPrincipal, id uuid.UUID, secret string) (string, error) {
 	if p.CustomerID == uuid.Nil || len(secret) > 128 {
-		return domain.ErrUnauthenticated
+		return "", domain.ErrUnauthenticated
 	}
 	var denied error
+	next := ""
 	err := s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
 		c, err := s.store.GetChallenge(ctx, q, p, id)
 		if err != nil {
@@ -157,6 +160,7 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			return err
 		}
 		hash := hashToken(c.ID.String() + ":" + secret)
+		next = c.NextPath
 		if c.ConsumedAt != nil {
 			if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 {
 				return domain.ErrUnauthenticated
@@ -191,9 +195,46 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		return s.store.FinishChallenge(ctx, q, p, id, true)
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	return denied
+	if denied != nil {
+		return "", denied
+	}
+	return next, nil
+}
+
+// Describe tells the customer which of their contacts a verification is for and where it stands.
+func (s *ClientContactVerificationService) Describe(ctx context.Context, p domain.CustomerPrincipal, id uuid.UUID) (*domain.ContactChallengeView, error) {
+	if p.CustomerID == uuid.Nil {
+		return nil, domain.ErrUnauthenticated
+	}
+	var view *domain.ContactChallengeView
+	err := s.contacts.db.InTenantTx(ctx, domain.Tenant{AccountID: p.AccountID}, func(q repository.Querier) error {
+		c, err := s.store.GetChallenge(ctx, q, p, id)
+		if err != nil {
+			return err
+		}
+		view = &domain.ContactChallengeView{Kind: c.Kind, Value: c.Value, NextPath: c.NextPath, Status: domain.ContactChallengePending}
+		if c.ConsumedAt == nil {
+			if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
+				view.Status = domain.ContactChallengeExpired
+			}
+			return nil
+		}
+		// A consumed proof either verified the contact or was cancelled by a newer one.
+		view.Status = domain.ContactChallengeExpired
+		collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ClientID})
+		if err != nil {
+			return err
+		}
+		for _, contact := range collections[c.ClientID] {
+			if contact.Kind == c.Kind && contact.Value == c.Value && contact.Verified {
+				view.Status = domain.ContactChallengeVerified
+			}
+		}
+		return nil
+	})
+	return view, err
 }
 
 // ProveRegisteredContact verifies a contact whose control was proved outside a code, such as an

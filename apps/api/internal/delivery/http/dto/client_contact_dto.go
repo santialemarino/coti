@@ -10,6 +10,8 @@ import (
 type ContactVerificationRequest struct {
 	Kind  string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
 	Value string `json:"value" binding:"required,max=255"`
+	// Next is the portal page the confirmation returns to; any other value is ignored.
+	Next string `json:"next" binding:"max=255"`
 }
 
 // CustomerMainContactRequest is the body for PUT /v1/customer/sites/{hostname}/profile/main-contact.
@@ -27,6 +29,19 @@ type ContactRegistrationLinkRequest struct {
 type ContactVerificationResponse struct {
 	ID        uuid.UUID `json:"id"`
 	ExpiresAt string    `json:"expires_at"`
+}
+
+// ContactVerificationConfirmed is returned by POST .../profile/contacts/verification/confirm.
+type ContactVerificationConfirmed struct {
+	Next *string `json:"next"`
+}
+
+// ContactVerificationStatusResponse is returned by GET .../profile/contacts/verification/{id}.
+type ContactVerificationStatusResponse struct {
+	Kind   string  `json:"kind"`
+	Value  string  `json:"value"`
+	Status string  `json:"status" enums:"PENDING,VERIFIED,EXPIRED"`
+	Next   *string `json:"next"`
 }
 
 // ContactVerificationConfirmation redeems a one-use email token or WhatsApp code.

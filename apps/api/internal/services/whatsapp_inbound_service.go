@@ -50,6 +50,10 @@ type whatsAppInboundConversations interface {
 // errInboundAlreadyReserved rolls back a retried delivery's writes; its first outcome stands.
 var errInboundAlreadyReserved = errors.New("inbound message already reserved")
 
+// errInboundNoConversation drops a conversation-only message, such as a reaction, whose sender
+// has no live quote: it is never an order.
+var errInboundNoConversation = errors.New("inbound message has no conversation to join")
+
 type whatsAppInboundRFQCreator interface {
 	CreateInboundTextDraftForMessage(ctx context.Context, route domain.InboundChannelRoute,
 		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
@@ -158,7 +162,11 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			}
 			continue
 		}
-		if err := s.ingestOne(ctx, route, message); err != nil {
+		err := s.ingestOne(ctx, route, message)
+		if errors.Is(err, errInboundNoConversation) {
+			continue
+		}
+		if err != nil {
 			return err
 		}
 		if completer, ok := s.contacts.(inboundContactCompleter); ok {
@@ -191,6 +199,9 @@ func (s *WhatsAppInboundService) ingestOne(
 			joined, err := s.joinConversation(ctx, q, route, message)
 			if err != nil {
 				return err
+			}
+			if joined == nil && message.ConversationOnly {
+				return errInboundNoConversation
 			}
 			var pending *uuid.UUID
 			var name string

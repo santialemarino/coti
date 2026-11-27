@@ -62,6 +62,31 @@ func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID
 	return result, rows.Err()
 }
 
+// ListPortalContacts returns, keyed by domain.ContactDestinationKey, the destinations an active
+// customer account has proved: exactly what the portal matches a delivery against.
+func (r *ClientContactRepository) ListPortalContacts(ctx context.Context, q Querier, accountID uuid.UUID, phones, emails []string) (map[string]bool, error) {
+	rows, err := q.Query(ctx, `SELECT DISTINCT contact.kind,contact.value FROM customer_contact_ownership ownership
+ JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
+ JOIN customer_identity identity ON identity.account_id=ownership.account_id AND identity.id=ownership.customer_id
+ WHERE ownership.account_id=$1 AND identity.disabled_at IS NULL AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL
+ AND ((contact.kind='WHATSAPP' AND contact.value=ANY($2)) OR (contact.kind='EMAIL' AND contact.value=ANY($3)))`,
+		accountID, phones, emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var kind domain.ChannelType
+		var value string
+		if err := rows.Scan(&kind, &value); err != nil {
+			return nil, err
+		}
+		result[domain.ContactDestinationKey(kind, value)] = true
+	}
+	return result, rows.Err()
+}
+
 // GetProfileAccess reports whether a customer proved the profile and the name it entered.
 func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID) (*domain.CustomerProfileAccess, error) {
 	var access domain.CustomerProfileAccess

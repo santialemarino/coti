@@ -75,7 +75,7 @@ func (e *env) customersSharingDestination(t *testing.T, n int, cfg config.Custom
 }
 
 func (c destinationCustomer) request(destination string) error {
-	_, err := c.verifier.Request(context.Background(), c.principal, domain.ChannelTypeEmail, destination)
+	_, err := c.verifier.Request(context.Background(), c.principal, domain.ChannelTypeEmail, destination, "")
 	return err
 }
 
@@ -142,27 +142,27 @@ func TestContactVerification_LockoutAtOneSupplierDoesNotBlockAnother(t *testing.
 	customers := e.customersSharingDestination(t, 2, destinationCaps(100, 3, 100), destination)
 	a, b := customers[0], customers[1]
 
-	proofA, err := a.verifier.Request(ctx, a.principal, domain.ChannelTypeEmail, destination)
+	proofA, err := a.verifier.Request(ctx, a.principal, domain.ChannelTypeEmail, destination, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 3 {
-		if err := a.verifier.Confirm(ctx, a.principal, proofA.ID, "wrong"); !errors.Is(err, domain.ErrUnauthenticated) {
+		if _, err := a.verifier.Confirm(ctx, a.principal, proofA.ID, "wrong"); !errors.Is(err, domain.ErrUnauthenticated) {
 			t.Fatalf("wrong proof: %v", err)
 		}
 	}
-	if err := a.verifier.Confirm(ctx, a.principal, proofA.ID, linkSecret(t, a.messenger.messages[0])); !errors.Is(err, domain.ErrLocked) {
+	if _, err := a.verifier.Confirm(ctx, a.principal, proofA.ID, linkSecret(t, a.messenger.messages[0])); !errors.Is(err, domain.ErrLocked) {
 		t.Fatalf("right proof inside the lockout: %v", err)
 	}
 	if err := a.request(destination); !errors.Is(err, domain.ErrLocked) {
 		t.Fatalf("new code for a locked destination: %v", err)
 	}
 
-	proofB, err := b.verifier.Request(ctx, b.principal, domain.ChannelTypeEmail, destination)
+	proofB, err := b.verifier.Request(ctx, b.principal, domain.ChannelTypeEmail, destination, "")
 	if err != nil {
 		t.Fatalf("lockout at one supplier blocked a request at another: %v", err)
 	}
-	if err := b.verifier.Confirm(ctx, b.principal, proofB.ID, linkSecret(t, b.messenger.messages[0])); err != nil {
+	if _, err := b.verifier.Confirm(ctx, b.principal, proofB.ID, linkSecret(t, b.messenger.messages[0])); err != nil {
 		t.Fatalf("lockout at one supplier blocked the owner at another: %v", err)
 	}
 	var verifiedAt []uuid.UUID

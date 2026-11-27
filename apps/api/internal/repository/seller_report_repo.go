@@ -635,7 +635,10 @@ func (r *SellerReportRepository) readAssistant(
 		 JOIN quote ON quote.account_id = version.account_id AND quote.id = version.quote_id
 		 JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		 WHERE decision.account_id = $1
-		   AND decision.created_at >= $4 AND decision.created_at < $5`,
+		   AND decision.created_at >= $4 AND decision.created_at < $5
+		   -- A reply that asked for no change proposes nothing for the seller to decide.
+		   AND COALESCE(decision.ai_proposal::jsonb ->> 'no_match_reason', '') NOT IN
+		     ('CUSTOMER_ACCEPTS', 'CUSTOMER_REJECTS', 'CUSTOMER_QUESTION', 'NO_REQUEST')`,
 		reportArgs(in)...,
 	).Scan(&out.Proposals, &out.ApprovedAsIs, &out.Edited, &out.Rejected, &out.ManualOverride,
 		&out.Pending)

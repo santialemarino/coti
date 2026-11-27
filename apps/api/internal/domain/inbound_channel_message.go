@@ -13,8 +13,10 @@ type InboundTextMessage struct {
 	SenderID              string
 	SenderLabel           *string
 	Body                  string
-	ProviderReceivedAt    time.Time
-	Payload               []byte
+	// ConversationOnly marks a message, such as a reaction, that never starts an order.
+	ConversationOnly   bool
+	ProviderReceivedAt time.Time
+	Payload            []byte
 }
 
 // InboundEmailMessage carries one mailbox message and its original RFC 5322 bytes.

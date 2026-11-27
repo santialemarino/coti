@@ -555,15 +555,22 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
 
 1. **Prepare.** It confirms the claim still holds (`status = PROCESSING` at the claim's
    `processing_started_at`) and runs the state×intention matrix (`domain.ValidateHandlerRun`): only
-   an unarchived `SENT` or `CHANGE_REQUESTED` quote is handled. A `SENT` quote moves to
-   `CHANGE_REQUESTED` with no user on the `quote_status_change` row, and the frozen version is cloned
-   into the single draft when none is open; a `CHANGE_REQUESTED` quote keeps the draft it has. It
-   reads the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
-   messages of any author outside the batch, then commits, so the move holds whatever the model does.
+   an unarchived `SENT` or `CHANGE_REQUESTED` quote is handled. It reads the quote's current version
+   and its lines — the frozen sent version on a `SENT` quote, the open draft on a `CHANGE_REQUESTED`
+   one — the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
+   messages of any author outside the batch. It writes nothing: the reply is read before the quote
+   moves.
 2. **Propose.** Outside any transaction the forced-schema change handler receives the batch's
-   messages, the context, the **draft's** lines with their opaque IDs, and the promotions in force at
-   the quote's branch. Its instructions are a fixed text sent first, so the provider caches that
-   prefix; everything variable rides in the input. It answers with a `level`:
+   messages, the context, the **current version's** lines with their opaque IDs, and the promotions
+   in force at the quote's branch. Its instructions are a fixed text sent first, so the provider
+   caches that prefix; everything variable rides in the input. It first classifies the whole reply
+   as `customer_decision` — `CHANGE`, `ACCEPT`, `REJECT`, `QUESTION` or `NONE` — with
+   `decision_confidence_percent`, `conditional` (an acceptance tied to something the quote does not
+   meet) and `partial_or_alternative`. The backend acts on `ChangeRequestProposal.EffectiveDecision`:
+   any operation or goal, and any conditional acceptance, is a `CHANGE` whatever the label says. A
+   reply that is not a change keeps the quote as it is and is recorded as a no-match with the reason
+   `CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION` or `NO_REQUEST` on the current
+   version, so the customer's own accept link keeps working. For a change it answers with a `level`:
    - `ATOMIC` — concrete operations: `ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, `UPDATE_QUANTITY`,
      or `ADD_DISCOUNT` naming one of the promotions it was given (never an amount).
    - `COMPLEX` — a goal from a closed set, with no operations: `LOWER_TOTAL_PRICE` or
@@ -576,13 +583,21 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    (`domain.ValidateHandlerIntent`: `ATOMIC`, `ADD_DISCOUNT` or `COMPLEX`), and matches added or
    replaced materials against the branch catalog.
 
-3. **Apply.** Under the lock again the claim, the matrix and the draft are re-checked: a quote
-   archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a draft
-   the seller sent, or a targeted line the seller removed, returns it to the queue for a fresh
-   proposal. The operations are written in place, the discount sweep re-settles the draft's
-   discounts and total, and `handler_decision` records the batch (`message_batch_id`), the input,
-   the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
-   the same draft.
+3. **Apply.** Under the lock again the claim, the matrix and the version are re-checked: a quote
+   archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a
+   version replaced or frozen meanwhile, or a targeted line the seller removed, returns it to the
+   queue for a fresh proposal. A change then moves a `SENT` quote to `CHANGE_REQUESTED` with no user
+   on the `quote_status_change` row and, when the current version is the frozen one, clones it into
+   the single draft and points every line the proposal names at the clone's line through the
+   clone's source map — all in the transaction that writes the change, so a rollback leaves neither.
+   The operations are written in place, the discount sweep re-settles the draft's discounts and
+   total, and `handler_decision` records the batch (`message_batch_id`), the input, the
+   interpretation, the proposal with the decision acted on, and the state the quote was in at the
+   claim. A later batch edits the same draft.
+
+A batch that fails for good — out of attempts or unprocessable — is handed back to the handler
+(`HandleFailed`): a `SENT` quote moves to `CHANGE_REQUESTED` with its draft open, since nobody read
+what the customer asked.
 
 A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
 line with a product:

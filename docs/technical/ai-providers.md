@@ -221,7 +221,9 @@ stating them in the schema would read as a guarantee nothing makes.
 The invariants stay above the ports, in the services:
 
 - **The AI never writes to production.** The chain is AI proposes → backend validates → seller
-  approves. These ports return proposals; nothing here persists anything.
+  approves; the one exception is a customer's acceptance, which the backend — never the AI — turns
+  into an accepted quote only when its own guardrails confirm it, and which the seller can undo.
+  These ports return proposals; nothing here persists anything.
 - **The AI never calculates money.** The deterministic discount engine does.
 - **Every proposal is validated against the state×intention matrix** before it materializes.
 

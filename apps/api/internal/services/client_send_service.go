@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -43,8 +45,8 @@ func (s *ClientService) ValidateForSend(ctx context.Context, q repository.Querie
 		if err != nil {
 			return err
 		}
-		if client.Name == nil || (client.Phone == nil && client.Email == nil) {
-			return fmt.Errorf("%w: the client needs a full name and a contact", domain.ErrInvalidInput)
+		if client.Phone == nil && client.Email == nil {
+			return fmt.Errorf("%w: the client needs a contact", domain.ErrInvalidInput)
 		}
 		return nil
 	}
@@ -105,7 +107,15 @@ func (s *ClientService) ConfirmForSend(ctx context.Context, q repository.Querier
 	if in.ClientID != nil {
 		clientID = *in.ClientID
 	} else {
-		client, err := s.clients.Create(ctx, q, tenant.AccountID, *in.New)
+		profile := *in.New
+		if profile.Name == nil {
+			name, err := s.fallbackClientName(ctx, q, tenant, quote, in.New)
+			if err != nil {
+				return err
+			}
+			profile.Name = name
+		}
+		client, err := s.clients.Create(ctx, q, tenant.AccountID, profile)
 		if err != nil {
 			return err
 		}
@@ -137,6 +147,25 @@ func (s *ClientService) recordContactMatches(ctx context.Context, q repository.Q
 	return s.clients.CreateMatchObservations(ctx, q, tenant.AccountID, tenant.BranchID, clientID, domain.ChannelTypeEmail, *in.Email, *in.Email)
 }
 
+// fallbackClientName names a profile the seller left unnamed (decision 92): the name the request
+// carried, such as the WhatsApp profile name, else the phone, else the email.
+func (s *ClientService) fallbackClientName(ctx context.Context, q repository.Querier, tenant domain.Tenant, quote domain.Quote, in *domain.NewClient) (*string, error) {
+	hints, err := s.clients.GetRequestContact(ctx, q, tenant.AccountID, tenant.BranchID, quote.RFQID)
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range []*string{hints.Name, in.Phone, in.Email} {
+		if candidate != nil && strings.TrimSpace(*candidate) != "" {
+			name := strings.TrimSpace(*candidate)
+			if utf8.RuneCountInString(name) > maxClientNameLength {
+				name = string([]rune(name)[:maxClientNameLength])
+			}
+			return &name, nil
+		}
+	}
+	return nil, nil
+}
+
 func normalizeSendClient(in *domain.AssociateQuoteClientInput) error {
 	if in == nil {
 		return nil
@@ -151,9 +180,6 @@ func normalizeSendClient(in *domain.AssociateQuoteClientInput) error {
 		}
 		if err := normalizeNewClient(in.New); err != nil {
 			return err
-		}
-		if in.New.Name == nil {
-			return fmt.Errorf("%w: the client name is required", domain.ErrInvalidInput)
 		}
 	}
 	in.TagIDs = uniqueUUIDs(in.TagIDs)

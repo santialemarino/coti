@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -73,6 +74,15 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		}
 		contentHeaders = []string{`Content-Type: multipart/alternative; boundary="` + parts.Boundary() + `"`}
 	}
+	if len(msg.Attachments) > 0 {
+		mixed, boundary, err := withAttachments(contentHeaders, body.Bytes(), msg.Attachments)
+		if err != nil {
+			return nil, err
+		}
+		contentHeaders = []string{`Content-Type: multipart/mixed; boundary="` + boundary + `"`}
+		body.Reset()
+		body.Write(mixed)
+	}
 
 	fromName := m.cfg.FromName
 	if msg.FromName != "" {
@@ -95,6 +105,54 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		headers = append(headers, "In-Reply-To: "+msg.InReplyTo, "References: "+msg.InReplyTo)
 	}
 	return append([]byte(strings.Join(headers, "\r\n")+"\r\n\r\n"), body.Bytes()...), nil
+}
+
+// withAttachments wraps the rendered body as the first part of a multipart/mixed message and adds
+// each file after it, base64 in 76-column lines as RFC 2045 requires.
+func withAttachments(contentHeaders []string, content []byte, attachments []domain.EmailAttachment) ([]byte, string, error) {
+	var result bytes.Buffer
+	fail := func(err error) ([]byte, string, error) { return nil, "", fmt.Errorf("compose email: %w", err) }
+	parts := multipart.NewWriter(&result)
+	header := textproto.MIMEHeader{}
+	for _, line := range contentHeaders {
+		key, value, _ := strings.Cut(line, ": ")
+		header.Add(key, value)
+	}
+	w, err := parts.CreatePart(header)
+	if err != nil {
+		return fail(err)
+	}
+	if _, err := w.Write(content); err != nil {
+		return fail(err)
+	}
+	for _, attachment := range attachments {
+		contentType := mime.FormatMediaType(attachment.ContentType, map[string]string{"name": attachment.Filename})
+		if contentType == "" {
+			contentType = mime.FormatMediaType("application/octet-stream", map[string]string{"name": attachment.Filename})
+		}
+		w, err := parts.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {contentType},
+			"Content-Disposition":       {mime.FormatMediaType("attachment", map[string]string{"filename": attachment.Filename})},
+			"Content-Transfer-Encoding": {"base64"},
+		})
+		if err != nil {
+			return fail(err)
+		}
+		encoded := base64.StdEncoding.EncodeToString(attachment.Content)
+		for len(encoded) > 76 {
+			if _, err := io.WriteString(w, encoded[:76]+"\r\n"); err != nil {
+				return fail(err)
+			}
+			encoded = encoded[76:]
+		}
+		if _, err := io.WriteString(w, encoded+"\r\n"); err != nil {
+			return fail(err)
+		}
+	}
+	if err := parts.Close(); err != nil {
+		return fail(err)
+	}
+	return result.Bytes(), parts.Boundary(), nil
 }
 
 func writeQuotedPrintable(w io.Writer, content string) error {
