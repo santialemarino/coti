@@ -1869,13 +1869,12 @@
         "clientChooseExisting": "Elegir uno existente",
         "clientNone": "La cotización no tiene un cliente asociado.",
         "clientChoose": "Seleccioná un cliente",
-        "clientName": "Nombre y apellido",
+        "clientName": "Nombre y apellido (opcional)",
         "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No pudimos cargar los clientes. Intentá de nuevo.",
         "clientRetry": "Reintentar carga de clientes",
-        "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
@@ -1906,7 +1905,11 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1952,7 +1955,11 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios."
           }
         },
         "sellerDecision": {

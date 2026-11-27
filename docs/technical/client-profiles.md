@@ -4,7 +4,8 @@
 
 A supplier has one active commercial profile per CUIT/CUIL. A provisional profile has no fiscal
 identifier; its verified phone or email identifies its channel history. There is no provisional
-boolean. New profiles require a full name and at least one phone or email. Seller-created profiles
+boolean. New profiles require at least one phone or email; one the seller leaves unnamed takes the
+name the request carried (a WhatsApp profile name), else its phone, else its email. Seller-created profiles
 and unknown channel senders never receive a CUIT from seller input or message declarations.
 
 A contact is verified only by proof: the channel a message arrived from (`source` CHANNEL, or a

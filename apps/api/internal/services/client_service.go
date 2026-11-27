@@ -350,8 +350,8 @@ func normalizeNewClient(client *domain.NewClient) error {
 	client.Name = normalizedOptional(client.Name)
 	client.Phone = normalizedOptional(client.Phone)
 	client.Email = normalizedOptional(client.Email)
-	if client.Name == nil || (client.Phone == nil && client.Email == nil) {
-		return fmt.Errorf("%w: a client needs a full name and at least one contact", domain.ErrInvalidInput)
+	if client.Phone == nil && client.Email == nil {
+		return fmt.Errorf("%w: a client needs at least one contact", domain.ErrInvalidInput)
 	}
 	if client.Name != nil && utf8.RuneCountInString(*client.Name) > maxClientNameLength {
 		return fmt.Errorf("%w: client name exceeds %d characters", domain.ErrInvalidInput,

@@ -32,6 +32,10 @@ renders, which would arrive as a blank mail. Every body is `charset=utf-8` and `
 the subject and the two display names are RFC 2047 encoded words. None of that is decoration: the copy is Argentine
 Spanish, and a transport that assumes ASCII is how "Confirmá tu dirección" arrives mangled.
 
+A message with attachments (the quotation's PDF) wraps that body as the first part of a
+`multipart/mixed` message, each file after it in base64 lines of 76 characters. The `console`
+adapter logs each attachment's name, type and size, never its content.
+
 The sender is `MAIL_FROM_NAME` + `MAIL_FROM_ADDRESS`. The credentials are **one account per
 environment**, read from configuration when the adapter is constructed — the whole installation
 sends as Coti, not each corralón from its own server.

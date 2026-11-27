@@ -25,6 +25,8 @@ type emailView struct {
 	BrandColor     template.CSS
 	Heading        string
 	Paragraphs     []string
+	Items          []string
+	Closing        []string
 	ActionLabel    string
 	ActionURL      string
 	ActionFallback string
@@ -44,6 +46,12 @@ var emailHTMLTemplate = template.Must(template.New("email").Parse(
 <tr><td style="padding:28px;">
 <h1 style="margin:0 0 16px;font-size:20px;color:#111827;">{{.Heading}}</h1>
 {{range .Paragraphs}}<p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#374151;">{{.}}</p>
+{{end}}
+{{if .Items}}<ul style="margin:0 0 14px;padding-left:20px;font-size:15px;line-height:1.5;color:#374151;">
+{{range .Items}}<li>{{.}}</li>
+{{end}}</ul>
+{{end}}
+{{range .Closing}}<p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#374151;">{{.}}</p>
 {{end}}
 {{if .ActionURL}}<p style="margin:22px 0;"><a href="{{.ActionURL}}" style="display:inline-block;background:{{.BrandColor}};color:#FFFFFF;text-decoration:none;padding:12px 22px;border-radius:6px;font-size:15px;">{{.ActionLabel}}</a></p>
 <p style="margin:0;font-size:13px;color:#6B7280;">{{.ActionFallback}}<br>{{.ActionURL}}</p>
@@ -65,6 +73,8 @@ func renderEmail(account domain.Account, out OutboundMail) (domain.EmailMessage,
 		BrandColor:     template.CSS(defaultBrandColor),
 		Heading:        out.Heading,
 		Paragraphs:     out.Paragraphs,
+		Items:          out.Items,
+		Closing:        out.Closing,
 		ActionLabel:    out.ActionLabel,
 		ActionURL:      out.ActionURL,
 		ActionFallback: mailActionFallback,
@@ -90,6 +100,7 @@ func renderEmail(account domain.Account, out OutboundMail) (domain.EmailMessage,
 		ReplyTo:     out.ReplyTo,
 		ReplyToName: out.ReplyToName,
 		FromName:    out.FromName,
+		Attachments: out.Attachments,
 	}, nil
 }
 
@@ -100,6 +111,18 @@ func renderEmailText(view emailView) string {
 	b.WriteString(view.Heading)
 	b.WriteString("\n\n")
 	for _, p := range view.Paragraphs {
+		b.WriteString(p)
+		b.WriteString("\n\n")
+	}
+	for _, item := range view.Items {
+		b.WriteString("• ")
+		b.WriteString(item)
+		b.WriteString("\n")
+	}
+	if len(view.Items) > 0 {
+		b.WriteString("\n")
+	}
+	for _, p := range view.Closing {
 		b.WriteString(p)
 		b.WriteString("\n\n")
 	}

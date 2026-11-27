@@ -125,12 +125,13 @@ var _ ConversationBatchHandler = (*BatchChangeHandler)(nil)
 type preparedBatch struct {
 	tenant       domain.Tenant
 	stateAtClaim domain.QuoteStatus
-	status       domain.QuoteStatus
-	draft        domain.QuoteVersion
-	items        []domain.QuoteItem
-	promotions   []domain.Promotion
-	messages     []domain.QuoteMessage
-	context      []domain.QuoteMessage
+	// version is the quote's current version as the model reads it: the sent one, frozen, until a
+	// change clones it.
+	version    domain.QuoteVersion
+	items      []domain.QuoteItem
+	promotions []domain.Promotion
+	messages   []domain.QuoteMessage
+	context    []domain.QuoteMessage
 	// lowerPrice is the account's first strategy for a lower total.
 	lowerPrice domain.HandlerStrategy
 }
@@ -138,6 +139,9 @@ type preparedBatch struct {
 type batchProposal struct {
 	record   domain.HandlerProposalRecord
 	resolved *resolvedChangeRequest
+	// change moves a SENT quote to CHANGE_REQUESTED and opens its draft; any other reply leaves
+	// the quote as it is and is only recorded.
+	change bool
 	// strategies is a complex intent's recipes in run order; attempt is the one this run tries.
 	strategies []domain.HandlerStrategy
 	attempt    int
@@ -173,8 +177,38 @@ func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBat
 	}
 }
 
-// prepare moves a SENT quote to CHANGE_REQUESTED and ensures its single draft, then reads what
-// the model needs. It commits before the model is called, so the move holds even if it fails.
+// HandleFailed leaves a batch no run could read to the seller: a SENT quote moves to
+// CHANGE_REQUESTED with its draft open, as a change would, since nobody knows what was asked.
+func (h *BatchChangeHandler) HandleFailed(ctx context.Context, batch domain.MessageBatch) error {
+	return h.db.InTenantTx(ctx, domain.Tenant{AccountID: batch.AccountID},
+		func(q repository.Querier) error {
+			quote, err := h.quotes.GetByIDForUpdateInAccount(ctx, q, batch.AccountID, batch.QuoteID)
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if quote.CurrentStatus != domain.QuoteStatusSent || quote.ArchivedAt != nil {
+				return nil
+			}
+			current, err := h.quotes.GetCurrentVersion(ctx, q, quote.AccountID, quote.BranchID,
+				quote.ID)
+			if err != nil {
+				return err
+			}
+			messages, err := h.messages.ListByBatch(ctx, q, batch.AccountID, quote.ID, batch.ID)
+			if err != nil {
+				return err
+			}
+			var record domain.HandlerProposalRecord
+			_, _, err = h.openDraft(ctx, q, *quote, *current, messages, nil, &record)
+			return err
+		})
+}
+
+// prepare reads what the model needs and changes nothing: the reply is classified before the quote
+// moves, so an acceptance, a rejection or a question leaves a SENT quote as it was.
 func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBatch,
 ) (preparedBatch, error) {
 	var prepared preparedBatch
@@ -208,38 +242,12 @@ func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBa
 				return err
 			}
 
-			if quote.CurrentStatus == domain.QuoteStatusSent {
-				previous := quote.CurrentStatus
-				if _, err := h.quotes.UpdateStatus(ctx, q, quote.AccountID, quote.BranchID, quote.ID,
-					previous, domain.QuoteStatusChangeRequested); err != nil {
-					return err
-				}
-				if _, err := h.quotes.AppendStatusChange(ctx, q, quote.AccountID, quote.ID, &previous,
-					domain.QuoteStatusChangeRequested, nil); err != nil {
-					return err
-				}
-			}
-			prepared.status = domain.QuoteStatusChangeRequested
-
-			draft, err := h.quotes.GetCurrentVersion(ctx, q, quote.AccountID, quote.BranchID, quote.ID)
+			version, err := h.quotes.GetCurrentVersion(ctx, q, quote.AccountID, quote.BranchID, quote.ID)
 			if err != nil {
 				return err
 			}
-			if draft.IsImmutable {
-				var comment *string
-				if text := truncateHandlerText(clientInput(prepared.messages)); text != "" {
-					comment = &text
-				}
-				clone, err := cloneQuoteVersionForEditing(ctx, q, h.quotes, h.prices, quote.AccountID,
-					quote.BranchID, quote.ID, *draft, nil, comment,
-					&draftCarry{discounts: h.discounts, sweep: h.sweep, totals: h.quotes})
-				if err != nil {
-					return err
-				}
-				draft = clone.Draft
-			}
-			prepared.draft = *draft
-			prepared.items, err = h.quotes.ListItems(ctx, q, quote.AccountID, draft.ID)
+			prepared.version = *version
+			prepared.items, err = h.quotes.ListItems(ctx, q, quote.AccountID, version.ID)
 			if err != nil || h.sweep.promotions == nil {
 				return err
 			}
@@ -255,7 +263,7 @@ func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBa
 func (h *BatchChangeHandler) propose(ctx context.Context, prepared preparedBatch,
 ) (batchProposal, error) {
 	if h.proposer == nil {
-		return noMatchProposal(domain.HandlerNoMatchAIDisabled, ""), nil
+		return asChange(noMatchProposal(domain.HandlerNoMatchAIDisabled, "")), nil
 	}
 	answer, err := h.proposer.Propose(domain.WithAIAccount(ctx, prepared.tenant),
 		domain.ChangeRequestInput{Message: clientInput(prepared.messages),
@@ -268,28 +276,54 @@ func (h *BatchChangeHandler) propose(ctx context.Context, prepared preparedBatch
 		h.cfg.MaxOperations)
 	if err != nil {
 		h.log.WarnContext(ctx, "conversation handler proposal was refused",
-			slog.String("draft", prepared.draft.ID.String()), slog.Any("error", err))
+			slog.String("version", prepared.version.ID.String()), slog.Any("error", err))
 		interpretation := ""
 		if answer != nil {
 			interpretation = answer.Interpretation
 		}
-		return noMatchProposal(domain.HandlerNoMatchProposalRefused, interpretation), nil
+		return asChange(noMatchProposal(domain.HandlerNoMatchProposalRefused, interpretation)), nil
+	}
+	decision := validated.Proposal.EffectiveDecision()
+	if reason, recordOnly := domain.NoMatchReasonFor(decision); recordOnly {
+		proposal := noMatchProposal(reason, validated.Proposal.Interpretation)
+		withDecision(&proposal.record, validated.Proposal, decision)
+		return proposal, nil
 	}
 	if validated.Proposal.Level == domain.ChangeRequestLevelNoMatch {
-		return noMatchProposal(domain.HandlerNoMatchRequiresSeller,
-			validated.Proposal.Interpretation), nil
+		proposal := asChange(noMatchProposal(domain.HandlerNoMatchRequiresSeller,
+			validated.Proposal.Interpretation))
+		withDecision(&proposal.record, validated.Proposal, decision)
+		return proposal, nil
 	}
-	if err := validateProposalIntents(prepared.status, false, validated); err != nil {
+	if err := validateProposalIntents(prepared.stateAtClaim, false, validated); err != nil {
 		return batchProposal{}, err
 	}
 	resolveChangeRequestMatches(ctx, prepared.tenant, h.matcher, &validated, h.log)
-	return batchProposal{resolved: &validated,
+	proposal := batchProposal{resolved: &validated, change: true,
 		strategies: strategyOrder(validated.Proposal, prepared.lowerPrice),
 		record: domain.HandlerProposalRecord{
 			Outcome: domain.HandlerOutcomeApplied, Interpretation: validated.Proposal.Interpretation,
 			Intent: validated.Proposal.Intent, IntentItemIDs: validated.Proposal.IntentItemIDs,
 			PreferredStrategy: validated.Proposal.LowerPriceStrategy,
-			Operations:        validated.Proposal.Operations}}, nil
+			Operations:        validated.Proposal.Operations}}
+	withDecision(&proposal.record, validated.Proposal, decision)
+	return proposal, nil
+}
+
+// withDecision records the decision the backend acted on and how the model read it.
+func withDecision(record *domain.HandlerProposalRecord, proposal domain.ChangeRequestProposal,
+	decision domain.CustomerDecision,
+) {
+	confidence := proposal.DecisionConfidencePercent
+	record.CustomerDecision, record.DecisionConfidencePercent = &decision, &confidence
+	record.Conditional, record.PartialOrAlternative = proposal.Conditional,
+		proposal.PartialOrAlternative
+}
+
+// asChange marks a run the seller has to look at as a change, whatever the model understood.
+func asChange(proposal batchProposal) batchProposal {
+	proposal.change = true
+	return proposal
 }
 
 // strategyOrder is the order a complex intent's recipes run in. A lower total runs the customer's
@@ -327,28 +361,38 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 		if err != nil {
 			return err
 		}
+		if err := domain.ValidateHandlerRun(quote.CurrentStatus, quote.ArchivedAt != nil); err != nil {
+			return fmt.Errorf("%w: %w", domain.ErrBatchUnprocessable, err)
+		}
 		draft, err := h.quotes.GetCurrentVersion(ctx, q, quote.AccountID, quote.BranchID, quote.ID)
 		if err != nil {
 			return err
 		}
-		if draft.ID != prepared.draft.ID || draft.IsImmutable {
+		if draft.ID != prepared.version.ID || draft.IsImmutable != prepared.version.IsImmutable {
 			return errDraftMoved
+		}
+		record, resolved := proposal.record, proposal.resolved
+		if proposal.change {
+			if draft, resolved, err = h.openDraft(ctx, q, *quote, *draft, prepared.messages,
+				resolved, &record); err != nil {
+				return err
+			}
 		}
 		before, err := draftSnapshot(ctx, q, h.quotes, h.sweep.discounts, quote.AccountID, draft.ID)
 		if err != nil {
 			return err
 		}
-		record, after := proposal.record, before
-		if proposal.resolved != nil {
-			if err := validateProposalIntents(quote.CurrentStatus, quote.ArchivedAt != nil,
-				*proposal.resolved); err != nil {
+		after := before
+		if resolved != nil {
+			if err := validateProposalIntents(domain.QuoteStatusChangeRequested,
+				quote.ArchivedAt != nil, *resolved); err != nil {
 				return err
 			}
 			var tried []domain.HandlerStrategy
 			if len(proposal.strategies) > 0 {
 				tried = proposal.strategies[:proposal.attempt+1]
 			}
-			written, err := h.write(ctx, q, *quote, *draft, *proposal.resolved, tried)
+			written, err := h.write(ctx, q, *quote, *draft, *resolved, tried)
 			if err != nil {
 				return err
 			}
@@ -371,6 +415,100 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 			DraftBefore: before, DraftAfter: after,
 		})
 	})
+}
+
+// openDraft moves a SENT quote to CHANGE_REQUESTED and, when its current version is the frozen one
+// the model read, clones it into the draft and points the proposal at the clone's lines. It runs in
+// the transaction that writes the change, so a rollback leaves neither the move nor the clone.
+func (h *BatchChangeHandler) openDraft(ctx context.Context, q repository.Querier,
+	quote domain.Quote, current domain.QuoteVersion, messages []domain.QuoteMessage,
+	resolved *resolvedChangeRequest, record *domain.HandlerProposalRecord,
+) (*domain.QuoteVersion, *resolvedChangeRequest, error) {
+	if quote.CurrentStatus == domain.QuoteStatusSent {
+		previous := quote.CurrentStatus
+		if _, err := h.quotes.UpdateStatus(ctx, q, quote.AccountID, quote.BranchID, quote.ID,
+			previous, domain.QuoteStatusChangeRequested); err != nil {
+			return nil, nil, err
+		}
+		if _, err := h.quotes.AppendStatusChange(ctx, q, quote.AccountID, quote.ID, &previous,
+			domain.QuoteStatusChangeRequested, nil); err != nil {
+			return nil, nil, err
+		}
+	}
+	if !current.IsImmutable {
+		return &current, resolved, nil
+	}
+	var comment *string
+	if text := truncateHandlerText(clientInput(messages)); text != "" {
+		comment = &text
+	}
+	clone, err := cloneQuoteVersionForEditing(ctx, q, h.quotes, h.prices, quote.AccountID,
+		quote.BranchID, quote.ID, current, nil, comment,
+		&draftCarry{discounts: h.discounts, sweep: h.sweep, totals: h.quotes})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resolved == nil {
+		// A no-match still names the lines its goal was about; they become the clone's lines.
+		named := make([]uuid.UUID, 0, len(record.IntentItemIDs))
+		for _, id := range record.IntentItemIDs {
+			if mapped, ok := clone.SourceItemIDs[id]; ok {
+				named = append(named, mapped)
+			}
+		}
+		record.IntentItemIDs = named
+		return clone.Draft, nil, nil
+	}
+	remapped, err := remapChangeRequest(*resolved, clone.SourceItemIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	record.IntentItemIDs = remapped.Proposal.IntentItemIDs
+	record.Operations = remapped.Proposal.Operations
+	return clone.Draft, &remapped, nil
+}
+
+// remapChangeRequest points every line a proposal names at the line the clone made of it. A line
+// the clone did not copy means the version moved under the model.
+func remapChangeRequest(resolved resolvedChangeRequest, lines map[uuid.UUID]uuid.UUID,
+) (resolvedChangeRequest, error) {
+	target := func(id *uuid.UUID) (*uuid.UUID, error) {
+		if id == nil {
+			return nil, nil
+		}
+		mapped, ok := lines[*id]
+		if !ok {
+			return nil, errDraftMoved
+		}
+		return &mapped, nil
+	}
+	remapped := resolved
+	remapped.Proposal.IntentItemIDs = make([]uuid.UUID, 0, len(resolved.Proposal.IntentItemIDs))
+	for _, id := range resolved.Proposal.IntentItemIDs {
+		mapped, err := target(&id)
+		if err != nil {
+			return resolvedChangeRequest{}, err
+		}
+		remapped.Proposal.IntentItemIDs = append(remapped.Proposal.IntentItemIDs, *mapped)
+	}
+	remapped.Proposal.Operations = make([]domain.ChangeRequestOperation, 0,
+		len(resolved.Proposal.Operations))
+	for _, operation := range resolved.Proposal.Operations {
+		var err error
+		if operation.TargetItemID, err = target(operation.TargetItemID); err != nil {
+			return resolvedChangeRequest{}, err
+		}
+		remapped.Proposal.Operations = append(remapped.Proposal.Operations, operation)
+	}
+	remapped.Operations = make([]resolvedChangeOperation, 0, len(resolved.Operations))
+	for _, operation := range resolved.Operations {
+		var err error
+		if operation.Operation.TargetItemID, err = target(operation.Operation.TargetItemID); err != nil {
+			return resolvedChangeRequest{}, err
+		}
+		remapped.Operations = append(remapped.Operations, operation)
+	}
+	return remapped, nil
 }
 
 // handlerWrite is what a proposal turned into on the draft.
@@ -661,11 +799,13 @@ func (e *recipeNoMatch) Error() string {
 func (e *recipeNoMatch) proposal(understood domain.HandlerProposalRecord) batchProposal {
 	origin := domain.HandlerNoMatchPipelineExhausted
 	reason := e.reason
-	return batchProposal{record: domain.HandlerProposalRecord{Outcome: domain.HandlerOutcomeNoMatch,
-		NoMatchOrigin: &origin, NoMatchReason: &reason, Interpretation: understood.Interpretation,
-		Intent: understood.Intent, IntentItemIDs: understood.IntentItemIDs,
-		StrategiesTried: e.strategies,
-		Operations:      []domain.ChangeRequestOperation{}}}
+	return batchProposal{change: true, record: domain.HandlerProposalRecord{
+		Outcome: domain.HandlerOutcomeNoMatch, NoMatchOrigin: &origin, NoMatchReason: &reason,
+		Interpretation: understood.Interpretation, Intent: understood.Intent,
+		IntentItemIDs: understood.IntentItemIDs, StrategiesTried: e.strategies,
+		Operations:       []domain.ChangeRequestOperation{},
+		CustomerDecision: understood.CustomerDecision, DecisionConfidencePercent: understood.DecisionConfidencePercent,
+		Conditional: understood.Conditional, PartialOrAlternative: understood.PartialOrAlternative}}
 }
 
 // pickAlternative returns the cheapest alternative the branch prices, ties broken by name. A

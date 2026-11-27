@@ -12594,7 +12594,11 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
                     ]
                 },
                 "outcome": {
@@ -13599,7 +13603,11 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
                     ]
                 },
                 "outcome": {

@@ -999,6 +999,10 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
         type: string
       outcome:
         enum:
@@ -1704,6 +1708,10 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
         type: string
       outcome:
         enum:

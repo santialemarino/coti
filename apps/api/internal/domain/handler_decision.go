@@ -48,7 +48,30 @@ const (
 	HandlerNoMatchRecipesExhausted HandlerNoMatchReason = "PIPELINE_EXHAUSTED"
 	// HandlerNoMatchPromotionNotEarned means the promotion the customer asked for does not apply.
 	HandlerNoMatchPromotionNotEarned HandlerNoMatchReason = "PROMOTION_NOT_EARNED"
+	// HandlerNoMatchCustomerAccepts means the customer seems to accept; the quote stays as it was.
+	HandlerNoMatchCustomerAccepts HandlerNoMatchReason = "CUSTOMER_ACCEPTS"
+	// HandlerNoMatchCustomerRejects means the customer seems to turn the quote down.
+	HandlerNoMatchCustomerRejects HandlerNoMatchReason = "CUSTOMER_REJECTS"
+	// HandlerNoMatchCustomerQuestion means the customer asked something the seller answers.
+	HandlerNoMatchCustomerQuestion HandlerNoMatchReason = "CUSTOMER_QUESTION"
+	// HandlerNoMatchNoRequest means the messages decide and ask nothing.
+	HandlerNoMatchNoRequest HandlerNoMatchReason = "NO_REQUEST"
 )
+
+// NoMatchReasonFor is the reason a decision that changes nothing is recorded under.
+func NoMatchReasonFor(decision CustomerDecision) (HandlerNoMatchReason, bool) {
+	switch decision {
+	case CustomerDecisionAccept:
+		return HandlerNoMatchCustomerAccepts, true
+	case CustomerDecisionReject:
+		return HandlerNoMatchCustomerRejects, true
+	case CustomerDecisionQuestion:
+		return HandlerNoMatchCustomerQuestion, true
+	case CustomerDecisionNone:
+		return HandlerNoMatchNoRequest, true
+	}
+	return "", false
+}
 
 // HandlerStrategy is one recipe the backend ran for a complex intent.
 type HandlerStrategy string
@@ -101,6 +124,11 @@ type HandlerProposalRecord struct {
 	PreferredStrategy *HandlerStrategy         `json:"preferred_strategy,omitempty"`
 	Adaptation        *HandlerAdaptation       `json:"adaptation,omitempty"`
 	Operations        []ChangeRequestOperation `json:"operations"`
+	// CustomerDecision is the decision acted on; nil when no model read the batch.
+	CustomerDecision          *CustomerDecision `json:"customer_decision,omitempty"`
+	DecisionConfidencePercent *int              `json:"decision_confidence_percent,omitempty"`
+	Conditional               bool              `json:"conditional,omitempty"`
+	PartialOrAlternative      bool              `json:"partial_or_alternative,omitempty"`
 }
 
 // NewHandlerDecision is one unreviewed AI proposal recorded for pilot quality metrics.

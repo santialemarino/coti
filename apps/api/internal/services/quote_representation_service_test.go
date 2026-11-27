@@ -80,15 +80,18 @@ func TestValidateRepresentationSource_RejectsIncompleteAndInconsistentQuotes(t *
 	}
 }
 
-func TestBuildQuoteMessage_UsesReferenceTotalAndOneURLPlaceholder(t *testing.T) {
+func TestBuildQuoteMessage_ShowsTheLinesAndTotalWithOneURLPlaceholder(t *testing.T) {
 	t.Parallel()
 	payload := buildRepresentationPayload(representationSourceFixture(),
 		time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC))
 	message := buildQuoteMessage(payload)
-	for _, expected := range []string{"Hola, Obra Norte.", "COT-000042", "ARS 200,00"} {
+	for _, expected := range []string{"Hola, Obra Norte.", "2 bolsa · Cemento — ARS 220,00", "Total: ARS 200,00"} {
 		if !strings.Contains(message, expected) {
 			t.Errorf("message does not contain %q: %s", expected, message)
 		}
+	}
+	if opening, _, _ := strings.Cut(message, "\n•"); strings.Contains(opening, "COT-000042") {
+		t.Errorf("the opening names the reference code: %s", opening)
 	}
 	if strings.Count(message, domain.QuotePublicURLPlaceholder) != 1 {
 		t.Fatalf("placeholder count = %d, want 1", strings.Count(message,
