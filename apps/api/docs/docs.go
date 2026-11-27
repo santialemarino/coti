@@ -14523,6 +14523,10 @@ const docTemplate = `{
         "dto.PublicQuoteSendResponse": {
             "type": "object",
             "properties": {
+                "accepted_version": {
+                    "description": "AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.",
+                    "type": "boolean"
+                },
                 "customer_status": {
                     "description": "CustomerStatus is the answer this token already received, present only when the\ncustomer responded through the link.",
                     "type": "string"
