@@ -278,3 +278,30 @@ func TestWhatsAppInboundService_IngestRetryKeepsTheFirstOutcome(t *testing.T) {
 		t.Errorf("RFQ drafts = %d, want none for a message that joined a conversation", len(rfqs.inputs))
 	}
 }
+
+func TestWhatsAppInboundService_IngestReactionJoinsOnlyALiveConversation(t *testing.T) {
+	t.Parallel()
+	reaction := inboundTestMessage()
+	reaction[0].Body, reaction[0].ConversationOnly = "👍", true
+
+	alone := &fakeWhatsAppInboundConversations{}
+	service, messages, rfqs, _ := inboundTestService(alone)
+	if err := service.Ingest(context.Background(), reaction); err != nil {
+		t.Fatalf("Ingest() = %v, want a reaction with no conversation dropped quietly", err)
+	}
+	if len(messages.reserved) != 0 || len(rfqs.inputs) != 0 {
+		t.Errorf("reserved/RFQs = %d/%d, want a reaction never to become an order",
+			len(messages.reserved), len(rfqs.inputs))
+	}
+
+	quoteID := uuid.New()
+	live := &fakeWhatsAppInboundConversations{match: &domain.ConversationRoute{QuoteID: quoteID}}
+	service, messages, rfqs, _ = inboundTestService(live)
+	if err := service.Ingest(context.Background(), reaction); err != nil {
+		t.Fatalf("Ingest() = %v", err)
+	}
+	if len(live.appended) != 1 || live.appended[0].Body != "👍" || live.appended[0].QuoteID != quoteID ||
+		len(messages.reserved) != 1 || len(rfqs.inputs) != 0 {
+		t.Errorf("appended = %#v, want the reaction on the live quote's conversation", live.appended)
+	}
+}
