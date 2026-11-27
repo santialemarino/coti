@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 
 import { ROUTES } from '@/config/routes';
+import { customerFetch } from '@/lib/api/customer-orders';
 import { forwardedClientAddress } from '@/lib/api/forwarded-address';
 import {
   clearCustomerCookie,
@@ -80,7 +81,38 @@ export async function signUpCustomer(values: {
       error: error instanceof CustomerAuthError ? errorForStatus(error.status) : 'unavailable',
     };
   }
-  return await customerRedirect(safeCustomerDestination(values.next, ROUTES.newRequest));
+  const next = safeCustomerDestination(values.next, ROUTES.newRequest);
+  const phoneChallenge = await requestSignupVerifications(values, next);
+  // An earlier quote or order only opens once a contact is proved, so that comes first.
+  if (!/^\/(quotes|orders)\//.test(next)) return await customerRedirect(next);
+  const query = new URLSearchParams({ next });
+  if (phoneChallenge) query.set('verification', phoneChallenge);
+  return await customerRedirect(`${ROUTES.verifyContact}?${query}`);
+}
+
+/*
+ * Sends the proofs right away, carrying where to return. A failure leaves them to the next screen.
+ * Returns the WhatsApp proof's id, which the next screen needs to take the code.
+ */
+async function requestSignupVerifications(
+  values: { phone: string; email: string },
+  next: string,
+): Promise<string | undefined> {
+  const request = (kind: 'EMAIL' | 'WHATSAPP', value: string) =>
+    customerFetch('/profile/contacts/verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, value, next }),
+    })
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { id?: string }).id : undefined,
+      )
+      .catch(() => undefined);
+  const [, phone] = await Promise.all([
+    values.email.trim() ? request('EMAIL', values.email.trim()) : undefined,
+    values.phone ? request('WHATSAPP', values.phone) : undefined,
+  ]);
+  return phone;
 }
 
 export async function completeCustomerGoogle(values: {

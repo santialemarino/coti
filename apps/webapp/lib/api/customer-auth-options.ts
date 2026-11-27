@@ -38,7 +38,7 @@ export const getCustomerAuthOptions = cache(async (): Promise<CustomerAuthOption
 
 // A tab on the customer portal is named after the corralón the customer is dealing with.
 export async function customerPageMetadata(
-  section: 'title' | 'profile' | 'newRequest',
+  section: 'title' | 'profile' | 'newRequest' | 'verifyContact',
 ): Promise<Metadata> {
   const [options, t] = await Promise.all([
     getCustomerAuthOptions(),

@@ -267,7 +267,9 @@
       "expired": "El enlace venció o ya fue utilizado.",
       "googleUnavailable": "El ingreso con Google todavía no está configurado.",
       "googleFailed": "No pudimos completar el ingreso con Google. Intentá de nuevo."
-    }
+    },
+    "quoteContext": "Ingresá o creá tu cuenta para ver tu cotización de {supplier}.",
+    "passwordHint": "Mínimo {min} caracteres, con una mayúscula, una minúscula, un número y un símbolo."
   },
   "customerRecovery": {
     "title": "Recuperar tu cuenta",
@@ -332,7 +334,8 @@
       "DRAFT": "En preparación"
     },
     "pagination": "Páginas de pedidos",
-    "profile": "Mis datos"
+    "profile": "Mis datos",
+    "verifyContact": "Confirmá tu contacto"
   },
   "customerProfile": {
     "title": "Mis datos",
@@ -399,5 +402,43 @@
     "verifying": "Verificando…",
     "confirmContact": "Confirmar contacto",
     "verificationEmailSent": "Te enviamos un enlace para confirmar el correo."
+  },
+  "customerVerification": {
+    "pending": {
+      "title": "Confirmá tu contacto",
+      "descriptionQuote": "Para ver tu cotización de {supplier}, confirmá que alguno de estos contactos es tuyo.",
+      "description": "Para ver tus pedidos en {supplier}, confirmá que alguno de estos contactos es tuyo.",
+      "email": "Te mandamos un enlace para confirmarlo. Abrilo en este dispositivo o en cualquier otro.",
+      "phone": "Te mandamos un código por WhatsApp para confirmarlo.",
+      "resend": "Reenviar enlace",
+      "resending": "Enviando…",
+      "resent": "Te mandamos otro enlace a {email}.",
+      "none": "Todavía no cargaste un correo ni un WhatsApp. Agregá uno en Mis datos para confirmarlo.",
+      "profile": "Corregir mis datos"
+    },
+    "confirm": {
+      "title": "Confirmá tu correo",
+      "descriptionQuote": "Confirmá que {email} es tuyo para ver tu cotización de {supplier}.",
+      "description": "Confirmá que {email} es tuyo para ver tus pedidos en {supplier}.",
+      "submit": "Confirmar correo",
+      "pending": "Confirmando…",
+      "profile": "Ir a Mis datos"
+    },
+    "verified": {
+      "title": "Confirmamos tu correo",
+      "description": "{email} quedó asociado a tu cuenta en {supplier}.",
+      "quote": "Ver mi cotización",
+      "orders": "Ver mis pedidos"
+    },
+    "invalid": {
+      "title": "Este enlace ya no sirve",
+      "description": "Venció, ya se usó o pediste uno más nuevo. Pedí otro para confirmar tu correo.",
+      "action": "Pedir un enlace nuevo"
+    },
+    "notInAccount": {
+      "title": "Esta cotización todavía no está en tu cuenta",
+      "description": "Llegó a un contacto que {supplier} tiene que confirmar como tuyo. Cuando lo haga, la vas a ver en Mis pedidos.",
+      "orders": "Ver mis pedidos"
+    }
   }
 }
