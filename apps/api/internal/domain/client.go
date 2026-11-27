@@ -72,9 +72,18 @@ type ClientSale struct {
 	Closure    SaleClosure
 }
 
+// ClientActivity summarizes quotation activity visible to the caller.
+type ClientActivity struct {
+	OpenQuotes     int
+	AcceptedCount  int
+	LastAcceptedAt *time.Time
+	AverageTicket  *string
+}
+
 // ClientProfile joins a client, their tags, and accepted sales visible to the caller.
 type ClientProfile struct {
-	Client Client
+	Activity ClientActivity
+	Client   Client
 	// Registered is true when a customer account holds the client's CUIT and manages the profile.
 	Registered   bool
 	ExcludedTags []ClientTag

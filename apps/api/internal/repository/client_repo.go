@@ -161,6 +161,35 @@ func (r *ClientRepository) ListAcceptedSales(
 	return sales, rows.Err()
 }
 
+// GetActivity aggregates a client's visible open and confirmed accepted quotes.
+func (r *ClientRepository) GetActivity(
+	ctx context.Context, q Querier, tenant domain.Tenant, clientID uuid.UUID,
+) (domain.ClientActivity, error) {
+	var activity domain.ClientActivity
+	err := q.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE q.current_status <> 'ACCEPTED'),
+		       count(*) FILTER (WHERE q.current_status = 'ACCEPTED'),
+		       max(COALESCE(accepted.accepted_at, q.updated_at)) FILTER (WHERE q.current_status = 'ACCEPTED'),
+		       round(avg(version.total) FILTER (WHERE q.current_status = 'ACCEPTED'), 2)::text
+		FROM quote q
+		LEFT JOIN quote_version version ON version.account_id = q.account_id
+		  AND version.id = q.current_version_id
+		LEFT JOIN LATERAL (
+		  SELECT max(change.changed_at) AS accepted_at
+		  FROM quote_status_change change
+		  WHERE change.account_id = q.account_id AND change.quote_id = q.id
+		    AND change.new_status = 'ACCEPTED'
+		) accepted ON q.current_status = 'ACCEPTED'
+		WHERE q.account_id = $1 AND q.client_id = $2
+		  AND ($3::uuid[] IS NULL OR q.branch_id = ANY($3::uuid[]))
+		  AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)
+		  AND ((q.current_status = 'ACCEPTED' AND q.acceptance_unconfirmed_at IS NULL)
+		    OR (q.current_status IN ('DRAFT', 'QUOTED', 'SENT', 'CHANGE_REQUESTED') AND q.archived_at IS NULL))`,
+		tenant.AccountID, clientID, tenant.BranchFilter(), sellerParam(tenant),
+	).Scan(&activity.OpenQuotes, &activity.AcceptedCount, &activity.LastAcceptedAt, &activity.AverageTicket)
+	return activity, err
+}
+
 // Create adds an account-scoped client without duplicating a fiscal identifier.
 func (r *ClientRepository) Create(ctx context.Context, q Querier, accountID uuid.UUID,
 	in domain.NewClient) (*domain.Client, error) {
@@ -172,6 +201,14 @@ func (r *ClientRepository) Create(ctx context.Context, q Querier, accountID uuid
 		return nil, domain.ErrConflict
 	}
 	return client, err
+}
+
+// UpdateNotes replaces a live client's internal notes.
+func (r *ClientRepository) UpdateNotes(ctx context.Context, q Querier, accountID, clientID uuid.UUID,
+	notes *string) (*domain.Client, error) {
+	return scanClient(q.QueryRow(ctx, `UPDATE client SET notes = $3, updated_at = now()
+		WHERE account_id = $1 AND id = $2 AND merged_into IS NULL RETURNING `+clientColumns,
+		accountID, clientID, notes))
 }
 
 func scanClient(row pgx.Row) (*domain.Client, error) {

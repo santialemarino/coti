@@ -321,6 +321,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
 		clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
 	}
+	clients.PUT("/:clientId/notes", h.Client.UpdateNotes)
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
 	clients.PUT("/:clientId/tag-exclusions/:tagId", h.Client.SetTagExclusion)
 

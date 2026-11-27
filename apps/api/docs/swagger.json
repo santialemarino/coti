@@ -2016,6 +2016,75 @@
                 }
             }
         },
+        "/v1/clients/{clientId}/notes": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update internal client notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Internal notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientNotesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/registration-link": {
             "post": {
                 "security": [
@@ -11960,6 +12029,23 @@
                 }
             }
         },
+        "dto.ClientActivityResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_count": {
+                    "type": "integer"
+                },
+                "average_ticket": {
+                    "type": "string"
+                },
+                "last_accepted_at": {
+                    "type": "string"
+                },
+                "open_quotes": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ClientContactHintsResponse": {
             "type": "object",
             "properties": {
@@ -12129,6 +12215,9 @@
         "dto.ClientProfileResponse": {
             "type": "object",
             "properties": {
+                "activity": {
+                    "$ref": "#/definitions/dto.ClientActivityResponse"
+                },
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
@@ -16959,6 +17048,15 @@
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateClientNotesRequest": {
+            "type": "object",
+            "properties": {
+                "notes": {
+                    "type": "string",
+                    "maxLength": 512
                 }
             }
         },

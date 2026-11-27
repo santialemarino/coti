@@ -83,6 +83,14 @@ func (f *fakeClientProfiles) FindByContacts(_ context.Context, _ repository.Quer
 	return f.matches, nil
 }
 
+func (f *fakeClientProfiles) GetActivity(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (domain.ClientActivity, error) {
+	return domain.ClientActivity{}, nil
+}
+
+func (f *fakeClientProfiles) UpdateNotes(context.Context, repository.Querier, uuid.UUID, uuid.UUID, *string) (*domain.Client, error) {
+	panic("unexpected update")
+}
+
 func (f *fakeClientProfiles) ListAcceptedSales(
 	context.Context, repository.Querier, domain.Tenant, uuid.UUID, domain.ARCAEnvironment,
 ) ([]domain.ClientSale, error) {

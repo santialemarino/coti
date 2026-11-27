@@ -13,6 +13,7 @@ import (
 
 // ClientService is the client profile surface the handler needs.
 type ClientService interface {
+	UpdateNotes(context.Context, domain.Tenant, uuid.UUID, string) (*domain.Client, error)
 	ListTagRules(context.Context, domain.Tenant) ([]domain.ClientTagRule, error)
 	UpdateTagRule(context.Context, domain.Tenant, domain.ClientTagRule) error
 	SetTagExclusion(context.Context, domain.Tenant, uuid.UUID, uuid.UUID, bool) error
@@ -234,6 +235,43 @@ func (h *ClientHandler) AssociateQuote(c *gin.Context) {
 	c.JSON(http.StatusOK, toClientMatchResponse(*match))
 }
 
+// UpdateNotes edits a client's internal notes.
+//
+//	@Summary	Update internal client notes
+//	@Tags		clients
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		clientId	path	string						true	"Client id"
+//	@Param		body		body	dto.UpdateClientNotesRequest	true	"Internal notes"
+//	@Success	200	{object}	dto.ClientResponse
+//	@Failure	400	{object}	dto.ErrorResponse
+//	@Failure	401	{object}	dto.ErrorResponse
+//	@Failure	404	{object}	dto.ErrorResponse
+//	@Failure	422	{object}	dto.ErrorResponse
+//	@Router		/v1/clients/{clientId}/notes [put]
+func (h *ClientHandler) UpdateNotes(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	clientID, ok := pathUUID(c, "clientId")
+	if !ok {
+		return
+	}
+	var body dto.UpdateClientNotesRequest
+	if err := c.ShouldBindJSON(&body); err != nil || body.Notes == nil {
+		Respond(c, domain.ErrInvalidInput)
+		return
+	}
+	client, err := h.clients.UpdateNotes(c.Request.Context(), tenant, clientID, *body.Notes)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toClientResponse(*client))
+}
+
 // ReplaceTags replaces the reusable tags on one account client.
 //
 //	@Summary		Replace a client's tags
@@ -301,7 +339,11 @@ func toClientProfileResponse(profile domain.ClientProfile) dto.ClientProfileResp
 			Total: sale.Total.StringFixed(2), AcceptedAt: sale.AcceptedAt,
 			InvoiceStatus: string(domain.InvoiceStatusOf(sale.Closure))})
 	}
-	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client), Registered: profile.Registered,
+	activity := dto.ClientActivityResponse{
+		OpenQuotes: profile.Activity.OpenQuotes, AcceptedCount: profile.Activity.AcceptedCount,
+		LastAcceptedAt: profile.Activity.LastAcceptedAt, AverageTicket: profile.Activity.AverageTicket,
+	}
+	return dto.ClientProfileResponse{Activity: activity, Client: toClientResponse(profile.Client), Registered: profile.Registered,
 		Tags: toClientTagResponses(profile.Tags), ExcludedTags: toClientTagResponses(profile.ExcludedTags), Sales: sales}
 }
 

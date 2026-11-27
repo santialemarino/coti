@@ -15,6 +15,7 @@ import { PublicRequestCard } from '@/app/(protected)/rfqs/[id]/_components/publi
 import { SendQuoteDialog } from '@/app/(protected)/rfqs/[id]/_components/send-quote-dialog';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import { useQueuePolling } from '@/hooks/use-queue-polling';
+import type { ClientProfile } from '@/lib/api/client-profiles';
 import { errorCodeOf } from '@/lib/api/errors';
 import type { QuoteDiscountResponse, QuoteItemResponse, RfqDetailResponse } from '@/lib/api/rfqs';
 import { formatRfqReference, mapListItem, normalizeRfqStatus } from '@/lib/api/rfqs';
@@ -30,6 +31,7 @@ import { FollowupCallout } from './followup-callout';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
+import { RfqClientCard } from './rfq-client-card';
 import { RfqConversation } from './rfq-conversation';
 import { RfqDetailHeader } from './rfq-detail-header';
 import { RfqItemsTable } from './rfq-items-table';
@@ -39,6 +41,7 @@ import { SaleClosureCard } from './sale-closure-card';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
+  clientProfile?: ClientProfile | null;
   /* Whether the order's branch has no mailbox for a customer's reply to reach. */
   branchMissesEmail?: boolean;
   /* Whether the corralón invoices with Coti; off, an accepted order shows no invoice. */
@@ -57,6 +60,7 @@ function lineCounts(items: QuoteItemResponse[]): { itemCount: number; reviewCoun
 
 export function RfqDetailView({
   detail: initialDetail,
+  clientProfile,
   branchMissesEmail = false,
   invoicingEnabled,
   invoiceOnPayment = false,
@@ -143,6 +147,14 @@ export function RfqDetailView({
     async (silent = false) => {
       try {
         const fresh = await fetchRfqDetail(detail.rfq.id);
+        if (
+          fresh.quote?.client_id &&
+          (fresh.quote.client_id !== clientId ||
+            fresh.quote.current_status !== quoteStatus ||
+            (fresh.rfq.archived_at != null) !== archived)
+        ) {
+          router.refresh();
+        }
         setDetail(fresh);
         setItems(fresh.items);
         setDiscounts(fresh.discounts ?? []);
@@ -152,7 +164,7 @@ export function RfqDetailView({
         if (!silent) toast.error(t('detail.items.toast.error'));
       }
     },
-    [detail.rfq.id, t, updateRecord],
+    [archived, clientId, detail.rfq.id, quoteStatus, router, t, updateRecord],
   );
 
   useQueuePolling(() => refreshDetail(true), rfqStatus === 'RECEIVED');
@@ -267,6 +279,9 @@ export function RfqDetailView({
       ) : null}
 
       <RfqStatusTimeline detail={detail} />
+      {clientId && clientProfile && initialDetail.quote?.client_id === clientId ? (
+        <RfqClientCard key={clientProfile.client.id} profile={clientProfile} />
+      ) : null}
 
       {detail.publicRequest ? <PublicRequestCard request={detail.publicRequest} /> : null}
       <RfqOriginalRequest
