@@ -29,6 +29,11 @@ type ConversationBatchHandler interface {
 	Handle(ctx context.Context, batch domain.MessageBatch) error
 }
 
+// failedBatchHandler is a handler that also settles what a batch that failed for good leaves behind.
+type failedBatchHandler interface {
+	HandleFailed(ctx context.Context, batch domain.MessageBatch) error
+}
+
 type conversationQueueDB interface {
 	AdminTx(ctx context.Context) (pgx.Tx, error)
 	CrossAccount() repository.Querier
@@ -154,6 +159,7 @@ func (s *ConversationBatchService) reclaimStuck(ctx context.Context,
 		}
 		for _, batch := range reclaimed {
 			s.logOutcome("conversation batch reclaimed", batch)
+			s.settleFailed(ctx, batch)
 		}
 		report.Reclaimed += len(reclaimed)
 		if len(reclaimed) < s.cfg.SweepBatchSize {
@@ -242,7 +248,23 @@ func (s *ConversationBatchService) process(ctx context.Context, batch domain.Mes
 		report.Retried++
 	}
 	s.logOutcome("conversation batch attempt failed", *settled)
+	s.settleFailed(settle, *settled)
 	return nil
+}
+
+// settleFailed hands a batch that failed for good back to the handler, so the reply it never read
+// still reaches the seller. Its own failure is logged rather than stopping the queue.
+func (s *ConversationBatchService) settleFailed(ctx context.Context, batch domain.MessageBatch) {
+	handler, ok := s.handler.(failedBatchHandler)
+	if !ok || batch.Status != domain.MessageBatchStatusFailed {
+		return
+	}
+	if err := handler.HandleFailed(ctx, batch); err != nil {
+		s.log.Error("failed conversation batch was not handed to the seller",
+			slog.String("account", batch.AccountID.String()),
+			slog.String("quote", batch.QuoteID.String()), slog.String("batch", batch.ID.String()),
+			slog.Any("error", err))
+	}
 }
 
 func (s *ConversationBatchService) logOutcome(message string, batch domain.MessageBatch) {

@@ -282,7 +282,7 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	}
 	messenger := &captureContactMessenger{}
 	verifier := services.NewClientContactVerificationService(service, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 2}))
-	proof, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email)
+	proof, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,24 +295,24 @@ func TestClientContacts_VerifiedMergePreservesHistoryAndRegisteredName(t *testin
 	}
 	secret := link.Query().Get("token")
 
-	if _, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email); !errors.Is(err, domain.ErrLocked) {
+	if _, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email, ""); !errors.Is(err, domain.ErrLocked) {
 		t.Fatalf("proof cooldown: %v", err)
 	}
 	foreign := p
 	foreign.AccountID = uuid.New()
-	if err := verifier.Confirm(ctx, foreign, proof.ID, secret); err == nil {
+	if _, err := verifier.Confirm(ctx, foreign, proof.ID, secret); err == nil {
 		t.Fatal("foreign supplier redeemed proof")
 	}
 	foreign = p
 	foreign.CustomerID = uuid.New()
-	if err := verifier.Confirm(ctx, foreign, proof.ID, secret); err == nil {
+	if _, err := verifier.Confirm(ctx, foreign, proof.ID, secret); err == nil {
 		t.Fatal("another customer redeemed proof")
 	}
-	if err := verifier.Confirm(ctx, p, proof.ID, "wrong"); err == nil {
+	if _, err := verifier.Confirm(ctx, p, proof.ID, "wrong"); err == nil {
 		t.Fatal("invalid proof transferred history")
 	}
 	for range 2 {
-		if err := verifier.Confirm(ctx, p, proof.ID, secret); err != nil {
+		if _, err := verifier.Confirm(ctx, p, proof.ID, secret); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -372,7 +372,7 @@ func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string,
 	}
 	messenger := &captureContactMessenger{}
 	verifier := services.NewClientContactVerificationService(service, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3}))
-	proof, err := verifier.Request(ctx, p, kind, value)
+	proof, err := verifier.Request(ctx, p, kind, value, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func (e *env) verifyCustomerContact(t *testing.T, account uuid.UUID, tax string,
 		link, _ := url.Parse(messenger.messages[0].Link)
 		secret = link.Query().Get("token")
 	}
-	if err := verifier.Confirm(ctx, p, proof.ID, secret); err != nil {
+	if _, err := verifier.Confirm(ctx, p, proof.ID, secret); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -25,7 +25,7 @@ vi.mock('@/app/login/actions', () => ({
   completeCustomerGoogle: vi.fn(),
 }));
 
-function screen(mode: CustomerAuthMode, googleEmail?: string) {
+function screen(mode: CustomerAuthMode, googleEmail?: string, next = '/orders') {
   return render(
     <NextIntlClientProvider
       locale="es"
@@ -35,7 +35,7 @@ function screen(mode: CustomerAuthMode, googleEmail?: string) {
       <CustomerAuthScreen
         mode={mode}
         supplierName="Corralón Norte"
-        next="/orders"
+        next={next}
         minimum={12}
         googleEmail={googleEmail}
         googleEnabled
@@ -163,4 +163,30 @@ it('fills and disables Email when Google is selected and restores the editable a
   fireEvent.click(option);
   expect(email.disabled).toBe(false);
   expect(email.value).toBe('correo incompleto');
+});
+
+it('says a quote link is why the customer is asked to sign in, with sign-up as an equal choice', () => {
+  const view = screen('welcome', undefined, '/quotes/tok-1');
+  expect(
+    view.getByText('Ingresá o creá tu cuenta para ver tu cotización de Corralón Norte.'),
+  ).toBeTruthy();
+  const login = view.getByRole('link', { name: 'Ingresar con CUIT/CUIL' });
+  const signup = view.getByRole('link', { name: 'Crear cuenta' });
+  expect(signup.className).toBe(login.className);
+  expect(signup.getAttribute('href')).toBe('/signup?next=%2Fquotes%2Ftok-1');
+});
+
+it('keeps the plain welcome when no quote is waiting', () => {
+  const view = screen('welcome');
+  expect(view.queryByText(/para ver tu cotización/)).toBeNull();
+});
+
+it('states the password rules before the customer types, and only the missing one after', async () => {
+  const view = screen('signup');
+  const hint = 'Mínimo 12 caracteres, con una mayúscula, una minúscula, un número y un símbolo.';
+  expect(view.getByText(hint)).toBeTruthy();
+  fireEvent.change(view.getByLabelText(/^Contraseña/), { target: { value: 'corta' } });
+  fireEvent.click(view.getByRole('button', { name: 'Crear cuenta' }));
+  expect(await view.findByText('Usá al menos 12 caracteres.')).toBeTruthy();
+  expect(view.queryByText(hint)).toBeNull();
 });

@@ -189,7 +189,10 @@ CREATE TABLE account (
   -- Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
   invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   -- Whether «Marcar cobrado» starts with «Facturar también» ticked.
-  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE
+  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Whether a customer's WhatsApp acceptance the backend confirms becomes ACCEPTED on its own;
+  -- off, it waits for the seller's confirmation.
+  whatsapp_auto_accept BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE account_onboarding (
@@ -645,7 +648,11 @@ CREATE TABLE quote (
   paid_by_user_id           UUID,
   invoice_waived_at         TIMESTAMPTZ,
   invoice_waived_by_user_id UUID,
+  -- An acceptance read from a reply that waits for the seller's confirmation.
+  acceptance_unconfirmed_at TIMESTAMPTZ,
   CONSTRAINT ck_quote_paid CHECK ((paid_at IS NULL) = (paid_by_user_id IS NULL)),
+  CONSTRAINT ck_quote_acceptance_unconfirmed
+    CHECK (acceptance_unconfirmed_at IS NULL OR current_status = 'ACCEPTED'),
   CONSTRAINT ck_quote_invoice_waived
     CHECK ((invoice_waived_at IS NULL) = (invoice_waived_by_user_id IS NULL)),
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
@@ -926,7 +933,11 @@ CREATE TABLE client_action (
   quote_item_id UUID,
   type          client_action_type NOT NULL,
   comment       VARCHAR(512),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Set when the seller undoes the action; a revoked action no longer stands for the send.
+  revoked_at    TIMESTAMPTZ,
+  -- The conversation batch an acceptance was read from; null for the customer's own click.
+  message_batch_id UUID
 );
 
 -- =============================================================================
@@ -1279,6 +1290,7 @@ ALTER TABLE client_action ADD CONSTRAINT fk_client_action_account FOREIGN KEY (a
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_send FOREIGN KEY (quote_send_id) REFERENCES quote_send(id);
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
+ALTER TABLE client_action ADD CONSTRAINT fk_client_action_batch FOREIGN KEY (message_batch_id) REFERENCES message_batch(id);
 
 ALTER TABLE message_batch ADD CONSTRAINT fk_message_batch_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE message_batch ADD CONSTRAINT fk_message_batch_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
@@ -1374,6 +1386,7 @@ CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_account_created ON quote(account_id, created_at);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
+CREATE INDEX idx_quote_acceptance_unconfirmed ON quote(branch_id) WHERE acceptance_unconfirmed_at IS NOT NULL;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, branch_id, quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
@@ -1507,7 +1520,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
-REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
+REVOKE UPDATE ON quote_representation FROM coti_app;
 
 -- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
@@ -1558,6 +1571,12 @@ BEGIN
   END LOOP;
 END $$;
 
+
+-- A frozen version's representation stays immutable; only a draft's preview may be deleted.
+CREATE POLICY quote_representation_draft_delete ON quote_representation AS RESTRICTIVE FOR DELETE
+  USING (EXISTS (SELECT 1 FROM quote_version version
+    WHERE version.account_id = quote_representation.account_id
+      AND version.id = quote_representation.version_id AND NOT version.is_immutable));
 
 ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
 CREATE TABLE arca_setup (
@@ -1837,6 +1856,10 @@ CREATE TABLE client_contact_challenge (
  expires_at TIMESTAMPTZ NOT NULL,
  consumed_at TIMESTAMPTZ,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ -- The portal page a verification returns to, so an emailed link leads back to the quote it was for.
+ next_path VARCHAR(255),
+ -- Set only when this proof succeeded; a newer request consumes a proof without proving it.
+ proved_at TIMESTAMPTZ,
  FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id),
  FOREIGN KEY(account_id,client_id) REFERENCES client(account_id,id)
 );

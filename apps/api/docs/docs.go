@@ -3395,8 +3395,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationConfirmed"
+                        }
                     },
                     "401": {
                         "description": "Unauthorized",
@@ -3432,6 +3435,64 @@ const docTemplate = `{
                         "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout",
                         "schema": {
                             "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/contacts/verification/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Read a customer contact verification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Verification identifier",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -12406,6 +12467,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ContactVerificationConfirmed": {
+            "type": "object",
+            "properties": {
+                "next": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ContactVerificationRequest": {
             "type": "object",
             "required": [
@@ -12420,6 +12489,11 @@ const docTemplate = `{
                         "WHATSAPP"
                     ]
                 },
+                "next": {
+                    "description": "Next is the portal page the confirmation returns to; any other value is ignored.",
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "value": {
                     "type": "string",
                     "maxLength": 255
@@ -12433,6 +12507,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ContactVerificationStatusResponse": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "next": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "PENDING",
+                        "VERIFIED",
+                        "EXPIRED"
+                    ]
+                },
+                "value": {
                     "type": "string"
                 }
             }
@@ -12498,7 +12594,11 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
                     ]
                 },
                 "outcome": {
@@ -13503,7 +13603,11 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
                     ]
                 },
                 "outcome": {

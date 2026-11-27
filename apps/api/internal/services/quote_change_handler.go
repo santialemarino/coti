@@ -58,7 +58,11 @@ func validateChangeRequestProposal(proposal *domain.ChangeRequestProposal, sourc
 	}
 	resolved := resolvedChangeRequest{Proposal: domain.ChangeRequestProposal{
 		Level: proposal.Level, Interpretation: interpretation,
-		Operations: make([]domain.ChangeRequestOperation, 0, len(proposal.Operations)),
+		Operations:                make([]domain.ChangeRequestOperation, 0, len(proposal.Operations)),
+		CustomerDecision:          proposal.CustomerDecision,
+		DecisionConfidencePercent: min(max(proposal.DecisionConfidencePercent, 0), 100),
+		Conditional:               proposal.Conditional,
+		PartialOrAlternative:      proposal.PartialOrAlternative,
 	}, Operations: make([]resolvedChangeOperation, 0, len(proposal.Operations))}
 
 	switch proposal.Level {

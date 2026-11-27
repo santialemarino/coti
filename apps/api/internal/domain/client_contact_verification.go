@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,8 @@ type ContactChallenge struct {
 	Attempts   int
 	ExpiresAt  time.Time
 	ConsumedAt *time.Time
+	// NextPath is the portal page a verification returns to, empty for the default.
+	NextPath string
 }
 
 // DestinationWindows are the instants each destination cap counts from.
@@ -105,4 +108,33 @@ type ContactWhatsAppMessage struct {
 // ContactWhatsAppSender supports onboarding text and approved verification templates.
 type ContactWhatsAppSender interface {
 	SendContact(context.Context, ContactWhatsAppMessage) (*DeliveryReceipt, error)
+}
+
+// ContactChallengeStatus is where a verification stands for the customer who asked for it.
+type ContactChallengeStatus string
+
+// Verification states as the portal shows them.
+const (
+	ContactChallengePending  ContactChallengeStatus = "PENDING"
+	ContactChallengeVerified ContactChallengeStatus = "VERIFIED"
+	ContactChallengeExpired  ContactChallengeStatus = "EXPIRED"
+)
+
+// ContactChallengeView is what a customer may read of their own verification: never its secret.
+type ContactChallengeView struct {
+	Kind     ChannelType
+	Value    string
+	Status   ContactChallengeStatus
+	NextPath string
+}
+
+var customerNextPathPattern = regexp.MustCompile(`^/(orders|profile|new-request|(orders|quotes|rfq)/[A-Za-z0-9_-]{1,128})$`)
+
+// CustomerNextPath keeps a destination only when it is a portal page a customer returns to, and
+// returns "" otherwise, so a stored path can never send anyone off the supplier's portal.
+func CustomerNextPath(raw string) string {
+	if customerNextPathPattern.MatchString(raw) {
+		return raw
+	}
+	return ""
 }

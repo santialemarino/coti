@@ -5,7 +5,8 @@ email sender is processed right away, under a provisional profile named after th
 or email display name. Coti then asks, once and in the supplier's name, for the full name. A short
 reply that starts with a common given name is saved on that profile instead of opening a new
 request. Anything else, including order changes and answers to a quote, is handled as a normal
-message and the question stays open. A seller creating a profile also supplies a full name and at least one contact, without CUIT.
+message and the question stays open. A seller creating a profile supplies at least one contact, without CUIT; without a name,
+the profile takes the WhatsApp name or the contact itself.
 
 Creating an account in the customer portal requires CUIT/CUIL, full name and at least one phone or
 email. Each supplier keeps one profile per CUIT, and that identifier cannot subsequently be edited
@@ -30,7 +31,7 @@ managed by that customer; once the customer verifies the shared contact in the p
 joins the other profile into the account from «Coincidencias».
 Argentine mobile numbers are matched whether or not they were written with the 9.
 
-Receiving requests, preparing quotations and sending them work with a full name and one contact.
+Receiving requests, preparing quotations and sending them work with one contact; a name is optional.
 Only invoicing requires registration and the necessary fiscal details. The seller can send a link
 that lets the customer register or access an existing account and complete My data. Email-only
 quotation delivery remains available.
