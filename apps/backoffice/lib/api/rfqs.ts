@@ -470,7 +470,11 @@ export type HandlerNoMatchReason =
   | 'AI_DISABLED'
   | 'PROPOSAL_REFUSED'
   | 'PIPELINE_EXHAUSTED'
-  | 'PROMOTION_NOT_EARNED';
+  | 'PROMOTION_NOT_EARNED'
+  | 'CUSTOMER_ACCEPTS'
+  | 'CUSTOMER_REJECTS'
+  | 'CUSTOMER_QUESTION'
+  | 'NO_REQUEST';
 
 // One line the AI raised to reach a promotion; quantities and totals are decimal strings.
 export interface HandlerAdaptedLine {
