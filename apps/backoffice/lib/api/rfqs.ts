@@ -341,7 +341,7 @@ export interface FileRfqDraftResponse {
 export interface SendClientSelection {
   taxId: string;
   clientId?: string;
-  newClient?: { name: string; phone?: string; email?: string };
+  newClient?: { name?: string; phone?: string; email?: string };
   tagIds: string[];
 }
 
