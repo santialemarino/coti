@@ -163,19 +163,11 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		hash := hashToken(c.ID.String() + ":" + secret)
 		next = c.NextPath
 		if c.ConsumedAt != nil {
-			if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 {
+			// A repeated confirmation succeeds only for a proof that itself proved the destination.
+			if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 || c.ProvedAt == nil {
 				return domain.ErrUnauthenticated
 			}
-			collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ClientID})
-			if err != nil {
-				return err
-			}
-			for _, contact := range collections[c.ClientID] {
-				if contact.Kind == c.Kind && contact.Value == c.Value && contact.Verified {
-					return nil
-				}
-			}
-			return domain.ErrUnauthenticated
+			return nil
 		}
 		if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 			return domain.ErrUnauthenticated

@@ -282,3 +282,98 @@ func TestCustomerInvitation_ProofFromAQuoteLinkOpensThatQuoteOnly(t *testing.T) 
 		t.Errorf("an expired send still opens through the proof: %d", code)
 	}
 }
+
+// Decision 95 opens a send only to the destination the proof proved and the link was sent to: a
+// proof of another contact carrying this number's link, or a forwarded link to someone else's
+// number proved on one's own, open nothing sent before the verification.
+func TestCustomerInvitation_ProofOpensOnlyTheDestinationItProved(t *testing.T) {
+	const invited, own, ownEmail = "+5491155550193", "+5491155550194", "own@example.test"
+	for _, tc := range []struct {
+		label    string
+		contacts []domain.ClientContact
+		// proofs run in order: the contact proved and whether it carries the invited number's link.
+		proofs []struct {
+			kind     domain.ChannelType
+			value    string
+			fromLink bool
+		}
+		hidden string // the destination whose earlier send must stay hidden
+	}{
+		{
+			label: "another of the customer's contacts proved with this number's link",
+			contacts: []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: invited, Primary: true},
+				{Kind: domain.ChannelTypeEmail, Value: ownEmail, Primary: true}},
+			proofs: []struct {
+				kind     domain.ChannelType
+				value    string
+				fromLink bool
+			}{{domain.ChannelTypeWhatsApp, invited, false}, {domain.ChannelTypeEmail, ownEmail, true}},
+			hidden: invited,
+		},
+		{
+			label:    "a forwarded link to someone else's number, proved on one's own",
+			contacts: []domain.ClientContact{{Kind: domain.ChannelTypeWhatsApp, Value: own, Primary: true}},
+			proofs: []struct {
+				kind     domain.ChannelType
+				value    string
+				fromLink bool
+			}{{domain.ChannelTypeWhatsApp, own, true}},
+			hidden: own,
+		},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			e := newEnv(t)
+			seed := e.seedSendableQuote(t, "Destination proof", false)
+			ctx := context.Background()
+			account := seed.tenant.AccountID
+			delivery := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
+			tokens := map[string]string{}
+			for _, to := range []string{invited, own} {
+				sent, err := delivery.Send(ctx, seed.tenant, seed.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: to})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, d := range sent.Deliveries {
+					if d.ChannelType == domain.ChannelTypeWhatsApp {
+						tokens[to] = d.PublicToken
+					}
+				}
+			}
+			host, session := e.registerCustomer(t, account, "20123456786")
+			p := domain.CustomerPrincipal{AccountID: account, TaxID: "20123456786"}
+			if err := e.db.CrossAccount().QueryRow(ctx, `SELECT id FROM customer_identity WHERE account_id=$1 AND tax_id=$2`, account, p.TaxID).Scan(&p.CustomerID); err != nil {
+				t.Fatal(err)
+			}
+			store := repository.NewClientContactRepository()
+			contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), store)
+			if err := contacts.UpdateProfile(ctx, p, domain.ClientContactUpdate{Name: "Registered Name", Contacts: tc.contacts}); err != nil {
+				t.Fatal(err)
+			}
+			messenger := &captureContactMessenger{}
+			verifier := services.NewClientContactVerificationService(contacts, store, messenger, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Nanosecond, ContactVerificationAttempts: 3}))
+			for _, proof := range tc.proofs {
+				next := "/profile"
+				if proof.fromLink {
+					next = "/quotes/" + tokens[invited]
+				}
+				challenge, err := verifier.Request(ctx, p, proof.kind, proof.value, next)
+				if err != nil {
+					t.Fatal(err)
+				}
+				message := messenger.messages[len(messenger.messages)-1]
+				secret := message.Code
+				if proof.kind == domain.ChannelTypeEmail {
+					link, _ := url.Parse(message.Link)
+					secret = link.Query().Get("token")
+				}
+				if _, err := verifier.Confirm(ctx, p, challenge.ID, secret); err != nil {
+					t.Fatal(err)
+				}
+			}
+			path := "/v1/customer/sites/" + host + "/quote-sends/" + tokens[tc.hidden] + "/order"
+			if rec := e.do(t, request{method: http.MethodGet, path: path, token: session}); rec.Code != http.StatusNotFound {
+				t.Fatalf("send to %s sent before the proof: %d, want 404", tc.hidden, rec.Code)
+			}
+		})
+	}
+}
