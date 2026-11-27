@@ -124,7 +124,7 @@ var sideWords = map[string]string{
 
 // packagingWords are what a client counts a material in ("10 bolsas", "rollos de cinta"). Keyed by
 // stem, built through the same stemmer the tokens go through so the two cannot drift apart.
-var packagingWords = stems("bol", "bolsa", "bolsas", "bolson", "bolsones", "pallet", "pallets",
+var packagingWords = stems("bol", "bolsa", "bolsas", "bolsita", "bolsitas", "bolson", "bolsones", "pallet", "pallets",
 	"palet", "palets", "rollo", "rollos", "unidad", "unidades", "unid", "uds", "ud", "lata",
 	"latas", "caja", "cajas", "barra", "barras", "balde", "baldes", "paquete", "paquetes", "tira",
 	"tiras", "tonelada", "toneladas", "viaje", "viajes")
@@ -226,12 +226,23 @@ func tokenizeCatalogText(text string) []matchToken {
 	return bindUnits(tokens)
 }
 
+// quantityWords say how many without a figure ("medio metro", "un par de bolsas"). Opening a line
+// they are its quantity, read like a leading figure.
+var quantityWords = stems("medio", "media", "par", "pares", "docena", "docenas")
+
 // lineTokens reads a client's line for coverage. A figure opening the line is how many the client
 // wants — specs follow the material they qualify — so it is dropped rather than counted as a size
 // no product carries, and so is a unit bound to it: "3 metros de arena" asks for sand. A fraction
 // or a size in a dimension unit ("8mm hierro") is a spec wherever it stands.
 func lineTokens(description string) []matchToken {
 	tokens := tokenizeCatalogText(description)
+	if len(tokens) > 1 && tokens[0].kind == tokenWord && quantityWords[tokens[0].text] {
+		tokens = tokens[1:]
+		if len(tokens) > 1 && tokens[0].kind == tokenUnit {
+			tokens = tokens[1:]
+		}
+		return tokens
+	}
 	if len(tokens) < 2 || tokens[0].kind != tokenFigure || strings.Contains(tokens[0].text, "/") ||
 		dimensionUnits[tokens[0].unit] {
 		return tokens

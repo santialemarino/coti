@@ -1,6 +1,7 @@
 package services
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -93,29 +94,47 @@ func (s *CatalogMatchService) WithReviewer(
 func (s *CatalogMatchService) Match(
 	ctx context.Context, tenant domain.Tenant, descriptions []string,
 ) ([]domain.LineMatch, error) {
-	if len(descriptions) == 0 {
+	queries := make([]domain.MatchQuery, len(descriptions))
+	for i, description := range descriptions {
+		queries[i] = domain.MatchQuery{Text: description, Original: description}
+	}
+	return s.MatchQueries(ctx, tenant, queries)
+}
+
+// MatchQueries is Match for lines whose search text differs from the client's words: the catalog
+// is searched and scored on each Text, and seller corrections are looked up by each Original.
+func (s *CatalogMatchService) MatchQueries(
+	ctx context.Context, tenant domain.Tenant, queries []domain.MatchQuery,
+) ([]domain.LineMatch, error) {
+	if len(queries) == 0 {
 		return nil, nil
+	}
+	texts := make([]string, len(queries))
+	originals := make([]string, len(queries))
+	for i, query := range queries {
+		texts[i] = query.Text
+		originals[i] = cmp.Or(strings.TrimSpace(query.Original), query.Text)
 	}
 	ctx = domain.WithAIAccount(ctx, tenant)
 	// One search for the whole set: it embeds every line in a single provider call and reads the
 	// catalog in one transaction, neither of which survives being called per line.
 	results, err := s.search.Search(ctx, tenant,
-		domain.CatalogSearch{Texts: descriptions, Limit: s.pool})
+		domain.CatalogSearch{Texts: texts, MemoryTexts: originals, Limit: s.pool})
 	if err != nil {
 		return nil, err
 	}
 	// Pairing a line with another line's candidates is a wrong match nothing downstream could
 	// notice, so a broken alignment is refused rather than indexed into.
-	if len(results) != len(descriptions) {
+	if len(results) != len(texts) {
 		return nil, fmt.Errorf("catalog search returned %d results for %d lines",
-			len(results), len(descriptions))
+			len(results), len(texts))
 	}
 
 	matches := make([]domain.LineMatch, len(results))
 	for i, result := range results {
-		matches[i] = s.decide(lineTokens(descriptions[i]), result.Candidates)
+		matches[i] = s.decide(lineTokens(texts[i]), result.Candidates)
 	}
-	s.review(ctx, descriptions, matches)
+	s.review(ctx, originals, matches)
 	return matches, nil
 }
 

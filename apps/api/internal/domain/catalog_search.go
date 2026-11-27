@@ -7,8 +7,11 @@ import (
 // CatalogSearch is one hybrid catalog lookup: several RFQ lines resolved in a single pass
 // against the account's catalog, narrowed to what one branch carries.
 type CatalogSearch struct {
-	// Texts are the line descriptions to resolve, as they arrived from the client.
+	// Texts are what to search the catalog for, one per line.
 	Texts []string
+	// MemoryTexts are the same lines as the client wrote them, index-aligned with Texts, which is
+	// what seller corrections are recorded against. Empty means each text is its own.
+	MemoryTexts []string
 	// Limit is how many candidates each text gets back. Zero takes the configured default.
 	Limit int
 }

@@ -58,6 +58,13 @@ const (
 	MatchReviewVerdictNone MatchReviewVerdict = "NONE"
 )
 
+// MatchQuery is one line to match: Text is what to search the catalog for, and Original is the
+// line as the client wrote it, which seller corrections are keyed on and a reviewer reads.
+type MatchQuery struct {
+	Text     string
+	Original string
+}
+
 // MatchReviewLine is one line the matcher could not settle, with the candidates it offered.
 type MatchReviewLine struct {
 	Description string

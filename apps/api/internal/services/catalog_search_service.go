@@ -20,8 +20,8 @@ import (
 type catalogSearchRepository interface {
 	SetSearchProbes(ctx context.Context, q repository.Querier, probes int) error
 	SearchCandidates(ctx context.Context, q repository.Querier, accountID, branchID uuid.UUID,
-		text string, embedding pgvector.Vector, fetch int,
-		correctionMaxDistance float64) ([]domain.CatalogCandidate, error)
+		text string, embedding pgvector.Vector, memoryText string, memoryEmbedding pgvector.Vector,
+		fetch int, correctionMaxDistance float64) ([]domain.CatalogCandidate, error)
 }
 
 // CatalogSearchService resolves RFQ line text against the account's catalog, combining the
@@ -57,11 +57,22 @@ func (s *CatalogSearchService) Search(
 	if len(in.Texts) == 0 {
 		return nil, nil
 	}
+	if len(in.MemoryTexts) != 0 && len(in.MemoryTexts) != len(in.Texts) {
+		return nil, fmt.Errorf("%w: %d memory texts for %d search texts", domain.ErrInvalidInput,
+			len(in.MemoryTexts), len(in.Texts))
+	}
 	texts := make([]string, len(in.Texts))
+	memoryTexts := make([]string, len(in.Texts))
 	for i, text := range in.Texts {
 		texts[i] = strings.TrimSpace(text)
 		if texts[i] == "" {
 			return nil, fmt.Errorf("%w: search text %d is empty", domain.ErrInvalidInput, i)
+		}
+		memoryTexts[i] = texts[i]
+		if len(in.MemoryTexts) != 0 {
+			if memory := strings.TrimSpace(in.MemoryTexts[i]); memory != "" {
+				memoryTexts[i] = memory
+			}
 		}
 	}
 	limit := in.Limit
@@ -72,15 +83,17 @@ func (s *CatalogSearchService) Search(
 	// catalog in one answer, and here the over-fetch would multiply it again.
 	limit = min(limit, s.cfg.MaxPageSize)
 
-	// Outside the transaction on purpose: a provider call is slow and can fail on its own
-	// timeline, and no transaction is held open across it.
+	// One provider call for every distinct text, search and memory alike. Outside the transaction
+	// on purpose: a provider call is slow and can fail on its own timeline, and no transaction is
+	// held open across it.
+	distinct, position := distinctTexts(append(slices.Clone(texts), memoryTexts...))
 	vectors, err := s.embedder.Embed(domain.WithAIOperation(domain.WithAIAccount(ctx, tenant),
-		domain.AIOperationCatalogSearch), texts)
+		domain.AIOperationCatalogSearch), distinct)
 	if err != nil {
 		return nil, err
 	}
-	if len(vectors) != len(texts) {
-		return nil, fmt.Errorf("embedder returned %d vectors for %d texts", len(vectors), len(texts))
+	if len(vectors) != len(distinct) {
+		return nil, fmt.Errorf("embedder returned %d vectors for %d texts", len(vectors), len(distinct))
 	}
 
 	results := make([]domain.CatalogSearchResult, len(texts))
@@ -91,7 +104,8 @@ func (s *CatalogSearchService) Search(
 		// One query per line, not one per candidate: each line carries its own vector and so
 		// orders the catalog differently, which no single statement expresses.
 		for i, text := range texts {
-			candidates, searchErr := s.candidatesFor(ctx, q, tenant, text, vectors[i], limit)
+			candidates, searchErr := s.candidatesFor(ctx, q, tenant, text,
+				vectors[position[text]], memoryTexts[i], vectors[position[memoryTexts[i]]], limit)
 			if searchErr != nil {
 				return searchErr
 			}
@@ -110,7 +124,7 @@ func (s *CatalogSearchService) Search(
 // limit rows comes back short of it whenever the branch does not carry the nearest products.
 func (s *CatalogSearchService) candidatesFor(
 	ctx context.Context, q repository.Querier, tenant domain.Tenant,
-	text string, vector pgvector.Vector, limit int,
+	text string, vector pgvector.Vector, memoryText string, memoryVector pgvector.Vector, limit int,
 ) ([]domain.CatalogCandidate, error) {
 	fetch := min(limit*s.cfg.SearchOverFetchFactor, s.cfg.SearchMaxFetch)
 	var candidates []domain.CatalogCandidate
@@ -119,7 +133,8 @@ func (s *CatalogSearchService) candidatesFor(
 	previous := -1
 	for {
 		found, err := s.products.SearchCandidates(ctx, q, tenant.AccountID, tenant.BranchID,
-			text, vector, fetch, 1-float64(s.cfg.CorrectionSimilarityPercent)/100)
+			text, vector, memoryText, memoryVector, fetch,
+			1-float64(s.cfg.CorrectionSimilarityPercent)/100)
 		if err != nil {
 			return nil, err
 		}
@@ -142,6 +157,19 @@ func (s *CatalogSearchService) candidatesFor(
 		candidates = candidates[:limit]
 	}
 	return candidates, nil
+}
+
+// distinctTexts returns texts without repeats, in first-seen order, and where each one sits.
+func distinctTexts(texts []string) ([]string, map[string]int) {
+	position := make(map[string]int, len(texts))
+	var distinct []string
+	for _, text := range texts {
+		if _, seen := position[text]; !seen {
+			position[text] = len(distinct)
+			distinct = append(distinct, text)
+		}
+	}
+	return distinct, position
 }
 
 // fuse scores each candidate by reciprocal rank fusion — every half it appears in contributes

@@ -514,15 +514,20 @@ type fakeCatalogMatcher struct {
 	err             error
 	calls           int
 	descriptions    []string
+	originals       []string
 	db              *fakeRFQDB
 	calledOutsideTx bool
 }
 
-func (f *fakeCatalogMatcher) Match(
-	_ context.Context, _ domain.Tenant, descriptions []string,
+func (f *fakeCatalogMatcher) MatchQueries(
+	_ context.Context, _ domain.Tenant, queries []domain.MatchQuery,
 ) ([]domain.LineMatch, error) {
 	f.calls++
-	f.descriptions = descriptions
+	f.descriptions = make([]string, len(queries))
+	f.originals = make([]string, len(queries))
+	for i, query := range queries {
+		f.descriptions[i], f.originals[i] = query.Text, query.Original
+	}
 	if f.db != nil {
 		f.calledOutsideTx = f.db.activeTransactions == 0
 	}
@@ -557,8 +562,8 @@ func (f *fakeProductAlternatives) ListByBaseProductIDs(
 
 type blockingMatcher struct{}
 
-func (blockingMatcher) Match(
-	ctx context.Context, _ domain.Tenant, _ []string,
+func (blockingMatcher) MatchQueries(
+	ctx context.Context, _ domain.Tenant, _ []domain.MatchQuery,
 ) ([]domain.LineMatch, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
@@ -1747,11 +1752,17 @@ func TestRFQService_CreateTextDraft_KeepsAnUnresolvedQuantityAtZero(t *testing.T
 	}
 }
 
-func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
+// A line the model got wrong is repaired and left for the seller, never the reason the whole
+// order fails: one contradictory line used to mark every other line's work FAILED.
+func TestRFQService_CreateTextDraft_RepairsAContradictoryLineAndFlagsIt(t *testing.T) {
 	cases := []struct {
-		name    string
-		line    domain.ExtractedRFQLine
-		wantSub string
+		name        string
+		line        domain.ExtractedRFQLine
+		wantStatus  domain.ItemMatchStatus
+		wantSource  domain.QuantitySource
+		wantQty     string
+		wantLength  int
+		wantNoRatio bool
 	}{
 		{
 			name: "a stated quantity of zero",
@@ -1759,7 +1770,8 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				RequestedDescription: "cemento", Quantity: decimal.Zero,
 				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió cemento",
 			},
-			wantSub: "must be positive",
+			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
+			wantQty: "0", wantLength: 7,
 		},
 		{
 			name: "an unresolved line carrying a number",
@@ -1767,7 +1779,8 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
 				Source: domain.QuantitySourceUnresolved, QuantityRationale: "no dijo cuántas",
 			},
-			wantSub: "must be zero",
+			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
+			wantQty: "0", wantLength: 7,
 		},
 		{
 			name: "a source outside the closed set",
@@ -1775,15 +1788,8 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
 				Source: domain.QuantitySource("GUESSED"), QuantityRationale: "estimado",
 			},
-			wantSub: "is not a known source",
-		},
-		{
-			name: "no description",
-			line: domain.ExtractedRFQLine{
-				RequestedDescription: "   ", Quantity: decimal.RequireFromString("1"),
-				Source: domain.QuantitySourceExplicit, QuantityRationale: "pidió uno",
-			},
-			wantSub: "cannot be blank",
+			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceUnresolved,
+			wantQty: "0", wantLength: 7,
 		},
 		{
 			name: "no rationale",
@@ -1791,7 +1797,8 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				RequestedDescription: "cemento", Quantity: decimal.RequireFromString("1"),
 				Source: domain.QuantitySourceExplicit, QuantityRationale: "  ",
 			},
-			wantSub: "quantity_rationale cannot be blank",
+			wantStatus: domain.ItemMatchStatusMatched, wantSource: domain.QuantitySourceExplicit,
+			wantQty: "1", wantLength: 7, wantNoRatio: true,
 		},
 		{
 			name: "a description longer than the column",
@@ -1800,22 +1807,78 @@ func TestRFQService_CreateTextDraft_RejectsAContradictoryLine(t *testing.T) {
 				Quantity:             decimal.RequireFromString("1"),
 				Source:               domain.QuantitySourceExplicit, QuantityRationale: "pidió uno",
 			},
-			wantSub: "cannot exceed 512 characters",
+			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceExplicit,
+			wantQty: "1", wantLength: 512,
+		},
+		{
+			name: "no description but a search text",
+			line: domain.ExtractedRFQLine{
+				RequestedDescription: "  ", SearchDescription: "cemento",
+				Quantity: decimal.RequireFromString("1"), Source: domain.QuantitySourceExplicit,
+				QuantityRationale: "pidió uno",
+			},
+			wantStatus: domain.ItemMatchStatusAmbiguous, wantSource: domain.QuantitySourceExplicit,
+			wantQty: "1", wantLength: 7,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newRFQHarness([]domain.ExtractedRFQLine{tc.line})
 
-			_, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+			draft, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
 				domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento"})
-			if !errors.Is(err, domain.ErrInvalidInput) {
-				t.Fatalf("CreateTextDraft returned %v, want ErrInvalidInput", err)
+			if err != nil {
+				t.Fatalf("CreateTextDraft returned %v, want the order kept", err)
 			}
-			if !strings.Contains(err.Error(), tc.wantSub) {
-				t.Errorf("error %q does not mention %q", err, tc.wantSub)
+			if draft.RFQ.Status != domain.RFQStatusGenerated || len(h.quotes.itemBatches) != 1 ||
+				len(h.quotes.itemBatches[0]) != 1 {
+				t.Fatalf("rfq %s with item batches %v, want one generated line", draft.RFQ.Status,
+					h.quotes.itemBatches)
+			}
+			item := h.quotes.itemBatches[0][0]
+			if item.MatchStatus != tc.wantStatus || item.Quantity.String() != tc.wantQty ||
+				len([]rune(item.RequestedDescription)) != tc.wantLength ||
+				(item.QuantityRationale == nil) != tc.wantNoRatio {
+				t.Fatalf("item = %+v, want status %s, quantity %s", item, tc.wantStatus, tc.wantQty)
+			}
+			if got := h.generations.items[0][0].QuantitySource; got != tc.wantSource {
+				t.Fatalf("generation quantity source = %s, want %s", got, tc.wantSource)
 			}
 		})
+	}
+}
+
+// A line with no words at all has nothing to show the seller, so it is the one thing dropped.
+func TestRFQService_CreateTextDraft_DropsALineWithNoWords(t *testing.T) {
+	blank := explicitLine("  ", "1", "bolsa", "pidió uno")
+	h := newRFQHarness([]domain.ExtractedRFQLine{blank, explicitLine("cemento", "2", "bolsa", "dos")})
+	h.matcher.matches = h.matcher.matches[:1]
+
+	if _, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "cemento"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.quotes.itemBatches) != 1 || len(h.quotes.itemBatches[0]) != 1 ||
+		h.quotes.itemBatches[0][0].RequestedDescription != "cemento" {
+		t.Fatalf("item batches = %v, want only the line with words", h.quotes.itemBatches)
+	}
+}
+
+// A line asked for in bags and matched to a product sold by the cubic metre is never priced
+// silently: it waits for the seller.
+func TestRFQService_CreateTextDraft_FlagsAUnitTheProductIsNotSoldIn(t *testing.T) {
+	cubicMetre := "m3"
+	h := newRFQHarness([]domain.ExtractedRFQLine{explicitLine("una bolsa de arena", "1", "bolsa", "una")})
+	h.matcher.matches[0].Candidates = []domain.ScoredCandidate{{CatalogCandidate: domain.CatalogCandidate{
+		ProductID: testProductID, CanonicalName: "Arena fina", Unit: &cubicMetre,
+	}}}
+
+	if _, err := h.service.CreateTextDraft(context.Background(), rfqTenant(),
+		domain.TextRFQDraftInput{ChannelID: testChannelID, RawText: "una bolsa de arena"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.quotes.itemBatches[0][0].MatchStatus; got != domain.ItemMatchStatusAmbiguous {
+		t.Fatalf("status = %s, want AMBIGUOUS for a bag matched to a cubic metre", got)
 	}
 }
 

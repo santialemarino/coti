@@ -215,3 +215,24 @@ func TestWithinOneEdit(t *testing.T) {
 		}
 	}
 }
+
+func TestLineTokens_ReadsAQuantityWordOpeningTheLineAsTheQuantity(t *testing.T) {
+	cases := map[string][]string{
+		"medio metro de arena":      {"aren"},
+		"un par de bolsas de cal":   {"bols", "cal"},
+		"media docena de ladrillos": {"docen", "ladrill"},
+		"media sombra":              {"sombr"},
+		"bolsita de arena":          {"bolsit", "aren"},
+	}
+	for line, want := range cases {
+		t.Run(line, func(t *testing.T) {
+			var got []string
+			for _, token := range lineTokens(line) {
+				got = append(got, token.text)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("lineTokens(%q) = %v, want %v", line, got, want)
+			}
+		})
+	}
+}
