@@ -41,5 +41,9 @@ one-use code sent to a verified contact. Sellers do not recover customer account
 arrive through contact channels, without device or browser push notifications.
 
 Profiles and tags belong to the supplier. Accepted-sale history retains its branch and seller
-visibility rules. Quotation publication associates the request and quote before acceptance;
-acceptance records the sale.
+visibility rules. Quotation publication associates the request and quote before acceptance,
+and acceptance records the sale.
+
+Sellers can create and assign their own tags. The client list and profile also show automatic tags
+based on quotation activity. Administrators set the matching rules for their account, and sellers
+can remove an automatic tag from an individual profile or resume its evaluation.

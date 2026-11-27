@@ -504,9 +504,30 @@ backoffice shows it as a column of the profile's sales table only while the acco
 whole row opens the order: the reference is the row's one link, stretched over the row, so a pointer
 anywhere on it and a single keyboard stop both reach the order.
 
-Tags retain their existing account-owned many-to-many model and replacement semantics. The send
-form preserves the chosen profile's current tags and allows selecting existing reusable tags.
-Profile tag editing and tag creation remain available through their existing endpoints.
+Sellers create and assign reusable manual tags from the profile or select them when sending a
+quote. The client directory and profile also calculate two system tags from the same branch and
+seller reach as accepted-sale history.
+
+- **Recurrente** requires at least the configured number of currently accepted quotes.
+- **Abandonador** requires at least the configured number of currently rejected or archived
+  quotes without a sale and zero currently accepted quotes in the visible history. A rejected and
+  archived quote counts once, using the later event date.
+
+Administrators configure each rule in Settings. Both start enabled with a threshold of three
+and an unlimited history. An optional rolling window uses the acceptance, rejection, or archive
+timestamp, and zero days means unlimited history. The effective defaults come from
+`CLIENT_TAG_RECURRING_MINIMUM`, `CLIENT_TAG_RECURRING_WINDOW_DAYS`,
+`CLIENT_TAG_ABANDONER_MINIMUM`, and `CLIENT_TAG_ABANDONER_WINDOW_DAYS`.
+An account's saved values override the environment. Turning off a rule hides its automatic labels.
+
+Automatic memberships are evaluated on reads and never stored in `client_tag`. Sellers can exclude a
+client from a rule or clear the exclusion to resume evaluation. Exclusions survive rule changes
+and profile merges. Rules are stored on the account's tag rows, while exclusions use the
+tenant-scoped `client_tag_exclusion` table. The regular tag picker and the manual-tag report
+filter read only assignable tags.
+
+Migration 84 removes the former default construction-project label and clears old manual
+assignments for the reserved system tags. Other manual tag links persist.
 
 The backoffice maps API snake_case to camelCase in its fetch boundary. The send dialog uses the
 shared form controls, phone input, validation states, and semantic design tokens.

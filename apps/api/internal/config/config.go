@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
@@ -81,6 +83,7 @@ type Config struct {
 	Signup          SignupConfig
 	CustomerAuth    CustomerAuthConfig
 	CustomerPortal  CustomerPortalConfig
+	ClientTagRules  [2]domain.ClientTagRule
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -877,6 +880,7 @@ func Load() (*Config, error) {
 		},
 		CustomerAuth:   loadCustomerAuth(&problems),
 		CustomerPortal: loadCustomerPortal(env, &problems),
+		ClientTagRules: loadClientTagRules(&problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),

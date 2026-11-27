@@ -128,8 +128,8 @@ func TestSignup_CreatesAccountBranchChannelAndAdmin(t *testing.T) {
 	).Scan(&tagNames); err != nil {
 		t.Fatalf("read default client tags: %v", err)
 	}
-	if len(tagNames) != 2 || tagNames[0] != "Obra grande" || tagNames[1] != "Recurrente" {
-		t.Errorf("default client tags = %v, want [Obra grande Recurrente]", tagNames)
+	if len(tagNames) != 2 || tagNames[0] != "Abandonador" || tagNames[1] != "Recurrente" {
+		t.Errorf("default client tags = %v, want [Abandonador Recurrente]", tagNames)
 	}
 
 	// The session the signup returned must actually reach the account it created.

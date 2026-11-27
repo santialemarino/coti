@@ -22,6 +22,7 @@ type ClientResponse struct {
 
 // ClientTagResponse represents one reusable account tag.
 type ClientTagResponse struct {
+	Automatic bool      `json:"automatic,omitempty"`
 	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
@@ -56,7 +57,8 @@ type ClientSaleResponse struct {
 
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.
 type ClientProfileResponse struct {
-	Client ClientResponse `json:"client"`
+	ExcludedTags []ClientTagResponse `json:"excluded_tags"`
+	Client       ClientResponse      `json:"client"`
 	// Registered is true when a customer account manages the profile; no seller renames or merges it.
 	Registered bool                 `json:"registered"`
 	Tags       []ClientTagResponse  `json:"tags"`

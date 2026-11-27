@@ -479,12 +479,25 @@ CREATE TABLE client (
   dni VARCHAR(8) CONSTRAINT ck_client_dni CHECK (dni ~ '^[0-9]{7,8}$')
 );
 
+CREATE TYPE client_tag_rule_kind AS ENUM ('RECURRING', 'ABANDONER');
+
 CREATE TABLE tag (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
   name       VARCHAR(128) NOT NULL,
   color      VARCHAR(32),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  rule_kind client_tag_rule_kind,
+  rule_enabled BOOLEAN,
+  rule_minimum INTEGER,
+  rule_window_days INTEGER,
+  CONSTRAINT ck_tag_rule CHECK (
+    (rule_kind IS NULL AND rule_enabled IS NULL AND rule_minimum IS NULL AND rule_window_days IS NULL)
+    OR (rule_kind IS NOT NULL AND rule_enabled IS NOT NULL
+      AND (rule_minimum IS NULL OR rule_minimum > 0)
+      AND (rule_window_days IS NULL OR rule_window_days >= 0))
+  ),
+  CONSTRAINT uq_tag_account_rule UNIQUE (account_id, rule_kind),
   CONSTRAINT uq_tag_account UNIQUE (account_id, id)
 );
 
@@ -495,6 +508,15 @@ CREATE TABLE client_tag (
   tag_id     UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_tag UNIQUE (client_id, tag_id)
+);
+
+CREATE TABLE client_tag_exclusion (
+  account_id UUID NOT NULL,
+  client_id  UUID NOT NULL,
+  tag_id     UUID NOT NULL,
+  PRIMARY KEY (account_id, client_id, tag_id),
+  CONSTRAINT fk_client_tag_exclusion_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id),
+  CONSTRAINT fk_client_tag_exclusion_tag FOREIGN KEY (account_id, tag_id) REFERENCES tag(account_id, id)
 );
 
 -- =============================================================================
@@ -1384,6 +1406,12 @@ CREATE UNIQUE INDEX uq_quote_item_alternative_recommendation
   WHERE recommendation_type IN ('ECONOMY', 'PREMIUM');
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
 CREATE INDEX idx_quote_ai_generation_account_quote_created ON quote_ai_generation(account_id, quote_id, created_at DESC);
+CREATE INDEX idx_quote_client_tag_activity ON quote (account_id, client_id)
+  WHERE current_status IN ('ACCEPTED', 'REJECTED') OR archived_at IS NOT NULL;
+CREATE INDEX idx_quote_status_change_client_tag_activity
+  ON quote_status_change (account_id, quote_id, new_status, changed_at DESC)
+  WHERE new_status IN ('ACCEPTED', 'REJECTED');
+
 CREATE INDEX idx_quote_status_change_report ON quote_status_change(account_id, new_status, changed_at, quote_id) WHERE new_status IN ('SENT', 'ACCEPTED');
 CREATE INDEX idx_quote_send_report ON quote_send(account_id, version_id, sent_at DESC) WHERE tracking_status IN ('SENT', 'DELIVERED', 'VIEWED');
 CREATE INDEX idx_client_action_report ON client_action(account_id, version_id, created_at DESC) WHERE type = 'ACCEPT';
@@ -1991,3 +2019,7 @@ CREATE INDEX idx_client_merge_rfq_rfq ON client_merge_rfq(account_id, rfq_id);
 ALTER TABLE client_merge_rfq ENABLE ROW LEVEL SECURITY;
 CREATE POLICY client_merge_rfq_account_isolation ON client_merge_rfq
  USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+ALTER TABLE client_tag_exclusion ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_tag_exclusion_account_isolation ON client_tag_exclusion
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());

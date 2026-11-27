@@ -101,7 +101,7 @@ func run() error {
 	messageBatchRepo := repository.NewMessageBatchRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
-	tagRepo := repository.NewTagRepository()
+	tagRepo := repository.NewTagRepository(cfg.ClientTagRules)
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()

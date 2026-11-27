@@ -590,6 +590,10 @@
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
     "socialImageAlt": "Coti: respondé primero, vendé más. El que contesta primero, vende.",
+    "clientTagSettings": {
+      "title": "Etiquetas de clientes",
+      "description": "Configurá las reglas de las etiquetas automáticas."
+    },
     "invoicingSettings": {
       "title": "Facturación",
       "description": "Los datos con los que el corralón emite facturas electrónicas."
@@ -2127,6 +2131,11 @@
       "numberPending": "Sin número"
     },
     "tags": {
+      "exclude": "Quitar",
+      "excludeLabel": "Quitar {name}",
+      "excluded": "{name} excluido",
+      "restore": "Volver a calcular",
+      "restoreLabel": "Volver a calcular {name}",
       "title": "Tags",
       "none": "Sin tags",
       "selected": "{total, plural, one {# seleccionado} other {# seleccionados}}",
@@ -2138,7 +2147,7 @@
       "saved": "Guardamos los tags del cliente.",
       "errors": {
         "INVALID_BODY": "Ingresá un nombre válido para el tag.",
-        "INVALID_INPUT": "El tag debe tener entre 1 y 128 caracteres.",
+        "INVALID_INPUT": "Usá un nombre de 1 a 128 caracteres distinto de Recurrente y Abandonador.",
         "NOT_FOUND": "El cliente o uno de los tags ya no existe. Actualizá la pantalla.",
         "INTERNAL": "No pudimos guardar los tags. Intentá de nuevo."
       }
@@ -2493,11 +2502,34 @@
     "stock": "Stock",
     "price": "Precio"
   },
+  "clientTagSettings": {
+    "title": "Etiquetas de clientes",
+    "rules": {
+      "RECURRING": {
+        "name": "Recurrente",
+        "description": "Clientes que alcanzan el mínimo de cotizaciones aceptadas."
+      },
+      "ABANDONER": {
+        "name": "Abandonador",
+        "description": "Clientes sin compras que alcanzan el mínimo de cotizaciones rechazadas o archivadas."
+      }
+    },
+    "enabled": "Activar regla",
+    "minimum": "Mínimo de cotizaciones",
+    "windowDays": "Últimos días",
+    "windowHint": "Ingresá 0 para contar todo el historial.",
+    "invalidMinimum": "Ingresá un número entero mayor que cero.",
+    "invalidWindow": "Ingresá un número entero mayor o igual a cero.",
+    "save": "Guardar regla",
+    "saving": "Guardando",
+    "saved": "Regla guardada"
+  },
   "settings": {
     "title": "Configuración",
     "indexHint": "Elegí una sección para ver o cambiar su configuración.",
     "backToSections": "Volver a la configuración",
     "nav": {
+      "clientTags": "Etiquetas de clientes",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",

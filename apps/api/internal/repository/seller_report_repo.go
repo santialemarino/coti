@@ -117,7 +117,7 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if err := r.readFilterOptions(ctx, q, `SELECT id, name FROM tag
-		 WHERE account_id = $1 AND id = ANY($2::uuid[]) ORDER BY name, id`,
+		 WHERE account_id = $1 AND rule_kind IS NULL AND id = ANY($2::uuid[]) ORDER BY name, id`,
 		in.AccountID, in.TagFilter, &report.Filters.Tags); err != nil {
 		return nil, err
 	}

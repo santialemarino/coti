@@ -321,10 +321,14 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
 	}
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
+	clients.PUT("/:clientId/tag-exclusions/:tagId", h.Client.SetTagExclusion)
 
 	tags := verified.Group("/tags")
 	tags.GET("", h.Client.ListTags)
 	tags.POST("", h.Client.CreateTag)
+	tagRules := tags.Group("/rules", middleware.RequireAdmin())
+	tagRules.GET("", h.Client.ListTagRules)
+	tagRules.PUT("/:kind", h.Client.UpdateTagRule)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)

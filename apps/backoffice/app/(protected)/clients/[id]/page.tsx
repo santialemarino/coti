@@ -138,6 +138,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         <ClientTagEditor
           clientId={profile.client.id}
           initialTags={profile.tags}
+          excludedTags={profile.excludedTags ?? []}
           initialAvailable={availableTags}
         />
       </div>

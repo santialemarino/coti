@@ -171,7 +171,7 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations).
-		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
+		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(config.DefaultClientTagRules()), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
 }
 
 func (e *env) realQualityEvaluator(embedder domain.Embedder) services.QuoteQualityEvaluator {
