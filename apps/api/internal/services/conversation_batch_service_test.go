@@ -310,3 +310,42 @@ func TestConversationBatchService_ReclaimWaitsATickPastTheHandlerDeadline(t *tes
 		t.Errorf("reclaim cutoff = %s, want %s", queue.reclaimBefore, want)
 	}
 }
+
+// failureRecordingHandler fails every batch and records which ones it was handed back as FAILED.
+type failureRecordingHandler struct {
+	mu     sync.Mutex
+	failed []uuid.UUID
+}
+
+func (h *failureRecordingHandler) Handle(context.Context, domain.MessageBatch) error {
+	return errors.New("model unavailable")
+}
+
+func (h *failureRecordingHandler) HandleFailed(_ context.Context, batch domain.MessageBatch) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.failed = append(h.failed, batch.ID)
+	return nil
+}
+
+// Only a batch that failed for good goes back to the handler; one returned for a retry does not.
+func TestConversationBatchService_HandsAFailedBatchBackToTheHandler(t *testing.T) {
+	for _, tc := range []struct {
+		status domain.MessageBatchStatus
+		want   int
+	}{
+		{domain.MessageBatchStatusFailed, 1},
+		{domain.MessageBatchStatusClosed, 0},
+	} {
+		t.Run(string(tc.status), func(t *testing.T) {
+			queue := &fakeBatchQueue{pending: pendingBatches(1), failTo: tc.status}
+			handler := &failureRecordingHandler{}
+			if _, err := newTestBatchService(queue, handler, time.Minute).Sweep(context.Background()); err != nil {
+				t.Fatalf("Sweep() = %v", err)
+			}
+			if len(handler.failed) != tc.want {
+				t.Errorf("handed back = %v, want %d", handler.failed, tc.want)
+			}
+		})
+	}
+}
