@@ -164,7 +164,7 @@ func (r *QuoteSendRepository) ListClientLastQuoteSends(
 	return scanQuoteSends(rows)
 }
 
-// ListLiveConversations returns, newest send first, the branch's SENT or CHANGE_REQUESTED quotes
+// ListLiveConversations returns, newest send first, the branch's SENT, CHANGE_REQUESTED or ACCEPTED quotes
 // that are not archived and whose latest successful send on channelID to one of destinations has
 // not expired at now.
 func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Querier, accountID,
@@ -183,7 +183,7 @@ func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Queri
 		) latest
 		JOIN quote ON quote.account_id = $1 AND quote.id = latest.quote_id
 		WHERE quote.branch_id = $2 AND quote.archived_at IS NULL
-		  AND quote.current_status IN ('SENT', 'CHANGE_REQUESTED')
+		  AND quote.current_status IN ('SENT', 'CHANGE_REQUESTED', 'ACCEPTED')
 		  AND latest.expires_at > $5
 		ORDER BY latest.sent_at DESC, latest.send_id DESC`,
 		accountID, branchID, channelID, destinations, now)

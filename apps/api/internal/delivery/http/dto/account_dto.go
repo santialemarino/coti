@@ -50,6 +50,8 @@ type UpdateAccountRequest struct {
 	DisconnectARCA bool `json:"disconnect_arca"`
 	// What a request for a lower price tries first when the customer did not say; omitted keeps it.
 	PreferredLowerPriceStrategy *string `json:"preferred_lower_price_strategy" binding:"omitempty,oneof=FIND_CHEAPER_ALTERNATIVES ADAPT_TO_REACH_DISCOUNT"`
+	// Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own; omitted keeps it.
+	WhatsAppAutoAccept *bool `json:"whatsapp_auto_accept"`
 }
 
 // AccountResponse is the corralón record the backoffice reads and edits.
@@ -68,10 +70,12 @@ type AccountResponse struct {
 	// Whether ARCA ever authorized a voucher here, which keeps the history readable while invoicing is off.
 	HasInvoices bool `json:"has_invoices"`
 	// InvoiceOnPayment ticks «Facturar también» by default when a sale is marked paid.
-	InvoiceOnPayment bool      `json:"invoice_on_payment"`
-	IsActive         bool      `json:"is_active"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	InvoiceOnPayment bool `json:"invoice_on_payment"`
+	// Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own.
+	WhatsAppAutoAccept bool      `json:"whatsapp_auto_accept"`
+	IsActive           bool      `json:"is_active"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // SetInvoicingEnabledRequest is the body for PUT /v1/invoicing/enabled.

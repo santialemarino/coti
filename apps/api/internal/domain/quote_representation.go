@@ -203,6 +203,8 @@ type PublicQuoteRepresentation struct {
 	// CustomerStatus is the answer this send already received, absent while the customer
 	// has not responded through the token.
 	CustomerStatus *ClientActionType
+	// InReview is an acceptance read from the customer's reply that the seller has not confirmed.
+	InReview bool
 }
 
 // PublicQuoteSelectionPreview is the client-safe price result for a tentative alternative choice.

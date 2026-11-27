@@ -63,6 +63,8 @@ type Quote struct {
 	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
 	InvoiceWaivedAt       *time.Time
 	InvoiceWaivedByUserID *uuid.UUID
+	// AcceptanceUnconfirmedAt marks an acceptance read from a reply that waits for the seller.
+	AcceptanceUnconfirmedAt *time.Time
 }
 
 // SaleClosure is what has closed an accepted sale so far, with who did it. It is derived, never

@@ -64,7 +64,8 @@ func customerOrderFrom(envParam string) string {
 }
 
 const customerOrderColumns = `r.id,r.branch_id,b.name,r.received_at,
- CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN q.current_status IN ('DRAFT','QUOTED') THEN 'SENT' ELSE q.current_status::text END,
+ CASE WHEN published.public_token IS NULL THEN 'RECEIVED' WHEN q.current_status IN ('DRAFT','QUOTED') THEN 'SENT'
+  WHEN q.current_status = 'ACCEPTED' AND q.acceptance_unconfirmed_at IS NOT NULL THEN 'IN_REVIEW' ELSE q.current_status::text END,
  COALESCE(r.raw_text,''),published.public_token,
  q.paid_at,q.invoice_waived_at,COALESCE(closure.invoiced,FALSE),COALESCE(closure.pending,FALSE),a.invoicing_enabled`
 

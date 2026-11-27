@@ -1002,6 +1002,7 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 		return nil, err
 	}
 	result.CustomerStatus = customerStatus
+	result.InReview = quote.AcceptanceUnconfirmedAt != nil
 	return result, nil
 }
 

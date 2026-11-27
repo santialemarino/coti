@@ -73,6 +73,8 @@ type QuoteService struct {
 	// catalogRecommendations is optional so the core quote lifecycle remains deployable alone.
 	catalogRecommendations catalogRecommendationWriter
 	recommendationProducts recommendationProductReader
+	// acceptance settles acceptances read from replies; nil refuses those routes.
+	acceptance *quoteReplyAcceptance
 }
 
 // WithRecommendationProducts validates the catalog identity of customer alternatives.
@@ -644,6 +646,9 @@ func (s *QuoteService) WaiveInvoice(ctx context.Context, tenant domain.Tenant, q
 		if err != nil {
 			return err
 		}
+		if err := requireConfirmedAcceptance(*quote); err != nil {
+			return err
+		}
 		enabled := false
 		if s.invoicing != nil {
 			if enabled, err = s.invoicing.InvoicingEnabled(ctx, q, tenant.AccountID); err != nil {
@@ -702,6 +707,11 @@ func (s *QuoteService) setPaid(
 		if err != nil {
 			return err
 		}
+		if userID != nil {
+			if err := requireConfirmedAcceptance(*quote); err != nil {
+				return err
+			}
+		}
 		marked, err = s.quotes.SetPaid(ctx, q, tenant.AccountID, quote.BranchID, quote.ID, userID)
 		return err
 	})
@@ -709,6 +719,15 @@ func (s *QuoteService) setPaid(
 		return nil, err
 	}
 	return marked, nil
+}
+
+// requireConfirmedAcceptance refuses closing a sale whose acceptance, read from a reply, still waits
+// for the seller.
+func requireConfirmedAcceptance(quote domain.Quote) error {
+	if quote.AcceptanceUnconfirmedAt != nil {
+		return domain.WithCode(domain.CodeQuoteAcceptanceUnconfirmed, domain.ErrConflict)
+	}
+	return nil
 }
 
 // openSale locks a quote and refuses it unless it is an accepted sale still in the list: closing

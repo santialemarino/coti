@@ -186,6 +186,24 @@ func (r *HandlerDecisionRepository) Create(ctx context.Context, q Querier, accou
 	return nil
 }
 
+// SettleOnDiscard decides every run still pending on a draft the seller discarded — an applied one
+// REJECTED, a no-match one MANUAL_OVERRIDE — and moves the runs to the version that stays, so the
+// draft can go and the record does not.
+func (r *HandlerDecisionRepository) SettleOnDiscard(ctx context.Context, q Querier, accountID,
+	draftID, keptID, userID uuid.UUID,
+) error {
+	_, err := q.Exec(ctx,
+		`UPDATE handler_decision
+		 SET seller_decision = COALESCE(seller_decision,
+		       CASE WHEN ai_proposal::jsonb ->> 'outcome' = 'NO_MATCH'
+		         THEN 'MANUAL_OVERRIDE' ELSE 'REJECTED' END::handler_seller_decision),
+		     user_id = COALESCE(user_id, $4), decided_at = COALESCE(decided_at, now()),
+		     quote_version_id = $3
+		 WHERE account_id = $1 AND quote_version_id = $2`,
+		accountID, draftID, keptID, userID)
+	return err
+}
+
 // Decide completes still-undecided runs on a version with the seller's decision, each keyed by run.
 // A run decided meanwhile keeps its decision. Returns how many runs it completed.
 func (r *HandlerDecisionRepository) Decide(ctx context.Context, q Querier, accountID, versionID,

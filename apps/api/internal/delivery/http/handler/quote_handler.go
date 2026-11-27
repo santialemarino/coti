@@ -32,6 +32,9 @@ type QuoteService interface {
 	UnmarkPaid(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 	WaiveInvoice(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 	RestoreInvoiceWait(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	ConfirmAcceptance(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	UndoAcceptance(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
+	AcceptSentVersion(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) (*domain.Quote, error)
 }
 
 // QuoteDeliveryService is the send and public-token surface the handler needs.
@@ -342,6 +345,7 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	}
 	response.Message = result.Message
 	response.PDFURL = result.PDFURL
+	response.InReview = result.InReview
 	if result.CustomerStatus != nil {
 		status := string(*result.CustomerStatus)
 		response.CustomerStatus = &status
@@ -773,6 +777,63 @@ func (h *QuoteHandler) RestoreInvoiceWait(c *gin.Context) {
 }
 
 // closeSale runs one of the sale-closing writes on the path's quote and answers the quote.
+// ConfirmAcceptance confirms an acceptance read from a customer's WhatsApp reply.
+//
+//	@Summary		Confirm an acceptance read from a reply
+//	@Description	Clears the pending confirmation, so the sale can be marked paid and invoiced. Repeating it changes nothing.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/acceptance/confirm [post]
+func (h *QuoteHandler) ConfirmAcceptance(c *gin.Context) {
+	h.closeSale(c, h.quotes.ConfirmAcceptance)
+}
+
+// UndoAcceptance returns an acceptance read from a customer's WhatsApp reply to SENT.
+//
+//	@Summary		Undo an acceptance read from a reply
+//	@Description	Moves the quote back to SENT and lets the customer answer again; only while unpaid, uninvoiced and with its send live.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_ACCEPTANCE_NOT_UNDOABLE, QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/acceptance/undo [post]
+func (h *QuoteHandler) UndoAcceptance(c *gin.Context) {
+	h.closeSale(c, h.quotes.UndoAcceptance)
+}
+
+// AcceptSentVersion accepts the version a CHANGE_REQUESTED quote's customer was sent.
+//
+//	@Summary		Accept the sent version
+//	@Description	Discards the open draft and accepts the version the customer received, as the seller.
+//	@Tags			quotes
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header		string	true	"Active branch"
+//	@Param			quoteId		path		string	true	"Quote id"
+//	@Success		200			{object}	dto.QuoteResponse
+//	@Failure		401			{object}	dto.ErrorResponse
+//	@Failure		404			{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409			{object}	dto.ErrorResponse	"QUOTE_NOT_CHANGE_REQUESTED or QUOTE_ARCHIVED"
+//	@Failure		422			{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/accept-sent-version [post]
+func (h *QuoteHandler) AcceptSentVersion(c *gin.Context) {
+	h.closeSale(c, h.quotes.AcceptSentVersion)
+}
+
 func (h *QuoteHandler) closeSale(
 	c *gin.Context, write func(context.Context, domain.Tenant, uuid.UUID) (*domain.Quote, error),
 ) {
@@ -853,6 +914,7 @@ func toQuoteResponse(quote domain.Quote) dto.QuoteResponse {
 		FollowupFlaggedAt: quote.FollowupFlaggedAt, CreatedAt: quote.CreatedAt,
 		UpdatedAt: quote.UpdatedAt, PaidAt: quote.PaidAt, PaidByUserID: quote.PaidByUserID,
 		InvoiceWaivedAt: quote.InvoiceWaivedAt, InvoiceWaivedByUserID: quote.InvoiceWaivedByUserID,
+		AcceptanceUnconfirmedAt: quote.AcceptanceUnconfirmedAt,
 	}
 }
 

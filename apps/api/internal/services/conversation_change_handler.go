@@ -102,6 +102,8 @@ type BatchChangeHandler struct {
 	matcher      catalogMatcher
 	cfg          BatchChangeHandlerConfig
 	log          *slog.Logger
+	// acceptance lets an acceptance read from a reply move the quote; nil records it only.
+	acceptance *replyAcceptance
 }
 
 // NewBatchChangeHandler builds a BatchChangeHandler. A nil proposer means no language model is
@@ -163,9 +165,13 @@ func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBat
 		return err
 	}
 	for {
-		err = h.apply(ctx, batch, prepared, proposal)
+		var outcome *domain.ClientQuoteOutcome
+		outcome, err = h.apply(ctx, batch, prepared, proposal)
 		var exhausted *recipeNoMatch
 		if !errors.As(err, &exhausted) {
+			if err == nil && outcome != nil && h.acceptance.notifier != nil {
+				h.acceptance.notifier.NotifySellerOfOutcome(ctx, batch.AccountID, *outcome)
+			}
 			return err
 		}
 		if exhausted.reason == domain.HandlerNoMatchRecipesExhausted &&
@@ -173,7 +179,8 @@ func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBat
 			proposal.attempt++
 			continue
 		}
-		return h.apply(ctx, batch, prepared, exhausted.proposal(proposal.record))
+		_, err = h.apply(ctx, batch, prepared, exhausted.proposal(proposal.record))
+		return err
 	}
 }
 
@@ -355,8 +362,9 @@ func strategyOrder(proposal domain.ChangeRequestProposal, account domain.Handler
 // and rolls the whole write back.
 func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatch,
 	prepared preparedBatch, proposal batchProposal,
-) error {
-	return h.db.InTenantTx(ctx, prepared.tenant, func(q repository.Querier) error {
+) (*domain.ClientQuoteOutcome, error) {
+	var outcome *domain.ClientQuoteOutcome
+	err := h.db.InTenantTx(ctx, prepared.tenant, func(q repository.Querier) error {
 		quote, err := h.lock(ctx, q, batch)
 		if err != nil {
 			return err
@@ -372,6 +380,13 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 			return errDraftMoved
 		}
 		record, resolved := proposal.record, proposal.resolved
+		if !proposal.change && h.acceptance != nil && record.CustomerDecision != nil &&
+			*record.CustomerDecision == domain.CustomerDecisionAccept {
+			if outcome, err = h.acceptReply(ctx, q, batch, *quote, *draft, prepared,
+				&record); err != nil {
+				return err
+			}
+		}
 		if proposal.change {
 			if draft, resolved, err = h.openDraft(ctx, q, *quote, *draft, prepared.messages,
 				resolved, &record); err != nil {
@@ -415,6 +430,10 @@ func (h *BatchChangeHandler) apply(ctx context.Context, batch domain.MessageBatc
 			DraftBefore: before, DraftAfter: after,
 		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return outcome, nil
 }
 
 // openDraft moves a SENT quote to CHANGE_REQUESTED and, when its current version is the frozen one

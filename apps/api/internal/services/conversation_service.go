@@ -88,7 +88,8 @@ func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
 			continue
 		}
 		return &domain.ConversationRoute{QuoteID: quote.ID, QuoteSendID: candidate.QuoteSendID,
-			OtherLiveQuotes: len(candidates) - i - 1}, nil
+			OtherLiveQuotes: len(candidates) - i - 1,
+			Accepted:        quote.CurrentStatus == domain.QuoteStatusAccepted}, nil
 	}
 	return nil, nil
 }
@@ -117,7 +118,7 @@ func (s *ConversationService) AppendMessage(ctx context.Context, q repository.Qu
 	if err != nil {
 		return nil, err
 	}
-	if in.AuthorType != domain.MessageAuthorClient {
+	if in.AuthorType != domain.MessageAuthorClient || in.RecordedOnly {
 		return message, nil
 	}
 	if _, err := s.windows.OpenOrExtend(ctx, q, tenant.AccountID, tenant.BranchID, in.QuoteID, now,
@@ -129,5 +130,6 @@ func (s *ConversationService) AppendMessage(ctx context.Context, q repository.Qu
 
 func acceptsConversation(quote domain.Quote) bool {
 	return quote.ArchivedAt == nil && (quote.CurrentStatus == domain.QuoteStatusSent ||
-		quote.CurrentStatus == domain.QuoteStatusChangeRequested)
+		quote.CurrentStatus == domain.QuoteStatusChangeRequested ||
+		quote.CurrentStatus == domain.QuoteStatusAccepted)
 }

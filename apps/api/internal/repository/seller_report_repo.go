@@ -38,21 +38,30 @@ const scopedRfqsCTE = `scoped_rfqs AS (
 		         AND ct.tag_id = ANY($10::uuid[])))
 		 )`
 
+// standingAcceptance keeps an ACCEPTED status change the seller did not undo; an undo is the only
+// move from ACCEPTED back to SENT.
+func standingAcceptance(change string) string {
+	return ` AND NOT EXISTS (SELECT 1 FROM quote_status_change undone
+		WHERE undone.account_id = ` + change + `.account_id AND undone.quote_id = ` + change + `.quote_id
+		  AND undone.previous_status = 'ACCEPTED' AND undone.new_status = 'SENT'
+		  AND undone.changed_at >= ` + change + `.changed_at)`
+}
+
 // acceptedVersionsCTE resolves which version each acceptance in the period charged.
-const acceptedVersionsCTE = `WITH ` + scopedRfqsCTE + `, accepted AS (
+var acceptedVersionsCTE = `WITH ` + scopedRfqsCTE + `, accepted AS (
 		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5` + standingAcceptance("change") + `
 		   GROUP BY change.quote_id
 		 ), resolved AS (
 		   SELECT accepted.quote_id,
 		          COALESCE(
 		            (SELECT action.version_id
 		             FROM client_action action
-		             WHERE action.account_id = $1 AND action.type = 'ACCEPT'
+		             WHERE action.account_id = $1 AND action.type = 'ACCEPT' AND action.revoked_at IS NULL
 		               AND action.version_id IN (SELECT version.id FROM quote_version version
 		                                         WHERE version.account_id = $1
 		                                           AND version.quote_id = accepted.quote_id)
@@ -245,7 +254,7 @@ func (r *SellerReportRepository) readKPIs(
 		                       WHERE accepted.account_id = $1
 		                         AND accepted.quote_id = first_sent.quote_id
 		                         AND accepted.new_status = 'ACCEPTED'
-		                         AND accepted.changed_at >= first_sent.sent_at)),
+		                         AND accepted.changed_at >= first_sent.sent_at`+standingAcceptance("accepted")+`)),
 		        (SELECT count(*) FROM quote
 		         JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		         WHERE quote.account_id = $1 AND quote.needs_followup)`,
@@ -309,7 +318,7 @@ func (r *SellerReportRepository) readTimeToAcceptance(
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5`+standingAcceptance("change")+`
 		   GROUP BY change.quote_id
 		 ), waits AS (
 		   SELECT extract(epoch FROM (accepted.accepted_at - min(sent.changed_at))) AS seconds
@@ -400,7 +409,7 @@ func (r *SellerReportRepository) readTimeline(
 		            SELECT 1 FROM quote_status_change accepted
 		            WHERE accepted.account_id = $1 AND accepted.quote_id = first_sent.quote_id
 		              AND accepted.new_status = 'ACCEPTED'
-		              AND accepted.changed_at >= first_sent.sent_at)) AS converted
+		              AND accepted.changed_at >= first_sent.sent_at`+standingAcceptance("accepted")+`)) AS converted
 		   FROM first_sent
 		   WHERE sent_at >= $4 AND sent_at < $5
 		   GROUP BY 1
@@ -410,7 +419,7 @@ func (r *SellerReportRepository) readTimeline(
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5`+standingAcceptance("change")+`
 		   ORDER BY change.quote_id, change.changed_at DESC
 		 ), accepted_by_bucket AS (
 		   SELECT date_trunc($14, changed_at AT TIME ZONE $13)::date AS bucket, count(*) AS total

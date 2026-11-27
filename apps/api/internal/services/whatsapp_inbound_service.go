@@ -263,6 +263,7 @@ func (s *WhatsAppInboundService) joinConversation(ctx context.Context, q reposit
 		ID: uuid.New(), QuoteID: match.QuoteID, ChannelID: &route.ChannelID,
 		AuthorType: domain.MessageAuthorClient, Body: message.Body,
 		ReceivedAt: message.ProviderReceivedAt, OtherLiveQuotes: match.OtherLiveQuotes,
+		RecordedOnly: match.Accepted,
 	})
 }
 
