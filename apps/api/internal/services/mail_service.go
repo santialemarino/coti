@@ -24,12 +24,16 @@ type OutboundMail struct {
 	ReplyTo     string
 	ReplyToName string
 	// FromName replaces the platform's display name on the sender, blank to keep it.
-	FromName    string
-	Subject     string
-	Heading     string
-	Paragraphs  []string
+	FromName   string
+	Subject    string
+	Heading    string
+	Paragraphs []string
+	// Items is a short list shown after the paragraphs; Closing follows it, before the action.
+	Items       []string
+	Closing     []string
 	ActionLabel string
 	ActionURL   string
+	Attachments []domain.EmailAttachment
 }
 
 // mailAccountReader supplies the brand the templates render with.

@@ -53,6 +53,25 @@ func TestConsoleMailer_Send_LogsEveryFieldOfTheMessage(t *testing.T) {
 	}
 }
 
+// The file itself never reaches the log, only what a reader needs to see it was attached.
+func TestConsoleMailer_Send_LogsAttachmentsWithoutTheirContent(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	mailer := NewConsoleMailer(slog.New(slog.NewTextHandler(&out, nil)), testFrom)
+
+	if err := mailer.Send(context.Background(), domain.EmailMessage{To: testTo,
+		Attachments: []domain.EmailAttachment{{Filename: "COT-12.pdf", ContentType: "application/pdf",
+			Content: []byte("secret-pdf-bytes")}}}); err != nil {
+		t.Fatalf("Send() = %v, want no error", err)
+	}
+	if !strings.Contains(out.String(), "COT-12.pdf (application/pdf, 16 bytes)") {
+		t.Errorf("the record does not name the attachment: %q", out.String())
+	}
+	if strings.Contains(out.String(), "secret-pdf-bytes") {
+		t.Errorf("the record carries the attachment's content: %q", out.String())
+	}
+}
+
 // The sender comes from configuration, not from the message, so two mailers must not share one.
 func TestConsoleMailer_Send_UsesItsOwnSender(t *testing.T) {
 	t.Parallel()
