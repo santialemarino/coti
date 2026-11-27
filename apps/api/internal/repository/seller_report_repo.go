@@ -121,23 +121,11 @@ func (r *SellerReportRepository) Build(
 		in.AccountID, in.TagFilter, &report.Filters.Tags); err != nil {
 		return nil, err
 	}
-	if err := r.readKPIs(ctx, q, in, &report.KPIs); err != nil {
+	kpis, err := r.ReadKPIs(ctx, q, in)
+	if err != nil {
 		return nil, err
 	}
-	if err := r.readAccepted(ctx, q, in, &report.KPIs); err != nil {
-		return nil, err
-	}
-	if report.KPIs.QuotesSent > 0 {
-		rate := decimal.NewFromInt(int64(report.KPIs.SentAccepted)).
-			Div(decimal.NewFromInt(int64(report.KPIs.QuotesSent)))
-		report.KPIs.ConversionRate = &rate
-	}
-	if err := r.readResponseTime(ctx, q, in, &report.KPIs.ResponseTime); err != nil {
-		return nil, err
-	}
-	if err := r.readTimeToAcceptance(ctx, q, in, &report.KPIs.TimeToAcceptance); err != nil {
-		return nil, err
-	}
+	report.KPIs = *kpis
 	if err := r.readQuotesByStatus(ctx, q, in, &report.QuotesByStatus); err != nil {
 		return nil, err
 	}
@@ -168,6 +156,29 @@ func (r *SellerReportRepository) Build(
 		}
 	}
 	return report, nil
+}
+
+// ReadKPIs reuses the headline aggregations for a scoped comparison period.
+func (r *SellerReportRepository) ReadKPIs(ctx context.Context, q Querier, in domain.SellerReportQuery) (*domain.SellerReportKPIs, error) {
+	out := &domain.SellerReportKPIs{}
+	if err := r.readKPIs(ctx, q, in, out); err != nil {
+		return nil, err
+	}
+	if err := r.readAccepted(ctx, q, in, out); err != nil {
+		return nil, err
+	}
+	if out.QuotesSent > 0 {
+		rate := decimal.NewFromInt(int64(out.SentAccepted)).
+			Div(decimal.NewFromInt(int64(out.QuotesSent)))
+		out.ConversionRate = &rate
+	}
+	if err := r.readResponseTime(ctx, q, in, &out.ResponseTime); err != nil {
+		return nil, err
+	}
+	if err := r.readTimeToAcceptance(ctx, q, in, &out.TimeToAcceptance); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *SellerReportRepository) readFilterNames(

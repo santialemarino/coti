@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 import { Card } from '@repo/ui/components';
@@ -10,12 +11,14 @@ export function SummaryCard({
   value,
   detail,
   className,
+  comparison,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   detail?: string;
   className?: string;
+  comparison?: ReactNode;
 }) {
   return (
     <Card className={cn('gap-y-3 py-5', className)}>
@@ -28,6 +31,7 @@ export function SummaryCard({
       <div className="px-5">
         <p className="text-heading-4 tabular-nums text-foreground">{value}</p>
         {detail ? <p className="mt-1 text-paragraph-xs text-foreground-subtle">{detail}</p> : null}
+        {comparison}
       </div>
     </Card>
   );

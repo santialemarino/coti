@@ -27,9 +27,15 @@ func (f *sellerReportTestDB) InTenantTx(
 }
 
 type sellerReportTestStore struct {
-	query  domain.SellerReportQuery
-	report *domain.SellerReport
-	err    error
+	previousQuery domain.SellerReportQuery
+	query         domain.SellerReportQuery
+	report        *domain.SellerReport
+	err           error
+}
+
+func (f *sellerReportTestStore) ReadKPIs(_ context.Context, _ repository.Querier, query domain.SellerReportQuery) (*domain.SellerReportKPIs, error) {
+	f.previousQuery = query
+	return &domain.SellerReportKPIs{}, f.err
 }
 
 func (f *sellerReportTestStore) Build(

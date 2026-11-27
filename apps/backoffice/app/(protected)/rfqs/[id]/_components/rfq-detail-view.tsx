@@ -327,11 +327,29 @@ export function RfqDetailView({
 
       {rfqStatus === 'REJECTED' && (
         <Callout tone="danger" title={t('detail.callouts.rejected.title')}>
-          {detail.version?.comment
-            ? t('detail.callouts.rejected.withReason', { reason: detail.version.comment })
+          {latestClientAction?.type === 'REJECT' &&
+          latestClientAction.version_id === detail.version?.id
+            ? latestClientAction.comment || t('detail.callouts.rejected.noReason')
             : t('detail.callouts.rejected.description')}
         </Callout>
       )}
+
+      {detail.client_actions
+        ?.filter((action) => action.type === 'REJECT')
+        .map((action) => (
+          <Callout
+            key={action.id}
+            tone="info"
+            title={t('detail.callouts.rejected.history', {
+              version: action.version_number,
+              date: fmt.timestamp(action.created_at),
+            })}
+          >
+            <p className="whitespace-pre-wrap break-words">
+              {action.comment || t('detail.callouts.rejected.noReason')}
+            </p>
+          </Callout>
+        ))}
 
       {rfqStatus === 'CHANGE_REQUESTED' && quoteId && detail.changes_requested ? (
         <RfqChangeRequestCard

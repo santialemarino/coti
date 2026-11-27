@@ -248,6 +248,17 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			AcceptedAmount: client.AcceptedAmount.StringFixed(2),
 		})
 	}
+	if report.Comparison != nil {
+		response.Comparison = &dto.SellerReportComparisonResponse{
+			Range:   dto.SellerReportRangeResponse{From: report.Comparison.Range.From, To: report.Comparison.Range.To},
+			Metrics: make(map[string]dto.SellerReportChangeResponse, len(report.Comparison.Metrics)),
+		}
+		for key, change := range report.Comparison.Metrics {
+			response.Comparison.Metrics[key] = dto.SellerReportChangeResponse{
+				Previous: decimalString(change.Previous, 4), Delta: decimalString(change.Delta, 4), Percentage: decimalString(change.Percentage, 4), PercentagePoints: change.PercentagePoints,
+			}
+		}
+	}
 	return response
 }
 

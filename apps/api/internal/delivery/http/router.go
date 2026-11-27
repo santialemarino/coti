@@ -345,6 +345,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	onboarding := verified.Group("/onboarding", middleware.RequireAdmin())
 	onboarding.GET("", h.Onboarding.Get)
+	onboarding.GET("/readiness", h.Onboarding.GetReadiness)
 	onboarding.PUT("", h.Onboarding.SaveProgress)
 	onboarding.POST("/complete", h.Onboarding.Complete)
 	onboarding.POST("/dismiss", h.Onboarding.Dismiss)

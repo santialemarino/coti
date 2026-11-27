@@ -316,7 +316,7 @@ describe('ReportsPage', () => {
     expect(getSellers).not.toHaveBeenCalled();
   });
 
-  it('says when the period has no activity instead of showing zeroes as data', async () => {
+  it('explains an empty period while retaining headline values for comparison', async () => {
     await renderReport(
       report({
         kpis: {
@@ -355,7 +355,7 @@ describe('ReportsPage', () => {
     );
 
     expect(screen.getByText(copy.empty.title)).toBeTruthy();
-    expect(screen.queryByText(copy.kpis.rfqs)).toBeNull();
+    expect(screen.getByText(copy.kpis.rfqs)).toBeTruthy();
   });
 
   it('breaks order volume down by branch only when every branch is in view', async () => {

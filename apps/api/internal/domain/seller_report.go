@@ -85,6 +85,7 @@ type SellerReportPDFRenderer interface {
 
 // SellerReport is the seller dashboard's read model.
 type SellerReport struct {
+	Comparison         *SellerReportComparison
 	Range              SellerReportRange
 	Granularity        ReportGranularity
 	Scope              SellerReportScope
@@ -98,6 +99,20 @@ type SellerReport struct {
 	TopClients         []SellerReportClient
 	AIMatch            SellerReportAIMatch
 	Assistant          SellerReportAssistant
+}
+
+// SellerReportComparison compares period metrics without changing their population definitions.
+type SellerReportComparison struct {
+	Range   SellerReportRange
+	Metrics map[string]SellerReportChange
+}
+
+// SellerReportChange keeps missing measurements distinct from zero and uses points for rates.
+type SellerReportChange struct {
+	Previous         *decimal.Decimal
+	Delta            *decimal.Decimal
+	Percentage       *decimal.Decimal
+	PercentagePoints bool
 }
 
 // SellerReportRange is the inclusive Argentine calendar-day period the report covers.

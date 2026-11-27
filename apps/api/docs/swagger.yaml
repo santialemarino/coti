@@ -239,6 +239,21 @@ definitions:
       point_of_sale:
         type: integer
     type: object
+  dto.BranchReadinessResponse:
+    properties:
+      has_channel:
+        type: boolean
+      has_staff:
+        type: boolean
+      id:
+        type: string
+      missing_prices:
+        type: integer
+      name:
+        type: string
+      products:
+        type: integer
+    type: object
   dto.BranchResponse:
     properties:
       address:
@@ -1994,6 +2009,15 @@ definitions:
         - TEAM
         type: string
     type: object
+  dto.OnboardingReadinessResponse:
+    properties:
+      account_ready:
+        type: boolean
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchReadinessResponse'
+        type: array
+    type: object
   dto.OnboardingResponse:
     properties:
       checklist:
@@ -3380,6 +3404,17 @@ definitions:
       rfqs:
         type: integer
     type: object
+  dto.SellerReportChangeResponse:
+    properties:
+      delta:
+        type: string
+      percentage:
+        type: string
+      percentage_points:
+        type: boolean
+      previous:
+        type: string
+    type: object
   dto.SellerReportClientResponse:
     properties:
       accepted_amount:
@@ -3388,6 +3423,15 @@ definitions:
         type: string
       name:
         type: string
+    type: object
+  dto.SellerReportComparisonResponse:
+    properties:
+      metrics:
+        additionalProperties:
+          $ref: '#/definitions/dto.SellerReportChangeResponse'
+        type: object
+      range:
+        $ref: '#/definitions/dto.SellerReportRangeResponse'
     type: object
   dto.SellerReportConfidenceResponse:
     properties:
@@ -3477,6 +3521,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.SellerReportBranchResponse'
         type: array
+      comparison:
+        $ref: '#/definitions/dto.SellerReportComparisonResponse'
       filters:
         $ref: '#/definitions/dto.SellerReportFiltersResponse'
       granularity:
@@ -7079,6 +7125,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Dismiss onboarding
+      tags:
+      - onboarding
+  /v1/onboarding/readiness:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.OnboardingReadinessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get operational setup diagnostics
       tags:
       - onboarding
   /v1/onboarding/resume:

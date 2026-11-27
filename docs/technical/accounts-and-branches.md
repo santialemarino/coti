@@ -4,6 +4,22 @@ An account is one corralón and the tenant boundary every other table hangs off.
 operating location under it. Registration creates both, plus the first administrator, in one
 call.
 
+## Live operational setup
+
+Administrators can read `GET /v1/onboarding/readiness` and open `/settings/onboarding` after the
+wizard is complete. The diagnostic is recalculated from current data on every request, scoped
+to the selected branch or all authorized branches. It reports active branch catalog counts,
+missing current non-negative prices, staff access and optional intake channels, without secrets.
+Price validity uses the same predicate as quotation pricing; zero remains valid in the domain.
+Empty catalogs are incomplete rather than proof of valid prices. Inactive products and branch
+availability are excluded. A technical failure is an error, never a completed checklist.
+
+This diagnostic does not mutate the historical wizard state or block manual operations. Its
+settings entry remains available so removing configuration can be detected after setup. Price
+alerts name the branch and link to the existing price manager; select that branch before fixing
+prices. Branding, a second staff member and external integrations are not mandatory operating
+requirements.
+
 ## Registration
 
 `POST /v1/public/accounts` is the only write that runs with no tenant. There is no account

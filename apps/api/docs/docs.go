@@ -4593,6 +4593,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/onboarding/readiness": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Get operational setup diagnostics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.OnboardingReadinessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/onboarding/resume": {
             "post": {
                 "security": [
@@ -11422,6 +11458,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.BranchReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "has_channel": {
+                    "type": "boolean"
+                },
+                "has_staff": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "missing_prices": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.BranchResponse": {
             "type": "object",
             "properties": {
@@ -13952,6 +14011,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.OnboardingReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "account_ready": {
+                    "type": "boolean"
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchReadinessResponse"
+                    }
+                }
+            }
+        },
         "dto.OnboardingResponse": {
             "type": "object",
             "properties": {
@@ -16002,6 +16075,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SellerReportChangeResponse": {
+            "type": "object",
+            "properties": {
+                "delta": {
+                    "type": "string"
+                },
+                "percentage": {
+                    "type": "string"
+                },
+                "percentage_points": {
+                    "type": "boolean"
+                },
+                "previous": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SellerReportClientResponse": {
             "type": "object",
             "properties": {
@@ -16013,6 +16103,20 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportComparisonResponse": {
+            "type": "object",
+            "properties": {
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/dto.SellerReportChangeResponse"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/dto.SellerReportRangeResponse"
                 }
             }
         },
@@ -16150,6 +16254,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.SellerReportBranchResponse"
                     }
+                },
+                "comparison": {
+                    "$ref": "#/definitions/dto.SellerReportComparisonResponse"
                 },
                 "filters": {
                     "$ref": "#/definitions/dto.SellerReportFiltersResponse"

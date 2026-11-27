@@ -16,6 +16,30 @@ interface OnboardingRaw {
   completed_at: string | null;
 }
 
+interface ReadinessRaw {
+  account_ready: boolean;
+  branches: {
+    id: string;
+    name: string;
+    products: number;
+    missing_prices: number;
+    has_staff: boolean;
+    has_channel: boolean;
+  }[];
+}
+
+export interface OperationalReadiness {
+  accountReady: boolean;
+  branches: {
+    id: string;
+    name: string;
+    products: number;
+    missingPrices: number;
+    hasStaff: boolean;
+    hasChannel: boolean;
+  }[];
+}
+
 // --- Frontend types (camelCase) ---
 
 export type OnboardingStatus = 'IN_PROGRESS' | 'COMPLETED' | 'DISMISSED';
@@ -70,3 +94,18 @@ export const getOnboarding = cache(async (): Promise<Onboarding> => {
     await apiRequest<OnboardingRaw>({ path: '/v1/onboarding', branchScoped: false }),
   );
 });
+
+export async function getOperationalReadiness(): Promise<OperationalReadiness> {
+  const raw = await apiRequest<ReadinessRaw>({ path: '/v1/onboarding/readiness' });
+  return {
+    accountReady: raw.account_ready,
+    branches: raw.branches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      products: branch.products,
+      missingPrices: branch.missing_prices,
+      hasStaff: branch.has_staff,
+      hasChannel: branch.has_channel,
+    })),
+  };
+}

@@ -171,7 +171,7 @@ func run() error {
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize).
 		WithSignup(cfg.Signup, signupInviteRepo)
 	signupInviteService := services.NewSignupInviteService(db, signupInviteRepo, cfg.Signup, cfg.Web, nil)
-	onboardingService := services.NewOnboardingService(db, onboardingRepo)
+	onboardingService := services.NewOnboardingService(db, onboardingRepo).WithReadinessReader(onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
 		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
@@ -289,10 +289,12 @@ func run() error {
 		}
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
+		WithAutomaticQuoteInputs(productPriceRepo).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithInvoicingSwitch(invoicingRepo).
 		WithCatalogRecommendations(productAlternativeRepo).
 		WithRecommendationProducts(productRepo)
+	rfqService.WithAutomaticQuoting(quoteService)
 	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
 		productAlternativeRepo, productPriceRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).

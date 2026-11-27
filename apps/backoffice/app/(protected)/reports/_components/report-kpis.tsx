@@ -11,12 +11,22 @@ import {
 import { useTranslations } from 'next-intl';
 
 import { SummaryCard } from '@/app/(protected)/reports/_components/report-summary';
-import type { SellerReport } from '@/lib/api/reports';
+import type { ReportComparison, ReportMetric, SellerReport } from '@/lib/api/reports';
 import type { Formatters } from '@/lib/i18n/create-formatters';
 
 // The headline figures of the period.
-export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: Formatters }) {
+export function ReportKpis({
+  kpis,
+  fmt,
+  comparison,
+}: {
+  kpis: SellerReport['kpis'];
+  fmt: Formatters;
+  comparison?: ReportComparison;
+}) {
   const t = useTranslations('reports');
+  const change = (metric: ReportMetric) =>
+    comparison ? <ReportChange metric={metric} comparison={comparison} fmt={fmt} /> : undefined;
 
   const formatDuration = (seconds: number | null) => {
     if (seconds === null) return t('noDataShort');
@@ -47,17 +57,29 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryCard icon={InboxIcon} label={t('kpis.rfqs')} value={fmt.value(kpis.rfqsReceived)} />
-      <SummaryCard icon={SendIcon} label={t('kpis.sent')} value={fmt.value(kpis.quotesSent)} />
+      <SummaryCard
+        icon={InboxIcon}
+        label={t('kpis.rfqs')}
+        value={fmt.value(kpis.rfqsReceived)}
+        comparison={change('rfqsReceived')}
+      />
+      <SummaryCard
+        icon={SendIcon}
+        label={t('kpis.sent')}
+        value={fmt.value(kpis.quotesSent)}
+        comparison={change('quotesSent')}
+      />
       <SummaryCard
         icon={ChartColumnIcon}
         label={t('kpis.accepted')}
+        comparison={change('quotesAccepted')}
         value={fmt.value(kpis.quotesAccepted)}
         detail={t('kpis.acceptedDetail')}
       />
       <SummaryCard
         icon={TrendingUpIcon}
         label={t('kpis.conversion')}
+        comparison={change('conversionRate')}
         value={kpis.conversionRate === null ? t('noDataShort') : fmt.ratePct(kpis.conversionRate)}
         detail={t('conversionDetail', { accepted: kpis.sentAccepted, sent: kpis.quotesSent })}
       />
@@ -70,12 +92,14 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
       <SummaryCard
         icon={ClockIcon}
         label={t('kpis.responseTime')}
+        comparison={change('responseTime')}
         value={formatDuration(kpis.responseTime.averageSeconds)}
         detail={responseDetail}
       />
       <SummaryCard
         icon={HandshakeIcon}
         label={t('kpis.timeToAcceptance')}
+        comparison={change('timeToAcceptance')}
         value={formatDuration(kpis.timeToAcceptance.averageSeconds)}
         detail={
           kpis.timeToAcceptance.sample > 0 && kpis.timeToAcceptance.medianSeconds !== null
@@ -92,6 +116,65 @@ export function ReportKpis({ kpis, fmt }: { kpis: SellerReport['kpis']; fmt: For
         value={fmt.value(kpis.followUpPending)}
         detail={t('kpis.followUpPendingDetail')}
       />
+    </div>
+  );
+}
+
+function ReportChange({
+  metric,
+  comparison,
+  fmt,
+}: {
+  metric: ReportMetric;
+  comparison: ReportComparison;
+  fmt: Formatters;
+}) {
+  const t = useTranslations('reports.comparison');
+  const value = comparison.metrics[metric];
+  if (!value) return null;
+  const duration = metric === 'responseTime' || metric === 'timeToAcceptance';
+  const previous =
+    value.previous === null
+      ? t('noData')
+      : value.percentagePoints
+        ? fmt.ratePct(Number(value.previous))
+        : duration
+          ? t('seconds', { value: fmt.value(Number(value.previous)) })
+          : fmt.value(Number(value.previous));
+  const delta =
+    value.delta === null
+      ? t('noData')
+      : value.percentagePoints
+        ? t('points', { value: fmt.signedValue(Number(value.delta)) })
+        : duration
+          ? t('seconds', { value: fmt.signedValue(Number(value.delta)) })
+          : fmt.signedValue(Number(value.delta));
+  const percentage =
+    value.percentage === null
+      ? t('noBase')
+      : t('percent', { value: fmt.signedValue(Number(value.percentage)) });
+  const improvement =
+    value.delta !== null && Number(value.delta) !== 0 ? Number(value.delta) > 0 !== duration : null;
+  return (
+    <div
+      className="mt-2 text-paragraph-xs"
+      title={t('period', {
+        from: fmt.dateNumeric(comparison.range.from),
+        to: fmt.dateNumeric(comparison.range.to),
+      })}
+    >
+      <p className="text-foreground-subtle">{t('previous', { value: previous })}</p>
+      <p
+        className={
+          improvement === null
+            ? 'text-foreground-muted'
+            : improvement
+              ? 'text-success-foreground'
+              : 'text-danger-foreground'
+        }
+      >
+        {t('change', { delta, percentage: value.percentagePoints ? t('rate') : percentage })}
+      </p>
     </div>
   );
 }

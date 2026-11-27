@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
     typeof body.token !== 'string' ||
     body.token === '' ||
     typeof body.type !== 'string' ||
-    !ACTION_TYPES.has(body.type)
+    !ACTION_TYPES.has(body.type) ||
+    (body.message !== undefined && typeof body.message !== 'string')
   ) {
     return NextResponse.json({ error: 'BAD_REQUEST' }, { status: 400 });
   }

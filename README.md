@@ -94,6 +94,14 @@ pnpm db:init
 pnpm dev
 ```
 
+For the protected local demo seed, resumable embeddings and measured matching benchmark, use
+`pnpm demo:catalog --dry-run`, then `pnpm demo:catalog --apply --benchmark`.
+See [closing sprint QA](docs/technical/closing-sprint.md) for commands, measured results and QA limits.
+
+Administrators can inspect live per-branch catalog, price and staff readiness under
+**Settings → Operational setup**, even after finishing the onboarding wizard. Seller reports
+show the exact preceding interval and comparative KPIs; see [reports](docs/technical/reports.md).
+
 | App        | URL                                                         |
 | ---------- | ----------------------------------------------------------- |
 | backoffice | http://localhost:3000                                       |

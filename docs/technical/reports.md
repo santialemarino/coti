@@ -43,6 +43,27 @@ client, and each branch and tag, so the page and the PDF can say what they are s
 
 ## What each section counts
 
+### Previous-period comparison
+
+The additive `comparison` response contains the immediately preceding interval of equal calendar
+day length in `America/Argentina/Buenos_Aires`. An inclusive November 10–16 request compares
+against November 3–9. Query bounds are start-inclusive and end-exclusive. All date presets and
+custom ranges use this same rule; exact dates are shown instead of implying a calendar month.
+
+Both periods reuse the existing KPI aggregations and account, branch, seller, client, channel,
+status and tag filters. Current KPI definitions remain unchanged. Each comparable metric returns
+its previous value, absolute delta and nullable percentage as decimal strings. Percentage change
+requires a positive previous value; both zero returns zero and a nonzero value over zero has no
+comparison base. Missing time samples remain null. Conversion uses percentage points rather than
+relative percent. Decreasing response or acceptance time is presented as an improvement.
+
+The compared KPIs are RFQs, sends, acceptances, conversion, response time and acceptance time.
+Follow-up is a current snapshot, so it is excluded. Accepted money is excluded from comparisons
+until the existing report has an explicit currency scope. The PDF keeps its existing content.
+Even an empty current interval displays its headline numbers and previous comparison.
+
+### Current-period aggregates
+
 - `kpis.rfqs_received`: RFQs received in the period.
 - `kpis.quotes_sent`: first `SENT` event per quote inside the period.
 - `kpis.quotes_accepted`: latest distinct `ACCEPTED` event per quote inside the period.

@@ -160,6 +160,14 @@ func (r *ProductPriceRepository) GetCurrentByProductIDs(
 	return prices, rows.Err()
 }
 
+// LockAutomaticQuoteInputs keeps product and branch edits outside initial valuation.
+func (r *ProductPriceRepository) LockAutomaticQuoteInputs(ctx context.Context, q Querier, accountID, branchID uuid.UUID, productIDs []uuid.UUID) error {
+	_, err := q.Exec(ctx, `SELECT p.id FROM product p
+ JOIN branch_product bp ON bp.account_id=$1 AND bp.branch_id=$2 AND bp.product_id=p.id
+ WHERE p.account_id=$1 AND p.id=ANY($3::uuid[]) ORDER BY p.id FOR SHARE OF p,bp`, accountID, branchID, productIDs)
+	return err
+}
+
 // ApplyImport closes current prices and inserts the replacement versions in bulk.
 func (r *ProductPriceRepository) ApplyImport(
 	ctx context.Context, q Querier, tenant domain.Tenant, effectiveAt time.Time,

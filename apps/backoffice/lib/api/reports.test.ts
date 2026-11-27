@@ -61,6 +61,43 @@ function rawReport(overrides: Record<string, unknown> = {}) {
 describe('getSellerReport', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('maps the exact previous range and decimal changes without losing null measurements', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(
+      rawReport({
+        comparison: {
+          range: { from: '2026-09-29', to: '2026-09-30' },
+          metrics: {
+            conversion_rate: {
+              previous: '0.2000',
+              delta: '10.0000',
+              percentage: null,
+              percentage_points: true,
+            },
+            response_time: {
+              previous: null,
+              delta: null,
+              percentage: null,
+              percentage_points: false,
+            },
+          },
+        },
+      }) as never,
+    );
+    const report = await getSellerReport({});
+    expect(report.comparison).toEqual({
+      range: { from: '2026-09-29', to: '2026-09-30' },
+      metrics: {
+        conversionRate: {
+          previous: '0.2000',
+          delta: '10.0000',
+          percentage: null,
+          percentagePoints: true,
+        },
+        responseTime: { previous: null, delta: null, percentage: null, percentagePoints: false },
+      },
+    });
+  });
+
   it('maps every applied filter returned by the API', async () => {
     vi.mocked(apiRequest).mockResolvedValue(
       rawReport({

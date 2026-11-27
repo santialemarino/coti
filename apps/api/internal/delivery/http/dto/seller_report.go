@@ -17,6 +17,7 @@ type SellerReportFilterQuery struct {
 
 // SellerReportResponse is the seller dashboard read for one period.
 type SellerReportResponse struct {
+	Comparison         *SellerReportComparisonResponse      `json:"comparison,omitempty"`
 	Range              SellerReportRangeResponse            `json:"range"`
 	Granularity        string                               `json:"granularity"`
 	Scope              SellerReportScopeResponse            `json:"scope"`
@@ -30,6 +31,20 @@ type SellerReportResponse struct {
 	TopClients         []SellerReportClientResponse         `json:"top_clients"`
 	AIMatch            SellerReportAIMatchResponse          `json:"ai_match"`
 	Assistant          SellerReportAssistantResponse        `json:"assistant"`
+}
+
+// SellerReportComparisonResponse names the exact preceding period and its comparable metrics.
+type SellerReportComparisonResponse struct {
+	Range   SellerReportRangeResponse             `json:"range"`
+	Metrics map[string]SellerReportChangeResponse `json:"metrics"`
+}
+
+// SellerReportChangeResponse carries decimal changes with nullable bases and measurements.
+type SellerReportChangeResponse struct {
+	Previous         *string `json:"previous"`
+	Delta            *string `json:"delta"`
+	Percentage       *string `json:"percentage"`
+	PercentagePoints bool    `json:"percentage_points"`
 }
 
 // SellerReportRangeResponse is the inclusive period the report covers.

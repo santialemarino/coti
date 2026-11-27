@@ -3,7 +3,6 @@ import { ROUTES } from '@/config/routes';
 import type { Branch } from '@/lib/api/branches';
 import type { Onboarding } from '@/lib/api/onboarding';
 import type { MessageFor } from '@/lib/forms/validators';
-import { hasPendingChecklist } from '@/lib/utils/onboarding-checklist';
 import { anyBranchMissesEmail } from '@/lib/utils/setup-issues';
 
 interface SettingsNavInput {
@@ -18,12 +17,7 @@ interface SettingsNavInput {
  * The settings sections an admin is offered. Every admin page still refuses a seller on its own, so
  * leaving a seller without entries is a courtesy, not the guard.
  */
-export function settingsNavItems({
-  t,
-  tSetup,
-  onboarding,
-  branches,
-}: SettingsNavInput): SettingsNavItem[] {
+export function settingsNavItems({ t, tSetup, branches }: SettingsNavInput): SettingsNavItem[] {
   return [
     { href: ROUTES.accountSettings, label: t('nav.account') },
     {
@@ -38,16 +32,6 @@ export function settingsNavItems({
     { href: ROUTES.promotionSettings, label: t('nav.promotions') },
     { href: ROUTES.invoicingSettings, label: t('nav.invoicing') },
     { href: ROUTES.exportSettings, label: t('nav.export') },
-    ...(onboarding && hasPendingChecklist(onboarding)
-      ? [
-          {
-            href: ROUTES.onboardingSettings,
-            label: t('nav.onboarding', {
-              done: onboarding.checklist.filter((item) => item.done).length,
-              total: onboarding.checklist.length,
-            }),
-          },
-        ]
-      : []),
+    { href: ROUTES.onboardingSettings, label: t('nav.readiness') },
   ];
 }

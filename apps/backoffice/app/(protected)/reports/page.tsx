@@ -238,10 +238,21 @@ export default async function ReportsPage({
         />
       ) : null}
 
+      {report ? (
+        <>
+          {report.comparison ? (
+            <p className="text-paragraph-sm text-foreground-muted">
+              {t('comparison.period', {
+                from: fmt.dateNumeric(report.comparison.range.from),
+                to: fmt.dateNumeric(report.comparison.range.to),
+              })}
+            </p>
+          ) : null}
+          <ReportKpis kpis={report.kpis} fmt={fmt} comparison={report.comparison} />
+        </>
+      ) : null}
       {report && !noActivity ? (
         <>
-          <ReportKpis kpis={report.kpis} fmt={fmt} />
-
           <div className="grid gap-5 xl:grid-cols-12">
             <ReportSection
               title={t('status.title')}

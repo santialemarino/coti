@@ -13,6 +13,18 @@ interface DurationRaw {
 }
 
 interface SellerReportRaw {
+  comparison?: {
+    range: { from: string; to: string };
+    metrics: Record<
+      string,
+      {
+        previous: string | null;
+        delta: string | null;
+        percentage: string | null;
+        percentage_points: boolean;
+      }
+    >;
+  };
   range: { from: string; to: string };
   granularity: ReportGranularity;
   scope: { multi_branch: boolean; branch_id: string | null };
@@ -115,6 +127,7 @@ export interface SellerReportDuration {
 }
 
 export interface SellerReport {
+  comparison?: ReportComparison;
   range: { from: string; to: string };
   granularity: ReportGranularity;
   scope: { multiBranch: boolean; branchId: string | null };
@@ -161,6 +174,27 @@ export interface SellerReport {
   };
 }
 
+export type ReportMetric =
+  | 'rfqsReceived'
+  | 'quotesSent'
+  | 'quotesAccepted'
+  | 'conversionRate'
+  | 'responseTime'
+  | 'timeToAcceptance';
+
+export interface ReportComparison {
+  range: { from: string; to: string };
+  metrics: Record<
+    ReportMetric,
+    {
+      previous: string | null;
+      delta: string | null;
+      percentage: string | null;
+      percentagePoints: boolean;
+    }
+  >;
+}
+
 // --- Mappers ---
 
 function rate(raw: string | null): number | null {
@@ -177,6 +211,24 @@ function duration(raw: DurationRaw): SellerReportDuration {
 
 function mapSellerReport(raw: SellerReportRaw): SellerReport {
   return {
+    ...(raw.comparison
+      ? {
+          comparison: {
+            range: raw.comparison.range,
+            metrics: Object.fromEntries(
+              Object.entries(raw.comparison.metrics).map(([key, change]) => [
+                key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+                {
+                  previous: change.previous,
+                  delta: change.delta,
+                  percentage: change.percentage,
+                  percentagePoints: change.percentage_points,
+                },
+              ]),
+            ) as ReportComparison['metrics'],
+          },
+        }
+      : {}),
     range: { from: raw.range.from, to: raw.range.to },
     granularity: raw.granularity,
     scope: { multiBranch: raw.scope.multi_branch, branchId: raw.scope.branch_id },

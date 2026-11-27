@@ -162,6 +162,9 @@ type handlerDecisionReader interface {
 // RFQService owns the text RFQ pipeline up to a seller-reviewable quote draft, and the manual
 // entry flow.
 type RFQService struct {
+	autoQuoter interface {
+		TryAutoQuote(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.PricedQuote, error)
+	}
 	db                  tenantTxRunner
 	rfqs                rfqRepository
 	quotes              quoteDraftRepository
@@ -207,6 +210,14 @@ type RFQService struct {
 	log         *slog.Logger
 	cfg         config.RFQConfig
 	now         func() time.Time
+}
+
+// WithAutomaticQuoting enables deterministic valuation of complete initial proposals.
+func (s *RFQService) WithAutomaticQuoting(quoter interface {
+	TryAutoQuote(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (*domain.PricedQuote, error)
+}) *RFQService {
+	s.autoQuoter = quoter
+	return s
 }
 
 // WithFileIntake wires what an order that arrived as a file needs: somewhere to keep the file
@@ -1757,6 +1768,15 @@ func (s *RFQService) persistGeneratedDraft(
 			Version:      version,
 			Items:        createdItems,
 			Alternatives: candidates,
+		}
+		if s.autoQuoter != nil {
+			priced, err := s.autoQuoter.TryAutoQuote(ctx, q, tenant, quote.ID)
+			if err != nil {
+				return err
+			}
+			if priced != nil {
+				draft.Quote, draft.Version, draft.Items, draft.Alternatives = &priced.Quote, &priced.Version, priced.Items, priced.Alternatives
+			}
 		}
 		return nil
 	})
