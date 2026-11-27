@@ -110,7 +110,10 @@ discount rows in fixture cleanup.
 
 Windows/OneDrive intermittently locks dependency files with `EBUSY`; affected portal tests were
 rerun individually. The two existing route-loading assertions now normalize Windows separators.
-The complete backoffice suite's final result is recorded after it finishes.
+The complete backoffice attempt passed 1,736 tests in 212 files. Three suites could not import
+dependencies and one worker could not start, all with `EBUSY`. The four affected files passed
+separate reruns: 28 tests. This covers all 216 backoffice files, but a single uninterrupted green
+full-suite command is not claimed. There were no assertion failures in the backoffice run.
 
 Browser automation was unavailable; no visual or complete browser E2E pass is claimed. Manual QA:
 
