@@ -80,6 +80,12 @@ Active responses contain `status`, `expires_at`, `quote`, `message` and `pdf_url
 responses contain only `status` and `expires_at`, with HTTP 200. Responses use `no-store`.
 Reads neither mark the send viewed nor run evaluation.
 
+Once the customer accepted through the token choosing alternatives, the answer froze a new
+version, and the response shows that one with `accepted_version: true`: its representation is
+rendered on first read (`EnsureAccepted`, same render and storage as a send), and the portal drops
+the seller's version stamp from it. A plain acceptance leaves the sent version current and shows it
+unchanged; if the accepted version cannot be rendered, the sent one is shown.
+
 The webapp serves that token at `/quotes/{token}`, reading this endpoint server-side. An unknown
 token renders the app's 404 and an expired one its own terminal screen, so neither reaches a quote
 body. The page is `noindex`.

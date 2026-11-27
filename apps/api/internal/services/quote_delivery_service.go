@@ -996,13 +996,44 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
+	versionID, accepted := s.acceptedVersion(ctx, accountID, *quote, *send, customerStatus)
+	result, err := s.representations.ResolvePublic(ctx, accountID, versionID, *send.ExpiresAt,
 		customerQuoteURL(base, send.PublicToken))
 	if err != nil {
 		return nil, err
 	}
 	result.CustomerStatus = customerStatus
+	result.AcceptedVersion = accepted
 	return result, nil
+}
+
+// acceptedRepresentationEnsurer renders a version the customer's own choices froze.
+type acceptedRepresentationEnsurer interface {
+	EnsureAccepted(ctx context.Context, tenant domain.Tenant, quoteID,
+		versionID uuid.UUID) (*domain.QuoteRepresentationResult, error)
+}
+
+// acceptedVersion picks what the customer sees once they accepted through this send: the version
+// their alternatives produced, when one did. Anything that cannot render it keeps the sent version.
+func (s *QuoteDeliveryService) acceptedVersion(ctx context.Context, accountID uuid.UUID,
+	quote domain.Quote, send domain.QuoteSend, customerStatus *domain.ClientActionType,
+) (uuid.UUID, bool) {
+	if customerStatus == nil || *customerStatus != domain.ClientActionAccept ||
+		quote.CurrentStatus != domain.QuoteStatusAccepted || quote.CurrentVersionID == nil ||
+		*quote.CurrentVersionID == send.VersionID {
+		return send.VersionID, false
+	}
+	ensurer, ok := s.representations.(acceptedRepresentationEnsurer)
+	if !ok {
+		return send.VersionID, false
+	}
+	tenant := domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}
+	if _, err := ensurer.EnsureAccepted(ctx, tenant, quote.ID, *quote.CurrentVersionID); err != nil {
+		s.log.WarnContext(ctx, "accepted version unavailable; showing the sent one",
+			slog.String("quote_id", quote.ID.String()), slog.Any("error", err))
+		return send.VersionID, false
+	}
+	return *quote.CurrentVersionID, true
 }
 
 // PreviewPublic calculates the frozen commercial outcome of customer alternative choices.

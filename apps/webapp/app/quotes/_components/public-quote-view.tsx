@@ -59,7 +59,7 @@ export async function PublicQuoteView({ send, token, selectionPreviews }: Public
           supplier={quote.supplier}
           branch={quote.branch}
           reference={quote.reference}
-          versionNumber={quote.versionNumber}
+          versionNumber={send.acceptedVersion ? undefined : quote.versionNumber}
           approvedAt={quote.approvedAt}
         />
 
