@@ -1837,6 +1837,8 @@ CREATE TABLE client_contact_challenge (
  expires_at TIMESTAMPTZ NOT NULL,
  consumed_at TIMESTAMPTZ,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ -- The portal page a verification returns to, so an emailed link leads back to the quote it was for.
+ next_path VARCHAR(255),
  FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id),
  FOREIGN KEY(account_id,client_id) REFERENCES client(account_id,id)
 );
