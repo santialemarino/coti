@@ -325,6 +325,7 @@
       "RECEIVED": "Recibido",
       "SENT": "Cotización enviada",
       "ACCEPTED": "Aceptado",
+      "IN_REVIEW": "En revisión",
       "COMPLETED": "Finalizado",
       "REJECTED": "Rechazado",
       "CHANGE_REQUESTED": "Cambio solicitado",
