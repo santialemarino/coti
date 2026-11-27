@@ -69,10 +69,14 @@ versions use their creation timestamp as the unavailable historical freeze times
 
 Generation itself creates no public token, sends nothing and triggers no quality evaluation.
 Delivery ensures the bundle before contacting either provider and checks its version again
-inside preparation. `quote_send.format` remains `WEBAPP_LINK`. WhatsApp receives the stored
-message with its channel-specific URL; email receives the snapshot reference, total and URL.
-No PDF is automatically attached. Existing delivery idempotency, independent channels and
-post-commit quality evaluation are retained.
+inside preparation. `quote_send.format` remains `WEBAPP_LINK`. Each send renders its own
+message from the frozen payload: the first eight lines and «y N más», the total and the expiry the
+send sets. The link depends on the destination contact: one a customer proved in a portal account
+before the send gets its order (`/quotes/{token}`); any other gets a sign-up invitation
+(`/signup?next=/quotes/{token}`), which names no contact. Email carries the same summary and the
+stored PDF as an attachment; a PDF that cannot be read leaves the email without it rather than
+failing the send. The conversation stores each body with the link as the placeholder. Existing
+delivery idempotency, independent channels and post-commit quality evaluation are retained.
 
 `GET /v1/public/quote-sends/{token}` accepts only completed successful sends. Unknown, pending
 and failed tokens return 404. Account resolution uses the owner pool; content reads use RLS.
@@ -88,7 +92,8 @@ PDF URLs use the existing ObjectStorage signer, bounded by its configured lifeti
 remaining delivery validity (rounded down to seconds). Already downloaded PDFs cannot be
 revoked; the document directs the reader to the public link for current validity. It embeds
 neither a token nor an absolute expiry. Authenticated generation returns a signed PDF URL and
-a message preview containing exactly one `{{public_url}}` marker, replaced only at delivery.
+a message preview containing exactly one `{{public_url}}` marker, replaced only at delivery. The
+preview shows the order-link variant with the generic validity note; the send states the date.
 
 ## Branding and rendering
 

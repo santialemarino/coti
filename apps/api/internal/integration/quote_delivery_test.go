@@ -54,6 +54,8 @@ type stagedQuoteEmailSender struct {
 	to      []string
 	names   []string
 	senders []string
+	links   []string
+	files   [][]domain.EmailAttachment
 	err     error
 }
 
@@ -71,6 +73,8 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	s.to = append(s.to, mail.To)
 	s.names = append(s.names, mail.ReplyToName)
 	s.senders = append(s.senders, mail.FromName)
+	s.links = append(s.links, mail.ActionURL)
+	s.files = append(s.files, mail.Attachments)
 	return s.err
 }
 
@@ -171,7 +175,8 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations).
-		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
+		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository())).
+		WithPortalContacts(repository.NewClientContactRepository())
 }
 
 func (e *env) realQualityEvaluator(embedder domain.Embedder) services.QuoteQualityEvaluator {

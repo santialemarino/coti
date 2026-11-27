@@ -170,6 +170,7 @@ type QuoteDeliveryService struct {
 	customerHostnames   customerQuoteHostnameReader
 	customerLocalOrigin string
 	channelOpener       channelConfigOpener
+	portalContacts      quotePortalContactReader
 	now                 func() time.Time
 	log                 *slog.Logger
 }
@@ -272,14 +273,8 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		return replayResult(*quote, *version, prepared)
 	}
 
-	if normalized.FollowupMessage != nil {
-		copyBundle := *bundle
-		copyBundle.Representation.Message = *normalized.FollowupMessage
-		bundle = &copyBundle
-	}
-	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle)
-	completedAt := s.now().UTC()
-	expiresAt := completedAt.AddDate(0, 0, prepared[0].ValidityDays)
+	// Set before dispatch so the validity a message states is the expiry the quote stores.
+	expiresAt := s.now().UTC().AddDate(0, 0, prepared[0].ValidityDays)
 	for _, delivery := range prepared {
 		if delivery.ExpiresAt != nil && hasSuccessfulSend([]domain.QuoteSend{delivery}) {
 			expiresAt = *delivery.ExpiresAt
@@ -289,6 +284,12 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 	if quote.ExpiresAt != nil && quote.CurrentStatus == domain.QuoteStatusSent {
 		expiresAt = *quote.ExpiresAt
 	}
+	messages, err := s.sendMessages(ctx, tenant, prepared, bundle, normalized.FollowupMessage, base, expiresAt)
+	if err != nil {
+		return nil, err
+	}
+	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle, messages)
+	completedAt := s.now().UTC()
 	anySuccess := hasSuccessfulSend(prepared)
 	for i := range outcomes {
 		outcomes[i].ExpiresAt = &expiresAt
@@ -340,7 +341,7 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		} else if current.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
-		return s.recordSellerSends(commitCtx, q, tenant, quote.ID, prepared, outcomes, bundle,
+		return s.recordSellerSends(commitCtx, q, tenant, quote.ID, prepared, outcomes, messages,
 			completedAt)
 	})
 	if err != nil {
@@ -365,14 +366,10 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 // twice.
 func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q repository.Querier,
 	tenant domain.Tenant, quoteID uuid.UUID, sends []domain.QuoteSend,
-	outcomes []domain.QuoteSendOutcome, bundle *domain.QuoteRepresentationResult, at time.Time,
+	outcomes []domain.QuoteSendOutcome, messages map[uuid.UUID]quoteSendMessage, at time.Time,
 ) error {
 	if s.messages == nil {
 		return nil
-	}
-	body := sellerSendBody
-	if bundle != nil {
-		body = bundle.Representation.Message
 	}
 	channels := make(map[uuid.UUID]uuid.UUID, len(sends))
 	for _, send := range sends {
@@ -387,6 +384,10 @@ func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q reposito
 		channelID, external := channels[outcome.ID]
 		if !external {
 			continue
+		}
+		body := sellerSendBody
+		if message, found := messages[outcome.ID]; found {
+			body = message.Body
 		}
 		if _, err := s.messages.Create(ctx, q, tenant.AccountID, tenant.BranchID,
 			domain.NewQuoteMessage{ID: uuid.New(), QuoteID: quoteID, ChannelID: &channelID,
@@ -790,7 +791,7 @@ func (s *QuoteDeliveryService) loadConcurrentReplay(ctx context.Context, tenant 
 
 func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenant,
 	quote domain.Quote, sends []domain.QuoteSend,
-	bundle *domain.QuoteRepresentationResult,
+	bundle *domain.QuoteRepresentationResult, messages map[uuid.UUID]quoteSendMessage,
 ) []domain.QuoteSendOutcome {
 	credentials, credentialsErr := s.whatsAppCredentials(ctx, tenant, sends)
 	if credentialsErr != nil {
@@ -808,13 +809,11 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 		go func(index int) {
 			defer wg.Done()
 			send := sends[index]
-			publicURL := send.PublicURL
-			messageBody := strings.ReplaceAll(sellerSendBody, domain.QuotePublicURLPlaceholder,
-				publicURL)
-			if bundle != nil {
-				messageBody = strings.ReplaceAll(bundle.Representation.Message,
-					domain.QuotePublicURLPlaceholder, publicURL)
+			message, found := messages[send.ID]
+			if !found {
+				message = quoteSendMessage{Body: sellerSendBody, Link: send.PublicURL}
 			}
+			messageBody := strings.ReplaceAll(message.Body, domain.QuotePublicURLPlaceholder, message.Link)
 			outcome := domain.QuoteSendOutcome{ID: send.ID,
 				Status: domain.SendTrackingStatusFailed}
 			var err error
@@ -826,7 +825,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				message := domain.QuoteWhatsAppMessage{
 					DeliveryID: send.ID, To: send.Destination,
 					Body:      messageBody,
-					PublicURL: publicURL,
+					PublicURL: message.Link,
 				}
 				if credentialsErr != nil {
 					err = credentialsErr
@@ -841,8 +840,13 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				}
 			case domain.ChannelTypeEmail:
 				clientID := quote.ClientID
-				subject := "Tu cotización está lista"
-				paragraphs := []string{"Revisá el detalle y la vigencia en la web."}
+				content := quoteEmailContent{Subject: "Tu cotización está lista",
+					Heading:     "Tu cotización está lista",
+					Paragraphs:  []string{"Revisá el detalle y la vigencia en la web."},
+					ActionLabel: "Ver cotización"}
+				if message.Email != nil {
+					content = *message.Email
+				}
 				// The client's answer goes to the branch mailbox, not to the platform's sender.
 				replyTo, replyToName, fromName := "", "", ""
 				if send.ChannelIdentifier != nil {
@@ -853,23 +857,20 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					// The customer reads the corralón as the sender, never the platform.
 					fromName = payload.Supplier.Name
 					replyToName = payload.Supplier.Name + " — " + payload.Branch.Name
-					subject = "Cotización " + payload.Reference + " de " + payload.Supplier.Name
-					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
-						payload.ValidityNote}
 				}
-				heading := "Tu cotización está lista"
-				if send.Purpose == "FOLLOWUP" && send.Message != nil {
-					subject = "Seguimiento de cotización"
-					heading = subject
-					paragraphs = []string{*send.Message}
+				if send.Purpose == domain.QuoteDeliveryPurposeFollowup && send.Message != nil {
+					content = quoteEmailContent{Subject: "Seguimiento de cotización",
+						Heading: "Seguimiento de cotización", Paragraphs: []string{*send.Message},
+						ActionLabel: "Ver cotización"}
 				}
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
 					FromName: fromName, ReplyTo: replyTo, ReplyToName: replyToName,
-					Subject: subject, Heading: heading,
-					Paragraphs:  paragraphs,
-					ActionLabel: "Ver cotización", ActionURL: publicURL})
+					Subject: content.Subject, Heading: content.Heading,
+					Paragraphs: content.Paragraphs, Items: content.Items,
+					ActionLabel: content.ActionLabel, ActionURL: message.Link,
+					Attachments: message.Attachments})
 			default:
 				err = fmt.Errorf("unsupported delivery channel %s", send.ChannelType)
 			}

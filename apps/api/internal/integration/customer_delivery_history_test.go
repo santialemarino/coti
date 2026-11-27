@@ -30,7 +30,43 @@ func TestCustomerHistory_OutgoingDeliveryRequiresItsRecipientsProof(t *testing.T
 			if kind == domain.ChannelTypeWhatsApp {
 				value, other = "+5491155550147", "+5491155550148"
 			}
-			service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
+			whatsappSender, emailSender := &captureWhatsAppSender{}, &stagedQuoteEmailSender{}
+			service := e.quoteDeliveryService(t, whatsappSender, emailSender, nil)
+			// Decision 92: a recipient not yet proved in a portal account is invited to sign up and
+			// come back to the order; a proved one gets the order link itself.
+			assertMessageLink := func(result *domain.QuoteDeliveryResult, invitation bool) {
+				t.Helper()
+				var token, link string
+				for _, delivery := range result.Deliveries {
+					if delivery.ChannelType == kind {
+						token = delivery.PublicToken
+					}
+				}
+				if kind == domain.ChannelTypeEmail {
+					emailSender.mu.Lock()
+					link = emailSender.links[len(emailSender.links)-1]
+					files := emailSender.files[len(emailSender.files)-1]
+					emailSender.mu.Unlock()
+					if len(files) != 1 || !strings.HasPrefix(string(files[0].Content), "%PDF") {
+						t.Fatalf("email attachments = %d, want the quote PDF", len(files))
+					}
+				} else {
+					whatsappSender.mu.Lock()
+					message := whatsappSender.messages[len(whatsappSender.messages)-1]
+					whatsappSender.mu.Unlock()
+					link = message.PublicURL
+					if !strings.Contains(message.Body, link) || strings.Contains(message.Body, domain.QuotePublicURLPlaceholder) {
+						t.Fatalf("WhatsApp body does not carry its link: %q", message.Body)
+					}
+				}
+				want := "/quotes/" + token
+				if invitation {
+					want = "/signup?next=%2Fquotes%2F" + token
+				}
+				if !strings.HasSuffix(link, want) {
+					t.Fatalf("message link = %q, want it to end in %q", link, want)
+				}
+			}
 			send := func(destination string) *domain.QuoteDeliveryResult {
 				t.Helper()
 				input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New()}
@@ -59,6 +95,7 @@ func TestCustomerHistory_OutgoingDeliveryRequiresItsRecipientsProof(t *testing.T
 			}
 
 			beforeProof := send(value)
+			assertMessageLink(beforeProof, true)
 			assertLinks(beforeProof, session, http.StatusNotFound)
 			e.verifyCustomerContact(t, account, "20123456786", kind, value)
 			var includesHistory bool
@@ -75,6 +112,7 @@ func TestCustomerHistory_OutgoingDeliveryRequiresItsRecipientsProof(t *testing.T
 				destination = strings.ToUpper(value)
 			}
 			current := send(destination)
+			assertMessageLink(current, false)
 			if !e.customerOrderIDs(t, host, session)[seed.draft.RFQ.ID] {
 				t.Fatal("a successful send to the proved recipient was missing from history")
 			}
