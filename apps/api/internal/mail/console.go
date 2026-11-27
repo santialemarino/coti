@@ -4,6 +4,7 @@ package mail
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/santialemarino/coti/apps/api/internal/domain"
@@ -23,11 +24,17 @@ func NewConsoleMailer(log *slog.Logger, from string) *ConsoleMailer {
 // Send logs the message, body included: with no provider behind it, the log is the only
 // place a recovery link can be read.
 func (m *ConsoleMailer) Send(ctx context.Context, msg domain.EmailMessage) error {
+	attachments := make([]string, 0, len(msg.Attachments))
+	for _, attachment := range msg.Attachments {
+		attachments = append(attachments, fmt.Sprintf("%s (%s, %d bytes)", attachment.Filename,
+			attachment.ContentType, len(attachment.Content)))
+	}
 	m.log.InfoContext(ctx, "outbound email",
 		slog.String("from", m.from),
 		slog.String("to", msg.To),
 		slog.String("reply_to", msg.ReplyTo),
 		slog.String("subject", msg.Subject),
-		slog.String("body", msg.TextBody))
+		slog.String("body", msg.TextBody),
+		slog.Any("attachments", attachments))
 	return nil
 }

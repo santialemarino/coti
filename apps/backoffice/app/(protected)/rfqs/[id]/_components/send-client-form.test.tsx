@@ -84,9 +84,7 @@ describe('send client selection', () => {
     await view.findByRole('button', { name: copy.clientNew });
     expect(view.onChange).toHaveBeenLastCalledWith(null);
     fireEvent.click(view.getByRole('button', { name: copy.clientNew }));
-    expect((view.getByLabelText(new RegExp(copy.clientName)) as HTMLInputElement).value).toBe(
-      'Web customer',
-    );
+    expect((view.getByLabelText(copy.clientName) as HTMLInputElement).value).toBe('Web customer');
     fireEvent.click(view.getByRole('button', { name: copy.clientUse }));
     await waitFor(() =>
       expect(view.onChange).toHaveBeenLastCalledWith({
@@ -96,6 +94,23 @@ describe('send client selection', () => {
       }),
     );
     expect(getQuoteClientAssociation).toHaveBeenCalledWith('quote-1', 'branch-1');
+  });
+  it('creates a profile without a name, leaving the server to name it', async () => {
+    vi.mocked(getQuoteClientAssociation).mockResolvedValue({
+      ...context,
+      contactHints: { taxId: null, name: null, phone: null, email: 'customer@example.test' },
+    });
+    const view = renderForm();
+    fireEvent.click(await view.findByRole('button', { name: copy.clientNew }));
+    fireEvent.click(view.getByRole('button', { name: copy.clientUse }));
+    await waitFor(() =>
+      expect(view.onChange).toHaveBeenLastCalledWith({
+        taxId: '',
+        newClient: { email: 'customer@example.test' },
+        tagIds: [],
+      }),
+    );
+    expect(view.getByText('customer@example.test')).toBeTruthy();
   });
   it('keeps the current registered profile and its tags', async () => {
     const tag = { id: 'tag-1', name: 'Frecuente', createdAt: '2026-10-19T00:00:00Z' };
@@ -111,7 +126,7 @@ describe('send client selection', () => {
         tagIds: ['tag-1'],
       }),
     );
-    expect(view.queryByLabelText(new RegExp(copy.clientName))).toBeNull();
+    expect(view.queryByLabelText(copy.clientName)).toBeNull();
   });
   it('does not claim a fiscal profile from unverified request declarations', async () => {
     vi.mocked(getClientDirectory).mockResolvedValue([candidate]);

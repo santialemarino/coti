@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"regexp"
 	"sort"
@@ -400,6 +401,29 @@ func (s *QuoteRepresentationService) decorate(
 		Replay: replay}, nil
 }
 
+// LoadPDF reads a representation's stored PDF so a delivery can attach it.
+func (s *QuoteRepresentationService) LoadPDF(ctx context.Context,
+	representation domain.QuoteRepresentation,
+) ([]byte, error) {
+	if s.storage == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	object, err := s.storage.Download(ctx, representation.PDFStorageKey)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = object.Body.Close() }()
+	content, err := io.ReadAll(io.LimitReader(object.Body, representation.PDFSizeBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) != representation.PDFSizeBytes {
+		return nil, fmt.Errorf("%w: stored PDF size differs from the recorded one",
+			domain.ErrRepresentationUnavailable)
+	}
+	return content, nil
+}
+
 func (s *QuoteRepresentationService) loadLogo(
 	ctx context.Context, rawURL *string, quoteID uuid.UUID,
 ) (*domain.BrandLogo, bool) {
@@ -535,15 +559,10 @@ func buildRepresentationPayload(
 	}
 }
 
+// buildQuoteMessage is the preview frozen with the version; each send renders its own from the
+// payload, with the validity it sets and the link its destination gets.
 func buildQuoteMessage(payload domain.QuoteRepresentationPayload) string {
-	greeting := "Hola."
-	if payload.Customer.Name != nil && strings.TrimSpace(*payload.Customer.Name) != "" {
-		greeting = "Hola, " + strings.TrimSpace(*payload.Customer.Name) + "."
-	}
-	return fmt.Sprintf("%s\n\n%s preparó la cotización %s.\nTotal: %s\n\n"+
-		"Podés consultar el detalle, las alternativas aprobadas y la vigencia acá:\n%s",
-		greeting, payload.Supplier.Name, payload.Reference,
-		formatCommercialMoney(payload.Currency, payload.Total), domain.QuotePublicURLPlaceholder)
+	return buildQuoteWhatsAppMessage(payload, nil, quoteMessageOrderLink)
 }
 
 func formatCommercialMoney(currency, raw string) string {

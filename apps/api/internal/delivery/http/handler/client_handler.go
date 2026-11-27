@@ -13,6 +13,9 @@ import (
 
 // ClientService is the client profile surface the handler needs.
 type ClientService interface {
+	ListTagRules(context.Context, domain.Tenant) ([]domain.ClientTagRule, error)
+	UpdateTagRule(context.Context, domain.Tenant, domain.ClientTagRule) error
+	SetTagExclusion(context.Context, domain.Tenant, uuid.UUID, uuid.UUID, bool) error
 	ListClients(ctx context.Context, tenant domain.Tenant) ([]domain.ClientSummary, error)
 	GetClient(ctx context.Context, tenant domain.Tenant,
 		clientID uuid.UUID) (*domain.ClientProfile, error)
@@ -39,7 +42,7 @@ func NewClientHandler(clients ClientService) *ClientHandler {
 // List returns account clients with sales activity limited to the caller's branch reach.
 //
 //	@Summary		List client profiles
-//	@Description	Returns account-level client profiles. Tags are account-wide; accepted sale counts and dates are limited to the branches and seller assignments the caller may inspect.
+//	@Description	Returns account-level client profiles. Manual tags are account-wide. Automatic tags and sales activity use the caller's branch and seller reach.
 //	@Tags			clients
 //	@Produce		json
 //	@Security		BearerAuth
@@ -68,7 +71,7 @@ func (h *ClientHandler) List(c *gin.Context) {
 // Get returns one account client and accepted sales visible to the caller.
 //
 //	@Summary		Get a client profile
-//	@Description	Returns one account-level profile and its currently accepted quotes inside the caller's branch and seller reach.
+//	@Description	Returns the profile, its manual and automatic labels, and currently accepted quotes in the caller's branch and seller reach.
 //	@Tags			clients
 //	@Produce		json
 //	@Security		BearerAuth
@@ -299,7 +302,7 @@ func toClientProfileResponse(profile domain.ClientProfile) dto.ClientProfileResp
 			InvoiceStatus: string(domain.InvoiceStatusOf(sale.Closure))})
 	}
 	return dto.ClientProfileResponse{Client: toClientResponse(profile.Client), Registered: profile.Registered,
-		Tags: toClientTagResponses(profile.Tags), Sales: sales}
+		Tags: toClientTagResponses(profile.Tags), ExcludedTags: toClientTagResponses(profile.ExcludedTags), Sales: sales}
 }
 
 func toClientTagResponses(tags []domain.ClientTag) []dto.ClientTagResponse {
@@ -311,7 +314,7 @@ func toClientTagResponses(tags []domain.ClientTag) []dto.ClientTagResponse {
 }
 
 func toClientTagResponse(tag domain.ClientTag) dto.ClientTagResponse {
-	return dto.ClientTagResponse{ID: tag.ID, Name: tag.Name, CreatedAt: tag.CreatedAt}
+	return dto.ClientTagResponse{Automatic: tag.Automatic, ID: tag.ID, Name: tag.Name, CreatedAt: tag.CreatedAt}
 }
 
 func toClientMatchResponse(match domain.ClientMatch) dto.ClientMatchResponse {

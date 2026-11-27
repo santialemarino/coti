@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { customerProfileSchema, type CustomerProfileValues } from '@/app/profile/form-schema';
 import { ROUTES } from '@/config/routes';
 import { customerFetch } from '@/lib/api/customer-orders';
-import { requireCustomer } from '@/lib/auth/customer-flow';
+import { requireCustomer, safeCustomerDestination } from '@/lib/auth/customer-flow';
 
 export async function saveCustomerProfile(
   values: CustomerProfileValues,
@@ -52,6 +52,7 @@ export async function saveCustomerProfile(
 export async function requestContactVerification(
   kind: 'EMAIL' | 'WHATSAPP',
   value: string,
+  next?: string,
 ): Promise<{ id?: string; error?: string }> {
   await requireCustomer(ROUTES.profile);
   const t = await getTranslations('customerProfile.errors');
@@ -59,7 +60,8 @@ export async function requestContactVerification(
     const response = await customerFetch('/profile/contacts/verification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind, value }),
+      // The API keeps the page to return to with the proof; the emailed link never carries it.
+      body: JSON.stringify({ kind, value, next: next ? safeCustomerDestination(next, '') : '' }),
     });
     if (response.status === 429) return { error: t('verificationWait') };
     if (!response.ok) {
@@ -82,7 +84,7 @@ export async function requestContactVerification(
 export async function confirmContactVerification(
   id: string,
   token: string,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; next?: string }> {
   await requireCustomer(ROUTES.profile);
   const t = await getTranslations('customerProfile.errors');
   try {
@@ -91,7 +93,11 @@ export async function confirmContactVerification(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, token }),
     });
-    if (response.ok) return {};
+    if (response.ok) {
+      const raw = (await response.json().catch(() => ({}))) as { next?: string | null };
+      const next = raw.next ? safeCustomerDestination(raw.next, '') : '';
+      return next ? { next } : {};
+    }
     return { error: t(response.status === 429 ? 'verificationLocked' : 'verificationInvalid') };
   } catch {
     return { error: t('verificationUnavailable') };

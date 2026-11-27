@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
@@ -122,7 +123,7 @@ func TestClientProfile_PublicationFailureRollsBackProfileAndAssociations(t *test
 		t.Fatal(err)
 	}
 	service := e.quoteDeliveryService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{}, nil)
-	service.WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), failedSendClientLink{}, repository.NewQuoteSendRepository()))
+	service.WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(config.DefaultClientTagRules()), repository.NewQuoteRepository(), failedSendClientLink{}, repository.NewQuoteSendRepository()))
 	name := "Rollback customer"
 	phone := "+5491155550188"
 	input := domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188", ClientAssociation: &domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone}}}
@@ -138,7 +139,7 @@ func TestClientProfile_PublicationFailureRollsBackProfileAndAssociations(t *test
 	if clientID != nil || status != "QUOTED" || profiles != 0 || published != 0 {
 		t.Fatalf("partial association: %v %s %d %d", clientID, status, profiles, published)
 	}
-	service.WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
+	service.WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(config.DefaultClientTagRules()), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
 	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID, input); err != nil {
 		t.Fatalf("retry after rollback: %v", err)
 	}

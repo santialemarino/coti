@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
 	"github.com/santialemarino/coti/apps/api/internal/services"
@@ -22,7 +23,7 @@ import (
 func (e *env) typeNewClient(t *testing.T, seed sendableQuote, name, phone, email string) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
-	clients := services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository())
+	clients := services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(config.DefaultClientTagRules()), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository())
 	var clientID uuid.UUID
 	if err := e.db.InTenantTx(ctx, seed.tenant, func(q repository.Querier) error {
 		quote, err := repository.NewQuoteRepository().GetByID(ctx, q, seed.tenant.AccountID, seed.tenant.BranchID, seed.draft.Quote.ID)

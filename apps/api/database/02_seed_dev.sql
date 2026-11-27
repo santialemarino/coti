@@ -222,9 +222,9 @@ INSERT INTO client (id, account_id, name, phone, origin_channel) VALUES
    'Roberto Gómez', '+5491155550003', 'WALK_IN')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO tag (account_id, name, color) VALUES
-  ('a0000000-0000-4000-8000-000000000001', 'Recurrente', '#16A34A'),
-  ('a0000000-0000-4000-8000-000000000001', 'Obra grande', '#2563EB')
+INSERT INTO tag (account_id, name, rule_kind, rule_enabled) VALUES
+  ('a0000000-0000-4000-8000-000000000001', 'Recurrente', 'RECURRING', TRUE),
+  ('a0000000-0000-4000-8000-000000000001', 'Abandonador', 'ABANDONER', TRUE)
 ON CONFLICT (account_id, lower(name)) DO NOTHING;
 
 -- Catalog combos: account-scoped, with per-branch availability. One is inactive at Moron so

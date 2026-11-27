@@ -260,8 +260,8 @@ func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 		`SELECT id FROM quote_item WHERE version_id = $1`, quote.sentID).Scan(&sentLine); err != nil {
 		t.Fatal(err)
 	}
-	if inputs[0].Items[0].ID == sentLine {
-		t.Error("the model was offered the sent version's line, want the draft's own")
+	if inputs[0].Items[0].ID != sentLine {
+		t.Error("the model was offered another line, want the sent version's own, read before any clone")
 	}
 	lines := e.storedLines(t, state.currentID)
 	if len(lines) != 1 || !lines[0].quantity.Equal(decimal.NewFromInt(4)) {
@@ -356,29 +356,133 @@ func TestConversationHandler_BatchesAccumulateOnTheSingleDraft(t *testing.T) {
 	}
 }
 
-// "dale, acepto" is never an acceptance: the model's escape becomes a no-match for the seller and
-// the quote stays in CHANGE_REQUESTED with its draft untouched.
-func TestConversationHandler_AcceptLikeTextIsANoMatch(t *testing.T) {
-	e := newEnv(t)
-	quote := e.sentHandlerQuote(t, "Handler accept text")
-	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "dale, acepto")
+func decided(decision domain.CustomerDecision, conditional bool,
+) func(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
+	return func(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
+		return &domain.ChangeRequestProposal{Level: domain.ChangeRequestLevelNoMatch,
+			Interpretation: "El cliente responde sin pedir cambios.", CustomerDecision: decision,
+			DecisionConfidencePercent: 95, Conditional: conditional,
+			Operations: []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}}}, nil
+	}
+}
 
-	if err := e.batchChangeHandler(&scriptedProposer{answer: requiresSeller}, nil).
-		Handle(context.Background(), batch); err != nil {
-		t.Fatalf("Handle() = %v", err)
+/*
+ * A reply that changes nothing is recorded on the sent version and leaves the quote SENT: no move,
+ * no draft, and the customer's own accept link keeps working.
+ */
+func TestConversationHandler_RepliesThatChangeNothingKeepTheQuoteSent(t *testing.T) {
+	e := newEnv(t)
+	for _, tc := range []struct {
+		decision domain.CustomerDecision
+		reason   string
+	}{
+		{domain.CustomerDecisionAccept, "CUSTOMER_ACCEPTS"},
+		{domain.CustomerDecisionQuestion, "CUSTOMER_QUESTION"},
+		{domain.CustomerDecisionReject, "CUSTOMER_REJECTS"},
+		{domain.CustomerDecisionNone, "NO_REQUEST"},
+	} {
+		t.Run(string(tc.decision), func(t *testing.T) {
+			quote := e.sentHandlerQuote(t, "Handler keeps "+string(tc.decision))
+			batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "dale")
+
+			if err := e.batchChangeHandler(&scriptedProposer{answer: decided(tc.decision, false)}, nil).
+				Handle(context.Background(), batch); err != nil {
+				t.Fatalf("Handle() = %v", err)
+			}
+			state := e.quoteState(t, quote.quoteID)
+			if state.status != domain.QuoteStatusSent || state.currentID != quote.sentID ||
+				state.mutable || state.versions != 1 {
+				t.Fatalf("quote = %+v, want SENT on the frozen sent version alone", state)
+			}
+			if got := e.systemFlips(t, quote.quoteID); got != 0 {
+				t.Errorf("SENT -> CHANGE_REQUESTED moves = %d, want none", got)
+			}
+			decisions := e.decisionsOf(t, quote.quoteID)
+			if len(decisions) != 1 || decisions[0].versionID != quote.sentID ||
+				decisions[0].state != domain.QuoteStatusSent || decisions[0].outcome != "NO_MATCH" ||
+				decisions[0].reason == nil || *decisions[0].reason != tc.reason {
+				t.Fatalf("decisions = %+v, want one %s on the sent version", decisions, tc.reason)
+			}
+			e.finishBatch(t, batch.ID)
+
+			service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+			result, err := service.RespondPublic(context.Background(), quote.sentToken,
+				domain.ClientActionInput{Type: domain.ClientActionAccept})
+			if err != nil || result.QuoteStatus != domain.QuoteStatusAccepted {
+				t.Errorf("accept link after the reply = %+v, %v, want the quote ACCEPTED", result, err)
+			}
+		})
+	}
+}
+
+/*
+ * A conditional acceptance is a change, and a change after a reply that kept the quote SENT clones
+ * the sent version once, in the same transaction that moves the quote.
+ */
+func TestConversationHandler_AChangeAfterAKeptReplyClonesOnce(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Handler clones once")
+	proposer := &scriptedProposer{answer: decided(domain.CustomerDecisionQuestion, false)}
+	handler := e.batchChangeHandler(proposer, nil)
+	first := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "¿cuándo entregan?")
+	if err := handler.Handle(context.Background(), first); err != nil {
+		t.Fatalf("Handle(first) = %v", err)
+	}
+	e.finishBatch(t, first.ID)
+
+	proposer.answer = decided(domain.CustomerDecisionAccept, true)
+	second := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID,
+		"dale si me lo dejás en 80 mil")
+	if err := handler.Handle(context.Background(), second); err != nil {
+		t.Fatalf("Handle(second) = %v", err)
 	}
 	state := e.quoteState(t, quote.quoteID)
-	if state.status != domain.QuoteStatusChangeRequested {
-		t.Errorf("status = %s, want CHANGE_REQUESTED: the AI never accepts", state.status)
+	if state.status != domain.QuoteStatusChangeRequested || !state.mutable || state.versions != 2 {
+		t.Fatalf("quote = %+v, want CHANGE_REQUESTED on one fresh draft", state)
 	}
-	if lines := e.storedLines(t, state.currentID); len(lines) != 1 ||
-		!lines[0].quantity.Equal(decimal.NewFromInt(2)) {
-		t.Errorf("draft = %+v, want the sent line unchanged", lines)
+	if got := e.systemFlips(t, quote.quoteID); got != 1 {
+		t.Errorf("SENT -> CHANGE_REQUESTED moves = %d, want 1", got)
 	}
 	decisions := e.decisionsOf(t, quote.quoteID)
-	if len(decisions) != 1 || decisions[0].outcome != "NO_MATCH" || decisions[0].reason == nil ||
-		*decisions[0].reason != "REQUIRES_SELLER" {
-		t.Errorf("decisions = %+v, want one REQUIRES_SELLER no-match", decisions)
+	if len(decisions) != 2 || decisions[1].versionID != state.currentID ||
+		decisions[1].reason == nil || *decisions[1].reason != "REQUIRES_SELLER" {
+		t.Errorf("decisions = %+v, want the conditional acceptance left to the seller on the draft",
+			decisions)
+	}
+}
+
+/*
+ * A batch no run could read still reaches the seller: once it fails for good, a SENT quote moves to
+ * CHANGE_REQUESTED with its draft open; on a quote already moved nothing changes.
+ */
+func TestConversationHandler_AFailedBatchLeavesTheQuoteToTheSeller(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Handler failed batch")
+	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "sacá el cemento")
+	handler := e.batchChangeHandler(&scriptedProposer{answer: func(domain.ChangeRequestInput) (
+		*domain.ChangeRequestProposal, error) {
+		return nil, domain.ErrAIUnavailable
+	}}, nil)
+	if err := handler.Handle(context.Background(), batch); !errors.Is(err, domain.ErrAIUnavailable) {
+		t.Fatalf("Handle() = %v, want the provider failure for a retry", err)
+	}
+	if state := e.quoteState(t, quote.quoteID); state.status != domain.QuoteStatusSent ||
+		state.versions != 1 {
+		t.Fatalf("quote after a failed attempt = %+v, want it untouched", state)
+	}
+
+	batch.Status = domain.MessageBatchStatusFailed
+	for range 2 {
+		if err := handler.HandleFailed(context.Background(), batch); err != nil {
+			t.Fatalf("HandleFailed() = %v", err)
+		}
+	}
+	state := e.quoteState(t, quote.quoteID)
+	if state.status != domain.QuoteStatusChangeRequested || !state.mutable || state.versions != 2 {
+		t.Errorf("quote = %+v, want CHANGE_REQUESTED with one draft for the seller", state)
+	}
+	if got := e.systemFlips(t, quote.quoteID); got != 1 {
+		t.Errorf("SENT -> CHANGE_REQUESTED moves = %d, want 1", got)
 	}
 }
 
@@ -461,6 +565,44 @@ func TestConversationHandler_MatrixIsRecheckedInsideTheTransaction(t *testing.T)
 	}
 }
 
+/*
+ * The quote stays SENT while the model reads the reply, so the customer can accept it through the
+ * portal meanwhile. The re-check inside the writing transaction then refuses the batch: neither a
+ * change nor a recorded reply lands on an accepted quote.
+ */
+func TestConversationHandler_AnAcceptanceMeanwhileStopsTheBatch(t *testing.T) {
+	e := newEnv(t)
+	for _, tc := range []struct {
+		name   string
+		answer func(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error)
+	}{
+		{"change", requantify(4)},
+		{"recorded reply", decided(domain.CustomerDecisionQuestion, false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quote := e.sentHandlerQuote(t, "Handler accepted meanwhile "+tc.name)
+			batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "que sean 4")
+			proposer := &scriptedProposer{answer: func(in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
+				if _, err := e.db.CrossAccount().Exec(context.Background(),
+					`UPDATE quote SET current_status = 'ACCEPTED' WHERE id = $1`, quote.quoteID); err != nil {
+					return nil, err
+				}
+				return tc.answer(in)
+			}}
+
+			err := e.batchChangeHandler(proposer, nil).Handle(context.Background(), batch)
+			if !errors.Is(err, domain.ErrBatchUnprocessable) {
+				t.Fatalf("Handle() = %v, want ErrBatchUnprocessable", err)
+			}
+			state := e.quoteState(t, quote.quoteID)
+			if state.status != domain.QuoteStatusAccepted || state.versions != 1 || state.mutable ||
+				len(e.decisionsOf(t, quote.quoteID)) != 0 {
+				t.Errorf("quote = %+v, want it ACCEPTED on the sent version with no draft or decision", state)
+			}
+		})
+	}
+}
+
 // A claim reclaimed while the model answered is no longer this run's: nothing is written.
 func TestConversationHandler_ALostClaimWritesNothing(t *testing.T) {
 	e := newEnv(t)
@@ -489,6 +631,13 @@ func TestConversationHandler_ALostClaimWritesNothing(t *testing.T) {
 func TestConversationHandler_ADraftSentMeanwhileIsRetried(t *testing.T) {
 	e := newEnv(t)
 	quote := e.sentHandlerQuote(t, "Handler draft moved")
+	opening := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "que sean 3")
+	if err := e.batchChangeHandler(&scriptedProposer{answer: requantify(3)}, nil).
+		Handle(context.Background(), opening); err != nil {
+		t.Fatalf("Handle(opening) = %v", err)
+	}
+	e.finishBatch(t, opening.ID)
+	opened := len(e.decisionsOf(t, quote.quoteID))
 	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "dale")
 	proposer := &scriptedProposer{answer: func(in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
 		if _, err := e.db.CrossAccount().Exec(context.Background(),
@@ -503,7 +652,7 @@ func TestConversationHandler_ADraftSentMeanwhileIsRetried(t *testing.T) {
 	if err == nil || errors.Is(err, domain.ErrBatchUnprocessable) {
 		t.Fatalf("Handle() = %v, want a retryable error", err)
 	}
-	if got := e.decisionsOf(t, quote.quoteID); len(got) != 0 {
+	if got := e.decisionsOf(t, quote.quoteID); len(got) != opened {
 		t.Errorf("decisions = %+v, want none recorded on a frozen version", got)
 	}
 }

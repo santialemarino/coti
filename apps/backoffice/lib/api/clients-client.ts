@@ -68,6 +68,23 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
   return raw.items.map(mapClientTag);
 }
 
+export async function setClientTagExclusion(
+  clientId: string,
+  tagId: string,
+  excluded: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/clients/${encodeURIComponent(clientId)}/tag-exclusions/${encodeURIComponent(tagId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excluded }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) await throwApiError(response);
+}
+
 export interface ClientFiscalInput {
   address?: string;
   legalName?: string;

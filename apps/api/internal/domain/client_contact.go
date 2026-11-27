@@ -169,3 +169,11 @@ func NormalizeClientContacts(contacts []ClientContact) ([]ClientContact, error) 
 	}
 	return result, nil
 }
+
+// ContactDestinationKey names a contact by kind and value, with email compared case-insensitively.
+func ContactDestinationKey(kind ChannelType, value string) string {
+	if kind == ChannelTypeEmail {
+		value = strings.ToLower(value)
+	}
+	return string(kind) + ":" + value
+}

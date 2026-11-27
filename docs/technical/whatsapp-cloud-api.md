@@ -99,7 +99,7 @@ https://<api-host>/v1/webhooks/whatsapp
 
 The `GET` callback verification accepts the configured `webhook_verify_token`; the `POST` endpoint
 requires an HMAC-SHA256 signature made with `WHATSAPP_APP_SECRET`. Subscribe the Meta app to the
-`messages` webhook field. A deployment with no app secret returns `503` for inbound deliveries
+`messages` webhook field, which carries both inbound messages and delivery statuses. A deployment with no app secret returns `503` for inbound deliveries
 instead of accepting an unsigned message.
 
 The callback is public but not tenant-authenticated. It resolves `metadata.phone_number_id` on the
@@ -114,8 +114,30 @@ Only inbound text messages are materialized in this release. Their Meta message 
 provider payload, sender metadata, and exactly one target: a reserved RFQ ID or the
 `quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry keeps
 the first delivery's target — it resumes that RFQ, or does nothing for a message already joined —
-so it can create neither a second order nor a second message. Media and delivery-status events are
-acknowledged but do not create RFQs.
+so it can create neither a second order nor a second message. Media events are acknowledged but do
+not create RFQs.
+
+A **reaction** (👍 on a quote message) is materialized as a message whose text is the emoji, but only
+when its sender has a live quote conversation: it joins that conversation like any reply, and with no
+conversation it is dropped, so a reaction never becomes an order. Removing a reaction (an empty
+emoji) is ignored.
+
+## Delivery statuses
+
+The same `messages` field carries the statuses Meta reports for messages a branch number sent. Each
+one names the message by the `wamid` stored in `quote_send.provider_reference`, and moves that send
+forward only: `delivered` → `DELIVERED`, `read` → `VIEWED`, `failed` → `FAILED` (from `SENT` only, so
+a late failure never undoes a delivery). `sent` repeats what the send call already recorded and is
+skipped. Meta may report out of order, so one delivery keeps only the furthest status per message,
+and the update never moves a send backwards.
+
+A status resolves its channel by `metadata.phone_number_id` and is applied in that channel's tenant
+transaction. Statuses for a channel whose account or branch is inactive are dropped rather than
+retried: they describe messages already sent, and nothing waits on them. A `wamid` that is not a
+quote send on that channel (a contact code, a registration
+link, a message from another number) is ignored. Error `131047` means the customer last wrote more
+than 24 hours earlier, so Meta refused free text; the send shows as failed on the order's timeline
+and the log records the code.
 
 ## Conversation routing
 
@@ -187,7 +209,9 @@ bind the batch change handler ([rfq-pipeline.md](rfq-pipeline.md#conversation-ba
 handler error wrapping `domain.ErrBatchUnprocessable` — the quote was archived or closed after its
 window closed — spends the batch's last attempt at once and leaves it `FAILED` with the reason in
 `last_error` and `failure_reason = UNPROCESSABLE`; one that ran out of attempts is
-`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
+`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. Either way the failed
+batch goes back to the handler, which moves a still-`SENT` quote to `CHANGE_REQUESTED` with its
+draft open, so a reply nobody read still reaches the seller. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
 transaction.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at
