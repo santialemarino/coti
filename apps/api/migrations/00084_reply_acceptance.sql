@@ -1,5 +1,6 @@
 -- What an acceptance read from a customer's reply needs: the account's switch, the mark that it
--- waits for the seller's confirmation, and a way to revoke the customer action it recorded.
+-- waits for the seller's confirmation, a way to revoke the customer action it recorded, and, to
+-- accept the sent version of a quote with an open draft, a way to discard that draft's preview.
 
 -- +goose Up
 
@@ -16,7 +17,17 @@ ALTER TABLE client_action ADD COLUMN message_batch_id UUID;
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_batch
   FOREIGN KEY (message_batch_id) REFERENCES message_batch(id);
 
+-- A frozen version's representation stays immutable; only a draft's preview may be deleted.
+GRANT DELETE ON quote_representation TO coti_app;
+CREATE POLICY quote_representation_draft_delete ON quote_representation AS RESTRICTIVE FOR DELETE
+  USING (EXISTS (SELECT 1 FROM quote_version version
+    WHERE version.account_id = quote_representation.account_id
+      AND version.id = quote_representation.version_id AND NOT version.is_immutable));
+
 -- +goose Down
+
+DROP POLICY quote_representation_draft_delete ON quote_representation;
+REVOKE DELETE ON quote_representation FROM coti_app;
 
 ALTER TABLE client_action DROP CONSTRAINT fk_client_action_batch;
 ALTER TABLE client_action DROP COLUMN message_batch_id;
