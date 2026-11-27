@@ -22,7 +22,7 @@ func (r *ClientContactRepository) LockChallenge(ctx context.Context, q Querier, 
 
 func (r *ClientContactRepository) getChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, suffix string) (*domain.ContactChallenge, error) {
 	c := &domain.ContactChallenge{}
-	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at,COALESCE(next_path,'') FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY'`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt, &c.NextPath)
+	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at,COALESCE(next_path,''),proved_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY'`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt, &c.NextPath, &c.ProvedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -104,6 +104,12 @@ func (r *ClientContactRepository) CreateFailure(ctx context.Context, q Querier, 
 // FinishChallenge retains attempt counts and consumes successful or cancelled proofs.
 func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, consume bool) error {
 	_, err := q.Exec(ctx, `UPDATE client_contact_challenge SET attempts=attempts+1,consumed_at=CASE WHEN $4 THEN now() ELSE consumed_at END WHERE account_id=$1 AND customer_id=$2 AND id=$3`, p.AccountID, p.CustomerID, id, consume)
+	return err
+}
+
+// MarkChallengeProved records that the customer proved the destination through this very challenge.
+func (r *ClientContactRepository) MarkChallengeProved(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_challenge SET proved_at=now() WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY' AND proved_at IS NULL`, p.AccountID, p.CustomerID, id)
 	return err
 }
 

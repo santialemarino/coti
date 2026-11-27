@@ -32,6 +32,8 @@ type ContactChallenge struct {
 	ConsumedAt *time.Time
 	// NextPath is the portal page a verification returns to, empty for the default.
 	NextPath string
+	// ProvedAt is set once the customer proved the destination through this challenge.
+	ProvedAt *time.Time
 }
 
 // DestinationWindows are the instants each destination cap counts from.

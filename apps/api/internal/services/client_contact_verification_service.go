@@ -27,6 +27,7 @@ type contactVerificationStore interface {
 	CreateChallenge(context.Context, repository.Querier, domain.ContactChallenge) error
 	CreateFailure(context.Context, repository.Querier, domain.ContactChallenge) error
 	FinishChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, bool) error
+	MarkChallengeProved(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID) error
 	MarkVerified(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, domain.ChannelType, string) error
 	GetContactHostname(context.Context, repository.Querier, uuid.UUID) (string, error)
 	LockDestination(context.Context, repository.Querier, domain.ChannelType, string) error
@@ -162,19 +163,11 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		hash := hashToken(c.ID.String() + ":" + secret)
 		next = c.NextPath
 		if c.ConsumedAt != nil {
-			if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 {
+			// A repeated confirmation succeeds only for a proof that itself proved the destination.
+			if subtle.ConstantTimeCompare([]byte(hash), []byte(c.TokenHash)) != 1 || c.ProvedAt == nil {
 				return domain.ErrUnauthenticated
 			}
-			collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ClientID})
-			if err != nil {
-				return err
-			}
-			for _, contact := range collections[c.ClientID] {
-				if contact.Kind == c.Kind && contact.Value == c.Value && contact.Verified {
-					return nil
-				}
-			}
-			return domain.ErrUnauthenticated
+			return nil
 		}
 		if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 			return domain.ErrUnauthenticated
@@ -190,6 +183,10 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 			return s.store.FinishChallenge(ctx, q, p, id, false)
 		}
 		if err := s.applyProof(ctx, q, p, c.ClientID, c.Kind, c.Value); err != nil {
+			return err
+		}
+		// Decision 95: a proof born from a quote's link opens that quote's sends to this destination.
+		if err := s.store.MarkChallengeProved(ctx, q, p, id); err != nil {
 			return err
 		}
 		return s.store.FinishChallenge(ctx, q, p, id, true)
@@ -221,16 +218,10 @@ func (s *ClientContactVerificationService) Describe(ctx context.Context, p domai
 			}
 			return nil
 		}
-		// A consumed proof either verified the contact or was cancelled by a newer one.
+		// A consumed proof either proved the destination or was cancelled by a newer one.
 		view.Status = domain.ContactChallengeExpired
-		collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{c.ClientID})
-		if err != nil {
-			return err
-		}
-		for _, contact := range collections[c.ClientID] {
-			if contact.Kind == c.Kind && contact.Value == c.Value && contact.Verified {
-				view.Status = domain.ContactChallengeVerified
-			}
+		if c.ProvedAt != nil {
+			view.Status = domain.ContactChallengeVerified
 		}
 		return nil
 	})
