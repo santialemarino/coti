@@ -168,6 +168,16 @@ type WhatsAppDeliveryCredentials struct {
 	AccessToken   string
 }
 
+// ProviderDeliveryStatus is one outcome a channel provider reported for a message it accepted.
+type ProviderDeliveryStatus struct {
+	DestinationIdentifier string
+	ProviderReference     string
+	Status                SendTrackingStatus
+	ErrorCode             string
+	// OutsideWindow is a refusal because the customer last wrote more than 24 hours earlier.
+	OutsideWindow bool
+}
+
 // DeliveryReceipt is the external provider's durable acknowledgement.
 type DeliveryReceipt struct {
 	ProviderReference string

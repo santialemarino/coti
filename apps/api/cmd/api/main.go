@@ -364,7 +364,9 @@ func run() error {
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
-				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken),
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken).
+				WithDeliveryStatuses(services.NewWhatsAppDeliveryStatusService(db, inboundRoutingService,
+					quoteSendRepo, log)),
 			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
