@@ -128,7 +128,6 @@ func ParseStatuses(body []byte) ([]domain.ProviderDeliveryStatus, error) {
 					DestinationIdentifier: phoneNumberID,
 					ProviderReference:     reference,
 					Status:                status,
-					OccurredAt:            metaWebhookTime(reported.Timestamp),
 				}
 				if len(reported.Errors) > 0 {
 					delivery.ErrorCode = strconv.Itoa(reported.Errors[0].Code)

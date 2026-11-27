@@ -132,7 +132,9 @@ skipped. Meta may report out of order, so one delivery keeps only the furthest s
 and the update never moves a send backwards.
 
 A status resolves its channel by `metadata.phone_number_id` and is applied in that channel's tenant
-transaction; a `wamid` that is not a quote send on that channel (a contact code, a registration
+transaction. Statuses for a channel whose account or branch is inactive are dropped rather than
+retried: they describe messages already sent, and nothing waits on them. A `wamid` that is not a
+quote send on that channel (a contact code, a registration
 link, a message from another number) is ignored. Error `131047` means the customer last wrote more
 than 24 hours earlier, so Meta refused free text; the send shows as failed on the order's timeline
 and the log records the code.

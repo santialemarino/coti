@@ -66,3 +66,44 @@ func TestWhatsAppDeliveryStatusService_RecordWithNoStatusesTouchesNothing(t *tes
 		t.Errorf("Record(nil) = %v with %d calls, want nothing", err, len(store.calls))
 	}
 }
+
+func TestWhatsAppDeliveryStatusService_RecordPrefersADeliveryOverAFailure(t *testing.T) {
+	t.Parallel()
+	route := domain.InboundChannelRoute{AccountID: uuid.New(), BranchID: uuid.New(),
+		ChannelID: uuid.New(), ChannelType: domain.ChannelTypeWhatsApp}
+	store := &fakeDeliveryStatusStore{}
+	service := NewWhatsAppDeliveryStatusService(&fakeWhatsAppInboundDB{}, &fakeWhatsAppInboundRouter{
+		routes: map[string]domain.InboundChannelRoute{"phone-id": route}}, store, nil)
+
+	if err := service.Record(context.Background(), []domain.ProviderDeliveryStatus{
+		{DestinationIdentifier: "phone-id", ProviderReference: "wamid.a", Status: domain.SendTrackingStatusDelivered},
+		{DestinationIdentifier: "phone-id", ProviderReference: "wamid.a", Status: domain.SendTrackingStatusFailed},
+	}); err != nil {
+		t.Fatalf("Record() = %v, want no error", err)
+	}
+	if len(store.batches) != 1 || len(store.batches[0]) != 1 ||
+		store.batches[0][0].Status != domain.SendTrackingStatusDelivered {
+		t.Errorf("batches = %v, want the delivery kept over a failure for the same message", store.batches)
+	}
+}
+
+func TestWhatsAppDeliveryStatusService_RecordDropsAnInactiveOwnerQuietly(t *testing.T) {
+	t.Parallel()
+	active := domain.InboundChannelRoute{AccountID: uuid.New(), BranchID: uuid.New(),
+		ChannelID: uuid.New(), ChannelType: domain.ChannelTypeWhatsApp}
+	store := &fakeDeliveryStatusStore{}
+	service := NewWhatsAppDeliveryStatusService(&fakeWhatsAppInboundDB{}, &fakeWhatsAppInboundRouter{
+		routes: map[string]domain.InboundChannelRoute{"active-phone": active},
+		err:    domain.ErrInboundDestinationInactive}, store, nil)
+
+	err := service.Record(context.Background(), []domain.ProviderDeliveryStatus{
+		{DestinationIdentifier: "active-phone", ProviderReference: "wamid.a", Status: domain.SendTrackingStatusViewed},
+		{DestinationIdentifier: "inactive-phone", ProviderReference: "wamid.b", Status: domain.SendTrackingStatusViewed},
+	})
+	if err != nil {
+		t.Fatalf("Record() = %v, want an inactive owner's statuses dropped without a retry", err)
+	}
+	if len(store.calls) != 1 || store.calls[0] != active.ChannelID {
+		t.Errorf("calls = %v, want only the active channel updated", store.calls)
+	}
+}

@@ -176,7 +176,6 @@ type ProviderDeliveryStatus struct {
 	ErrorCode             string
 	// OutsideWindow is a refusal because the customer last wrote more than 24 hours earlier.
 	OutsideWindow bool
-	OccurredAt    time.Time
 }
 
 // DeliveryReceipt is the external provider's durable acknowledgement.

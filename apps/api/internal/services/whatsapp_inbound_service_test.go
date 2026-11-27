@@ -40,6 +40,8 @@ func (f *fakeWhatsAppInboundDB) WithAdvisoryLock(
 
 type fakeWhatsAppInboundRouter struct {
 	routes map[string]domain.InboundChannelRoute
+	// err is returned beside the routes, as an inactive owner is.
+	err error
 }
 
 func (f *fakeWhatsAppInboundRouter) ResolveChannels(_ context.Context, _ domain.ChannelType,
@@ -51,7 +53,7 @@ func (f *fakeWhatsAppInboundRouter) ResolveChannels(_ context.Context, _ domain.
 			resolved[identifier] = route
 		}
 	}
-	return resolved, nil
+	return resolved, f.err
 }
 
 // fakeWhatsAppInboundMessages keeps the first reservation, as the unique provider key does.
