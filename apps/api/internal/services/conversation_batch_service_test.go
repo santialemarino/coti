@@ -44,6 +44,8 @@ type fakeBatchQueue struct {
 	races    int
 	// reclaimBefore is the cutoff the last reclaim was asked for.
 	reclaimBefore time.Time
+	// reclaimed is what the first reclaim hands back.
+	reclaimed []domain.MessageBatch
 }
 
 func (f *fakeBatchQueue) LockDueQuotesCrossAccount(context.Context, repository.Querier, time.Time,
@@ -62,7 +64,9 @@ func (f *fakeBatchQueue) ReclaimStuckCrossAccount(_ context.Context, _ repositor
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reclaimBefore = startedBefore
-	return nil, nil
+	reclaimed := f.reclaimed
+	f.reclaimed = nil
+	return reclaimed, nil
 }
 
 func (f *fakeBatchQueue) ClaimNextCrossAccount(_ context.Context, _ repository.Querier,
@@ -347,5 +351,19 @@ func TestConversationBatchService_HandsAFailedBatchBackToTheHandler(t *testing.T
 				t.Errorf("handed back = %v, want %d", handler.failed, tc.want)
 			}
 		})
+	}
+}
+
+// A claim reclaimed on its last attempt fails for good, and goes back to the handler too.
+func TestConversationBatchService_HandsAReclaimedFailureBackToTheHandler(t *testing.T) {
+	stuck := pendingBatches(2)
+	stuck[0].Status = domain.MessageBatchStatusFailed
+	queue := &fakeBatchQueue{reclaimed: stuck}
+	handler := &failureRecordingHandler{}
+	if _, err := newTestBatchService(queue, handler, time.Minute).Sweep(context.Background()); err != nil {
+		t.Fatalf("Sweep() = %v", err)
+	}
+	if !slices.Equal(handler.failed, []uuid.UUID{stuck[0].ID}) {
+		t.Errorf("handed back = %v, want only the reclaim that failed for good", handler.failed)
 	}
 }

@@ -565,6 +565,44 @@ func TestConversationHandler_MatrixIsRecheckedInsideTheTransaction(t *testing.T)
 	}
 }
 
+/*
+ * The quote stays SENT while the model reads the reply, so the customer can accept it through the
+ * portal meanwhile. The re-check inside the writing transaction then refuses the batch: neither a
+ * change nor a recorded reply lands on an accepted quote.
+ */
+func TestConversationHandler_AnAcceptanceMeanwhileStopsTheBatch(t *testing.T) {
+	e := newEnv(t)
+	for _, tc := range []struct {
+		name   string
+		answer func(domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error)
+	}{
+		{"change", requantify(4)},
+		{"recorded reply", decided(domain.CustomerDecisionQuestion, false)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quote := e.sentHandlerQuote(t, "Handler accepted meanwhile "+tc.name)
+			batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "que sean 4")
+			proposer := &scriptedProposer{answer: func(in domain.ChangeRequestInput) (*domain.ChangeRequestProposal, error) {
+				if _, err := e.db.CrossAccount().Exec(context.Background(),
+					`UPDATE quote SET current_status = 'ACCEPTED' WHERE id = $1`, quote.quoteID); err != nil {
+					return nil, err
+				}
+				return tc.answer(in)
+			}}
+
+			err := e.batchChangeHandler(proposer, nil).Handle(context.Background(), batch)
+			if !errors.Is(err, domain.ErrBatchUnprocessable) {
+				t.Fatalf("Handle() = %v, want ErrBatchUnprocessable", err)
+			}
+			state := e.quoteState(t, quote.quoteID)
+			if state.status != domain.QuoteStatusAccepted || state.versions != 1 || state.mutable ||
+				len(e.decisionsOf(t, quote.quoteID)) != 0 {
+				t.Errorf("quote = %+v, want it ACCEPTED on the sent version with no draft or decision", state)
+			}
+		})
+	}
+}
+
 // A claim reclaimed while the model answered is no longer this run's: nothing is written.
 func TestConversationHandler_ALostClaimWritesNothing(t *testing.T) {
 	e := newEnv(t)
