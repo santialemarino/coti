@@ -1,5 +1,3 @@
-import { getTranslations } from 'next-intl/server';
-
 import {
   ContactEmailConfirmation,
   type EmailConfirmationState,
@@ -21,7 +19,9 @@ export default async function Page({
     challenge?: string;
     token?: string;
     next?: string;
-    verification?: string;
+    /* The proofs sign-up sent, by id, so the screen only says what is really on its way. */
+    email?: string;
+    phone?: string;
   }>;
 }) {
   const query = await searchParams;
@@ -41,10 +41,7 @@ export default async function Page({
 
   // An emailed link: confirm the proof it carries, and return where the request asked.
   if (linked) {
-    const [verification, t] = await Promise.all([
-      getContactVerification(query.challenge || ''),
-      getTranslations('customerVerification'),
-    ]);
+    const verification = await getContactVerification(query.challenge || '');
     const state: EmailConfirmationState =
       !verification || verification.kind !== 'EMAIL' || verification.status === 'EXPIRED'
         ? 'invalid'
@@ -54,7 +51,6 @@ export default async function Page({
     const next = verification?.next ? safeCustomerDestination(verification.next, '') : '';
     return (
       <CustomerAuthShell supplierName={portal.supplierName} logoUrl={portal.logoUrl}>
-        <h1 className="sr-only">{t('confirm.title')}</h1>
         <ContactEmailConfirmation
           challenge={query.challenge || ''}
           token={query.token || ''}
@@ -69,9 +65,10 @@ export default async function Page({
 
   // After sign-up, or from a quote the account cannot open yet: prove a contact, then continue.
   const next = safeCustomerDestination(query.next, ROUTES.orders);
-  const [profile, sent] = await Promise.all([
+  const [profile, sentEmail, sentPhone] = await Promise.all([
     getCustomerProfile(),
-    query.verification ? getContactVerification(query.verification) : Promise.resolve(null),
+    query.email ? getContactVerification(query.email) : Promise.resolve(null),
+    query.phone ? getContactVerification(query.phone) : Promise.resolve(null),
   ]);
   if (!profile.ownershipUnproved && profile.contacts.some((contact) => contact.verified))
     return await customerRedirect(next);
@@ -81,9 +78,15 @@ export default async function Page({
         contacts={profile.contacts.filter((contact) => !contact.verified)}
         next={next}
         supplierName={portal.supplierName}
+        ownershipUnproved={profile.ownershipUnproved}
+        sentEmail={
+          sentEmail?.kind === 'EMAIL' && sentEmail.status === 'PENDING'
+            ? sentEmail.value
+            : undefined
+        }
         sentCode={
-          sent?.kind === 'WHATSAPP' && sent.status === 'PENDING'
-            ? { value: sent.value, challenge: query.verification || '' }
+          sentPhone?.kind === 'WHATSAPP' && sentPhone.status === 'PENDING'
+            ? { value: sentPhone.value, challenge: query.phone || '' }
             : undefined
         }
       />

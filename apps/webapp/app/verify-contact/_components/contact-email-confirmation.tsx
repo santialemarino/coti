@@ -69,6 +69,7 @@ export function ContactEmailConfirmation({
   if (state === 'invalid')
     return (
       <Card>
+        <h1 className="sr-only">{t('invalid.title')}</h1>
         <StatusScreen
           icon={LinkIcon}
           tone="warning"
@@ -87,6 +88,7 @@ export function ContactEmailConfirmation({
   if (state === 'verified')
     return (
       <Card key="verified">
+        <h1 className="sr-only">{t('verified.title')}</h1>
         <StatusScreen
           icon={CircleCheckIcon}
           tone="success"
@@ -105,7 +107,9 @@ export function ContactEmailConfirmation({
   return (
     <Card>
       <CardHeader className="text-center">
-        <CardTitle>{t('confirm.title')}</CardTitle>
+        <CardTitle>
+          <h1>{t('confirm.title')}</h1>
+        </CardTitle>
         <CardDescription className="[overflow-wrap:anywhere]">
           {t(forQuote ? 'confirm.descriptionQuote' : 'confirm.description', {
             email: email ?? '',

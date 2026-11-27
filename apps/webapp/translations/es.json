@@ -408,11 +408,16 @@
       "title": "Confirmá tu contacto",
       "descriptionQuote": "Para ver tu cotización de {supplier}, confirmá que alguno de estos contactos es tuyo.",
       "description": "Para ver tus pedidos en {supplier}, confirmá que alguno de estos contactos es tuyo.",
-      "email": "Te mandamos un enlace para confirmarlo. Abrilo en este dispositivo o en cualquier otro.",
-      "phone": "Te mandamos un código por WhatsApp para confirmarlo.",
+      "email": "Pedí un enlace para confirmar que es tuyo.",
+      "emailSent": "Te mandamos un enlace para confirmarlo. Abrilo en este dispositivo o en cualquier otro.",
+      "emailSentToast": "Te mandamos un enlace a {email}.",
+      "phone": "Pedí un código por WhatsApp para confirmar que es tuyo.",
+      "phoneSent": "Te mandamos un código por WhatsApp para confirmarlo.",
+      "send": "Enviar enlace",
       "resend": "Reenviar enlace",
-      "resending": "Enviando…",
-      "resent": "Te mandamos otro enlace a {email}.",
+      "sending": "Enviando…",
+      "earlierProfile": "Tu CUIT/CUIL ya tenía una ficha en {supplier}. Para ver tus pedidos anteriores, verificá un correo o WhatsApp que ya figuraba en esa ficha.",
+      "earlierProfileAction": "Ir a Mis datos",
       "none": "Todavía no cargaste un correo ni un WhatsApp. Agregá uno en Mis datos para confirmarlo.",
       "profile": "Corregir mis datos"
     },
@@ -432,7 +437,7 @@
     },
     "invalid": {
       "title": "Este enlace ya no sirve",
-      "description": "Venció, ya se usó o pediste uno más nuevo. Pedí otro para confirmar tu correo.",
+      "description": "Venció, ya se usó, pediste uno más nuevo o es de otra cuenta. Pedí otro desde la cuenta con la que te registraste.",
       "action": "Pedir un enlace nuevo"
     },
     "notInAccount": {

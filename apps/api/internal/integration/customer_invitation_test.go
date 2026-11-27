@@ -137,15 +137,23 @@ func TestCustomerInvitation_StoresOnlyAPortalDestination(t *testing.T) {
 	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), store)
 	verifier := services.NewClientContactVerificationService(contacts, store, &captureContactMessenger{}, sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: time.Minute, ContactVerificationCooldown: time.Nanosecond, ContactVerificationAttempts: 3}))
 	email := "customer20123456786@example.test"
+	var first uuid.UUID
 	for _, next := range []string{"https://evil.test/quotes/x", "//evil.test", "/quotes/x?y=1", "/admin"} {
 		proof, err := verifier.Request(ctx, p, domain.ChannelTypeEmail, email, next)
 		if err != nil {
 			t.Fatal(err)
 		}
+		if first == uuid.Nil {
+			first = proof.ID
+		}
 		if view, err := verifier.Describe(ctx, p, proof.ID); err != nil || view.NextPath != "" {
 			t.Fatalf("next %q stored as %+v, %v", next, view, err)
 		}
 		time.Sleep(time.Millisecond)
+	}
+	// A newer request cancels the older proof: its link is dead, not a verification that happened.
+	if view, err := verifier.Describe(ctx, p, first); err != nil || view.Status != domain.ContactChallengeExpired {
+		t.Fatalf("a cancelled proof reads %+v, %v, want EXPIRED", view, err)
 	}
 	e.registerCustomer(t, account, "30712345671")
 	other := domain.CustomerPrincipal{AccountID: account, TaxID: "30712345671"}

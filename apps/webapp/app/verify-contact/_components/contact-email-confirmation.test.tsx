@@ -74,7 +74,7 @@ it('keeps the customer on the form with the reason when the confirmation is refu
 it('offers a new link instead of a button that cannot work', () => {
   renderConfirmation('invalid', '/quotes/tok-1');
 
-  expect(screen.getByText(copy.invalid.title)).toBeTruthy();
+  expect(screen.getByRole('heading', { name: copy.invalid.title })).toBeTruthy();
   expect(screen.queryByRole('button', { name: copy.confirm.submit })).toBeNull();
   expect(screen.getByRole('link', { name: copy.invalid.action }).getAttribute('href')).toBe(
     '/verify-contact?next=%2Fquotes%2Ftok-1',

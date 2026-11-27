@@ -82,22 +82,24 @@ export async function signUpCustomer(values: {
     };
   }
   const next = safeCustomerDestination(values.next, ROUTES.newRequest);
-  const phoneChallenge = await requestSignupVerifications(values, next);
+  const sent = await requestSignupVerifications(values, next);
   // An earlier quote or order only opens once a contact is proved, so that comes first.
   if (!/^\/(quotes|orders)\//.test(next)) return await customerRedirect(next);
   const query = new URLSearchParams({ next });
-  if (phoneChallenge) query.set('verification', phoneChallenge);
+  if (sent.email) query.set('email', sent.email);
+  if (sent.phone) query.set('phone', sent.phone);
   return await customerRedirect(`${ROUTES.verifyContact}?${query}`);
 }
 
 /*
  * Sends the proofs right away, carrying where to return. A failure leaves them to the next screen.
- * Returns the WhatsApp proof's id, which the next screen needs to take the code.
+ * Returns the ids of the proofs that went out: the next screen says only what is on its way, and
+ * takes the WhatsApp code by its id.
  */
 async function requestSignupVerifications(
   values: { phone: string; email: string },
   next: string,
-): Promise<string | undefined> {
+): Promise<{ email?: string; phone?: string }> {
   const request = (kind: 'EMAIL' | 'WHATSAPP', value: string) =>
     customerFetch('/profile/contacts/verification', {
       method: 'POST',
@@ -108,11 +110,11 @@ async function requestSignupVerifications(
         response.ok ? ((await response.json()) as { id?: string }).id : undefined,
       )
       .catch(() => undefined);
-  const [, phone] = await Promise.all([
+  const [email, phone] = await Promise.all([
     values.email.trim() ? request('EMAIL', values.email.trim()) : undefined,
     values.phone ? request('WHATSAPP', values.phone) : undefined,
   ]);
-  return phone;
+  return { email, phone };
 }
 
 export async function completeCustomerGoogle(values: {
