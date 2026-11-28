@@ -10,6 +10,10 @@ must match the branch email address. The
 connection is only for incoming requests; outbound quote delivery uses the configured mail
 transport and requires the seller's action.
 
+Incoming email is Gmail or Google Workspace only: a branch mailbox at Outlook, Hotmail, Yahoo or any
+other provider cannot be connected, because Coti reads the mailbox through Google's API. A
+forwarding address per branch that receives from any provider is planned after this release.
+
 ## Google setup
 
 Enable the Gmail API in a Google Cloud project, configure its OAuth consent screen, and create a web

@@ -209,3 +209,28 @@ func TestChangeRequestHandler_Propose_KeepsTheVariablePartOutOfTheInstructions(t
 		t.Errorf("payload = %v, want the batch, one context message and the promotion in force", payload)
 	}
 }
+
+func TestChangeRequestHandler_Propose_MapsTheCustomerDecision(t *testing.T) {
+	generator := &fakeGenerator{answer: `{"customer_decision":"ACCEPT","decision_confidence_percent":93,"conditional":false,"partial_or_alternative":true,"level":"NO_MATCH","interpretation":"Acepta la opción más barata.","intent":null,"intent_item_ids":[],"lower_price_strategy":null,"operations":[]}`}
+
+	proposal, err := NewChangeRequestHandler(generator).Propose(context.Background(),
+		domain.ChangeRequestInput{Message: "me quedo con la más barata"})
+	if err != nil {
+		t.Fatalf("Propose() = %v", err)
+	}
+	if proposal.CustomerDecision != domain.CustomerDecisionAccept ||
+		proposal.DecisionConfidencePercent != 93 || proposal.Conditional || !proposal.PartialOrAlternative {
+		t.Errorf("proposal = %+v, want an ACCEPT at 93 taking an alternative", proposal)
+	}
+	required := changeRequestSchema()["required"].([]string)
+	for _, key := range []string{"customer_decision", "decision_confidence_percent", "conditional",
+		"partial_or_alternative"} {
+		if !slices.Contains(required, key) {
+			t.Errorf("required = %v, want %s: a strict schema lists every key", required, key)
+		}
+	}
+	decisions := changeRequestSchema()["properties"].(map[string]any)["customer_decision"].(map[string]any)["enum"].([]string)
+	if !slices.Equal(decisions, []string{"CHANGE", "ACCEPT", "REJECT", "QUESTION", "NONE", "NEW_ORDER"}) {
+		t.Errorf("decision enum = %v, want the closed set", decisions)
+	}
+}

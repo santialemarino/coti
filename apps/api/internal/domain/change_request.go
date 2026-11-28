@@ -45,6 +45,35 @@ const (
 	ChangeRequestIntentImproveQuality ChangeRequestIntent = "IMPROVE_QUALITY"
 )
 
+// CustomerDecision is what a batch of customer messages says about the quote as a whole.
+type CustomerDecision string
+
+const (
+	// CustomerDecisionChange asks for something on the quote to change; only this moves it to
+	// CHANGE_REQUESTED.
+	CustomerDecisionChange CustomerDecision = "CHANGE"
+	// CustomerDecisionAccept takes the quote as sent.
+	CustomerDecisionAccept CustomerDecision = "ACCEPT"
+	// CustomerDecisionReject turns the quote down; the seller confirms it, the AI never does.
+	CustomerDecisionReject CustomerDecision = "REJECT"
+	// CustomerDecisionQuestion asks about delivery, payment, stock or the like.
+	CustomerDecisionQuestion CustomerDecision = "QUESTION"
+	// CustomerDecisionNone decides nothing: thanks, a reaction, "lo pienso".
+	CustomerDecisionNone CustomerDecision = "NONE"
+	// CustomerDecisionNewOrder asks for a separate order; it goes to intake, not to this quote.
+	CustomerDecisionNewOrder CustomerDecision = "NEW_ORDER"
+)
+
+// Valid reports whether d is a known customer decision.
+func (d CustomerDecision) Valid() bool {
+	switch d {
+	case CustomerDecisionChange, CustomerDecisionAccept, CustomerDecisionReject,
+		CustomerDecisionQuestion, CustomerDecisionNone, CustomerDecisionNewOrder:
+		return true
+	}
+	return false
+}
+
 // ChangeRequestPromotion is an in-force promotion the handler may name in an ADD_DISCOUNT.
 type ChangeRequestPromotion struct {
 	ID          uuid.UUID `json:"id"`
@@ -96,6 +125,27 @@ type ChangeRequestProposal struct {
 	// LowerPriceStrategy is the way to a lower total the customer's wording prefers, if any.
 	LowerPriceStrategy *HandlerStrategy         `json:"lower_price_strategy,omitempty"`
 	Operations         []ChangeRequestOperation `json:"operations"`
+	// CustomerDecision is the model's reading of the batch; the backend makes a change win.
+	CustomerDecision          CustomerDecision `json:"customer_decision"`
+	DecisionConfidencePercent int              `json:"decision_confidence_percent"`
+	// Conditional is an acceptance that depends on something the quote does not say yet.
+	Conditional bool `json:"conditional"`
+	// PartialOrAlternative takes part of the quote, or one of its offered alternatives.
+	PartialOrAlternative bool `json:"partial_or_alternative"`
+}
+
+// EffectiveDecision is the decision the backend acts on: any change the model resolved, and any
+// conditional acceptance, is a change whatever the model labelled it.
+func (p ChangeRequestProposal) EffectiveDecision() CustomerDecision {
+	switch {
+	case p.Level == ChangeRequestLevelAtomic || p.Level == ChangeRequestLevelComplex:
+		return CustomerDecisionChange
+	case p.CustomerDecision == CustomerDecisionAccept && p.Conditional:
+		return CustomerDecisionChange
+	case !p.CustomerDecision.Valid():
+		return CustomerDecisionChange
+	}
+	return p.CustomerDecision
 }
 
 // ChangeRequestHandler turns a customer message into reviewable draft operations.

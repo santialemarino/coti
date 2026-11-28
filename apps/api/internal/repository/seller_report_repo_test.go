@@ -573,10 +573,10 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 			if report.KPIs.QuotesAccepted != 1 {
 				t.Fatalf("accepted quotes = %d, want 1", report.KPIs.QuotesAccepted)
 			}
-			if got := report.KPIs.AcceptedAmount.StringFixed(2); got != tc.wantAmount {
-				t.Fatalf("accepted amount = %s, want %s", got, tc.wantAmount)
-			}
 			if tc.wantAmount == "0.00" {
+				if report.KPIs.AcceptedAmount != nil || report.KPIs.AcceptedCurrency != nil || len(report.KPIs.AcceptedAmounts) != 0 {
+					t.Fatalf("accepted money = %+v, want no resolved currency or amount", report.KPIs)
+				}
 				if len(report.TopClients) != 0 {
 					t.Fatalf("top clients = %+v, want none for an unresolved acceptance", report.TopClients)
 				}
@@ -585,6 +585,9 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 						report.TopRevenueProducts)
 				}
 				return
+			}
+			if report.KPIs.AcceptedAmount == nil || report.KPIs.AcceptedAmount.StringFixed(2) != tc.wantAmount {
+				t.Fatalf("accepted amount = %v, want %s", report.KPIs.AcceptedAmount, tc.wantAmount)
 			}
 			if len(report.TopClients) != 1 ||
 				report.TopClients[0].AcceptedAmount.StringFixed(2) != tc.wantAmount {
@@ -608,6 +611,7 @@ func TestSellerReportRepositoryMeasuresConversionAsACohort(t *testing.T) {
 	earlierToo, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	converted, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 	open, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
+	undone, _, _ := seedQuoteChain(t, db, accountID, branchID, productID)
 
 	day := func(d, h int) time.Time { return time.Date(2026, 10, d, h, 0, 0, 0, time.UTC) }
 	change := func(quoteID uuid.UUID, status string, at time.Time) {
@@ -623,20 +627,67 @@ func TestSellerReportRepositoryMeasuresConversionAsACohort(t *testing.T) {
 	change(converted, "SENT", day(1, 13))
 	change(converted, "ACCEPTED", day(10, 12))
 	change(open, "SENT", day(2, 13))
+	// An acceptance the seller undid no longer counts.
+	change(undone, "SENT", day(2, 14))
+	change(undone, "ACCEPTED", day(3, 12))
+	reportExec(t, db, "undo", `INSERT INTO quote_status_change
+	   (account_id, quote_id, previous_status, new_status, changed_at)
+	   VALUES ($1, $2, 'ACCEPTED', 'SENT', $3)`, accountID, undone, day(3, 13))
 
 	report := buildReport(t, db, domain.Tenant{AccountID: accountID}, reportQuery(accountID))
 	kpis := report.KPIs
-	if kpis.QuotesSent != 2 || kpis.SentAccepted != 1 || kpis.QuotesAccepted != 2 {
-		t.Fatalf("KPIs = %+v, want two sent, one of them accepted since, two acceptances in the period",
-			kpis)
+	if kpis.QuotesSent != 3 || kpis.SentAccepted != 1 || kpis.QuotesAccepted != 2 {
+		t.Fatalf("KPIs = %+v, want three sent, one of them accepted since, two standing acceptances "+
+			"in the period", kpis)
 	}
-	if kpis.ConversionRate == nil || kpis.ConversionRate.StringFixed(2) != "0.50" {
-		t.Fatalf("conversion = %v, want the cohort share 0.50", kpis.ConversionRate)
+	if kpis.ConversionRate == nil || kpis.ConversionRate.StringFixed(2) != "0.33" {
+		t.Fatalf("conversion = %v, want the cohort share 0.33", kpis.ConversionRate)
 	}
 
 	other := buildReport(t, db, domain.Tenant{AccountID: otherAccountID}, reportQuery(otherAccountID))
 	if other.KPIs.QuotesSent != 0 || other.KPIs.QuotesAccepted != 0 {
 		t.Fatalf("another account's report = %+v, want none of this account's activity", other.KPIs)
+	}
+}
+
+func TestSellerReportRepositoryCohortConversionUsesFirstSendAndLaterAcceptance(t *testing.T) {
+	cases := []struct {
+		name               string
+		sends, acceptances []int
+		converted          int
+	}{
+		{"acceptance before a resend", []int{10, 12}, []int{11}, 1},
+		{"acceptance at first send", []int{10}, []int{10}, 1},
+		{"only acceptance before first send", []int{10}, []int{9}, 0},
+		{"later acceptance after an earlier one", []int{10}, []int{9, 11}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testDB(t)
+			account := seedAccount(t, db, "Report cohort events")
+			branch := reportBranch(t, db, account)
+			product := seedProduct(t, db, account, "Cement")
+			quote, _, _ := seedQuoteChain(t, db, account, branch, product)
+			for _, events := range []struct {
+				status string
+				hours  []int
+			}{{"SENT", tc.sends}, {"ACCEPTED", tc.acceptances}} {
+				for _, hour := range events.hours {
+					reportExec(t, db, "cohort event", `INSERT INTO quote_status_change
+					 (account_id, quote_id, previous_status, new_status, changed_at)
+					 VALUES ($1, $2, 'QUOTED', $3, $4)`, account, quote, events.status,
+						time.Date(2026, 10, 1, hour, 0, 0, 0, time.UTC))
+				}
+			}
+			report := buildReport(t, db, domain.Tenant{AccountID: account}, reportQuery(account))
+			if report.KPIs.QuotesSent != 1 || report.KPIs.SentAccepted != tc.converted {
+				t.Fatalf("sent=%d converted=%d, want 1 and %d", report.KPIs.QuotesSent,
+					report.KPIs.SentAccepted, tc.converted)
+			}
+			if report.Timeline[0].Sent != 1 || report.Timeline[0].SentAccepted != tc.converted {
+				t.Fatalf("timeline=%+v, want one sent and %d converted", report.Timeline[0], tc.converted)
+			}
+		})
 	}
 }
 
@@ -945,19 +996,24 @@ func TestSellerReportRepositoryMeasuresTheAssistantAndFollowUp(t *testing.T) {
 	reportExec(t, db, "unmatched line", `INSERT INTO quote_item
 	   (account_id, version_id, requested_description, quantity, match_status)
 	   VALUES ($1, $2, 'clavos', 3, 'NO_MATCH')`, accountID, versionID)
+	// A reply that changed nothing is recorded, never decided, and proposes nothing.
+	keptReply := `{"outcome":"NO_MATCH","no_match_reason":"CUSTOMER_ACCEPTS","operations":[]}`
 	for _, seed := range []struct {
 		decision *string
 		at       time.Time
+		proposal *string
 	}{
-		{strPtr("APPROVED_AS_IS"), inPeriod},
-		{strPtr("APPROVED_AS_IS"), inPeriod},
-		{strPtr("REJECTED"), inPeriod},
-		{nil, inPeriod},
-		{strPtr("APPROVED_AS_IS"), time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)},
+		{strPtr("APPROVED_AS_IS"), inPeriod, nil},
+		{strPtr("APPROVED_AS_IS"), inPeriod, nil},
+		{strPtr("REJECTED"), inPeriod, nil},
+		{nil, inPeriod, nil},
+		{nil, inPeriod, &keptReply},
+		{strPtr("APPROVED_AS_IS"), time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC), nil},
 	} {
 		reportExec(t, db, "decision", `INSERT INTO handler_decision
-		   (account_id, quote_version_id, seller_decision, created_at)
-		   VALUES ($1, $2, $3::handler_seller_decision, $4)`, accountID, versionID, seed.decision, seed.at)
+		   (account_id, quote_version_id, seller_decision, created_at, ai_proposal)
+		   VALUES ($1, $2, $3::handler_seller_decision, $4, $5)`, accountID, versionID, seed.decision,
+			seed.at, seed.proposal)
 	}
 	reportExec(t, db, "sent", `INSERT INTO quote_status_change
 	   (account_id, quote_id, previous_status, new_status, changed_at)

@@ -6,8 +6,11 @@ out, each line carrying the product it matched, how confident that is, why its q
 is, its configured economy and premium recommendations, and — when the line needs the seller's eye
 — the candidates it was decided against.
 
-That draft carries no prices. The seller accepting its materials is a second transition, and it is
-what freezes them — the last section here.
+Initial generations with every line matched, a positive quantity, a compatible catalog unit and
+a current non-negative branch price are valued automatically and move to `QUOTED` in their creation
+transaction. Mixed currencies and unresolved lines keep the normal `DRAFT` flow. Valuation uses
+the same deterministic pricing and discount sweep as manual material acceptance. The version
+remains editable and the seller reviews and sends it explicitly; valuation never publishes it.
 
 The AI provider layer is in [ai-providers.md](ai-providers.md), the search and matching behind the
 product decision in [catalog.md](catalog.md). This document is the flow that consumes both. The
@@ -118,11 +121,14 @@ away an extraction that was already paid for, at the last step.
 The extraction schema carries `search_description` and the closed `selection_preference` enum
 (`NONE`, `LOWEST_PRICE`, `HIGHEST_PRICE`) alongside the client's original `requested_description`. Search uses the
 product description without conversational wording or the preference. Explicit brands, sizes,
-colours and product variants remain constraints. The service validates the preference and refuses
-a price preference that drops or invents product constraints. Shared preferences apply to each
-qualified item even when the preference is outside its verbatim description. Minor spelling
-corrections are allowed; figures and units must agree exactly. Ordinary matching uses the original
-description when no price preference applies.
+colours and product variants remain constraints. A price preference that drops or invents a
+product constraint is discarded: the line falls back to `NONE` and to the client's own words, and
+is left `AMBIGUOUS`. Shared preferences apply to each qualified item even when the preference is
+outside its verbatim description. Minor spelling corrections are allowed; figures and units must
+agree exactly. A line without a price preference searches its `search_description` when that text
+names nothing the client did not and keeps every size and measure the client wrote ("arena para
+revocar" searches "arena"); otherwise it searches the client's words. Seller corrections are always
+looked up by the client's words, which is what they were recorded against.
 
 For either price preference, `RFQPriceSelectionService` expands the matched product to every active product
 in its family and subgroup carried by the same branch, beyond the search shortlist. Products must
@@ -162,9 +168,18 @@ The extraction schema forces a closed enum, `quantity_source`, on every line:
 for, and dropping the line to avoid an awkward zero loses it.
 
 The service does not trust the pair. `EXPLICIT` and `DERIVED` must carry a positive quantity, and
-`UNRESOLVED` must carry zero — a line that contradicts itself is refused, and the adapter zeroes an
-unresolved quantity before the service ever sees it. So a number the model was told not to send
-cannot reach a quote through either layer.
+`UNRESOLVED` must carry zero. A line that contradicts itself is repaired rather than refused: it is
+written `UNRESOLVED` with a zero quantity and left `AMBIGUOUS`, so a number the model was told not
+to send cannot reach a quote, and one bad line never fails the rest of the order. The same holds for
+every other slip on a line — a description over 512 characters is cut, a unit over 64 is dropped,
+a missing description takes the search text — and only a line with no words at all is left out.
+
+**A line asked for in a unit its product is not sold in waits for the seller.** A bag of a product
+priced by the cubic metre, or a cubic metre of one priced by the kilo, would otherwise be priced
+silently at the wrong scale, so such a match is `AMBIGUOUS`, and every item response carries
+`unit_mismatch` (read from the line's unit against the product's, so it follows a product the
+seller picks later). A bare metre is how clients ask for sand or flooring by the cubic or square
+metre, so it conflicts only with a count or a weight.
 
 **Quantities are never inferred from a plan.** `rfq.work_type` is context for the seller's
 recommendations, not an input: computing bags of cement from a surface in square metres is a
@@ -555,15 +570,25 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
 
 1. **Prepare.** It confirms the claim still holds (`status = PROCESSING` at the claim's
    `processing_started_at`) and runs the state×intention matrix (`domain.ValidateHandlerRun`): only
-   an unarchived `SENT` or `CHANGE_REQUESTED` quote is handled. A `SENT` quote moves to
-   `CHANGE_REQUESTED` with no user on the `quote_status_change` row, and the frozen version is cloned
-   into the single draft when none is open; a `CHANGE_REQUESTED` quote keeps the draft it has. It
-   reads the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
-   messages of any author outside the batch, then commits, so the move holds whatever the model does.
+   an unarchived `SENT` or `CHANGE_REQUESTED` quote is handled. It reads the quote's current version
+   and its lines — the frozen sent version on a `SENT` quote, the open draft on a `CHANGE_REQUESTED`
+   one — the batch's `CLIENT` messages in order and the `CONVERSATION_CONTEXT_MESSAGES` newest
+   messages of any author outside the batch. It writes nothing: the reply is read before the quote
+   moves.
 2. **Propose.** Outside any transaction the forced-schema change handler receives the batch's
-   messages, the context, the **draft's** lines with their opaque IDs, and the promotions in force at
-   the quote's branch. Its instructions are a fixed text sent first, so the provider caches that
-   prefix; everything variable rides in the input. It answers with a `level`:
+   messages, the context, the **current version's** lines with their opaque IDs, and the promotions
+   in force at the quote's branch. Its instructions are a fixed text sent first, so the provider
+   caches that prefix; everything variable rides in the input. It first classifies the whole reply
+   as `customer_decision` — `CHANGE`, `ACCEPT`, `REJECT`, `QUESTION`, `NEW_ORDER` or `NONE` — with
+   `decision_confidence_percent`, `conditional` (an acceptance tied to something the quote does not
+   meet) and `partial_or_alternative`. The backend acts on `ChangeRequestProposal.EffectiveDecision`:
+   any operation or goal, and any conditional acceptance, is a `CHANGE` whatever the label says. A
+   reply that is not a change keeps the quote as it is and is recorded as a no-match with the reason
+   `CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION`, `NEW_ORDER` or `NO_REQUEST` on the
+   current version, so the customer's own accept link keeps working. A `NEW_ORDER` batch from
+   WhatsApp also goes to intake as a message from a sender with no live quote would, for the quote's
+   client, under an order id derived from the batch so a retry resumes the same order; the decision
+   names it (`new_order_rfq_id`). For a change it answers with a `level`:
    - `ATOMIC` — concrete operations: `ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, `UPDATE_QUANTITY`,
      or `ADD_DISCOUNT` naming one of the promotions it was given (never an amount).
    - `COMPLEX` — a goal from a closed set, with no operations: `LOWER_TOTAL_PRICE` or
@@ -576,13 +601,66 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    (`domain.ValidateHandlerIntent`: `ATOMIC`, `ADD_DISCOUNT` or `COMPLEX`), and matches added or
    replaced materials against the branch catalog.
 
-3. **Apply.** Under the lock again the claim, the matrix and the draft are re-checked: a quote
-   archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a draft
-   the seller sent, or a targeted line the seller removed, returns it to the queue for a fresh
-   proposal. The operations are written in place, the discount sweep re-settles the draft's
-   discounts and total, and `handler_decision` records the batch (`message_batch_id`), the input,
-   the interpretation, the proposal and the state the quote was in at the claim. A later batch edits
-   the same draft.
+3. **Apply.** Under the lock again the claim, the matrix and the version are re-checked: a quote
+   archived or closed meanwhile fails the batch at once (`domain.ErrBatchUnprocessable`), and a
+   version replaced or frozen meanwhile, or a targeted line the seller removed, returns it to the
+   queue for a fresh proposal. A change then moves a `SENT` quote to `CHANGE_REQUESTED` with no user
+   on the `quote_status_change` row and, when the current version is the frozen one, clones it into
+   the single draft and points every line the proposal names at the clone's line through the
+   clone's source map — all in the transaction that writes the change, so a rollback leaves neither.
+   The operations are written in place, the discount sweep re-settles the draft's discounts and
+   total, and `handler_decision` records the batch (`message_batch_id`), the input, the
+   interpretation, the proposal with the decision acted on, and the state the quote was in at the
+   claim. A later batch edits the same draft.
+
+A batch that fails for good — out of attempts or unprocessable — is handed back to the handler
+(`HandleFailed`): a `SENT` quote moves to `CHANGE_REQUESTED` with its draft open, since nobody read
+what the customer asked.
+
+### Acceptance read from a reply
+
+A reply the model reads as an acceptance is weighed in the apply transaction, under the quote's
+lock, by `domain.ReplyAcceptancePolicy`. Any **hard hold** keeps the quote `SENT` with a signal for
+the seller: the quote is no longer `SENT`, the batch carries the portal's «Pedir cambios», the
+sender could have meant another live quote, the current version is not the one the latest
+successful send carried or that send has expired, or the confidence is under
+`CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT`. Otherwise any **soft hold** accepts it pending
+the seller's confirmation (`quote.acceptance_unconfirmed_at`): confidence under
+`CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT`, a partial acceptance or one picking an
+alternative, a sent version with alternatives to choose, a reply longer than
+`CONVERSATION_AUTO_ACCEPT_MAX_WORDS` or without one of the fixed acceptance phrases, or the
+account's `whatsapp_auto_accept` off. With no hold it is accepted on its own. The decision record
+keeps `reply_acceptance` (`AUTOMATIC`, `UNCONFIRMED` or `SIGNAL`) and the holds.
+
+An acceptance is written as the customer's portal click would be: `SENT` → `ACCEPTED` with no user
+on the status change, a `client_action` `ACCEPT` on the latest live send tied to the batch
+(`message_batch_id`), and a mail to the seller once the transaction commits. The seller then:
+
+- **Confirms** it (`POST /v1/quotes/{id}/acceptance/confirm`), which clears the pending mark.
+  Marking the sale paid, waiving its invoice and issuing one are refused with
+  `QUOTE_ACCEPTANCE_UNCONFIRMED` until then.
+- **Undoes** it (`POST /v1/quotes/{id}/acceptance/undo`) back to `SENT`, only for an acceptance read
+  from a batch, unpaid, uninvoiced, not waived, with its send still live. The customer action is
+  revoked (`client_action.revoked_at`), so the portal takes an answer again; every read of a
+  customer's answer and every report skips revoked actions and undone acceptances.
+- **Accepts the sent version** of a `CHANGE_REQUESTED` quote
+  (`POST /v1/quotes/{id}/accept-sent-version`): the quote points back at the version the customer
+  received, the open draft and its preview are removed, and the runs recorded on it are settled
+  and moved to the sent version.
+
+A message the customer writes after accepting joins that quote's conversation as a recorded message
+and opens no window, so no handler reads it.
+
+The order list (`GET /v1/rfqs`, and the detail's `rfq`) carries `acceptance_unconfirmed` and, on a
+`SENT` quote, `customer_reply`: the newest run on the current version whose reason is
+`CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION` or `NO_REQUEST`, still undecided and
+recorded after the quote last became `SENT`, with its `reply_acceptance`. The detail adds
+`accepted_by_reply` for a quote standing `ACCEPTED` on an acceptance read from a batch.
+`POST /v1/quotes/{id}/customer-reply/read` settles those runs `MANUAL_OVERRIDE` by the seller, so the
+order leaves «El cliente escribió» until the customer's next reply records a new run. It takes
+`seen_until`, the time of the reply the seller's screen showed, and settles only runs recorded up to
+it, so a reply that arrived while the screen was open stays unread; a quote that is not `SENT` answers
+`409 QUOTE_NOT_SENT`.
 
 A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
 line with a product:
@@ -913,3 +991,14 @@ archived versions remain protected.
 Sending closes the send form and reports each channel's outcome. The order offers copying the
 customer link and sending through another channel; it never exposes the URL or opens the
 customer-only portal as the seller.
+
+### Customer responses across resend cycles
+
+Deliveries of the same frozen version share the first customer decision within one send cycle.
+The latest transition into `QUOTED` starts a new cycle, including `RESEND` reactivation that
+keeps the version. Its new deliveries accept a fresh decision; previous-cycle deliveries retain
+their original decision for replay and history. An unanswered historical link cannot close the
+reactivated quote. Expiry remains attached to each delivery.
+
+The customer order URL without a `delivery` parameter resolves the latest authorized publication.
+A URL pinned to an earlier delivery retains that publication and offers a link to the current order.

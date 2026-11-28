@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { PlusIcon, TagsIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -20,24 +21,41 @@ import {
 } from '@repo/ui/components';
 import { useApiErrorMessage } from '@/hooks/use-api-error-message';
 import type { ClientTag } from '@/lib/api/client-profiles';
-import { createClientTag, replaceClientTags } from '@/lib/api/clients-client';
+import {
+  createClientTag,
+  replaceClientTags,
+  setClientTagExclusion,
+} from '@/lib/api/clients-client';
 import { errorCodeOf } from '@/lib/api/errors';
 
 interface ClientTagEditorProps {
   clientId: string;
   initialTags: ClientTag[];
   initialAvailable: ClientTag[];
+  excludedTags: ClientTag[];
 }
 
-export function ClientTagEditor({ clientId, initialTags, initialAvailable }: ClientTagEditorProps) {
+export function ClientTagEditor({
+  clientId,
+  initialTags,
+  initialAvailable,
+  excludedTags,
+}: ClientTagEditorProps) {
+  const router = useRouter();
   const t = useTranslations('clients.tags');
   const message = useApiErrorMessage('clients.tags.errors');
   const [available, setAvailable] = useState(initialAvailable);
-  const [selected, setSelected] = useState(() => new Set(initialTags.map((tag) => tag.id)));
+  const [selected, setSelected] = useState(
+    () => new Set(initialTags.filter((tag) => !tag.automatic).map((tag) => tag.id)),
+  );
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creating, startCreate] = useTransition();
   const [saving, startSave] = useTransition();
+
+  const [updatingExclusion, startExclusion] = useTransition();
+  const activeAutomatic = initialTags.filter((tag) => tag.automatic);
+  const busy = creating || saving || updatingExclusion;
 
   function toggle(tagId: string, checked: boolean) {
     setSelected((current) => {
@@ -80,6 +98,18 @@ export function ClientTagEditor({ clientId, initialTags, initialAvailable }: Cli
     });
   }
 
+  function changeExclusion(tagId: string, excluded: boolean) {
+    setError(null);
+    startExclusion(async () => {
+      try {
+        await setClientTagExclusion(clientId, tagId, excluded);
+        router.refresh();
+      } catch (cause) {
+        setError(message(errorCodeOf(cause)));
+      }
+    });
+  }
+
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -87,10 +117,44 @@ export function ClientTagEditor({ clientId, initialTags, initialAvailable }: Cli
           <TagsIcon aria-hidden="true" className="size-4 text-foreground-muted" />
           <CardTitle>{t('title')}</CardTitle>
         </div>
-        <Badge tone="neutral">{t('selected', { total: selected.size })}</Badge>
+        <Badge tone="neutral">
+          {t('selected', { total: selected.size + activeAutomatic.length })}
+        </Badge>
       </CardHeader>
       <CardContent className="flex flex-col gap-y-5">
         {error ? <Callout tone="danger">{error}</Callout> : null}
+        {activeAutomatic.length > 0 || excludedTags.length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {activeAutomatic.map((tag) => (
+              <li key={tag.id} className="flex items-center gap-x-1">
+                <Badge tone="neutral">{tag.name}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  aria-label={t('excludeLabel', { name: tag.name })}
+                  onClick={() => changeExclusion(tag.id, true)}
+                >
+                  {t('exclude')}
+                </Button>
+              </li>
+            ))}
+            {excludedTags.map((tag) => (
+              <li key={tag.id} className="flex items-center gap-x-1">
+                <Badge tone="outline">{t('excluded', { name: tag.name })}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  aria-label={t('restoreLabel', { name: tag.name })}
+                  onClick={() => changeExclusion(tag.id, false)}
+                >
+                  {t('restore')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           {available.map((tag) => (
             <Label
@@ -100,7 +164,7 @@ export function ClientTagEditor({ clientId, initialTags, initialAvailable }: Cli
               <Checkbox
                 checked={selected.has(tag.id)}
                 onCheckedChange={(checked) => toggle(tag.id, checked === true)}
-                disabled={saving}
+                disabled={busy}
               />
               <span className="text-paragraph-sm text-foreground">{tag.name}</span>
             </Label>
@@ -118,19 +182,15 @@ export function ClientTagEditor({ clientId, initialTags, initialAvailable }: Cli
             }}
             maxLength={128}
             placeholder={t('newPlaceholder')}
-            disabled={creating || saving}
+            disabled={busy}
           />
-          <Button
-            variant="outline"
-            onClick={createTag}
-            disabled={!newName.trim() || creating || saving}
-          >
+          <Button variant="outline" onClick={createTag} disabled={!newName.trim() || busy}>
             <PlusIcon aria-hidden="true" />
             {t(creating ? 'creating' : 'create')}
           </Button>
         </div>
         <div className="flex justify-end">
-          <PendingButton pending={saving} pendingLabel={t('saving')} onClick={save}>
+          <PendingButton pending={saving} disabled={busy} pendingLabel={t('saving')} onClick={save}>
             {t('save')}
           </PendingButton>
         </div>

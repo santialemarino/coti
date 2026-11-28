@@ -57,6 +57,16 @@ describe('QuoteActions', () => {
     expect(view.queryByText(copy.resultTitle)).toBeNull();
   });
 
+  // An acceptance read from the customer's message is not final until the corralón confirms it.
+  it('says the corralón is confirming an acceptance in review, and offers no answer', () => {
+    const view = renderActions({ token: 'tok-abc', customerStatus: 'ACCEPT', inReview: true });
+
+    expect(view.getByText(copy.inReviewTitle)).toBeTruthy();
+    expect(view.getByText(copy.inReviewDescription)).toBeTruthy();
+    expect(view.queryByText(copy.respondedTitle)).toBeNull();
+    expect(view.queryByRole('button', { name: copy.acceptLabel })).toBeNull();
+  });
+
   it('requires a message and submits a change request', async () => {
     const fetchMock = fetchResolving({
       customerStatus: 'REQUEST_CHANGE',

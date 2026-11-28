@@ -308,6 +308,9 @@ func (s *InvoiceService) Issue(
 		if err := requireUnarchived(draft.quote); err != nil {
 			return err
 		}
+		if err := requireConfirmedAcceptance(draft.quote); err != nil {
+			return err
+		}
 		if current := draft.preview.Invoice; current != nil {
 			switch {
 			case current.Status == domain.InvoiceStatusIssued:

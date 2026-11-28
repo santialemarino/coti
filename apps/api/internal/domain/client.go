@@ -44,6 +44,7 @@ type NewClient struct {
 
 // ClientTag is a reusable account-scoped label assigned to client profiles.
 type ClientTag struct {
+	Automatic bool
 	ID        uuid.UUID
 	AccountID uuid.UUID
 	Name      string
@@ -71,13 +72,23 @@ type ClientSale struct {
 	Closure    SaleClosure
 }
 
+// ClientActivity summarizes quotation activity visible to the caller.
+type ClientActivity struct {
+	OpenQuotes     int
+	AcceptedCount  int
+	LastAcceptedAt *time.Time
+	AverageTicket  *string
+}
+
 // ClientProfile joins a client, their tags, and accepted sales visible to the caller.
 type ClientProfile struct {
-	Client Client
+	Activity ClientActivity
+	Client   Client
 	// Registered is true when a customer account holds the client's CUIT and manages the profile.
-	Registered bool
-	Tags       []ClientTag
-	Sales      []ClientSale
+	Registered   bool
+	ExcludedTags []ClientTag
+	Tags         []ClientTag
+	Sales        []ClientSale
 }
 
 // ClientContactHints retains contact declarations and provider display metadata.

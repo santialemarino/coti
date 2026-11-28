@@ -62,6 +62,31 @@ func (r *ClientContactRepository) List(ctx context.Context, q Querier, accountID
 	return result, rows.Err()
 }
 
+// ListPortalContacts returns, keyed by domain.ContactDestinationKey, the destinations an active
+// customer account has proved: exactly what the portal matches a delivery against.
+func (r *ClientContactRepository) ListPortalContacts(ctx context.Context, q Querier, accountID uuid.UUID, phones, emails []string) (map[string]bool, error) {
+	rows, err := q.Query(ctx, `SELECT DISTINCT contact.kind,contact.value FROM customer_contact_ownership ownership
+ JOIN client_contact contact ON contact.account_id=ownership.account_id AND contact.id=ownership.contact_id
+ JOIN customer_identity identity ON identity.account_id=ownership.account_id AND identity.id=ownership.customer_id
+ WHERE ownership.account_id=$1 AND identity.disabled_at IS NULL AND contact.verified_at IS NOT NULL AND contact.retired_at IS NULL
+ AND ((contact.kind='WHATSAPP' AND contact.value=ANY($2)) OR (contact.kind='EMAIL' AND contact.value=ANY($3)))`,
+		accountID, phones, emails)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]bool{}
+	for rows.Next() {
+		var kind domain.ChannelType
+		var value string
+		if err := rows.Scan(&kind, &value); err != nil {
+			return nil, err
+		}
+		result[domain.ContactDestinationKey(kind, value)] = true
+	}
+	return result, rows.Err()
+}
+
 // GetProfileAccess reports whether a customer proved the profile and the name it entered.
 func (r *ClientContactRepository) GetProfileAccess(ctx context.Context, q Querier, p domain.CustomerPrincipal, clientID uuid.UUID) (*domain.CustomerProfileAccess, error) {
 	var access domain.CustomerProfileAccess
@@ -365,11 +390,10 @@ func (r *ClientContactRepository) UpdateCustomerName(ctx context.Context, q Quer
 	return err
 }
 
-// Decide retains the seller and outcome without deleting the original observation. Dismissing a case
-// also dismisses the other pending cases between the same two surviving profiles, which the list
-// shows as that one case.
+// Decide records the outcome and dismisses duplicate cases within the caller's branch scope.
 func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID, status string) error {
-	result, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5)) AND (status='PENDING' OR status=$3)`, tenant.AccountID, id, status, tenant.UserID, tenant.BranchFilter())
+	branches := tenant.BranchFilter()
+	result, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5)) AND (status='PENDING' OR status=$3)`, tenant.AccountID, id, status, tenant.UserID, branches)
 	if err == nil && result.RowsAffected() != 1 {
 		return domain.ErrConflict
 	}
@@ -385,10 +409,11 @@ func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant 
  UPDATE client_contact_observation o SET status=$3,decided_by=$4,decided_at=now()
  FROM decided,client s,client c
  WHERE o.account_id=$1 AND o.id<>$2 AND o.status='PENDING' AND s.account_id=$1 AND c.account_id=$1
+   AND ($5::uuid[] IS NULL OR o.branch_id=ANY($5))
    AND s.id=o.source_client_id AND c.id=o.candidate_client_id
    AND LEAST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=LEAST(decided.a,decided.b)
    AND GREATEST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=GREATEST(decided.a,decided.b)`,
-		tenant.AccountID, id, status, tenant.UserID)
+		tenant.AccountID, id, status, tenant.UserID, branches)
 	return err
 }
 
@@ -468,6 +493,11 @@ func (r *ClientContactRepository) Merge(ctx context.Context, q Querier, tenant d
 		return err
 	}
 	if _, err = q.Exec(ctx, `INSERT INTO client_tag(account_id,client_id,tag_id) SELECT account_id,$3,tag_id FROM client_tag WHERE account_id=$1 AND client_id=$2 ON CONFLICT(client_id,tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
+		return err
+	}
+	if _, err = q.Exec(ctx, `INSERT INTO client_tag_exclusion (account_id, client_id, tag_id)
+		SELECT account_id, $3, tag_id FROM client_tag_exclusion WHERE account_id = $1 AND client_id = $2
+		ON CONFLICT (account_id, client_id, tag_id) DO NOTHING`, tenant.AccountID, source, target); err != nil {
 		return err
 	}
 	if _, err = q.Exec(ctx, `UPDATE rfq SET client_id=$3 WHERE account_id=$1 AND client_id=$2`, tenant.AccountID, source, target); err != nil {

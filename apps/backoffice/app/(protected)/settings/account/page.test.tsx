@@ -29,6 +29,7 @@ const ACCOUNT = {
   invoicingEnabled: false,
   hasInvoices: false,
   invoiceOnPayment: false,
+  whatsappAutoAccept: true,
 };
 
 async function renderPage() {

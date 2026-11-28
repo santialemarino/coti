@@ -5,6 +5,7 @@ import { RfqDetailView } from '@/app/(protected)/rfqs/[id]/_components/rfq-detai
 import { getAccount } from '@/lib/api/account';
 import { getBranches } from '@/lib/api/branches';
 import { apiRequest } from '@/lib/api/client';
+import { getClient } from '@/lib/api/clients';
 import { ApiError, errorCodeOf } from '@/lib/api/errors';
 import type { RfqDetailResponse } from '@/lib/api/rfqs';
 import { mapRfqDetail } from '@/lib/api/rfqs';
@@ -46,10 +47,18 @@ export default async function RfqDetailPage({ params }: { params: Promise<{ id: 
 
   // A branch the caller no longer reaches is not theirs to report on.
   const branch = branches.find((candidate) => candidate.id === detail.rfq.branch_id);
+  const clientId = detail.quote?.client_id;
+  const clientProfile = clientId
+    ? await getClient(clientId).catch((error: unknown) => {
+        if (errorCodeOf(error) === 'NOT_FOUND') return null;
+        throw error;
+      })
+    : null;
   return (
     <RfqQueuePane>
       <RfqDetailView
         detail={detail}
+        clientProfile={clientProfile}
         branchMissesEmail={!!branch && missesBranchEmail(branch)}
         invoicingEnabled={account.invoicingEnabled}
         invoiceOnPayment={account.invoiceOnPayment}

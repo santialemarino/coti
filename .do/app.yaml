@@ -61,6 +61,15 @@ services:
     health_check:
       http_path: /ready
     envs:
+      - key: CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT
+        scope: RUN_TIME
+        value: '85'
+      - key: CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT
+        scope: RUN_TIME
+        value: '60'
+      - key: CONVERSATION_AUTO_ACCEPT_MAX_WORDS
+        scope: RUN_TIME
+        value: '8'
       - key: ENV
         scope: RUN_TIME
         value: production
@@ -404,6 +413,10 @@ jobs:
       - key: AUTH_JWT_SECRET
         scope: RUN_TIME
         type: SECRET
+      # A file a client sent by WhatsApp is fetched with its channel's token when the sweep reads it.
+      - key: CHANNEL_CONFIG_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
       - key: STORAGE_LOCAL_SIGNING_SECRET
         scope: RUN_TIME
         type: SECRET
@@ -514,6 +527,15 @@ jobs:
     instance_size_slug: apps-s-1vcpu-1gb
     run_command: /api/bin/scheduled-job --job conversation-batches
     envs:
+      - key: CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT
+        scope: RUN_TIME
+        value: '85'
+      - key: CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT
+        scope: RUN_TIME
+        value: '60'
+      - key: CONVERSATION_AUTO_ACCEPT_MAX_WORDS
+        scope: RUN_TIME
+        value: '8'
       - key: ENV
         scope: RUN_TIME
         value: production

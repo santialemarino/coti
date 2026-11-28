@@ -22,7 +22,7 @@ func (r *ClientContactRepository) LockChallenge(ctx context.Context, q Querier, 
 
 func (r *ClientContactRepository) getChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, suffix string) (*domain.ContactChallenge, error) {
 	c := &domain.ContactChallenge{}
-	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY'`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt)
+	err := q.QueryRow(ctx, `SELECT id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at,COALESCE(next_path,''),proved_at FROM client_contact_challenge WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY'`+suffix, p.AccountID, p.CustomerID, id).Scan(&c.ID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt, &c.ConsumedAt, &c.NextPath, &c.ProvedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -91,7 +91,7 @@ func (r *ClientContactRepository) CreateChallenge(ctx context.Context, q Querier
 	if _, err := q.Exec(ctx, `UPDATE client_contact_challenge SET consumed_at=now() WHERE account_id=$1 AND customer_id=$2 AND kind=$3 AND value=$4 AND purpose=$5 AND consumed_at IS NULL`, c.AccountID, c.CustomerID, c.Kind, c.Value, c.Purpose); err != nil {
 		return err
 	}
-	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,purpose,kind,value,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Purpose, c.Kind, c.Value, c.TokenHash, c.ExpiresAt)
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge(id,account_id,customer_id,client_id,purpose,kind,value,token_hash,expires_at,next_path) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''))`, c.ID, c.AccountID, c.CustomerID, c.ClientID, c.Purpose, c.Kind, c.Value, c.TokenHash, c.ExpiresAt, c.NextPath)
 	return err
 }
 
@@ -104,6 +104,12 @@ func (r *ClientContactRepository) CreateFailure(ctx context.Context, q Querier, 
 // FinishChallenge retains attempt counts and consumes successful or cancelled proofs.
 func (r *ClientContactRepository) FinishChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, consume bool) error {
 	_, err := q.Exec(ctx, `UPDATE client_contact_challenge SET attempts=attempts+1,consumed_at=CASE WHEN $4 THEN now() ELSE consumed_at END WHERE account_id=$1 AND customer_id=$2 AND id=$3`, p.AccountID, p.CustomerID, id, consume)
+	return err
+}
+
+// MarkChallengeProved records that the customer proved the destination through this very challenge.
+func (r *ClientContactRepository) MarkChallengeProved(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID) error {
+	_, err := q.Exec(ctx, `UPDATE client_contact_challenge SET proved_at=now() WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY' AND proved_at IS NULL`, p.AccountID, p.CustomerID, id)
 	return err
 }
 

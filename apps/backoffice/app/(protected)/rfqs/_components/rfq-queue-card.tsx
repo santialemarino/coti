@@ -4,6 +4,10 @@ import { useTranslations } from 'next-intl';
 
 import { Badge, Button, MetaList } from '@repo/ui/components';
 import { cn } from '@repo/ui/lib';
+import {
+  CUSTOMER_REPLY_TONES,
+  customerReplyKind,
+} from '@/app/(protected)/rfqs/_components/customer-reply';
 import { FollowupBadge, followupDue } from '@/app/(protected)/rfqs/_components/followup-badge';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqStatusBadge } from '@/app/(protected)/rfqs/_components/rfq-status-badge';
@@ -27,7 +31,8 @@ interface RfqQueueCardProps {
 /*
  * One order in the queue column: enough to pick the next one without leaving the one in hand. The
  * group heading already names the status, so the card only carries the ingestion spinner, which is
- * live news rather than a repeat of it. An accepted sale still open also offers its next step.
+ * live news rather than a repeat of it, and what a reply seems to say. An accepted sale still open
+ * also offers its next step.
  */
 export function RfqQueueCard({
   rfq,
@@ -45,6 +50,9 @@ export function RfqQueueCard({
   const reference = formatRfqReference(rfq.quoteNumber) ?? t('list.numberPending');
   const stacked = stackCount !== undefined;
   const step = behind ? null : saleNextStep(rfq, invoicingEnabled);
+  // The stack says the customer wrote; the card says what they seem to want.
+  const reply =
+    rfq.status === 'SENT' && rfq.customerReply ? customerReplyKind(rfq.customerReply) : null;
 
   /*
    * The step is a sibling laid over the card's own button, never inside it: a button cannot hold
@@ -93,6 +101,11 @@ export function RfqQueueCard({
           ) : null}
           {followupDue(rfq.needsFollowup, rfq.status, Boolean(rfq.archived)) ? (
             <FollowupBadge flaggedAt={rfq.followupFlaggedAt} size="sm" />
+          ) : null}
+          {reply ? (
+            <Badge tone={CUSTOMER_REPLY_TONES[reply]} size="sm">
+              {t(`list.reply.${reply}`)}
+            </Badge>
           ) : null}
           {rfq.reviewCount > 0 ? (
             <Badge tone="warning" size="sm">

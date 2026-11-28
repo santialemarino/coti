@@ -134,14 +134,31 @@ func (r *RFQRepository) ListStatusChanges(
 func (r *RFQRepository) GetByRFQID(
 	ctx context.Context, q Querier, tenant domain.Tenant, rfqID uuid.UUID, env domain.ARCAEnvironment,
 ) (*domain.RfqListItem, error) {
-	var item domain.RfqListItem
-	var total decimal.Decimal
 	var branchFilter []uuid.UUID
 	if !tenant.IsAdmin() {
 		branchFilter = tenant.BranchFilter()
 	}
-	err := q.QueryRow(ctx,
-		`SELECT r.id, r.client_id,
+	item, err := scanRfqListItem(q.QueryRow(ctx,
+		`SELECT `+rfqListColumns+`
+		 FROM rfq r
+		 `+rfqListJoins+`
+		 WHERE r.account_id = $1
+		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
+		   AND r.id = $3
+		   AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)`,
+		tenant.AccountID, branchFilter, rfqID, sellerParam(tenant), env, domain.CustomerReplyReasons(),
+	))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+
+// rfqListColumns is one order as the list and the detail read it; scanRfqListItem scans it.
+const rfqListColumns = `r.id, r.client_id,
 		        COALESCE(cl.name, r.client_label), r.created_at,
 		        lower(c.type::text),
 		        q.seller_id,
@@ -159,47 +176,41 @@ func (r *RFQRepository) GetByRFQID(
 		        q.followup_flagged_at,
 		        COALESCE(lines.items, 0),
 		        COALESCE(lines.to_review, 0),
-		        `+rfqClosureColumns+`
-		 FROM rfq r
-		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
+		        ` + rfqClosureColumns + `,
+		        q.acceptance_unconfirmed_at IS NOT NULL,
+		        reply.reason, reply.reply_acceptance, reply.created_at`
+
+// rfqListJoins reaches every table rfqListColumns reads. It binds the invoice environment at $5 and
+// the record-only reply reasons at $6.
+var rfqListJoins = `JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
 		 JOIN account a ON a.id = r.account_id
 		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
 		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
 		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
 		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
 		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
-		 `+rfqCurrentLineCounts+`
-		 `+rfqClosureJoins+`
-WHERE r.account_id = $1
-		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
-		   AND r.id = $3
-		   AND ($4::uuid IS NULL OR q.seller_id = $4 OR q.seller_id IS NULL)`,
-		tenant.AccountID, branchFilter, rfqID, sellerParam(tenant), env,
-	).Scan(
-		&item.ID, &item.ClientID,
-		&item.ClientLabel, &item.CreatedAt,
-		&item.Channel, &item.SellerID, &item.SellerName,
-		&item.BranchID, &item.BranchName,
-		&item.QuoteID, &item.QuoteNumber,
-		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
-		&item.ItemCount, &item.ReviewCount,
-		&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
-		&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	if total.IsZero() {
-		item.Total = nil
-	} else {
-		s := total.String()
-		item.Total = &s
-	}
-	return &item, nil
-}
+		 ` + rfqCurrentLineCounts + `
+		 ` + rfqClosureJoins + `
+		 ` + rfqCustomerReply
+
+// rfqCustomerReply is the newest reply on a SENT quote's current version that changed nothing and
+// the seller has not settled, read since the quote last became SENT: an undone acceptance or a
+// resend leaves the replies before it behind.
+const rfqCustomerReply = `LEFT JOIN LATERAL (
+		   SELECT hd.ai_proposal::jsonb ->> 'no_match_reason' AS reason,
+		          hd.ai_proposal::jsonb ->> 'reply_acceptance' AS reply_acceptance,
+		          hd.created_at
+		   FROM handler_decision hd
+		   WHERE q.current_status = 'SENT'
+		     AND hd.account_id = q.account_id AND hd.quote_version_id = q.current_version_id
+		     AND hd.seller_decision IS NULL
+		     AND hd.ai_proposal::jsonb ->> 'no_match_reason' = ANY($6::text[])
+		     AND hd.created_at > COALESCE((SELECT max(sc.changed_at) FROM quote_status_change sc
+		       WHERE sc.account_id = q.account_id AND sc.quote_id = q.id AND sc.new_status = 'SENT'),
+		       '-infinity')
+		   ORDER BY hd.created_at DESC, hd.id DESC
+		   LIMIT 1
+		 ) reply ON TRUE`
 
 // rfqCurrentLineCounts counts the lines of the quote's current version, and those matching left
 // for the seller: an earlier version's lines are history, not work.
@@ -243,41 +254,16 @@ func (r *RFQRepository) ListByTenant(
 	ctx context.Context, q Querier, tenant domain.Tenant, includeArchived bool, env domain.ARCAEnvironment,
 ) ([]domain.RfqListItem, error) {
 	rows, err := q.Query(ctx,
-		`SELECT r.id, r.client_id,
-		        COALESCE(cl.name, r.client_label), r.created_at,
-		        lower(c.type::text),
-		        q.seller_id,
-		        COALESCE(u.name, ''),
-		        r.branch_id,
-		        b.name,
-		        q.id,
-		        q.number,
-		        COALESCE(qt.total, 0),
-		        CASE WHEN q.id IS NULL THEN r.status::text
-		             ELSE q.current_status::text
-		        END,
-		        COALESCE(q.archived_at,r.archived_at),
-		        COALESCE(q.needs_followup, FALSE),
-		        q.followup_flagged_at,
-		        COALESCE(lines.items, 0),
-		        COALESCE(lines.to_review, 0),
-		        `+rfqClosureColumns+`
+		`SELECT `+rfqListColumns+`
 		 FROM rfq r
-		 JOIN branch b ON b.id = r.branch_id AND b.account_id = r.account_id
-		 JOIN account a ON a.id = r.account_id
-		 LEFT JOIN client cl ON cl.id = r.client_id AND cl.account_id = r.account_id
-		 LEFT JOIN quote q ON q.rfq_id = r.id AND q.account_id = r.account_id
-		 LEFT JOIN channel c ON c.id = r.channel_id AND c.account_id = r.account_id
-		 LEFT JOIN app_user u ON u.id = q.seller_id AND u.account_id = r.account_id
-		 LEFT JOIN quote_version qt ON qt.id = q.current_version_id AND qt.account_id = r.account_id
-		 `+rfqCurrentLineCounts+`
-		 `+rfqClosureJoins+`
+		 `+rfqListJoins+`
 		 WHERE r.account_id = $1
 		   AND ($2::uuid[] IS NULL OR r.branch_id = ANY($2::uuid[]))
 		   AND ($3::uuid IS NULL OR q.seller_id = $3 OR q.seller_id IS NULL)
 		   AND ($4::bool OR (q.archived_at IS NULL AND r.archived_at IS NULL))
 		 ORDER BY COALESCE(q.needs_followup, FALSE) DESC, r.created_at DESC`,
 		tenant.AccountID, tenant.BranchFilter(), sellerParam(tenant), includeArchived, env,
+		domain.CustomerReplyReasons(),
 	)
 	if err != nil {
 		return nil, err
@@ -286,30 +272,47 @@ func (r *RFQRepository) ListByTenant(
 
 	var items []domain.RfqListItem
 	for rows.Next() {
-		var item domain.RfqListItem
-		var total decimal.Decimal
-		if err := rows.Scan(
-			&item.ID, &item.ClientID,
-			&item.ClientLabel, &item.CreatedAt,
-			&item.Channel, &item.SellerID, &item.SellerName,
-			&item.BranchID, &item.BranchName,
-			&item.QuoteID, &item.QuoteNumber,
-			&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
-			&item.ItemCount, &item.ReviewCount,
-			&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
-			&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
-		); err != nil {
+		item, err := scanRfqListItem(rows)
+		if err != nil {
 			return nil, err
 		}
-		if total.IsZero() {
-			item.Total = nil
-		} else {
-			s := total.String()
-			item.Total = &s
-		}
-		items = append(items, item)
+		items = append(items, *item)
 	}
 	return items, rows.Err()
+}
+
+func scanRfqListItem(row pgx.Row) (*domain.RfqListItem, error) {
+	var item domain.RfqListItem
+	var total decimal.Decimal
+	var replyReason, replyAcceptance *string
+	var replyAt *time.Time
+	if err := row.Scan(
+		&item.ID, &item.ClientID,
+		&item.ClientLabel, &item.CreatedAt,
+		&item.Channel, &item.SellerID, &item.SellerName,
+		&item.BranchID, &item.BranchName,
+		&item.QuoteID, &item.QuoteNumber,
+		&total, &item.Status, &item.ArchivedAt, &item.NeedsFollowup, &item.FollowupFlaggedAt,
+		&item.ItemCount, &item.ReviewCount,
+		&item.Closure.PaidAt, &item.Closure.PaidBy, &item.Closure.InvoiceWaivedAt,
+		&item.Closure.InvoiceWaivedBy, &item.Closure.Invoiced, &item.Closure.InvoicePending, &item.Closure.InvoicingEnabled,
+		&item.AcceptanceUnconfirmed, &replyReason, &replyAcceptance, &replyAt,
+	); err != nil {
+		return nil, err
+	}
+	if !total.IsZero() {
+		s := total.String()
+		item.Total = &s
+	}
+	if replyReason != nil && replyAt != nil {
+		item.CustomerReply = &domain.CustomerReply{Reason: domain.HandlerNoMatchReason(*replyReason),
+			CreatedAt: *replyAt}
+		if replyAcceptance != nil {
+			acceptance := domain.ReplyAcceptance(*replyAcceptance)
+			item.CustomerReply.ReplyAcceptance = &acceptance
+		}
+	}
+	return &item, nil
 }
 
 // AssignSeller claims an unclaimed quote for the caller, atomically. The branch scope anchors

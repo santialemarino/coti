@@ -1,9 +1,4 @@
-// Package openai adapts OpenAI's embedding and transcription endpoints to the domain Embedder and
-// Transcriber ports. Anthropic exposes neither, which is why a second provider exists at all.
-//
-// The two endpoints are called over net/http rather than through a provider SDK: the retry policy,
-// the timeouts and the usage meter are shared with the other adapter and belong to internal/ai, so an
-// SDK would contribute request signing and little else.
+// Package openai adapts structured generation, embeddings and transcription to domain ports.
 package openai
 
 import (

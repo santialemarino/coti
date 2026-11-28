@@ -77,8 +77,6 @@ export function SendClientForm({
         .superRefine((values, ctx) => {
           if (values.mode === 'new' && !values.email && !values.phone)
             ctx.addIssue({ code: 'custom', path: ['email'], message: t('clientContactRequired') });
-          if (values.mode === 'new' && !values.name.trim())
-            ctx.addIssue({ code: 'custom', path: ['name'], message: t('clientNameRequired') });
           if (
             values.mode === 'new' &&
             values.email &&
@@ -118,7 +116,7 @@ export function SendClientForm({
             ? { clientId: checked.data.clientId }
             : {
                 newClient: {
-                  name: checked.data.name.trim(),
+                  ...(checked.data.name.trim() ? { name: checked.data.name.trim() } : {}),
                   ...(checked.data.email ? { email: checked.data.email } : {}),
                   ...(checked.data.phone ? { phone: checked.data.phone } : {}),
                 },
@@ -238,7 +236,9 @@ export function SendClientForm({
         ) : (
           <div className="flex items-center justify-between gap-2">
             {values.mode === 'new' && newConfirmed ? (
-              <p className="text-paragraph-sm-medium">{values.name}</p>
+              <p className="text-paragraph-sm-medium">
+                {values.name?.trim() || values.phone || values.email}
+              </p>
             ) : (
               <span />
             )}
@@ -315,7 +315,7 @@ export function SendClientForm({
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel required>{t('clientName')}</FormLabel>
+                    <FormLabel>{t('clientName')}</FormLabel>
                     <FormControl>
                       <Input {...field} maxLength={255} disabled={disabled} />
                     </FormControl>

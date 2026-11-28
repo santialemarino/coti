@@ -24,6 +24,7 @@ import {
   PendingButton,
   RadioGroup,
   RadioGroupItem,
+  Switch,
   Textarea,
 } from '@repo/ui/components';
 import { useHeldWhileClosed } from '@repo/ui/hooks';
@@ -65,6 +66,7 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
       taxId: taxIdDigits(account.taxId ?? ''),
       brandColor: account.brandColor?.replace(/^#/, '') ?? '',
       lowerPriceStrategy: account.preferredLowerPriceStrategy,
+      whatsappAutoAccept: account.whatsappAutoAccept,
       followupTemplate: account.followupTemplate ?? t('followup.default'),
     },
   });
@@ -253,6 +255,24 @@ export function AccountForm({ account, arcaConnection }: AccountFormProps) {
                     </RadioGroup>
                   </FormControl>
                   <FormDescription>{t('lowerPrice.hint')}</FormDescription>
+                </FormItem>
+              )}
+            />
+          </section>
+          <section className="flex flex-col gap-y-5">
+            <h2 className="text-heading-6">{t('autoAccept.title')}</h2>
+            <FormField
+              control={form.control}
+              name="whatsappAutoAccept"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start gap-x-3">
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <div className="flex flex-col gap-y-1">
+                    <FormLabel>{t('autoAccept.label')}</FormLabel>
+                    <FormDescription>{t('autoAccept.hint')}</FormDescription>
+                  </div>
                 </FormItem>
               )}
             />

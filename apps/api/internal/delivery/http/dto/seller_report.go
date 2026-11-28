@@ -17,6 +17,7 @@ type SellerReportFilterQuery struct {
 
 // SellerReportResponse is the seller dashboard read for one period.
 type SellerReportResponse struct {
+	Comparison         *SellerReportComparisonResponse      `json:"comparison,omitempty"`
 	Range              SellerReportRangeResponse            `json:"range"`
 	Granularity        string                               `json:"granularity"`
 	Scope              SellerReportScopeResponse            `json:"scope"`
@@ -30,6 +31,20 @@ type SellerReportResponse struct {
 	TopClients         []SellerReportClientResponse         `json:"top_clients"`
 	AIMatch            SellerReportAIMatchResponse          `json:"ai_match"`
 	Assistant          SellerReportAssistantResponse        `json:"assistant"`
+}
+
+// SellerReportComparisonResponse names the exact preceding period and its comparable metrics.
+type SellerReportComparisonResponse struct {
+	Range   SellerReportRangeResponse             `json:"range"`
+	Metrics map[string]SellerReportChangeResponse `json:"metrics"`
+}
+
+// SellerReportChangeResponse carries decimal changes with nullable bases and measurements.
+type SellerReportChangeResponse struct {
+	Previous         *string `json:"previous"`
+	Delta            *string `json:"delta"`
+	Percentage       *string `json:"percentage"`
+	PercentagePoints bool    `json:"percentage_points"`
 }
 
 // SellerReportRangeResponse is the inclusive period the report covers.
@@ -69,10 +84,18 @@ type SellerReportKPIsResponse struct {
 	QuotesAccepted   int                              `json:"quotes_accepted"`
 	SentAccepted     int                              `json:"sent_accepted"`
 	ConversionRate   *string                          `json:"conversion_rate"`
-	AcceptedAmount   string                           `json:"accepted_amount"`
+	AcceptedAmount   *string                          `json:"accepted_amount" extensions:"x-nullable"`
+	AcceptedCurrency *string                          `json:"accepted_currency" extensions:"x-nullable"`
+	AcceptedAmounts  []SellerReportAmountResponse     `json:"accepted_amounts"`
 	ResponseTime     SellerReportResponseTimeResponse `json:"response_time"`
 	TimeToAcceptance SellerReportResponseTimeResponse `json:"time_to_acceptance"`
 	FollowUpPending  int                              `json:"follow_up_pending"`
+}
+
+// SellerReportAmountResponse is a decimal total in its original currency.
+type SellerReportAmountResponse struct {
+	Currency string `json:"currency"`
+	Amount   string `json:"amount"`
 }
 
 // SellerReportResponseTimeResponse summarizes one measured interval in seconds.
@@ -116,6 +139,7 @@ type SellerReportProductResponse struct {
 type SellerReportRevenueProductResponse struct {
 	ProductID uuid.UUID `json:"product_id"`
 	Name      string    `json:"name"`
+	Currency  string    `json:"currency"`
 	Revenue   string    `json:"revenue"`
 }
 
@@ -123,6 +147,7 @@ type SellerReportRevenueProductResponse struct {
 type SellerReportClientResponse struct {
 	ClientID       *uuid.UUID `json:"client_id"`
 	Name           string     `json:"name"`
+	Currency       string     `json:"currency"`
 	AcceptedAmount string     `json:"accepted_amount"`
 }
 

@@ -1245,7 +1245,7 @@ func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
 	}{
 		{
 			name: "unknown language model provider",
-			env:  map[string]string{"AI_LLM_PROVIDER": "openai"},
+			env:  map[string]string{"AI_LLM_PROVIDER": "unsupported"},
 			want: "AI_LLM_PROVIDER must be",
 		},
 		{
@@ -1769,7 +1769,8 @@ func TestLoad_ConversationDefaults(t *testing.T) {
 	}
 	want := ConversationConfig{WindowReset: 120 * time.Second, WindowMax: 600 * time.Second,
 		ContextMessages: 10, TickerInterval: 30 * time.Second, MaxAttempts: 3,
-		ProcessingTimeout: 600 * time.Second, SweepBatchSize: 100}
+		ProcessingTimeout: 600 * time.Second, SweepBatchSize: 100,
+		AutoAcceptMinConfidencePercent: 85, AcceptReviewMinConfidencePercent: 60, AutoAcceptMaxWords: 8}
 	if cfg.Conversation != want {
 		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
 	}
@@ -1784,6 +1785,9 @@ func TestLoad_ConversationKeysLandOnTheirOwnFields(t *testing.T) {
 	env["CONVERSATION_MAX_ATTEMPTS"] = "5"
 	env["CONVERSATION_PROCESSING_TIMEOUT_SECONDS"] = "13"
 	env["CONVERSATION_SWEEP_BATCH_SIZE"] = "17"
+	env["CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT"] = "93"
+	env["CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT"] = "71"
+	env["CONVERSATION_AUTO_ACCEPT_MAX_WORDS"] = "6"
 	setEnv(t, env)
 	cfg, err := Load()
 	if err != nil {
@@ -1791,7 +1795,8 @@ func TestLoad_ConversationKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	want := ConversationConfig{WindowReset: 45 * time.Second, WindowMax: 300 * time.Second,
 		ContextMessages: 7, TickerInterval: 11 * time.Second, MaxAttempts: 5,
-		ProcessingTimeout: 13 * time.Second, SweepBatchSize: 17}
+		ProcessingTimeout: 13 * time.Second, SweepBatchSize: 17,
+		AutoAcceptMinConfidencePercent: 93, AcceptReviewMinConfidencePercent: 71, AutoAcceptMaxWords: 6}
 	if cfg.Conversation != want {
 		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
 	}
@@ -1848,5 +1853,24 @@ func TestLoad_ConversationProcessingTimeoutBounds(t *testing.T) {
 				t.Fatalf("Load() = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestLoad_OpenAILanguageModelRequiresItsOwnKey(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "openai"
+	env["AI_LLM_MODEL"] = "gpt-4.1-mini"
+	setEnv(t, env)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_OPENAI_API_KEY") {
+		t.Fatalf("missing key = %v", err)
+	}
+	t.Setenv("AI_OPENAI_API_KEY", "test-openai-key")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := cfg.AI.OpenAIGeneration()
+	if adapter.APIKey != "test-openai-key" || adapter.Model != "gpt-4.1-mini" {
+		t.Fatalf("OpenAI config = %+v", adapter)
 	}
 }

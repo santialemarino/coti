@@ -5,6 +5,7 @@ import {
   CheckCircle2Icon,
   CheckIcon,
   CircleCheckIcon,
+  HourglassIcon,
   MessageCircleIcon,
   PencilIcon,
   XIcon,
@@ -40,6 +41,8 @@ interface QuoteActionsProps {
   /* Absent on the dev-only preview route, which demos the flow without a wire call. */
   token?: string;
   customerStatus?: CustomerActionType;
+  // The corralón is confirming an acceptance read from the customer's message.
+  inReview?: boolean;
   currency?: string;
 }
 
@@ -84,7 +87,12 @@ const RESPONDED_DESCRIPTION_KEY: Record<CustomerActionType, string> = {
  * The customer's answer to the frozen quote. A change request requires a message so the seller
  * knows what to rework. The preview route simulates the round trip without a running API.
  */
-export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteActionsProps) {
+export function QuoteActions({
+  token,
+  customerStatus,
+  inReview = false,
+  currency = 'ARS',
+}: QuoteActionsProps) {
   const t = useTranslations('quote.actions');
   const { selections, previewReady } = useQuoteSelections();
 
@@ -146,7 +154,19 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
   // The dialog stays mounted once the answer lands, so it can play its exit over the result.
   return (
     <section className="flex flex-col gap-y-4">
-      {answered ? (
+      {inReview && !result ? (
+        <>
+          <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
+          <Card>
+            <StatusScreen
+              icon={HourglassIcon}
+              tone="info"
+              title={t('inReviewTitle')}
+              description={t('inReviewDescription')}
+            />
+          </Card>
+        </>
+      ) : answered ? (
         <>
           <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
           <Card>
@@ -190,23 +210,30 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
       )}
 
       <Dialog open={choice !== null} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-md" closeOnClickOutside={!busy} showCloseButton={!busy}>
+        <DialogContent
+          className="sm:max-w-md"
+          closeOnClickOutside={!busy && message.trim() === ''}
+          showCloseButton={!busy}
+        >
           <DialogHeader>
             <DialogTitle>{choice ? t(DIALOG_TITLE_KEY[choice]) : ''}</DialogTitle>
             <DialogDescription>{choice ? t(DIALOG_DESCRIPTION_KEY[choice]) : ''}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-y-3">
-            {choice === 'REQUEST_CHANGE' ? (
+            {choice === 'REQUEST_CHANGE' || choice === 'REJECT' ? (
               <div className="flex flex-col gap-y-1.5">
-                <Label htmlFor="action-message" required>
-                  {t('messageLabel')}
+                <Label htmlFor="action-message" required={choice === 'REQUEST_CHANGE'}>
+                  {t(choice === 'REJECT' ? 'rejectionReasonLabel' : 'messageLabel')}
                 </Label>
                 <Textarea
                   id="action-message"
                   value={message}
+                  disabled={busy}
                   onChange={(event) => setMessage(event.target.value)}
-                  placeholder={t('messagePlaceholder')}
+                  placeholder={t(
+                    choice === 'REJECT' ? 'rejectionReasonPlaceholder' : 'messagePlaceholder',
+                  )}
                   aria-invalid={showMessageError}
                   maxLength={MAX_ACTION_MESSAGE}
                   autoFocus

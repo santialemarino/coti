@@ -57,8 +57,12 @@ func (h *ChangeRequestHandler) Propose(ctx context.Context,
 	}
 
 	proposal := &domain.ChangeRequestProposal{Level: domain.ChangeRequestLevel(answer.Level),
-		Interpretation: answer.Interpretation,
-		Operations:     make([]domain.ChangeRequestOperation, 0, len(answer.Operations))}
+		Interpretation:            answer.Interpretation,
+		Operations:                make([]domain.ChangeRequestOperation, 0, len(answer.Operations)),
+		CustomerDecision:          domain.CustomerDecision(answer.CustomerDecision),
+		DecisionConfidencePercent: answer.DecisionConfidencePercent,
+		Conditional:               answer.Conditional,
+		PartialOrAlternative:      answer.PartialOrAlternative}
 	if answer.Intent != nil {
 		intent := domain.ChangeRequestIntent(*answer.Intent)
 		proposal.Intent = &intent
@@ -92,10 +96,21 @@ const changeRequestInstructions = `You interpret a customer request to revise a 
 
 customer_message holds the customer's new messages, oldest first, one per line. conversation_context holds earlier messages of the same conversation, from the customer (CLIENT), the seller (SELLER) or the system (SYSTEM); it is context only: never turn a context message into a change, and never repeat a change it shows was already requested.
 
-First choose the level:
+Read every message in customer_message together, as one reply, before deciding anything.
+
+First classify the reply as customer_decision:
+- CHANGE: the customer asks for anything on the quote to be different: a line added, removed, replaced or requantified, a cheaper or better option, a promotion, or a price. A change wins over any acceptance in the same reply ("dale, pero sumale 5 bolsas" is CHANGE). "dale", "sí" or "ok" answering an offer the seller made in conversation_context ("¿te lo cambio por la marca más barata?") accepts that offer, so it is CHANGE. An acceptance with a condition the quote does not meet ("lo llevo si me lo dejás en 100 mil", "si me hacés el envío gratis, dale") is CHANGE with conditional true. "está caro" on its own is CHANGE with intent LOWER_TOTAL_PRICE.
+- ACCEPT: the customer takes the quote as sent ("dale", "listo, lo compro", "acepto", "confirmo", "va", "mandale"). Set partial_or_alternative true when they take only part of it without saying what to drop, or pick one of the alternative options the quote offered.
+- REJECT: the customer turns the quote down ("muy caro, paso", "ya compré en otro lado", "no me interesa", "lo dejamos"). Being expensive is REJECT only when the customer also says they will not buy.
+- QUESTION: the customer asks about delivery, payment, stock, invoicing, pickup, schedules or anything else the seller answers without changing the quote ("¿cuándo lo entregan?", "¿aceptan transferencia?", "¿tienen stock?").
+- NONE: the reply decides and asks nothing: thanks, greetings, a reaction or emoji such as 👍, "lo pienso", "después te confirmo", "ok gracias".
+- NEW_ORDER: the customer asks for a quote for a separate, new order instead of changing this one ("necesito cotizar un pedido nuevo: …", "aparte de esto, cotizame …"). Materials listed as a fresh request with no reference to this quote's lines are NEW_ORDER, even when some of them match this quote's lines: the new order is quoted on its own, so its materials never become operations on this quote. A reply that names this quote or its lines, or asks to update it, is CHANGE; when unsure between CHANGE and NEW_ORDER, choose CHANGE.
+decision_confidence_percent is how sure you are of customer_decision, from 0 to 100. Use 90 or more only when the wording leaves no other reasonable reading. When conversation_context holds no seller question or offer for it to answer, "dale", "listo", "va" or "lo llevo" answers the quote itself: that is a clear acceptance. A bare emoji, "ok", or a one-word reply that could answer something else in conversation_context is never above 70. conditional is true only for an acceptance tied to a condition; otherwise false.
+
+Then choose the level:
 - ATOMIC: the customer states concrete changes. Return them as operations; intent and lower_price_strategy are null and intent_item_ids is empty.
 - COMPLEX: the customer states a goal without saying how to reach it, and the goal is one of the intents below. Return no operations; the supplier's system reaches the goal itself.
-- NO_MATCH: the request is ambiguous, unsupported, asks about something other than materials, or cannot be tied to the supplied lines. Return no operations, a null intent, a null lower_price_strategy and empty intent_item_ids. Acceptance, rejection, thanks, payment, delivery or stock questions are always NO_MATCH: never treat "dale", "acepto", "lo compro" or "no me interesa" as a change.
+- NO_MATCH: every customer_decision other than CHANGE, and a CHANGE that is ambiguous, unsupported or cannot be tied to the supplied lines. Return no operations, a null intent, a null lower_price_strategy and empty intent_item_ids. Never turn "dale", "acepto", "lo compro" or "no me interesa" into an operation.
 
 ATOMIC operations:
 - ADD_ITEM: add a material that is not already a line. It needs requested_description and quantity. target_item_id and promotion_id must be null.
@@ -130,6 +145,11 @@ type changeRequestAnswer struct {
 	IntentItemIDs      []string                `json:"intent_item_ids"`
 	LowerPriceStrategy *string                 `json:"lower_price_strategy"`
 	Operations         []changeRequestAnswerOp `json:"operations"`
+	CustomerDecision   string                  `json:"customer_decision"`
+	// DecisionConfidencePercent is an integer the schema bounds only by type; the service clamps it.
+	DecisionConfidencePercent int  `json:"decision_confidence_percent"`
+	Conditional               bool `json:"conditional"`
+	PartialOrAlternative      bool `json:"partial_or_alternative"`
 }
 
 type changeRequestAnswerOp struct {
@@ -189,9 +209,34 @@ func changeRequestSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required": []string{"level", "interpretation", "intent", "intent_item_ids",
+		"required": []string{"customer_decision", "decision_confidence_percent", "conditional",
+			"partial_or_alternative", "level", "interpretation", "intent", "intent_item_ids",
 			"lower_price_strategy", "operations"},
 		"properties": map[string]any{
+			"customer_decision": map[string]any{
+				"type": "string",
+				"enum": []string{
+					string(domain.CustomerDecisionChange),
+					string(domain.CustomerDecisionAccept),
+					string(domain.CustomerDecisionReject),
+					string(domain.CustomerDecisionQuestion),
+					string(domain.CustomerDecisionNone),
+					string(domain.CustomerDecisionNewOrder),
+				},
+				"description": "What the whole reply says about the quote.",
+			},
+			"decision_confidence_percent": map[string]any{
+				"type":        "integer",
+				"description": "How sure the decision is, from 0 to 100.",
+			},
+			"conditional": map[string]any{
+				"type":        "boolean",
+				"description": "True only for an acceptance tied to a condition the quote does not meet.",
+			},
+			"partial_or_alternative": map[string]any{
+				"type":        "boolean",
+				"description": "True when the customer takes part of the quote or one of its offered alternatives.",
+			},
 			"level": map[string]any{
 				"type": "string",
 				"enum": []string{

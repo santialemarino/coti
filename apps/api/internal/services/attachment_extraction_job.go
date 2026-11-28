@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,8 +55,22 @@ type AttachmentExtractionJob struct {
 	reader      StoredAttachmentReader
 	folder      attachmentFolder
 	cfg         config.AttachmentConfig
+	hold        attachmentHold
 	now         func() time.Time
 	log         *slog.Logger
+}
+
+// attachmentHold names the orders still taking material, such as one whose sender may still be
+// sending the rest of a list, so the sweep waits for them instead of extracting over half.
+type attachmentHold interface {
+	Held(ctx context.Context, q repository.Querier, rfqIDs []uuid.UUID) (map[uuid.UUID]bool, error)
+}
+
+// WithHold has the sweep skip the orders hold names. A skipped order stays claimed, and the claim
+// expiring puts it back in the queue for a later run.
+func (j *AttachmentExtractionJob) WithHold(hold attachmentHold) *AttachmentExtractionJob {
+	j.hold = hold
+	return j
 }
 
 // NewAttachmentExtractionJob builds the pending-attachment sweep.
@@ -81,7 +96,10 @@ func (j *AttachmentExtractionJob) Run(ctx context.Context,
 	}
 
 	report := domain.JobReport{Scanned: len(claimed)}
-	orders := groupByRFQ(claimed)
+	orders, err := j.withoutHeld(ctx, q, groupByRFQ(claimed))
+	if err != nil {
+		return report, err
+	}
 	earlier := j.earlierReadings(ctx, q, orders)
 
 	var failures error
@@ -93,6 +111,25 @@ func (j *AttachmentExtractionJob) Run(ctx context.Context,
 		}
 	}
 	return report, failures
+}
+
+// withoutHeld drops the orders the hold says are still taking material.
+func (j *AttachmentExtractionJob) withoutHeld(ctx context.Context, q repository.Querier,
+	orders [][]domain.ClaimedAttachment) ([][]domain.ClaimedAttachment, error) {
+	if j.hold == nil || len(orders) == 0 {
+		return orders, nil
+	}
+	rfqIDs := make([]uuid.UUID, 0, len(orders))
+	for _, order := range orders {
+		rfqIDs = append(rfqIDs, order[0].RFQID)
+	}
+	held, err := j.hold.Held(ctx, q, rfqIDs)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(orders, func(order []domain.ClaimedAttachment) bool {
+		return held[order[0].RFQID]
+	}), nil
 }
 
 /*
@@ -135,6 +172,12 @@ func (j *AttachmentExtractionJob) processOrder(ctx context.Context, q repository
 	read := make([]readAttachment, 0, len(order))
 	for _, attachment := range order {
 		block, text, readErr := j.reader.ReadStoredAttachment(ctx, attachment)
+		// A provider outage is not the file's fault: the whole order stays claimed, and the claim
+		// expiring puts it back in the queue rather than closing a readable file out as failed.
+		if errors.Is(readErr, domain.ErrMediaUnavailable) {
+			return changed, errors.Join(failures, fmt.Errorf("read rfq %s: %w",
+				attachment.RFQID, readErr))
+		}
 		if readErr != nil {
 			j.log.WarnContext(ctx, "attachment could not be read",
 				slog.String("attachment_id", attachment.ID.String()),

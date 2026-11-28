@@ -38,6 +38,8 @@ type RFQAttachmentService struct {
 	transcriber        domain.Transcriber
 	maxTextCharacters  int
 	maxSpreadsheetRows int
+	media              whatsAppMediaMaterializer
+	vocabulary         func(ctx context.Context, accountID uuid.UUID) string
 }
 
 // NewRFQAttachmentService builds an RFQAttachmentService. A nil now means time.Now.
@@ -73,6 +75,13 @@ func (s *RFQAttachmentService) List(
 	// bucket one signs in memory, and neither belongs inside a database transaction.
 	links := make([]domain.AttachmentLink, 0, len(stored))
 	for _, attachment := range stored {
+		// A file never stored, or one WhatsApp still holds, is listed without a link rather than
+		// failing the whole order's list: the seller still sees it arrived and how it ended.
+		if attachment.StorageKey == nil || *attachment.StorageKey == "" ||
+			strings.HasPrefix(*attachment.StorageKey, domain.WhatsAppMediaKeyPrefix) {
+			links = append(links, domain.AttachmentLink{Attachment: attachment})
+			continue
+		}
 		link, err := s.linkFor(ctx, attachment)
 		if err != nil {
 			return nil, err

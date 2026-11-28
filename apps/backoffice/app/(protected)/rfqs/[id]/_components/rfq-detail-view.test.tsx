@@ -91,6 +91,8 @@ const DRAFT_ITEM: QuoteItemResponse = {
   alternatives: [],
   pricing_unavailable: null,
   quantity_rationale: null,
+  unit_mismatch: false,
+  taught_by_seller: false,
   created_at: BASE_TIME,
 };
 
@@ -268,6 +270,37 @@ function renderView(
   return render(viewTree(detail, activeBranchId, invoicingEnabled));
 }
 
+it('shows rejection feedback from its customer action, preserving prior versions', () => {
+  const detail = makeDetail('REJECTED');
+  detail.version!.comment = 'Internal seller note';
+  detail.client_actions = [
+    {
+      id: 'answer-1',
+      version_id: VERSION_ID,
+      version_number: 1,
+      type: 'REJECT',
+      comment: 'Compré en otro proveedor.',
+      created_at: BASE_TIME,
+      reopened_at: BASE_TIME,
+    },
+    {
+      id: 'answer-2',
+      version_id: VERSION_ID,
+      version_number: 2,
+      type: 'REJECT',
+      comment: null,
+      created_at: BASE_TIME,
+      reopened_at: null,
+    },
+  ];
+  const view = renderView(detail);
+  expect(view.getByText('Compré en otro proveedor.')).toBeTruthy();
+  expect(view.getAllByText(copy.detail.callouts.rejected.noReason).length).toBeGreaterThan(0);
+  expect(view.queryByText('Internal seller note')).toBeNull();
+  // The seller reactivated the quote after the first answer: it reads as reopened, the second does not.
+  expect(view.getAllByText(/reabierta el/)).toHaveLength(1);
+});
+
 function viewTree(
   detail: RfqDetailResponse,
   activeBranchId: string | null = BRANCH_ID,
@@ -405,6 +438,7 @@ describe('RfqDetailView send flow', () => {
         type: 'REQUEST_CHANGE',
         comment: 'Precio alto',
         created_at: BASE_TIME,
+        reopened_at: null,
       },
     ];
 

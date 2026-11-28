@@ -2,6 +2,7 @@
 export type SaleInvoiceStatus = 'INVOICED' | 'PENDING' | 'WAIVED' | 'UNINVOICED';
 
 export interface ClientTagRaw {
+  automatic?: boolean;
   id: string;
   name: string;
   created_at: string;
@@ -51,7 +52,16 @@ export interface ClientSaleRaw {
   invoice_status: SaleInvoiceStatus;
 }
 
+interface ClientActivityRaw {
+  open_quotes: number;
+  accepted_count: number;
+  last_accepted_at: string | null;
+  average_ticket: string | null;
+}
+
 export interface ClientProfileRaw {
+  activity?: ClientActivityRaw;
+  excluded_tags?: ClientTagRaw[];
   client: ClientRaw;
   registered: boolean;
   tags: ClientTagRaw[];
@@ -76,6 +86,7 @@ export interface QuoteClientAssociationRaw {
 }
 
 export interface ClientTag {
+  automatic?: boolean;
   id: string;
   name: string;
   createdAt: string;
@@ -111,7 +122,16 @@ export interface ClientSale {
   invoiceStatus: SaleInvoiceStatus;
 }
 
+export interface ClientActivity {
+  openQuotes: number;
+  acceptedCount: number;
+  lastAcceptedAt: string | null;
+  averageTicket: string | null;
+}
+
 export interface ClientProfile {
+  activity: ClientActivity;
+  excludedTags?: ClientTag[];
   client: Client;
   // A customer account manages the profile, so the seller neither renames nor merges it.
   registered: boolean;
@@ -152,7 +172,12 @@ export function mapClient(raw: ClientRaw): Client {
 }
 
 export function mapClientTag(raw: ClientTagRaw): ClientTag {
-  return { id: raw.id, name: raw.name, createdAt: raw.created_at };
+  return {
+    id: raw.id,
+    name: raw.name,
+    createdAt: raw.created_at,
+    ...(raw.automatic && { automatic: true }),
+  };
 }
 
 export function mapClientSummary(raw: ClientSummaryRaw): ClientSummary {
@@ -178,14 +203,21 @@ export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
       createdAt: summary.createdAt,
       updatedAt: summary.updatedAt,
     },
-    tags: summary.tags,
+    tags: summary.tags.filter((tag) => !tag.automatic),
   };
 }
 
 export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
   return {
+    activity: {
+      openQuotes: raw.activity?.open_quotes ?? 0,
+      acceptedCount: raw.activity?.accepted_count ?? 0,
+      lastAcceptedAt: raw.activity?.last_accepted_at ?? null,
+      averageTicket: raw.activity?.average_ticket ?? null,
+    },
     client: mapClient(raw.client),
     registered: raw.registered,
+    excludedTags: (raw.excluded_tags ?? []).map(mapClientTag),
     tags: raw.tags.map(mapClientTag),
     sales: raw.sales.map((sale) => ({
       quoteId: sale.quote_id,

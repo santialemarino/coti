@@ -30,6 +30,7 @@ export function accountSchema(t: SchemaText = rawText) {
       .trim()
       .refine((raw) => raw === '' || HEX_COLOR_DIGITS.test(raw), t.field('brandColor.invalid')),
     lowerPriceStrategy: z.enum(LOWER_PRICE_STRATEGIES),
+    whatsappAutoAccept: z.boolean(),
     followupTemplate: z
       .string()
       .trim()

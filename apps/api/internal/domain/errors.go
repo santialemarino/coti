@@ -58,6 +58,10 @@ var (
 	// ErrDeliveryUnavailable is returned when every selected client delivery failed.
 	ErrDeliveryUnavailable = errors.New("delivery unavailable")
 
+	// ErrMediaUnavailable is returned when the provider holding a client's file could not be
+	// reached or answered with a fault; the file is still there, so reading it later may succeed.
+	ErrMediaUnavailable = errors.New("media unavailable")
+
 	// ErrInvoicingUnavailable is returned when ARCA could not be reached or answered with a fault,
 	// as opposed to refusing the invoice. Nothing was authorized, so asking again is safe.
 	ErrInvoicingUnavailable = errors.New("invoicing unavailable")

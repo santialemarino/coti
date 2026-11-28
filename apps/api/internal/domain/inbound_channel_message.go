@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,8 +14,47 @@ type InboundTextMessage struct {
 	SenderID              string
 	SenderLabel           *string
 	Body                  string
-	ProviderReceivedAt    time.Time
-	Payload               []byte
+	// ConversationOnly marks a message, such as a reaction, that never starts an order.
+	ConversationOnly bool
+	// Media is the file a message carried, whose Body is then its caption and may be empty.
+	Media              *InboundMedia
+	ProviderReceivedAt time.Time
+	Payload            []byte
+}
+
+// InboundMedia is a file a provider holds for a message: only its reference arrives with the
+// message, and the bytes are fetched later with the channel's credentials.
+type InboundMedia struct {
+	ProviderID string
+	MediaType  string
+	Filename   string
+	Kind       InboundMediaKind
+}
+
+// InboundMediaKind is how the client sent a file, which decides what the seller is told about it.
+type InboundMediaKind string
+
+const (
+	InboundMediaImage    InboundMediaKind = "IMAGE"
+	InboundMediaAudio    InboundMediaKind = "AUDIO"
+	InboundMediaDocument InboundMediaKind = "DOCUMENT"
+	InboundMediaVideo    InboundMediaKind = "VIDEO"
+)
+
+// WhatsAppMediaKeyPrefix marks an attachment whose file WhatsApp still holds: the rest of the key
+// is the media ID, resolved when the file is about to be read, since its download link expires
+// within minutes of being issued.
+const WhatsAppMediaKeyPrefix = "whatsapp-media:"
+
+// FetchedMedia is a file downloaded from the provider that held it.
+type FetchedMedia struct {
+	MediaType string
+	Data      []byte
+}
+
+// WhatsAppMediaFetcher downloads a file a client sent a branch number, refusing one past maxBytes.
+type WhatsAppMediaFetcher interface {
+	FetchMedia(ctx context.Context, accessToken, mediaID string, maxBytes int64) (*FetchedMedia, error)
 }
 
 // InboundEmailMessage carries one mailbox message and its original RFC 5322 bytes.

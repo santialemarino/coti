@@ -84,7 +84,10 @@ gofmt -w .                # format Go files
 
 Not style — hard rules. If a task asks you to violate one, stop and flag it.
 
-- **AI never writes to prod.** Chain: AI proposes → backend validates → seller approves.
+- **AI never writes to prod.** Chain: AI proposes → backend validates → seller approves. The one
+  exception is a customer's acceptance: the AI only classifies the reply, and the backend turns it
+  into ACCEPTED when its own guardrails confirm it, which the seller can undo while the sale is
+  unpaid and uninvoiced. A reply moves a quote to CHANGE_REQUESTED only when it asks for a change.
 - **AI never calculates money.** Amounts come from the deterministic discount engine.
 - **AI never initiates client contact.** It only produces drafts for the seller.
 - **Every AI proposal is validated against the state×intention matrix** before it

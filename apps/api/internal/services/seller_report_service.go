@@ -23,6 +23,7 @@ const (
 
 type sellerReportStore interface {
 	Build(context.Context, repository.Querier, domain.SellerReportQuery) (*domain.SellerReport, error)
+	ReadKPIs(context.Context, repository.Querier, domain.SellerReportQuery) (*domain.SellerReportKPIs, error)
 }
 
 // SellerReportSettings carries the bounds and thresholds a report query reads.
@@ -98,7 +99,19 @@ func (s *SellerReportService) Get(ctx context.Context, tenant domain.Tenant, fro
 	err = s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var readErr error
 		report, readErr = s.reports.Build(ctx, q, query)
-		return readErr
+		if readErr != nil {
+			return readErr
+		}
+		previousQuery := previousReportQuery(query)
+		previous, readErr := s.reports.ReadKPIs(ctx, q, previousQuery)
+		if readErr != nil {
+			return readErr
+		}
+		report.Comparison = &domain.SellerReportComparison{
+			Range:   domain.SellerReportRange{From: previousQuery.FromDate, To: previousQuery.ToDate},
+			Metrics: reportChanges(report.KPIs, *previous),
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

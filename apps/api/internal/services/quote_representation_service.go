@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"regexp"
 	"sort"
@@ -244,11 +245,61 @@ func (s *QuoteRepresentationService) ensureLocked(
 	if existing != nil {
 		return s.decorate(ctx, *existing, true)
 	}
+	return s.renderAndStore(ctx, tenant, quoteID, *source, selectionPricing)
+}
 
+// EnsureAccepted returns the representation of a version a customer's answer froze, creating it
+// on first use. Nothing is frozen here: the version must already be immutable.
+func (s *QuoteRepresentationService) EnsureAccepted(
+	ctx context.Context, tenant domain.Tenant, quoteID, versionID uuid.UUID,
+) (*domain.QuoteRepresentationResult, error) {
+	if s.storage == nil || s.renderer == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	var result *domain.QuoteRepresentationResult
+	err := s.db.WithAdvisoryLock(ctx, fmt.Sprintf("quote-representation:%s:%s",
+		tenant.AccountID, quoteID), func() error {
+		var source *domain.QuoteRepresentationSource
+		var existing *domain.QuoteRepresentation
+		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+			var err error
+			existing, err = s.representations.GetByVersion(ctx, q, tenant.AccountID, tenant.BranchID,
+				quoteID, versionID)
+			if err == nil || !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			source, err = s.representations.LoadSource(ctx, q, tenant.AccountID, tenant.BranchID,
+				quoteID, versionID)
+			if err != nil {
+				return err
+			}
+			if !source.Version.IsImmutable {
+				return invalidRepresentation("an accepted version must be frozen")
+			}
+			return validateRepresentationSource(*source)
+		})
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			result, err = s.decorate(ctx, *existing, true)
+			return err
+		}
+		result, err = s.renderAndStore(ctx, tenant, quoteID, *source, nil)
+		return err
+	})
+	return result, err
+}
+
+// renderAndStore renders a frozen version's PDF, uploads it and records the representation.
+func (s *QuoteRepresentationService) renderAndStore(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+	source domain.QuoteRepresentationSource, selectionPricing *domain.QuoteSelectionPricingSnapshot,
+) (*domain.QuoteRepresentationResult, error) {
 	if source.Version.FrozenAt == nil {
 		return nil, invalidRepresentation("frozen version has no approval timestamp")
 	}
-	payload := buildRepresentationPayload(*source, *source.Version.FrozenAt)
+	payload := buildRepresentationPayload(source, *source.Version.FrozenAt)
 	message := buildQuoteMessage(payload)
 	logo, fallback := s.loadLogo(ctx, source.Account.BrandLogoURL, quoteID)
 	pdfBytes, err := s.renderer.Render(payload, logo)
@@ -400,6 +451,29 @@ func (s *QuoteRepresentationService) decorate(
 		Replay: replay}, nil
 }
 
+// LoadPDF reads a representation's stored PDF so a delivery can attach it.
+func (s *QuoteRepresentationService) LoadPDF(ctx context.Context,
+	representation domain.QuoteRepresentation,
+) ([]byte, error) {
+	if s.storage == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	object, err := s.storage.Download(ctx, representation.PDFStorageKey)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = object.Body.Close() }()
+	content, err := io.ReadAll(io.LimitReader(object.Body, representation.PDFSizeBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) != representation.PDFSizeBytes {
+		return nil, fmt.Errorf("%w: stored PDF size differs from the recorded one",
+			domain.ErrRepresentationUnavailable)
+	}
+	return content, nil
+}
+
 func (s *QuoteRepresentationService) loadLogo(
 	ctx context.Context, rawURL *string, quoteID uuid.UUID,
 ) (*domain.BrandLogo, bool) {
@@ -535,15 +609,10 @@ func buildRepresentationPayload(
 	}
 }
 
+// buildQuoteMessage is the preview frozen with the version; each send renders its own from the
+// payload, with the validity it sets and the link its destination gets.
 func buildQuoteMessage(payload domain.QuoteRepresentationPayload) string {
-	greeting := "Hola."
-	if payload.Customer.Name != nil && strings.TrimSpace(*payload.Customer.Name) != "" {
-		greeting = "Hola, " + strings.TrimSpace(*payload.Customer.Name) + "."
-	}
-	return fmt.Sprintf("%s\n\n%s preparó la cotización %s.\nTotal: %s\n\n"+
-		"Podés consultar el detalle, las alternativas aprobadas y la vigencia acá:\n%s",
-		greeting, payload.Supplier.Name, payload.Reference,
-		formatCommercialMoney(payload.Currency, payload.Total), domain.QuotePublicURLPlaceholder)
+	return buildQuoteWhatsAppMessage(payload, nil, quoteMessageOrderLink)
 }
 
 func formatCommercialMoney(currency, raw string) string {

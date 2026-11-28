@@ -1,6 +1,25 @@
 package dto
 
-import "time"
+import (
+	"github.com/google/uuid"
+	"time"
+)
+
+// OnboardingReadinessResponse is the current operational setup diagnostic.
+type OnboardingReadinessResponse struct {
+	AccountReady bool                      `json:"account_ready"`
+	Branches     []BranchReadinessResponse `json:"branches"`
+}
+
+// BranchReadinessResponse names missing configuration without exposing integration credentials.
+type BranchReadinessResponse struct {
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Products      int       `json:"products"`
+	MissingPrices int       `json:"missing_prices"`
+	HasStaff      bool      `json:"has_staff"`
+	HasChannel    bool      `json:"has_channel"`
+}
 
 // SaveOnboardingProgressRequest is the body for PUT /v1/onboarding.
 type SaveOnboardingProgressRequest struct {

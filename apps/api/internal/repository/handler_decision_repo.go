@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -186,6 +187,24 @@ func (r *HandlerDecisionRepository) Create(ctx context.Context, q Querier, accou
 	return nil
 }
 
+// SettleOnDiscard decides every run still pending on a draft the seller discarded — an applied one
+// REJECTED, a no-match one MANUAL_OVERRIDE — and moves the runs to the version that stays, so the
+// draft can go and the record does not.
+func (r *HandlerDecisionRepository) SettleOnDiscard(ctx context.Context, q Querier, accountID,
+	draftID, keptID, userID uuid.UUID,
+) error {
+	_, err := q.Exec(ctx,
+		`UPDATE handler_decision
+		 SET seller_decision = COALESCE(seller_decision,
+		       CASE WHEN ai_proposal::jsonb ->> 'outcome' = 'NO_MATCH'
+		         THEN 'MANUAL_OVERRIDE' ELSE 'REJECTED' END::handler_seller_decision),
+		     user_id = COALESCE(user_id, $4), decided_at = COALESCE(decided_at, now()),
+		     quote_version_id = $3
+		 WHERE account_id = $1 AND quote_version_id = $2`,
+		accountID, draftID, keptID, userID)
+	return err
+}
+
 // Decide completes still-undecided runs on a version with the seller's decision, each keyed by run.
 // A run decided meanwhile keeps its decision. Returns how many runs it completed.
 func (r *HandlerDecisionRepository) Decide(ctx context.Context, q Querier, accountID, versionID,
@@ -208,6 +227,24 @@ func (r *HandlerDecisionRepository) Decide(ctx context.Context, q Querier, accou
 		 WHERE decision.account_id = $1 AND decision.quote_version_id = $2
 		   AND decision.id = settled.id AND decision.seller_decision IS NULL`,
 		accountID, versionID, userID, ids, values)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// ReadCustomerReplies settles the runs still pending on a version that changed nothing — an
+// acceptance, rejection, question or plain reply — recorded up to seenUntil, as MANUAL_OVERRIDE by
+// userID. Returns how many.
+func (r *HandlerDecisionRepository) ReadCustomerReplies(ctx context.Context, q Querier, accountID,
+	versionID, userID uuid.UUID, seenUntil time.Time,
+) (int, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE handler_decision
+		 SET seller_decision = 'MANUAL_OVERRIDE', user_id = $3, decided_at = now()
+		 WHERE account_id = $1 AND quote_version_id = $2 AND seller_decision IS NULL
+		   AND ai_proposal::jsonb ->> 'no_match_reason' = ANY($4::text[]) AND created_at <= $5`,
+		accountID, versionID, userID, domain.CustomerReplyReasons(), seenUntil)
 	if err != nil {
 		return 0, err
 	}

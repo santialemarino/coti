@@ -13,6 +13,18 @@ interface DurationRaw {
 }
 
 interface SellerReportRaw {
+  comparison?: {
+    range: { from: string; to: string };
+    metrics: Record<
+      string,
+      {
+        previous: string | null;
+        delta: string | null;
+        percentage: string | null;
+        percentage_points: boolean;
+      }
+    >;
+  };
   range: { from: string; to: string };
   granularity: ReportGranularity;
   scope: { multi_branch: boolean; branch_id: string | null };
@@ -32,7 +44,9 @@ interface SellerReportRaw {
     quotes_accepted: number;
     sent_accepted: number;
     conversion_rate: string | null;
-    accepted_amount: string;
+    accepted_amount: string | null;
+    accepted_currency: string | null;
+    accepted_amounts: { currency: string; amount: string }[];
     response_time: DurationRaw;
     time_to_acceptance: DurationRaw;
     follow_up_pending: number;
@@ -52,8 +66,13 @@ interface SellerReportRaw {
     conversion_rate: string | null;
   }[];
   top_products: { product_id: string | null; name: string; requests: number }[];
-  top_revenue_products: { product_id: string; name: string; revenue: string }[];
-  top_clients: { client_id: string | null; name: string; accepted_amount: string }[];
+  top_revenue_products: { product_id: string; name: string; currency: string; revenue: string }[];
+  top_clients: {
+    client_id: string | null;
+    name: string;
+    currency: string;
+    accepted_amount: string;
+  }[];
   ai_match: {
     matched: number;
     total: number;
@@ -115,6 +134,7 @@ export interface SellerReportDuration {
 }
 
 export interface SellerReport {
+  comparison?: ReportComparison;
   range: { from: string; to: string };
   granularity: ReportGranularity;
   scope: { multiBranch: boolean; branchId: string | null };
@@ -127,7 +147,9 @@ export interface SellerReport {
     sentAccepted: number;
     // sentAccepted over quotesSent, read by the formatters; null when nothing was sent.
     conversionRate: number | null;
-    acceptedAmount: string;
+    acceptedAmount: string | null;
+    acceptedCurrency: string | null;
+    acceptedAmounts: { currency: string; amount: string }[];
     responseTime: SellerReportDuration;
     // From a quote's first send to its acceptance, for the period's acceptances.
     timeToAcceptance: SellerReportDuration;
@@ -138,8 +160,8 @@ export interface SellerReport {
   quotesByStatus: { status: string; count: number }[];
   timeline: SellerReportTrendPoint[];
   topProducts: { productId: string | null; name: string; requests: number }[];
-  topRevenueProducts: { productId: string; name: string; revenue: string }[];
-  topClients: { clientId: string | null; name: string; acceptedAmount: string }[];
+  topRevenueProducts: { productId: string; name: string; currency: string; revenue: string }[];
+  topClients: { clientId: string | null; name: string; currency: string; acceptedAmount: string }[];
   aiMatch: {
     matched: number;
     total: number;
@@ -161,6 +183,27 @@ export interface SellerReport {
   };
 }
 
+export type ReportMetric =
+  | 'rfqsReceived'
+  | 'quotesSent'
+  | 'quotesAccepted'
+  | 'conversionRate'
+  | 'responseTime'
+  | 'timeToAcceptance';
+
+export interface ReportComparison {
+  range: { from: string; to: string };
+  metrics: Record<
+    ReportMetric,
+    {
+      previous: string | null;
+      delta: string | null;
+      percentage: string | null;
+      percentagePoints: boolean;
+    }
+  >;
+}
+
 // --- Mappers ---
 
 function rate(raw: string | null): number | null {
@@ -177,6 +220,24 @@ function duration(raw: DurationRaw): SellerReportDuration {
 
 function mapSellerReport(raw: SellerReportRaw): SellerReport {
   return {
+    ...(raw.comparison
+      ? {
+          comparison: {
+            range: raw.comparison.range,
+            metrics: Object.fromEntries(
+              Object.entries(raw.comparison.metrics).map(([key, change]) => [
+                key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+                {
+                  previous: change.previous,
+                  delta: change.delta,
+                  percentage: change.percentage,
+                  percentagePoints: change.percentage_points,
+                },
+              ]),
+            ) as ReportComparison['metrics'],
+          },
+        }
+      : {}),
     range: { from: raw.range.from, to: raw.range.to },
     granularity: raw.granularity,
     scope: { multiBranch: raw.scope.multi_branch, branchId: raw.scope.branch_id },
@@ -197,6 +258,8 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
       sentAccepted: raw.kpis.sent_accepted,
       conversionRate: rate(raw.kpis.conversion_rate),
       acceptedAmount: raw.kpis.accepted_amount,
+      acceptedCurrency: raw.kpis.accepted_currency,
+      acceptedAmounts: raw.kpis.accepted_amounts,
       responseTime: duration(raw.kpis.response_time),
       timeToAcceptance: duration(raw.kpis.time_to_acceptance),
       followUpPending: raw.kpis.follow_up_pending,
@@ -226,11 +289,13 @@ function mapSellerReport(raw: SellerReportRaw): SellerReport {
     topRevenueProducts: raw.top_revenue_products.map((item) => ({
       productId: item.product_id,
       name: item.name,
+      currency: item.currency,
       revenue: item.revenue,
     })),
     topClients: raw.top_clients.map((item) => ({
       clientId: item.client_id,
       name: item.name,
+      currency: item.currency,
       acceptedAmount: item.accepted_amount,
     })),
     aiMatch: {

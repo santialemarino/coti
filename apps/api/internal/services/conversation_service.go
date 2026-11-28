@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -53,10 +54,11 @@ func NewConversationService(quotes conversationQuoteLocker, sends conversationSe
 }
 
 // Route finds the conversation an inbound sender continues on the channel it wrote to, and locks
-// that quote for the rest of the transaction. Returns nil when no live quote was sent to the sender,
+// that quote for the rest of the transaction. A live quote the message names («COT-000027», «la
+// 27») wins; otherwise the newest send does. Returns nil when no live quote was sent to the sender,
 // including a sender no quote can have been sent to.
 func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
-	route domain.InboundChannelRoute, senderID string,
+	route domain.InboundChannelRoute, senderID, body string,
 ) (*domain.ConversationRoute, error) {
 	if err := route.Validate(); err != nil {
 		return nil, err
@@ -73,24 +75,45 @@ func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
 	if err != nil {
 		return nil, err
 	}
+	// A quote the customer names picks the quote, but the others stay counted: a number read from
+	// ordinary text («paso a la 1») must not lift the hold on accepting among several quotes.
+	if references := domain.QuoteReferences(body); len(references) > 0 {
+		for _, candidate := range candidates {
+			if !slices.Contains(references, candidate.QuoteNumber) {
+				continue
+			}
+			match, err := s.claim(ctx, q, route, candidate, len(candidates)-1)
+			if err != nil || match != nil {
+				return match, err
+			}
+		}
+	}
 	// The candidate read takes no lock, so each one is re-checked under the quote's own row lock:
-	// a seller may have accepted or archived it in between.
+	// a seller may have archived it in between.
 	for i, candidate := range candidates {
-		quote, err := s.quotes.GetByIDForUpdate(ctx, q, route.AccountID, route.BranchID,
-			candidate.QuoteID)
-		if errors.Is(err, domain.ErrNotFound) {
-			continue
+		match, err := s.claim(ctx, q, route, candidate, len(candidates)-i-1)
+		if err != nil || match != nil {
+			return match, err
 		}
-		if err != nil {
-			return nil, err
-		}
-		if !acceptsConversation(*quote) {
-			continue
-		}
-		return &domain.ConversationRoute{QuoteID: quote.ID, QuoteSendID: candidate.QuoteSendID,
-			OtherLiveQuotes: len(candidates) - i - 1}, nil
 	}
 	return nil, nil
+}
+
+// claim locks a candidate's quote and returns its route when it still takes a conversation.
+func (s *ConversationService) claim(ctx context.Context, q repository.Querier,
+	route domain.InboundChannelRoute, candidate domain.ConversationCandidate, others int,
+) (*domain.ConversationRoute, error) {
+	quote, err := s.quotes.GetByIDForUpdate(ctx, q, route.AccountID, route.BranchID,
+		candidate.QuoteID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil || !acceptsConversation(*quote) {
+		return nil, err
+	}
+	return &domain.ConversationRoute{QuoteID: quote.ID, QuoteSendID: candidate.QuoteSendID,
+		OtherLiveQuotes: others,
+		Accepted:        quote.CurrentStatus == domain.QuoteStatusAccepted}, nil
 }
 
 // AppendMessage records a message in a quote's conversation. A CLIENT message also opens the
@@ -117,7 +140,7 @@ func (s *ConversationService) AppendMessage(ctx context.Context, q repository.Qu
 	if err != nil {
 		return nil, err
 	}
-	if in.AuthorType != domain.MessageAuthorClient {
+	if in.AuthorType != domain.MessageAuthorClient || in.RecordedOnly {
 		return message, nil
 	}
 	if _, err := s.windows.OpenOrExtend(ctx, q, tenant.AccountID, tenant.BranchID, in.QuoteID, now,
@@ -129,5 +152,6 @@ func (s *ConversationService) AppendMessage(ctx context.Context, q repository.Qu
 
 func acceptsConversation(quote domain.Quote) bool {
 	return quote.ArchivedAt == nil && (quote.CurrentStatus == domain.QuoteStatusSent ||
-		quote.CurrentStatus == domain.QuoteStatusChangeRequested)
+		quote.CurrentStatus == domain.QuoteStatusChangeRequested ||
+		quote.CurrentStatus == domain.QuoteStatusAccepted)
 }

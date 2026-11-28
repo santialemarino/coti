@@ -1571,7 +1571,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns account-level client profiles. Tags are account-wide; accepted sale counts and dates are limited to the branches and seller assignments the caller may inspect.",
+                "description": "Returns account-level client profiles. Manual tags are account-wide. Automatic tags and sales activity use the caller's branch and seller reach.",
                 "produces": [
                     "application/json"
                 ],
@@ -1616,7 +1616,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns one account-level profile and its currently accepted quotes inside the caller's branch and seller reach.",
+                "description": "Returns the profile, its manual and automatic labels, and currently accepted quotes in the caller's branch and seller reach.",
                 "produces": [
                     "application/json"
                 ],
@@ -2023,6 +2023,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/clients/{clientId}/notes": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update internal client notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Internal notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientNotesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/registration-link": {
             "post": {
                 "security": [
@@ -2092,6 +2161,76 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/clients/{clientId}/tag-exclusions/{tagId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Set or clear a client's automatic tag exclusion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Automatic tag id",
+                        "name": "tagId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Exclusion state",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetClientTagExclusionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -3395,8 +3534,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationConfirmed"
+                        }
                     },
                     "401": {
                         "description": "Unauthorized",
@@ -3432,6 +3574,64 @@ const docTemplate = `{
                         "description": "RATE_LIMITED with retry_after_seconds, or ACCOUNT_LOCKED for a destination lockout",
                         "schema": {
                             "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/customer/sites/{hostname}/profile/contacts/verification/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "customer-profile"
+                ],
+                "summary": "Read a customer contact verification",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Registered supplier hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Verification identifier",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ContactVerificationStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
                         }
                     }
                 }
@@ -4577,6 +4777,42 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/onboarding/readiness": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "onboarding"
+                ],
+                "summary": "Get operational setup diagnostics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.OnboardingReadinessResponse"
+                        }
                     },
                     "401": {
                         "description": "Unauthorized",
@@ -7177,6 +7413,201 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/accept-sent-version": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Discards the open draft and accepts the version the customer received, as the seller.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Accept the sent version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_CHANGE_REQUESTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/acceptance/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Clears the pending confirmation, so the sale can be marked paid and invoiced. Repeating it changes nothing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Confirm an acceptance read from a reply",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/acceptance/undo": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Moves the quote back to SENT and lets the customer answer again; only while unpaid, uninvoiced and with its send live.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Undo an acceptance read from a reply",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.QuoteResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_ACCEPTANCE_NOT_UNDOABLE, QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/archive": {
             "post": {
                 "security": [
@@ -7525,6 +7956,80 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/quotes/{quoteId}/customer-reply/read": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Settles the pending replies that left a sent quote unchanged up to seen_until, the newest one the seller saw; a later one stays unread.",
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a customer's reply as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The newest reply seen",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReadCustomerReplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_SENT",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -10635,6 +11140,115 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/tags/rules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "List automatic client tag rules",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientTagRulesResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tags/rules/{kind}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update an automatic client tag rule",
+                "parameters": [
+                    {
+                        "enum": [
+                            "RECURRING",
+                            "ABANDONER"
+                        ],
+                        "type": "string",
+                        "description": "Rule kind",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rule settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientTagRuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/users": {
             "get": {
                 "security": [
@@ -11185,6 +11799,10 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "whatsapp_auto_accept": {
+                    "description": "Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own.",
+                    "type": "boolean"
                 }
             }
         },
@@ -11418,6 +12036,29 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "point_of_sale": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.BranchReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "has_channel": {
+                    "type": "boolean"
+                },
+                "has_staff": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "missing_prices": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
                     "type": "integer"
                 }
             }
@@ -11716,6 +12357,10 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "reopened_at": {
+                    "description": "ReopenedAt is when the seller reactivated the quote after this answer; null while it stands.",
+                    "type": "string"
+                },
                 "type": {
                     "type": "string"
                 },
@@ -11723,6 +12368,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "version_number": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ClientActivityResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_count": {
+                    "type": "integer"
+                },
+                "average_ticket": {
+                    "type": "string"
+                },
+                "last_accepted_at": {
+                    "type": "string"
+                },
+                "open_quotes": {
                     "type": "integer"
                 }
             }
@@ -11896,8 +12558,17 @@ const docTemplate = `{
         "dto.ClientProfileResponse": {
             "type": "object",
             "properties": {
+                "activity": {
+                    "$ref": "#/definitions/dto.ClientActivityResponse"
+                },
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
+                },
+                "excluded_tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientTagResponse"
+                    }
                 },
                 "registered": {
                     "description": "Registered is true when a customer account manages the profile; no seller renames or merges it.",
@@ -12055,6 +12726,9 @@ const docTemplate = `{
         "dto.ClientTagResponse": {
             "type": "object",
             "properties": {
+                "automatic": {
+                    "type": "boolean"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -12063,6 +12737,38 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ClientTagRuleResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "RECURRING",
+                        "ABANDONER"
+                    ]
+                },
+                "minimum": {
+                    "type": "integer"
+                },
+                "window_days": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ClientTagRulesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ClientTagRuleResponse"
+                    }
                 }
             }
         },
@@ -12406,6 +13112,14 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ContactVerificationConfirmed": {
+            "type": "object",
+            "properties": {
+                "next": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ContactVerificationRequest": {
             "type": "object",
             "required": [
@@ -12420,6 +13134,11 @@ const docTemplate = `{
                         "WHATSAPP"
                     ]
                 },
+                "next": {
+                    "description": "Next is the portal page the confirmation returns to; any other value is ignored.",
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "value": {
                     "type": "string",
                     "maxLength": 255
@@ -12433,6 +13152,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ContactVerificationStatusResponse": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "next": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "PENDING",
+                        "VERIFIED",
+                        "EXPIRED"
+                    ]
+                },
+                "value": {
                     "type": "string"
                 }
             }
@@ -12498,7 +13239,12 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST",
+                        "NEW_ORDER"
                     ]
                 },
                 "outcome": {
@@ -13291,6 +14037,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CustomerReplyResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
+                    ]
+                },
+                "reply_acceptance": {
+                    "type": "string",
+                    "enum": [
+                        "SIGNAL"
+                    ]
+                }
+            }
+        },
         "dto.CustomerSessionResponse": {
             "type": "object",
             "properties": {
@@ -13503,7 +14272,12 @@ const docTemplate = `{
                         "AI_DISABLED",
                         "PROPOSAL_REFUSED",
                         "PIPELINE_EXHAUSTED",
-                        "PROMOTION_NOT_EARNED"
+                        "PROMOTION_NOT_EARNED",
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST",
+                        "NEW_ORDER"
                     ]
                 },
                 "outcome": {
@@ -13949,6 +14723,20 @@ const docTemplate = `{
                         "CATALOG_UPLOAD",
                         "TEAM"
                     ]
+                }
+            }
+        },
+        "dto.OnboardingReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "account_ready": {
+                    "type": "boolean"
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.BranchReadinessResponse"
+                    }
                 }
             }
         },
@@ -14523,12 +15311,20 @@ const docTemplate = `{
         "dto.PublicQuoteSendResponse": {
             "type": "object",
             "properties": {
+                "accepted_version": {
+                    "description": "AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.",
+                    "type": "boolean"
+                },
                 "customer_status": {
                     "description": "CustomerStatus is the answer this token already received, present only when the\ncustomer responded through the link.",
                     "type": "string"
                 },
                 "expires_at": {
                     "type": "string"
+                },
+                "in_review": {
+                    "description": "InReview is an acceptance read from the customer's reply that the supplier has not\nconfirmed yet.",
+                    "type": "boolean"
                 },
                 "message": {
                     "type": "string"
@@ -14921,8 +15717,16 @@ const docTemplate = `{
                 "subtotal": {
                     "type": "string"
                 },
+                "taught_by_seller": {
+                    "description": "TaughtBySeller marks a line decided because a seller already resolved this exact wording to\nits product.",
+                    "type": "boolean"
+                },
                 "unit": {
                     "type": "string"
+                },
+                "unit_mismatch": {
+                    "description": "UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a\nproduct priced by the cubic metre, so its quantity needs the seller's conversion.",
+                    "type": "boolean"
                 },
                 "unit_price_snapshot": {
                     "type": "string"
@@ -15127,6 +15931,10 @@ const docTemplate = `{
         "dto.QuoteResponse": {
             "type": "object",
             "properties": {
+                "acceptance_unconfirmed_at": {
+                    "description": "AcceptanceUnconfirmedAt marks an acceptance read from a WhatsApp reply that waits for the\nseller; null otherwise.",
+                    "type": "string"
+                },
                 "archived_at": {
                     "type": "string"
                 },
@@ -15492,6 +16300,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ReadCustomerReplyRequest": {
+            "type": "object",
+            "required": [
+                "seen_until"
+            ],
+            "properties": {
+                "seen_until": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RecommendationFillResponse": {
             "type": "object",
             "properties": {
@@ -15631,6 +16450,10 @@ const docTemplate = `{
         "dto.RfqDetailResponse": {
             "type": "object",
             "properties": {
+                "accepted_by_reply": {
+                    "description": "AcceptedByReply is a quote standing ACCEPTED on an acceptance read from the customer's reply.",
+                    "type": "boolean"
+                },
                 "alternatives": {
                     "type": "object",
                     "additionalProperties": {
@@ -15714,6 +16537,10 @@ const docTemplate = `{
         "dto.RfqListItemResponse": {
             "type": "object",
             "properties": {
+                "acceptance_unconfirmed": {
+                    "description": "AcceptanceUnconfirmed is an acceptance read from the customer's reply waiting for the seller.",
+                    "type": "boolean"
+                },
                 "archived_at": {
                     "type": "string"
                 },
@@ -15734,6 +16561,14 @@ const docTemplate = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "customer_reply": {
+                    "description": "CustomerReply is the latest unread reply on a SENT quote that changed nothing; null when none.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.CustomerReplyResponse"
+                        }
+                    ]
                 },
                 "followup_flagged_at": {
                     "description": "FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.",
@@ -15962,6 +16797,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SellerReportAmountResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SellerReportAssistantResponse": {
             "type": "object",
             "properties": {
@@ -16002,6 +16848,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SellerReportChangeResponse": {
+            "type": "object",
+            "properties": {
+                "delta": {
+                    "type": "string"
+                },
+                "percentage": {
+                    "type": "string"
+                },
+                "percentage_points": {
+                    "type": "boolean"
+                },
+                "previous": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SellerReportClientResponse": {
             "type": "object",
             "properties": {
@@ -16011,8 +16874,25 @@ const docTemplate = `{
                 "client_id": {
                     "type": "string"
                 },
+                "currency": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SellerReportComparisonResponse": {
+            "type": "object",
+            "properties": {
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/dto.SellerReportChangeResponse"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/dto.SellerReportRangeResponse"
                 }
             }
         },
@@ -16072,7 +16952,18 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "accepted_amount": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "accepted_amounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportAmountResponse"
+                    }
+                },
+                "accepted_currency": {
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "conversion_rate": {
                     "type": "string"
@@ -16151,6 +17042,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.SellerReportBranchResponse"
                     }
                 },
+                "comparison": {
+                    "$ref": "#/definitions/dto.SellerReportComparisonResponse"
+                },
                 "filters": {
                     "$ref": "#/definitions/dto.SellerReportFiltersResponse"
                 },
@@ -16215,6 +17109,9 @@ const docTemplate = `{
         "dto.SellerReportRevenueProductResponse": {
             "type": "object",
             "properties": {
+                "currency": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -16290,6 +17187,17 @@ const docTemplate = `{
                 },
                 "stock": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SetClientTagExclusionRequest": {
+            "type": "object",
+            "required": [
+                "excluded"
+            ],
+            "properties": {
+                "excluded": {
+                    "type": "boolean"
                 }
             }
         },
@@ -16559,6 +17467,10 @@ const docTemplate = `{
                 "tax_id": {
                     "type": "string",
                     "maxLength": 255
+                },
+                "whatsapp_auto_accept": {
+                    "description": "Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED on its own; omitted keeps it.",
+                    "type": "boolean"
                 }
             }
         },
@@ -16631,6 +17543,35 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateClientNotesRequest": {
+            "type": "object",
+            "properties": {
+                "notes": {
+                    "type": "string",
+                    "maxLength": 512
+                }
+            }
+        },
+        "dto.UpdateClientTagRuleRequest": {
+            "type": "object",
+            "required": [
+                "enabled",
+                "window_days"
+            ],
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "minimum": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "window_days": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },

@@ -94,6 +94,8 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'IN
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
 CREATE TYPE message_batch_failure_reason AS ENUM ('UNPROCESSABLE', 'ATTEMPTS_EXHAUSTED');
+-- What an inbound message that opened no order was read as.
+CREATE TYPE inbound_message_kind AS ENUM ('GREETING', 'QUESTION', 'OTHER', 'AUTOMATED');
 -- Which recipe a «bajame el precio» runs first when the customer did not say.
 CREATE TYPE lower_price_strategy AS ENUM ('FIND_CHEAPER_ALTERNATIVES', 'ADAPT_TO_REACH_DISCOUNT');
 
@@ -189,7 +191,10 @@ CREATE TABLE account (
   -- Whether the corralón invoices with Coti; off hides invoicing and refuses issuing.
   invoicing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   -- Whether «Marcar cobrado» starts with «Facturar también» ticked.
-  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE
+  invoice_on_payment BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Whether a customer's WhatsApp acceptance the backend confirms becomes ACCEPTED on its own;
+  -- off, it waits for the seller's confirmation.
+  whatsapp_auto_accept BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE account_onboarding (
@@ -479,12 +484,25 @@ CREATE TABLE client (
   dni VARCHAR(8) CONSTRAINT ck_client_dni CHECK (dni ~ '^[0-9]{7,8}$')
 );
 
+CREATE TYPE client_tag_rule_kind AS ENUM ('RECURRING', 'ABANDONER');
+
 CREATE TABLE tag (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL,
   name       VARCHAR(128) NOT NULL,
   color      VARCHAR(32),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  rule_kind client_tag_rule_kind,
+  rule_enabled BOOLEAN,
+  rule_minimum INTEGER,
+  rule_window_days INTEGER,
+  CONSTRAINT ck_tag_rule CHECK (
+    (rule_kind IS NULL AND rule_enabled IS NULL AND rule_minimum IS NULL AND rule_window_days IS NULL)
+    OR (rule_kind IS NOT NULL AND rule_enabled IS NOT NULL
+      AND (rule_minimum IS NULL OR rule_minimum > 0)
+      AND (rule_window_days IS NULL OR rule_window_days >= 0))
+  ),
+  CONSTRAINT uq_tag_account_rule UNIQUE (account_id, rule_kind),
   CONSTRAINT uq_tag_account UNIQUE (account_id, id)
 );
 
@@ -495,6 +513,15 @@ CREATE TABLE client_tag (
   tag_id     UUID NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT uq_client_tag UNIQUE (client_id, tag_id)
+);
+
+CREATE TABLE client_tag_exclusion (
+  account_id UUID NOT NULL,
+  client_id  UUID NOT NULL,
+  tag_id     UUID NOT NULL,
+  PRIMARY KEY (account_id, client_id, tag_id),
+  CONSTRAINT fk_client_tag_exclusion_client FOREIGN KEY (account_id, client_id) REFERENCES client(account_id, id),
+  CONSTRAINT fk_client_tag_exclusion_tag FOREIGN KEY (account_id, tag_id) REFERENCES tag(account_id, id)
 );
 
 -- =============================================================================
@@ -518,9 +545,10 @@ CREATE TABLE channel (
   CONSTRAINT uq_channel_account_branch UNIQUE(account_id,branch_id,id)
 );
 
--- One provider event reserves either the RFQ it starts or the quote_message that continues a sent
--- quote's conversation, before anything else runs. The external identifier is unique per channel,
--- so a retried webhook resumes the same outcome rather than creating another.
+-- One provider event reserves the RFQ it starts, the quote_message that continues a sent quote's
+-- conversation, or — for a message that is not an order — neither, carrying the kind it was read
+-- as. The external identifier is unique per channel, so a retried webhook resumes the same outcome
+-- rather than creating another.
 CREATE TABLE inbound_channel_message (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
@@ -535,9 +563,16 @@ CREATE TABLE inbound_channel_message (
   payload              JSONB NOT NULL,
   provider_received_at TIMESTAMPTZ NOT NULL,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind                 inbound_message_kind,
+  -- Set when the seller puts a message that is not an order away.
+  dismissed_at         TIMESTAMPTZ,
   CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id),
-  CONSTRAINT ck_inbound_channel_message_target
-    CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
+  CONSTRAINT ck_inbound_channel_message_target CHECK (
+    (rfq_id IS NOT NULL AND quote_message_id IS NULL AND kind IS NULL)
+    OR (rfq_id IS NULL AND quote_message_id IS NOT NULL AND kind IS NULL)
+    OR (rfq_id IS NULL AND quote_message_id IS NULL AND kind IS NOT NULL)),
+  CONSTRAINT ck_inbound_channel_message_dismissed
+    CHECK (dismissed_at IS NULL OR kind IS NOT NULL)
 );
 
 CREATE TABLE gmail_mailbox (
@@ -645,7 +680,11 @@ CREATE TABLE quote (
   paid_by_user_id           UUID,
   invoice_waived_at         TIMESTAMPTZ,
   invoice_waived_by_user_id UUID,
+  -- An acceptance read from a reply that waits for the seller's confirmation.
+  acceptance_unconfirmed_at TIMESTAMPTZ,
   CONSTRAINT ck_quote_paid CHECK ((paid_at IS NULL) = (paid_by_user_id IS NULL)),
+  CONSTRAINT ck_quote_acceptance_unconfirmed
+    CHECK (acceptance_unconfirmed_at IS NULL OR current_status = 'ACCEPTED'),
   CONSTRAINT ck_quote_invoice_waived
     CHECK ((invoice_waived_at IS NULL) = (invoice_waived_by_user_id IS NULL)),
   CONSTRAINT uq_quote_rfq UNIQUE (rfq_id),
@@ -926,7 +965,11 @@ CREATE TABLE client_action (
   quote_item_id UUID,
   type          client_action_type NOT NULL,
   comment       VARCHAR(512),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Set when the seller undoes the action; a revoked action no longer stands for the send.
+  revoked_at    TIMESTAMPTZ,
+  -- The conversation batch an acceptance was read from; null for the customer's own click.
+  message_batch_id UUID
 );
 
 -- =============================================================================
@@ -1279,6 +1322,7 @@ ALTER TABLE client_action ADD CONSTRAINT fk_client_action_account FOREIGN KEY (a
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_version FOREIGN KEY (version_id) REFERENCES quote_version(id);
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_send FOREIGN KEY (quote_send_id) REFERENCES quote_send(id);
 ALTER TABLE client_action ADD CONSTRAINT fk_client_action_item FOREIGN KEY (quote_item_id) REFERENCES quote_item(id);
+ALTER TABLE client_action ADD CONSTRAINT fk_client_action_batch FOREIGN KEY (message_batch_id) REFERENCES message_batch(id);
 
 ALTER TABLE message_batch ADD CONSTRAINT fk_message_batch_account FOREIGN KEY (account_id) REFERENCES account(id);
 ALTER TABLE message_batch ADD CONSTRAINT fk_message_batch_quote FOREIGN KEY (quote_id) REFERENCES quote(id);
@@ -1365,6 +1409,7 @@ CREATE INDEX idx_client_account ON client(account_id);
 CREATE UNIQUE INDEX uq_client_account_tax_id ON client(account_id, tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
+CREATE INDEX idx_inbound_channel_message_open_non_order ON inbound_channel_message(account_id, branch_id, provider_received_at DESC) WHERE kind IS NOT NULL AND dismissed_at IS NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_account_branch_received ON rfq(account_id, branch_id, received_at);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
@@ -1374,6 +1419,7 @@ CREATE INDEX idx_quote_branch_status ON quote(branch_id, current_status);
 CREATE INDEX idx_quote_account_created ON quote(account_id, created_at);
 CREATE INDEX idx_quote_expires ON quote(expires_at) WHERE expires_at IS NOT NULL AND archived_at IS NULL;
 CREATE INDEX idx_quote_needs_followup ON quote(needs_followup) WHERE needs_followup = TRUE;
+CREATE INDEX idx_quote_acceptance_unconfirmed ON quote(branch_id) WHERE acceptance_unconfirmed_at IS NOT NULL;
 CREATE INDEX idx_quote_version_quote ON quote_version(quote_id);
 CREATE INDEX idx_quote_representation_quote ON quote_representation(account_id, branch_id, quote_id);
 CREATE INDEX idx_quote_item_version ON quote_item(version_id);
@@ -1384,7 +1430,14 @@ CREATE UNIQUE INDEX uq_quote_item_alternative_recommendation
   WHERE recommendation_type IN ('ECONOMY', 'PREMIUM');
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
 CREATE INDEX idx_quote_ai_generation_account_quote_created ON quote_ai_generation(account_id, quote_id, created_at DESC);
+CREATE INDEX idx_quote_client_tag_activity ON quote (account_id, client_id)
+  WHERE current_status IN ('ACCEPTED', 'REJECTED') OR archived_at IS NOT NULL;
+CREATE INDEX idx_quote_status_change_client_tag_activity
+  ON quote_status_change (account_id, quote_id, new_status, changed_at DESC)
+  WHERE new_status IN ('ACCEPTED', 'REJECTED');
+
 CREATE INDEX idx_quote_status_change_report ON quote_status_change(account_id, new_status, changed_at, quote_id) WHERE new_status IN ('SENT', 'ACCEPTED');
+CREATE INDEX idx_quote_status_change_quote_report ON quote_status_change(account_id, quote_id, new_status, changed_at) WHERE new_status IN ('SENT', 'ACCEPTED');
 CREATE INDEX idx_quote_send_report ON quote_send(account_id, version_id, sent_at DESC) WHERE tracking_status IN ('SENT', 'DELIVERED', 'VIEWED');
 CREATE INDEX idx_client_action_report ON client_action(account_id, version_id, created_at DESC) WHERE type = 'ACCEPT';
 CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);
@@ -1507,7 +1560,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE O
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO coti_app;
 
 REVOKE INSERT, UPDATE, DELETE ON product_family, product_subgroup FROM coti_app;
-REVOKE UPDATE, DELETE ON quote_representation FROM coti_app;
+REVOKE UPDATE ON quote_representation FROM coti_app;
 
 -- The baseline AI proposal is evidence for later evaluation, never live state to rewrite.
 REVOKE UPDATE, DELETE ON quote_ai_generation, quote_ai_generation_item,
@@ -1558,6 +1611,12 @@ BEGIN
   END LOOP;
 END $$;
 
+
+-- A frozen version's representation stays immutable; only a draft's preview may be deleted.
+CREATE POLICY quote_representation_draft_delete ON quote_representation AS RESTRICTIVE FOR DELETE
+  USING (EXISTS (SELECT 1 FROM quote_version version
+    WHERE version.account_id = quote_representation.account_id
+      AND version.id = quote_representation.version_id AND NOT version.is_immutable));
 
 ALTER TABLE branch ADD CONSTRAINT uq_branch_account_id UNIQUE (account_id, id);
 CREATE TABLE arca_setup (
@@ -1837,6 +1896,10 @@ CREATE TABLE client_contact_challenge (
  expires_at TIMESTAMPTZ NOT NULL,
  consumed_at TIMESTAMPTZ,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ -- The portal page a verification returns to, so an emailed link leads back to the quote it was for.
+ next_path VARCHAR(255),
+ -- Set only when this proof succeeded; a newer request consumes a proof without proving it.
+ proved_at TIMESTAMPTZ,
  FOREIGN KEY(account_id,customer_id) REFERENCES customer_identity(account_id,id),
  FOREIGN KEY(account_id,client_id) REFERENCES client(account_id,id)
 );
@@ -1991,3 +2054,7 @@ CREATE INDEX idx_client_merge_rfq_rfq ON client_merge_rfq(account_id, rfq_id);
 ALTER TABLE client_merge_rfq ENABLE ROW LEVEL SECURITY;
 CREATE POLICY client_merge_rfq_account_isolation ON client_merge_rfq
  USING(account_id=app_current_account_id()) WITH CHECK(account_id=app_current_account_id());
+
+ALTER TABLE client_tag_exclusion ENABLE ROW LEVEL SECURITY;
+CREATE POLICY client_tag_exclusion_account_isolation ON client_tag_exclusion
+  USING (account_id = app_current_account_id()) WITH CHECK (account_id = app_current_account_id());

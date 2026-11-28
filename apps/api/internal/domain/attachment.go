@@ -103,6 +103,9 @@ type ClaimedAttachment struct {
 	ID        uuid.UUID
 	AccountID uuid.UUID
 	BranchID  uuid.UUID
+	// ChannelID is the channel the order arrived through, whose credentials fetch a file a
+	// provider still holds.
+	ChannelID uuid.UUID
 	RFQID     uuid.UUID
 	Type      AttachmentType
 	// StorageKey is empty on a row whose file never landed, which the sweep fails rather than

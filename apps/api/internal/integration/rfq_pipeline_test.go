@@ -106,6 +106,11 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 		  JOIN quote c ON c.id = generation.quote_id WHERE c.rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_ai_generation WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_discount_item WHERE quote_discount_id IN (
+		  SELECT d.id FROM quote_discount d JOIN quote_version v ON v.id = d.quote_version_id
+		  JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
+		e.mustCleanup(t, `DELETE FROM quote_discount WHERE quote_version_id IN (
+		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`, rfqID)
 		// The candidates go first: a foreign key on quote_item_alternative points at the lines.
 		e.mustCleanup(t, `DELETE FROM quote_item_alternative WHERE quote_item_id IN (
 		  SELECT i.id FROM quote_item i
@@ -119,13 +124,13 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 			rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_message WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
-		e.mustCleanup(t, `DELETE FROM message_batch WHERE quote_id IN (
-		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
-		// A customer's answer points at both the version and the send it came back through, so it
-		// goes before either of them.
+		// A customer's answer points at the version, the send it came back through and the batch it
+		// was read from, so it goes before any of them.
 		e.mustCleanup(t, `DELETE FROM client_action WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
+		e.mustCleanup(t, `DELETE FROM message_batch WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)

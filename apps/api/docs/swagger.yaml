@@ -82,6 +82,10 @@ definitions:
         type: string
       updated_at:
         type: string
+      whatsapp_auto_accept:
+        description: Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED
+          on its own.
+        type: boolean
     type: object
   dto.AddAlternativeRequest:
     properties:
@@ -237,6 +241,21 @@ definitions:
       name:
         type: string
       point_of_sale:
+        type: integer
+    type: object
+  dto.BranchReadinessResponse:
+    properties:
+      has_channel:
+        type: boolean
+      has_staff:
+        type: boolean
+      id:
+        type: string
+      missing_prices:
+        type: integer
+      name:
+        type: string
+      products:
         type: integer
     type: object
   dto.BranchResponse:
@@ -442,11 +461,26 @@ definitions:
         type: string
       id:
         type: string
+      reopened_at:
+        description: ReopenedAt is when the seller reactivated the quote after this
+          answer; null while it stands.
+        type: string
       type:
         type: string
       version_id:
         type: string
       version_number:
+        type: integer
+    type: object
+  dto.ClientActivityResponse:
+    properties:
+      accepted_count:
+        type: integer
+      average_ticket:
+        type: string
+      last_accepted_at:
+        type: string
+      open_quotes:
         type: integer
     type: object
   dto.ClientContactHintsResponse:
@@ -562,8 +596,14 @@ definitions:
     type: object
   dto.ClientProfileResponse:
     properties:
+      activity:
+        $ref: '#/definitions/dto.ClientActivityResponse'
       client:
         $ref: '#/definitions/dto.ClientResponse'
+      excluded_tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
       registered:
         description: Registered is true when a customer account manages the profile;
           no seller renames or merges it.
@@ -671,12 +711,35 @@ definitions:
     type: object
   dto.ClientTagResponse:
     properties:
+      automatic:
+        type: boolean
       created_at:
         type: string
       id:
         type: string
       name:
         type: string
+    type: object
+  dto.ClientTagRuleResponse:
+    properties:
+      enabled:
+        type: boolean
+      kind:
+        enum:
+        - RECURRING
+        - ABANDONER
+        type: string
+      minimum:
+        type: integer
+      window_days:
+        type: integer
+    type: object
+  dto.ClientTagRulesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientTagRuleResponse'
+        type: array
     type: object
   dto.ComboItemRequest:
     properties:
@@ -909,12 +972,22 @@ definitions:
     - id
     - token
     type: object
+  dto.ContactVerificationConfirmed:
+    properties:
+      next:
+        type: string
+    type: object
   dto.ContactVerificationRequest:
     properties:
       kind:
         enum:
         - EMAIL
         - WHATSAPP
+        type: string
+      next:
+        description: Next is the portal page the confirmation returns to; any other
+          value is ignored.
+        maxLength: 255
         type: string
       value:
         maxLength: 255
@@ -928,6 +1001,21 @@ definitions:
       expires_at:
         type: string
       id:
+        type: string
+    type: object
+  dto.ContactVerificationStatusResponse:
+    properties:
+      kind:
+        type: string
+      next:
+        type: string
+      status:
+        enum:
+        - PENDING
+        - VERIFIED
+        - EXPIRED
+        type: string
+      value:
         type: string
     type: object
   dto.ConversationBatchResponse:
@@ -974,6 +1062,11 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
+        - NEW_ORDER
         type: string
       outcome:
         enum:
@@ -1533,6 +1626,22 @@ definitions:
     - password
     - tax_id
     type: object
+  dto.CustomerReplyResponse:
+    properties:
+      created_at:
+        type: string
+      reason:
+        enum:
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
+        type: string
+      reply_acceptance:
+        enum:
+        - SIGNAL
+        type: string
+    type: object
   dto.CustomerSessionResponse:
     properties:
       customer:
@@ -1679,6 +1788,11 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
+        - NEW_ORDER
         type: string
       outcome:
         enum:
@@ -1993,6 +2107,15 @@ definitions:
         - CATALOG_UPLOAD
         - TEAM
         type: string
+    type: object
+  dto.OnboardingReadinessResponse:
+    properties:
+      account_ready:
+        type: boolean
+      branches:
+        items:
+          $ref: '#/definitions/dto.BranchReadinessResponse'
+        type: array
     type: object
   dto.OnboardingResponse:
     properties:
@@ -2374,6 +2497,10 @@ definitions:
     type: object
   dto.PublicQuoteSendResponse:
     properties:
+      accepted_version:
+        description: AcceptedVersion marks a quote shown as the customer accepted
+          it, with their chosen alternatives.
+        type: boolean
       customer_status:
         description: |-
           CustomerStatus is the answer this token already received, present only when the
@@ -2381,6 +2508,11 @@ definitions:
         type: string
       expires_at:
         type: string
+      in_review:
+        description: |-
+          InReview is an acceptance read from the customer's reply that the supplier has not
+          confirmed yet.
+        type: boolean
       message:
         type: string
       pdf_url:
@@ -2647,8 +2779,18 @@ definitions:
         type: string
       subtotal:
         type: string
+      taught_by_seller:
+        description: |-
+          TaughtBySeller marks a line decided because a seller already resolved this exact wording to
+          its product.
+        type: boolean
       unit:
         type: string
+      unit_mismatch:
+        description: |-
+          UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a
+          product priced by the cubic metre, so its quantity needs the seller's conversion.
+        type: boolean
       unit_price_snapshot:
         type: string
       version_id:
@@ -2782,6 +2924,11 @@ definitions:
     type: object
   dto.QuoteResponse:
     properties:
+      acceptance_unconfirmed_at:
+        description: |-
+          AcceptanceUnconfirmedAt marks an acceptance read from a WhatsApp reply that waits for the
+          seller; null otherwise.
+        type: string
       archived_at:
         type: string
       branch_id:
@@ -3028,6 +3175,13 @@ definitions:
     required:
     - mode
     type: object
+  dto.ReadCustomerReplyRequest:
+    properties:
+      seen_until:
+        type: string
+    required:
+    - seen_until
+    type: object
   dto.RecommendationFillResponse:
     properties:
       items:
@@ -3120,6 +3274,10 @@ definitions:
     type: object
   dto.RfqDetailResponse:
     properties:
+      accepted_by_reply:
+        description: AcceptedByReply is a quote standing ACCEPTED on an acceptance
+          read from the customer's reply.
+        type: boolean
       alternatives:
         additionalProperties:
           items:
@@ -3175,6 +3333,10 @@ definitions:
     type: object
   dto.RfqListItemResponse:
     properties:
+      acceptance_unconfirmed:
+        description: AcceptanceUnconfirmed is an acceptance read from the customer's
+          reply waiting for the seller.
+        type: boolean
       archived_at:
         type: string
       branch:
@@ -3189,6 +3351,11 @@ definitions:
         type: string
       created_at:
         type: string
+      customer_reply:
+        allOf:
+        - $ref: '#/definitions/dto.CustomerReplyResponse'
+        description: CustomerReply is the latest unread reply on a SENT quote that
+          changed nothing; null when none.
       followup_flagged_at:
         description: FollowupFlaggedAt is when the quote was flagged for follow-up;
           null while it is not.
@@ -3354,6 +3521,13 @@ definitions:
       version_unmatched:
         type: integer
     type: object
+  dto.SellerReportAmountResponse:
+    properties:
+      amount:
+        type: string
+      currency:
+        type: string
+    type: object
   dto.SellerReportAssistantResponse:
     properties:
       approval_rate:
@@ -3380,14 +3554,36 @@ definitions:
       rfqs:
         type: integer
     type: object
+  dto.SellerReportChangeResponse:
+    properties:
+      delta:
+        type: string
+      percentage:
+        type: string
+      percentage_points:
+        type: boolean
+      previous:
+        type: string
+    type: object
   dto.SellerReportClientResponse:
     properties:
       accepted_amount:
         type: string
       client_id:
         type: string
+      currency:
+        type: string
       name:
         type: string
+    type: object
+  dto.SellerReportComparisonResponse:
+    properties:
+      metrics:
+        additionalProperties:
+          $ref: '#/definitions/dto.SellerReportChangeResponse'
+        type: object
+      range:
+        $ref: '#/definitions/dto.SellerReportRangeResponse'
     type: object
   dto.SellerReportConfidenceResponse:
     properties:
@@ -3427,6 +3623,14 @@ definitions:
     properties:
       accepted_amount:
         type: string
+        x-nullable: true
+      accepted_amounts:
+        items:
+          $ref: '#/definitions/dto.SellerReportAmountResponse'
+        type: array
+      accepted_currency:
+        type: string
+        x-nullable: true
       conversion_rate:
         type: string
       follow_up_pending:
@@ -3477,6 +3681,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.SellerReportBranchResponse'
         type: array
+      comparison:
+        $ref: '#/definitions/dto.SellerReportComparisonResponse'
       filters:
         $ref: '#/definitions/dto.SellerReportFiltersResponse'
       granularity:
@@ -3519,6 +3725,8 @@ definitions:
     type: object
   dto.SellerReportRevenueProductResponse:
     properties:
+      currency:
+        type: string
       name:
         type: string
       product_id:
@@ -3568,6 +3776,13 @@ definitions:
         type: boolean
       stock:
         type: string
+    type: object
+  dto.SetClientTagExclusionRequest:
+    properties:
+      excluded:
+        type: boolean
+    required:
+    - excluded
     type: object
   dto.SetInvoicingEnabledRequest:
     properties:
@@ -3757,6 +3972,10 @@ definitions:
       tax_id:
         maxLength: 255
         type: string
+      whatsapp_auto_accept:
+        description: Whether a WhatsApp acceptance the backend confirms becomes ACCEPTED
+          on its own; omitted keeps it.
+        type: boolean
     required:
     - name
     type: object
@@ -3812,6 +4031,26 @@ definitions:
       legal_name:
         maxLength: 255
         type: string
+    type: object
+  dto.UpdateClientNotesRequest:
+    properties:
+      notes:
+        maxLength: 512
+        type: string
+    type: object
+  dto.UpdateClientTagRuleRequest:
+    properties:
+      enabled:
+        type: boolean
+      minimum:
+        minimum: 1
+        type: integer
+      window_days:
+        minimum: 0
+        type: integer
+    required:
+    - enabled
+    - window_days
     type: object
   dto.UpdateCustomerPortalRequest:
     properties:
@@ -5117,9 +5356,8 @@ paths:
       - clients
   /v1/clients:
     get:
-      description: Returns account-level client profiles. Tags are account-wide; accepted
-        sale counts and dates are limited to the branches and seller assignments the
-        caller may inspect.
+      description: Returns account-level client profiles. Manual tags are account-wide.
+        Automatic tags and sales activity use the caller's branch and seller reach.
       parameters:
       - description: Optional branch filter
         in: header
@@ -5147,8 +5385,8 @@ paths:
       - clients
   /v1/clients/{clientId}:
     get:
-      description: Returns one account-level profile and its currently accepted quotes
-        inside the caller's branch and seller reach.
+      description: Returns the profile, its manual and automatic labels, and currently
+        accepted quotes in the caller's branch and seller reach.
       parameters:
       - description: Optional branch filter
         in: header
@@ -5413,6 +5651,50 @@ paths:
       summary: Rename a client profile without a CUIT
       tags:
       - clients
+  /v1/clients/{clientId}/notes:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Internal notes
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientNotesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update internal client notes
+      tags:
+      - clients
   /v1/clients/{clientId}/registration-link:
     post:
       consumes:
@@ -5460,6 +5742,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Send customer registration or profile link
+      tags:
+      - clients
+  /v1/clients/{clientId}/tag-exclusions/{tagId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Automatic tag id
+        in: path
+        name: tagId
+        required: true
+        type: string
+      - description: Exclusion state
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetClientTagExclusionRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set or clear a client's automatic tag exclusion
       tags:
       - clients
   /v1/clients/{clientId}/tags:
@@ -6280,6 +6607,43 @@ paths:
       summary: Request customer contact verification
       tags:
       - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification/{id}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verification identifier
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a customer contact verification
+      tags:
+      - customer-profile
   /v1/customer/sites/{hostname}/profile/contacts/verification/confirm:
     post:
       consumes:
@@ -6297,8 +6661,10 @@ paths:
         schema:
           $ref: '#/definitions/dto.ContactVerificationConfirmation'
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationConfirmed'
         "401":
           description: Unauthorized
           schema:
@@ -7079,6 +7445,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Dismiss onboarding
+      tags:
+      - onboarding
+  /v1/onboarding/readiness:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.OnboardingReadinessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get operational setup diagnostics
       tags:
       - onboarding
   /v1/onboarding/resume:
@@ -8755,6 +9143,135 @@ paths:
       summary: Accept a quote's materials
       tags:
       - quotes
+  /v1/quotes/{quoteId}/accept-sent-version:
+    post:
+      description: Discards the open draft and accepts the version the customer received,
+        as the seller.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_CHANGE_REQUESTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Accept the sent version
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/acceptance/confirm:
+    post:
+      description: Clears the pending confirmation, so the sale can be marked paid
+        and invoiced. Repeating it changes nothing.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirm an acceptance read from a reply
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/acceptance/undo:
+    post:
+      description: Moves the quote back to SENT and lets the customer answer again;
+        only while unpaid, uninvoiced and with its send live.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.QuoteResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_ACCEPTANCE_NOT_UNDOABLE, QUOTE_NOT_ACCEPTED or QUOTE_ARCHIVED
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Undo an acceptance read from a reply
+      tags:
+      - quotes
   /v1/quotes/{quoteId}/archive:
     post:
       description: Sets the archived flag without changing the quote status.
@@ -8990,6 +9507,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a combo on a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/customer-reply/read:
+    post:
+      description: Settles the pending replies that left a sent quote unchanged up
+        to seen_until, the newest one the seller saw; a later one stays unread.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: The newest reply seen
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReadCustomerReplyRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_SENT
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark a customer's reply as read
       tags:
       - quotes
   /v1/quotes/{quoteId}/delivery-preset:
@@ -11094,6 +11660,75 @@ paths:
       security:
       - BearerAuth: []
       summary: Create a client tag
+      tags:
+      - clients
+  /v1/tags/rules:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagRulesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List automatic client tag rules
+      tags:
+      - clients
+  /v1/tags/rules/{kind}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Rule kind
+        enum:
+        - RECURRING
+        - ABANDONER
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Rule settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientTagRuleRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an automatic client tag rule
       tags:
       - clients
   /v1/users:

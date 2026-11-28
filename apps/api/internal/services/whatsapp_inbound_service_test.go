@@ -40,6 +40,8 @@ func (f *fakeWhatsAppInboundDB) WithAdvisoryLock(
 
 type fakeWhatsAppInboundRouter struct {
 	routes map[string]domain.InboundChannelRoute
+	// err is returned beside the routes, as an inactive owner is.
+	err error
 }
 
 func (f *fakeWhatsAppInboundRouter) ResolveChannels(_ context.Context, _ domain.ChannelType,
@@ -51,7 +53,7 @@ func (f *fakeWhatsAppInboundRouter) ResolveChannels(_ context.Context, _ domain.
 			resolved[identifier] = route
 		}
 	}
-	return resolved, nil
+	return resolved, f.err
 }
 
 // fakeWhatsAppInboundMessages keeps the first reservation, as the unique provider key does.
@@ -77,7 +79,7 @@ type fakeWhatsAppInboundConversations struct {
 }
 
 func (f *fakeWhatsAppInboundConversations) Route(context.Context, repository.Querier,
-	domain.InboundChannelRoute, string,
+	domain.InboundChannelRoute, string, string,
 ) (*domain.ConversationRoute, error) {
 	return f.match, nil
 }
@@ -276,5 +278,32 @@ func TestWhatsAppInboundService_IngestRetryKeepsTheFirstOutcome(t *testing.T) {
 	}
 	if len(rfqs.inputs) != 0 {
 		t.Errorf("RFQ drafts = %d, want none for a message that joined a conversation", len(rfqs.inputs))
+	}
+}
+
+func TestWhatsAppInboundService_IngestReactionJoinsOnlyALiveConversation(t *testing.T) {
+	t.Parallel()
+	reaction := inboundTestMessage()
+	reaction[0].Body, reaction[0].ConversationOnly = "👍", true
+
+	alone := &fakeWhatsAppInboundConversations{}
+	service, messages, rfqs, _ := inboundTestService(alone)
+	if err := service.Ingest(context.Background(), reaction); err != nil {
+		t.Fatalf("Ingest() = %v, want a reaction with no conversation dropped quietly", err)
+	}
+	if len(messages.reserved) != 0 || len(rfqs.inputs) != 0 {
+		t.Errorf("reserved/RFQs = %d/%d, want a reaction never to become an order",
+			len(messages.reserved), len(rfqs.inputs))
+	}
+
+	quoteID := uuid.New()
+	live := &fakeWhatsAppInboundConversations{match: &domain.ConversationRoute{QuoteID: quoteID}}
+	service, messages, rfqs, _ = inboundTestService(live)
+	if err := service.Ingest(context.Background(), reaction); err != nil {
+		t.Fatalf("Ingest() = %v", err)
+	}
+	if len(live.appended) != 1 || live.appended[0].Body != "👍" || live.appended[0].QuoteID != quoteID ||
+		len(messages.reserved) != 1 || len(rfqs.inputs) != 0 {
+		t.Errorf("appended = %#v, want the reaction on the live quote's conversation", live.appended)
 	}
 }

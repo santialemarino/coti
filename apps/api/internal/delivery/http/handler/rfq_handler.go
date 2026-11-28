@@ -626,7 +626,22 @@ func toListItemResponse(item domain.RfqListItem) dto.RfqListItemResponse {
 		Invoiced:          item.Closure.Invoiced,
 		InvoicePending:    item.Closure.InvoicePending,
 		SaleComplete:      item.SaleComplete(),
+
+		AcceptanceUnconfirmed: item.AcceptanceUnconfirmed,
+		CustomerReply:         toCustomerReplyResponse(item.CustomerReply),
 	}
+}
+
+func toCustomerReplyResponse(reply *domain.CustomerReply) *dto.CustomerReplyResponse {
+	if reply == nil {
+		return nil
+	}
+	resp := &dto.CustomerReplyResponse{Reason: string(reply.Reason), CreatedAt: reply.CreatedAt}
+	if reply.ReplyAcceptance != nil {
+		acceptance := string(*reply.ReplyAcceptance)
+		resp.ReplyAcceptance = &acceptance
+	}
+	return resp
 }
 
 // RFQService is the RFQ surface the AI pipeline handler needs.
@@ -863,6 +878,7 @@ func toRfqDetailResponse(
 		RFQHistory:           toRFQStatusChangeResponses(detail.RFQStatusChanges),
 		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
+		AcceptedByReply:      detail.AcceptedByReply(),
 	}
 	if contact := detail.PublicContact; contact != nil {
 		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
@@ -969,7 +985,7 @@ func toConversationMessageResponses(messages []domain.QuoteMessage) []dto.Conver
 func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse {
 	return dto.ClientActionResponse{ID: action.ID, VersionID: action.VersionID,
 		VersionNumber: action.VersionNumber, Type: string(action.Type), Comment: action.Comment,
-		CreatedAt: action.CreatedAt}
+		CreatedAt: action.CreatedAt, ReopenedAt: action.ReopenedAt}
 }
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {

@@ -115,6 +115,18 @@ type RfqListItem struct {
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
 	FollowupFlaggedAt *time.Time
 	Closure           SaleClosure
+	// AcceptanceUnconfirmed is an acceptance read from a reply that waits for the seller.
+	AcceptanceUnconfirmed bool
+	// CustomerReply is the latest unread reply on a SENT quote that changed nothing; nil when none.
+	CustomerReply *CustomerReply
+}
+
+// CustomerReply is a reply recorded on a SENT quote without changing it, waiting for the seller.
+type CustomerReply struct {
+	Reason HandlerNoMatchReason
+	// ReplyAcceptance is set on an acceptance the backend weighed; a SENT quote only carries SIGNAL.
+	ReplyAcceptance *ReplyAcceptance
+	CreatedAt       time.Time
 }
 
 // SaleComplete reports whether the order is a fully closed sale.
@@ -144,8 +156,8 @@ type ExtractedRFQLine struct {
 	Quantity decimal.Decimal
 	Unit     *string
 	Source   QuantitySource
-	// QuantityRationale is why the quantity is what it is, and is required on every line: a
-	// seller reads it instead of reopening the message, and it names what is missing.
+	// QuantityRationale is why the quantity is what it is: a seller reads it instead of reopening
+	// the message, and it names what is missing. Empty when the quantity had to be discarded.
 	QuantityRationale   string
 	SearchDescription   string
 	SelectionPreference RFQSelectionPreference
@@ -257,4 +269,31 @@ type RfqDetail struct {
 	// Conversation is the customer's messages after a send and what the handler did with them;
 	// nil when there are none.
 	Conversation *Conversation
+}
+
+// AcceptedByReply reports whether the quote stands ACCEPTED on an acceptance read from a reply of
+// its current cycle: one a reactivation reopened no longer counts.
+func (d RfqDetail) AcceptedByReply() bool {
+	if d.Quote == nil || d.Quote.CurrentStatus != QuoteStatusAccepted || d.Quote.CurrentVersionID == nil {
+		return false
+	}
+	for _, action := range d.ClientActions {
+		if action.Type == ClientActionAccept && action.VersionID == *d.Quote.CurrentVersionID &&
+			action.MessageBatchID != nil && action.RevokedAt == nil && !d.reopenedAfter(action.CreatedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// reopenedAfter reports whether a reactivation moved the quote off an answer after at.
+func (d RfqDetail) reopenedAfter(at time.Time) bool {
+	for _, change := range d.QuoteStatusChanges {
+		if change.PreviousStatus != nil && change.ChangedAt.After(at) &&
+			(*change.PreviousStatus == QuoteStatusAccepted || *change.PreviousStatus == QuoteStatusRejected) &&
+			(change.NewStatus == QuoteStatusQuoted || change.NewStatus == QuoteStatusChangeRequested) {
+			return true
+		}
+	}
+	return false
 }

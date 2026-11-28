@@ -63,6 +63,8 @@ type Quote struct {
 	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
 	InvoiceWaivedAt       *time.Time
 	InvoiceWaivedByUserID *uuid.UUID
+	// AcceptanceUnconfirmedAt marks an acceptance read from a reply that waits for the seller.
+	AcceptanceUnconfirmedAt *time.Time
 }
 
 // SaleClosure is what has closed an accepted sale so far, with who did it. It is derived, never
@@ -222,7 +224,10 @@ type QuoteItem struct {
 	ProductCode          *string
 	ProductName          *string
 	ProductUnit          *string
-	CreatedAt            time.Time
+	// TaughtBySeller marks a line whose exact wording a seller already resolved to its product,
+	// which is why it was decided without asking. Read-time, like the product columns.
+	TaughtBySeller bool
+	CreatedAt      time.Time
 	// SourceItemID is the sent line a draft line was copied from; nil for one added to the draft.
 	SourceItemID *uuid.UUID
 }

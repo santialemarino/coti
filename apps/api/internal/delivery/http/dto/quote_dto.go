@@ -47,6 +47,9 @@ type QuoteResponse struct {
 	// InvoiceWaivedAt and InvoiceWaivedByUserID record «No requiere factura».
 	InvoiceWaivedAt       *time.Time `json:"invoice_waived_at"`
 	InvoiceWaivedByUserID *uuid.UUID `json:"invoice_waived_by_user_id"`
+	// AcceptanceUnconfirmedAt marks an acceptance read from a WhatsApp reply that waits for the
+	// seller; null otherwise.
+	AcceptanceUnconfirmedAt *time.Time `json:"acceptance_unconfirmed_at"`
 }
 
 // QuoteVersionResponse represents a reviewable quote version.
@@ -87,9 +90,15 @@ type QuoteItemResponse struct {
 	Alternatives []QuoteItemAlternativeResponse `json:"alternatives"`
 	// PricingUnavailable names a line that matched a product the branch cannot price. It is null
 	// until the materials are accepted, because until then no line has been priced at all.
-	PricingUnavailable *bool     `json:"pricing_unavailable"`
-	QuantityRationale  *string   `json:"quantity_rationale"`
-	CreatedAt          time.Time `json:"created_at"`
+	PricingUnavailable *bool   `json:"pricing_unavailable"`
+	QuantityRationale  *string `json:"quantity_rationale"`
+	// UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a
+	// product priced by the cubic metre, so its quantity needs the seller's conversion.
+	UnitMismatch bool `json:"unit_mismatch"`
+	// TaughtBySeller marks a line decided because a seller already resolved this exact wording to
+	// its product.
+	TaughtBySeller bool      `json:"taught_by_seller"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // QuoteItemAlternativeResponse is one candidate or configured recommendation offered for a line.
@@ -181,6 +190,11 @@ type PublicQuoteSendResponse struct {
 	// CustomerStatus is the answer this token already received, present only when the
 	// customer responded through the link.
 	CustomerStatus *string `json:"customer_status,omitempty"`
+	// AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.
+	AcceptedVersion bool `json:"accepted_version,omitempty"`
+	// InReview is an acceptance read from the customer's reply that the supplier has not
+	// confirmed yet.
+	InReview bool `json:"in_review"`
 }
 
 // PublicQuoteActionRequest is the customer's response to the frozen quote.

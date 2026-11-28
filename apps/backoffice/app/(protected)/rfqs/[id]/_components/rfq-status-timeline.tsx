@@ -260,11 +260,13 @@ export function RfqStatusTimeline({ detail }: RfqStatusTimelineProps) {
                   >
                     <div className="flex items-center justify-between gap-x-3">
                       <span className="truncate text-paragraph-sm-medium text-foreground">
-                        {delivery.purpose === 'FOLLOWUP'
-                          ? t('detail.timeline.followupChannel', {
-                              channel: t(`channels.${channel}`),
-                            })
-                          : t(`channels.${channel}`)}
+                        {delivery.channel === 'WEBAPP'
+                          ? t('detail.timeline.portalPublication')
+                          : delivery.purpose === 'FOLLOWUP'
+                            ? t('detail.timeline.followupChannel', {
+                                channel: t(`channels.${channel}`),
+                              })
+                            : t(`channels.${channel}`)}
                       </span>
                       <DeliveryBadge status={delivery.tracking_status} />
                     </div>

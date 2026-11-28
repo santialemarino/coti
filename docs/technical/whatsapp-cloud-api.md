@@ -99,7 +99,7 @@ https://<api-host>/v1/webhooks/whatsapp
 
 The `GET` callback verification accepts the configured `webhook_verify_token`; the `POST` endpoint
 requires an HMAC-SHA256 signature made with `WHATSAPP_APP_SECRET`. Subscribe the Meta app to the
-`messages` webhook field. A deployment with no app secret returns `503` for inbound deliveries
+`messages` webhook field, which carries both inbound messages and delivery statuses. A deployment with no app secret returns `503` for inbound deliveries
 instead of accepting an unsigned message.
 
 The callback is public but not tenant-authenticated. It resolves `metadata.phone_number_id` on the
@@ -109,31 +109,75 @@ inactive account or branch makes the delivery return `500` so Meta can retry it.
 active destinations in the same delivery are processed first and deduplicated on retry; recovery for
 the unavailable destination still depends on Meta's retry window.
 
-Only inbound text messages are materialized in this release. Their Meta message ID is retained in
-`inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, the original
-provider payload, sender metadata, and exactly one target: a reserved RFQ ID or the
-`quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry keeps
-the first delivery's target — it resumes that RFQ, or does nothing for a message already joined —
-so it can create neither a second order nor a second message. Media and delivery-status events are
-acknowledged but do not create RFQs.
+Inbound text messages, photos, recordings, documents and videos are materialized. Their Meta message
+ID is retained in `inbound_channel_message` with a unique `(channel_id, external_message_id)`
+constraint, the original provider payload, sender metadata, and exactly one target: a reserved RFQ ID
+or the `quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry
+keeps the first delivery's target — it resumes that RFQ, or does nothing for a message already
+joined — so it can create neither a second order nor a second message. Stickers, locations and
+contact cards are acknowledged and never become orders.
+
+**A file arrives as a reference.** Meta sends the media ID, not the bytes, and the download link that
+ID resolves to expires within minutes, so the webhook stores the order at `RECEIVED` with the file as
+a pending attachment keyed `whatsapp-media:<media id>` and the caption, when there is one, as a text
+attachment, then wakes the attachment sweep. The sweep resolves the ID with the channel's own access
+token, stores the file under the order's key and reads it as any other file, within
+`STORAGE_MAX_FILE_SIZE_BYTES` (and 25 MB for a recording, the transcription limit): a recording is
+transcribed in Spanish with the account's most-quoted product names as vocabulary; a photo or PDF
+reaches the model as it is. A file with no stored object yet, or one that never got one, is listed
+on the order without a download link. The format is decided by the bytes' media type, so an
+image sent as a document is read as a photo. A file no format accepts (a video) leaves the order
+`FAILED` with the file on it, so the seller sees it rather than nothing; Meta being unreachable
+leaves the order claimed for the next run instead. A file whose sender has a live quote joins that
+conversation as «[Foto]», «[Audio]», «[Documento]» or «[Video]» plus its caption.
+
+A **reaction** (👍 on a quote message) is materialized as a message whose text is the emoji, but only
+when its sender has a live quote conversation: it joins that conversation like any reply, and with no
+conversation it is dropped, so a reaction never becomes an order. Removing a reaction (an empty
+emoji) is ignored.
+
+## Delivery statuses
+
+The same `messages` field carries the statuses Meta reports for messages a branch number sent. Each
+one names the message by the `wamid` stored in `quote_send.provider_reference`, and moves that send
+forward only: `delivered` → `DELIVERED`, `read` → `VIEWED`, `failed` → `FAILED` (from `SENT` only, so
+a late failure never undoes a delivery). `sent` repeats what the send call already recorded and is
+skipped. Meta may report out of order, so one delivery keeps only the furthest status per message,
+and the update never moves a send backwards.
+
+A status resolves its channel by `metadata.phone_number_id` and is applied in that channel's tenant
+transaction. Statuses for a channel whose account or branch is inactive are dropped rather than
+retried: they describe messages already sent, and nothing waits on them. A `wamid` that is not a
+quote send on that channel (a contact code, a registration
+link, a message from another number) is ignored. Error `131047` means the customer last wrote more
+than 24 hours earlier, so Meta refused free text; the send shows as failed on the order's timeline
+and the log records the code.
 
 ## Conversation routing
 
 Before a message becomes an order, `ConversationService.Route` checks whether its sender is
 answering a quote. Within the branch the channel resolves to, a candidate is a quote whose latest
 successful `quote_send` on **the same channel** went to the sender, where that send has not expired
-and the quote is `SENT` or `CHANGE_REQUESTED` and not archived. `client.phone` plays no part: the
+and the quote is `SENT`, `CHANGE_REQUESTED` or `ACCEPTED` and not archived. `client.phone` plays no part: the
 send's destination is the address the quote actually reached.
 
 - **The sender's forms.** Meta's `wa_id` is digits only, and an Argentine mobile is written both
   with and without the 9 after `54`; `domain.InboundSenderDestinations` returns `+<wa_id>` plus the
   other Argentine form, and either matches a destination.
-- **The newest send wins.** Several live quotes for one sender route to the one sent last; the
-  stored `quote_message.other_live_quotes` counts the rest, so the seller can be told the message
-  may belong to another quote.
+- **A named quote wins.** A message naming one of the sender's live quotes by number (`COT-000027`,
+  `#27`, «cotización 27», «la 27»; `domain.QuoteReferences`) joins that quote. A number that is not
+  one of them, or one followed by «de» («la 9 de julio»), is ignored. The other live quotes stay
+  counted, so an acceptance among several still waits for the seller.
+- **Otherwise the newest send wins.** Several live quotes for one sender route to the one sent last;
+  the stored `quote_message.other_live_quotes` counts the rest, so the seller can be told the message
+  may belong to another quote. A batch the model reads as a separate order (`NEW_ORDER`) goes on to
+  intake (see the RFQ pipeline's conversation handler).
 - **Locks.** The candidate read is unlocked, so each candidate is locked (`SELECT … FOR UPDATE`, the
-  same row lock the edit paths take first) and re-checked in recency order; one a seller accepted or
-  archived meanwhile is skipped.
+  same row lock the edit paths take first) and re-checked; one a seller archived or closed meanwhile is
+  skipped.
+- **An accepted quote** still takes its customer's messages: they join its conversation as recorded
+  messages that open no window, so no handler reads them and the seller sees what was said after
+  the acceptance.
 - **No match** creates the RFQ exactly as before.
 
 A joined message is written in one tenant transaction with its reservation: the `CLIENT`
@@ -187,7 +231,9 @@ bind the batch change handler ([rfq-pipeline.md](rfq-pipeline.md#conversation-ba
 handler error wrapping `domain.ErrBatchUnprocessable` — the quote was archived or closed after its
 window closed — spends the batch's last attempt at once and leaves it `FAILED` with the reason in
 `last_error` and `failure_reason = UNPROCESSABLE`; one that ran out of attempts is
-`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
+`ATTEMPTS_EXHAUSTED`, the only kind the seller can send back to the queue. Either way the failed
+batch goes back to the handler, which moves a still-`SENT` quote to `CHANGE_REQUESTED` with its
+draft open, so a reply nobody read still reaches the seller. The webapp's «Pedir cambios» enters the same queue as a batch closed in its own
 transaction.
 
 The API runs the sweep on an in-process ticker every `CONVERSATION_TICKER_SECONDS` (30), one pass at

@@ -101,7 +101,7 @@ func run() error {
 	messageBatchRepo := repository.NewMessageBatchRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
-	tagRepo := repository.NewTagRepository()
+	tagRepo := repository.NewTagRepository(cfg.ClientTagRules)
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -171,7 +171,7 @@ func run() error {
 		WithLogoStorage(objectStorage.Storage, cfg.Storage.MaxFileSize).
 		WithSignup(cfg.Signup, signupInviteRepo)
 	signupInviteService := services.NewSignupInviteService(db, signupInviteRepo, cfg.Signup, cfg.Web, nil)
-	onboardingService := services.NewOnboardingService(db, onboardingRepo)
+	onboardingService := services.NewOnboardingService(db, onboardingRepo).WithReadinessReader(onboardingRepo)
 	productService := services.NewProductService(db, productRepo, productSynonymRepo,
 		productAlternativeRepo, branchProductRepo, productPriceRepo, cfg.Catalog).
 		WithImageStorage(objectStorage.Storage, cfg.Storage.MaxFileSize)
@@ -245,18 +245,36 @@ func run() error {
 	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
 		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
-			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
+			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log).
+		WithNewOrders(rfqService)
 	conversationTicker := services.NewConversationBatchTicker(
 		services.NewConversationBatchService(db, messageBatchRepo,
 			batchChangeHandler, cfg.Conversation, nil, log),
 		cfg.Conversation.TickerInterval, log)
+	attachmentWake := make(chan struct{}, 1)
+	wakeAttachments := func() {
+		select {
+		case attachmentWake <- struct{}{}:
+		default:
+		}
+	}
+	var attachmentJobs *services.JobService
+	if providers.LanguageModelBound() {
+		reader := attachmentReader(db, rfqAttachmentService, rfqAttachmentRepo, channelRepo, productRepo,
+			channelSealer, objectStorage.Storage, providers.Transcriber, cfg, log)
+		attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
+			services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
+		if err != nil {
+			return err
+		}
+	}
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
-		WithConversations(conversationService).WithContacts(contactService)
+		WithConversations(conversationService).WithContacts(contactService).
+		WithMedia(services.NewWhatsAppMediaIntake(db, rfqRepo, rfqAttachmentRepo,
+			objectStorage.Storage, wakeAttachments))
 	var gmailHandler *handler.GmailHandler
 	var gmailWorker *services.GmailSyncWorker
-	var attachmentJobs *services.JobService
-	attachmentWake := make(chan struct{}, 1)
 	if cfg.Gmail.Enabled() {
 		oauth, err := gmail.NewOAuth(cfg.Gmail.ClientID, cfg.Gmail.ClientSecret, cfg.Gmail.RedirectURL,
 			cfg.Gmail.RequestTimeout, cfg.Gmail.MaxJSONBytes)
@@ -270,29 +288,19 @@ func run() error {
 		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
 			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
 			WithContacts(contactService).
-			WithRecordedCallback(func() {
-				select {
-				case attachmentWake <- struct{}{}:
-				default:
-				}
-			})
+			WithRecordedCallback(wakeAttachments)
 		gmailWorker = services.NewGmailSyncWorker(db, mailboxes, channelSealer,
 			gmail.NewFactory(cfg.Gmail), services.NewEmailSyncService(intake), cfg.Gmail.PollInterval, log)
-		if providers.LanguageModelBound() {
-			reader := rfqAttachmentService.WithStoredReading(providers.Transcriber,
-				cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows)
-			attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
-				services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
-			if err != nil {
-				return err
-			}
-		}
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
+		WithAutomaticQuoteInputs(productPriceRepo).
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithInvoicingSwitch(invoicingRepo).
 		WithCatalogRecommendations(productAlternativeRepo).
-		WithRecommendationProducts(productRepo)
+		WithRecommendationProducts(productRepo).
+		WithReplyAcceptance(quoteRepo, clientActionRepo, quoteSendRepo, quoteDiscountRepo,
+			handlerDecisionRepo)
+	rfqService.WithAutomaticQuoting(quoteService)
 	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
 		productAlternativeRepo, productPriceRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
@@ -319,10 +327,13 @@ func run() error {
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer).
-		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin())
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin()).
+		WithPortalContacts(repository.NewClientContactRepository())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)
+	batchChangeHandler.WithReplyAcceptance(services.ReplyAcceptancePolicy(cfg.Conversation),
+		quoteSendRepo, clientActionRepo, quoteRepo, quoteDeliveryService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))
@@ -364,7 +375,9 @@ func run() error {
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
-				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken),
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken).
+				WithDeliveryStatuses(services.NewWhatsAppDeliveryStatusService(db, inboundRoutingService,
+					quoteSendRepo, log)),
 			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),
@@ -440,6 +453,21 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// attachmentReader is the sweep's file reader: stored files, the ones WhatsApp still holds, and
+// recordings transcribed with the account's own product names.
+func attachmentReader(db *repository.DB, files *services.RFQAttachmentService,
+	attachments *repository.RFQAttachmentRepository, channels *repository.ChannelRepository,
+	products *repository.ProductRepository, sealer *secrets.AESGCM, storage domain.ObjectStorage,
+	transcriber domain.Transcriber, cfg *config.Config, log *slog.Logger,
+) *services.RFQAttachmentService {
+	fetcher := whatsapp.NewMetaMediaFetcher(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
+		cfg.WhatsApp.GraphAPIVersion)
+	return files.WithStoredReading(transcriber, cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows).
+		WithWhatsAppMedia(services.NewWhatsAppMediaSource(db, channels, attachments, sealer,
+			fetcher, storage, cfg.Storage.MaxFileSize)).
+		WithTranscriptionVocabulary(services.NewTranscriptionVocabulary(db, products, log).For)
 }
 
 func runAttachmentWake(ctx context.Context, wake chan struct{}, jobs *services.JobService,

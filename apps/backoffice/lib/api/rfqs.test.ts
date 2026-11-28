@@ -27,6 +27,12 @@ const RAW: RfqListItem = {
   invoiced: false,
   invoice_pending: true,
   sale_complete: true,
+  acceptance_unconfirmed: false,
+  customer_reply: {
+    reason: 'CUSTOMER_ACCEPTS',
+    reply_acceptance: 'SIGNAL',
+    created_at: '2026-09-29T10:00:00.000Z',
+  },
 };
 
 describe('normalizeRfqStatus', () => {
@@ -80,6 +86,32 @@ describe('mapListItem', () => {
       invoiced: false,
       invoicePending: true,
       saleComplete: true,
+      acceptanceUnconfirmed: false,
+      customerReply: {
+        reason: 'CUSTOMER_ACCEPTS',
+        replyAcceptance: 'SIGNAL',
+        createdAt: '2026-09-29T10:00:00.000Z',
+      },
     });
+  });
+
+  it('reads an unconfirmed acceptance and no reply', () => {
+    const mapped = mapListItem({
+      ...RAW,
+      status: 'ACCEPTED',
+      acceptance_unconfirmed: true,
+      customer_reply: null,
+    });
+
+    expect(mapped).toMatchObject({ acceptanceUnconfirmed: true, customerReply: null });
+  });
+
+  // A row from an API that predates the fields reads as nothing to confirm and nothing to read.
+  it('defaults the reply fields when the row carries none', () => {
+    const older: RfqListItem = { ...RAW };
+    delete older.acceptance_unconfirmed;
+    delete older.customer_reply;
+
+    expect(mapListItem(older)).toMatchObject({ acceptanceUnconfirmed: false, customerReply: null });
   });
 });

@@ -577,6 +577,12 @@ Before enabling it:
    order from a different handset and use **Comprobar recepción**. Check that the
    order appeared in that branch and still awaits seller review.
 
+Coti derives the six-digit registration PIN from `HMAC-SHA256(WHATSAPP_APP_SECRET,
+"whatsapp-registration:" + phoneID)`. It interprets the first four digest bytes as
+a big-endian unsigned integer, takes it modulo 1,000,000, and pads the result to
+six digits. Rotating `WHATSAPP_APP_SECRET` changes the PIN and can prevent
+re-registration of numbers already registered with the previous PIN.
+
 Use an allowlisted HTTPS development URL for a real Meta popup test. Regular
 local development can leave the three signup variables blank. For business
 tokens with an expiry, reconnect from the channel settings before expiration.

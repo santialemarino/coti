@@ -68,6 +68,23 @@ export async function replaceClientTags(clientId: string, tagIds: string[]): Pro
   return raw.items.map(mapClientTag);
 }
 
+export async function setClientTagExclusion(
+  clientId: string,
+  tagId: string,
+  excluded: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/clients/${encodeURIComponent(clientId)}/tag-exclusions/${encodeURIComponent(tagId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excluded }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) await throwApiError(response);
+}
+
 export interface ClientFiscalInput {
   address?: string;
   legalName?: string;
@@ -93,6 +110,17 @@ export async function updateClientFiscal(
   });
   if (!response.ok) await throwApiError(response);
   return mapClientFiscal((await response.json()) as ClientFiscalRaw);
+}
+
+export async function updateClientNotes(clientId: string, notes: string): Promise<Client> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapClient((await response.json()) as ClientRaw);
 }
 
 export async function renameClient(clientId: string, name: string): Promise<Client> {

@@ -14,6 +14,8 @@ interface PublicQuoteSendRaw {
   message?: string;
   pdf_url?: string;
   customer_status?: string;
+  accepted_version?: boolean;
+  in_review?: boolean;
 }
 
 interface PublicQuoteActionResultRaw {
@@ -103,6 +105,10 @@ export interface PublicQuoteSend {
   message?: string;
   pdfUrl?: string;
   customerStatus?: CustomerActionType;
+  // The quote as the customer accepted it, with their chosen alternatives in place.
+  acceptedVersion?: boolean;
+  // An acceptance read from the customer's message that the corralón has not confirmed yet.
+  inReview?: boolean;
 }
 
 export interface PublicQuoteAction {
@@ -256,6 +262,8 @@ function mapPublicQuoteSend(raw: PublicQuoteSendRaw): PublicQuoteSend {
     message: raw.message,
     pdfUrl: raw.pdf_url,
     customerStatus: raw.customer_status as CustomerActionType | undefined,
+    ...(raw.accepted_version ? { acceptedVersion: true } : {}),
+    ...(raw.in_review ? { inReview: true } : {}),
   };
 }
 

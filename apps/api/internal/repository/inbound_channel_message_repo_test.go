@@ -115,6 +115,54 @@ func TestInboundChannelMessageRepository_ReserveNeedsExactlyOneTarget(t *testing
 	}
 }
 
+// A message that is not an order is kept with its kind and no target; a kind beside a target, or
+// a dismissal of a message that opened an order, is refused.
+func TestInboundChannelMessage_KeepsANonOrderMessageWithItsKindOnly(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "inbound kind account")
+	branchID := branchOf(t, db, accountID)
+	channelID := seedChannel(t, db, accountID, branchID, domain.ChannelTypeWhatsApp, true)
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(),
+			`DELETE FROM inbound_channel_message WHERE channel_id = $1`, channelID)
+	})
+	insert := func(external string, rfqID *uuid.UUID, kind *string, dismissed bool) error {
+		_, err := db.CrossAccount().Exec(ctx, `INSERT INTO inbound_channel_message
+		  (account_id, branch_id, channel_id, rfq_id, external_message_id, sender_id, body, payload,
+		   provider_received_at, kind, dismissed_at)
+		 VALUES ($1, $2, $3, $4, $5, '5491112345678', 'hola', '{}', now(),
+		         $6::inbound_message_kind, CASE WHEN $7 THEN now() END)`,
+			accountID, branchID, channelID, rfqID, external, kind, dismissed)
+		return err
+	}
+	greeting, rfqID := "GREETING", uuid.New()
+
+	if err := insert("wamid.greeting", nil, &greeting, true); err != nil {
+		t.Fatalf("insert a dismissed greeting = %v, want it kept", err)
+	}
+	if err := insert("wamid.kind-and-rfq", &rfqID, &greeting, false); !isCheckViolation(err,
+		"ck_inbound_channel_message_target") {
+		t.Errorf("kind beside an rfq = %v, want ck_inbound_channel_message_target", err)
+	}
+	if err := insert("wamid.dismissed-order", &rfqID, nil, true); !isCheckViolation(err,
+		"ck_inbound_channel_message_dismissed") {
+		t.Errorf("dismissed order = %v, want ck_inbound_channel_message_dismissed", err)
+	}
+	if err := insert("wamid.nothing", nil, nil, false); !isCheckViolation(err,
+		"ck_inbound_channel_message_target") {
+		t.Errorf("no target and no kind = %v, want ck_inbound_channel_message_target", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO inbound_channel_message
+	  (account_id, branch_id, channel_id, quote_message_id, external_message_id, sender_id, body,
+	   payload, provider_received_at, kind)
+	 VALUES ($1, $2, $3, $4, 'wamid.kind-and-message', '5491112345678', 'hola', '{}', now(),
+	         'GREETING')`, accountID, branchID, channelID, uuid.New()); !isCheckViolation(err,
+		"ck_inbound_channel_message_target") {
+		t.Errorf("kind beside a conversation message = %v, want ck_inbound_channel_message_target", err)
+	}
+}
+
 func isCheckViolation(err error, name string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == name

@@ -38,21 +38,42 @@ const scopedRfqsCTE = `scoped_rfqs AS (
 		         AND ct.tag_id = ANY($10::uuid[])))
 		 )`
 
+// standingAcceptance keeps an ACCEPTED status change the quote never left afterwards: an undo
+// (back to SENT) or a reactivation (to QUOTED or CHANGE_REQUESTED) takes the acceptance back.
+func standingAcceptance(change string) string {
+	return ` AND NOT EXISTS (SELECT 1 FROM quote_status_change undone
+		WHERE undone.account_id = ` + change + `.account_id AND undone.quote_id = ` + change + `.quote_id
+		  AND undone.previous_status = 'ACCEPTED' AND undone.changed_at >= ` + change + `.changed_at)`
+}
+
+// firstSentCTE keeps cohort conversion set-based across all events, including later acceptances.
+var firstSentCTE = `first_sent AS (
+		   SELECT change.quote_id,
+		          min(change.changed_at) FILTER (WHERE change.new_status = 'SENT') AS sent_at,
+		          max(change.changed_at) FILTER (WHERE change.new_status = 'ACCEPTED'` +
+	standingAcceptance("change") + `) AS accepted_at
+		   FROM quote_status_change change
+		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
+		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
+		   WHERE change.account_id = $1 AND change.new_status IN ('SENT', 'ACCEPTED')
+		   GROUP BY change.quote_id
+		 )`
+
 // acceptedVersionsCTE resolves which version each acceptance in the period charged.
-const acceptedVersionsCTE = `WITH ` + scopedRfqsCTE + `, accepted AS (
+var acceptedVersionsCTE = `WITH ` + scopedRfqsCTE + `, accepted AS (
 		   SELECT change.quote_id, max(change.changed_at) AS accepted_at
 		   FROM quote_status_change change
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5` + standingAcceptance("change") + `
 		   GROUP BY change.quote_id
 		 ), resolved AS (
 		   SELECT accepted.quote_id,
 		          COALESCE(
 		            (SELECT action.version_id
 		             FROM client_action action
-		             WHERE action.account_id = $1 AND action.type = 'ACCEPT'
+		             WHERE action.account_id = $1 AND action.type = 'ACCEPT' AND action.revoked_at IS NULL
 		               AND action.version_id IN (SELECT version.id FROM quote_version version
 		                                         WHERE version.account_id = $1
 		                                           AND version.quote_id = accepted.quote_id)
@@ -117,27 +138,15 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if err := r.readFilterOptions(ctx, q, `SELECT id, name FROM tag
-		 WHERE account_id = $1 AND id = ANY($2::uuid[]) ORDER BY name, id`,
+		 WHERE account_id = $1 AND rule_kind IS NULL AND id = ANY($2::uuid[]) ORDER BY name, id`,
 		in.AccountID, in.TagFilter, &report.Filters.Tags); err != nil {
 		return nil, err
 	}
-	if err := r.readKPIs(ctx, q, in, &report.KPIs); err != nil {
+	kpis, err := r.ReadKPIs(ctx, q, in)
+	if err != nil {
 		return nil, err
 	}
-	if err := r.readAccepted(ctx, q, in, &report.KPIs); err != nil {
-		return nil, err
-	}
-	if report.KPIs.QuotesSent > 0 {
-		rate := decimal.NewFromInt(int64(report.KPIs.SentAccepted)).
-			Div(decimal.NewFromInt(int64(report.KPIs.QuotesSent)))
-		report.KPIs.ConversionRate = &rate
-	}
-	if err := r.readResponseTime(ctx, q, in, &report.KPIs.ResponseTime); err != nil {
-		return nil, err
-	}
-	if err := r.readTimeToAcceptance(ctx, q, in, &report.KPIs.TimeToAcceptance); err != nil {
-		return nil, err
-	}
+	report.KPIs = *kpis
 	if err := r.readQuotesByStatus(ctx, q, in, &report.QuotesByStatus); err != nil {
 		return nil, err
 	}
@@ -168,6 +177,29 @@ func (r *SellerReportRepository) Build(
 		}
 	}
 	return report, nil
+}
+
+// ReadKPIs reuses the headline aggregations for a scoped comparison period.
+func (r *SellerReportRepository) ReadKPIs(ctx context.Context, q Querier, in domain.SellerReportQuery) (*domain.SellerReportKPIs, error) {
+	out := &domain.SellerReportKPIs{}
+	if err := r.readKPIs(ctx, q, in, out); err != nil {
+		return nil, err
+	}
+	if err := r.readAccepted(ctx, q, in, out); err != nil {
+		return nil, err
+	}
+	if out.QuotesSent > 0 {
+		rate := decimal.NewFromInt(int64(out.SentAccepted)).
+			Div(decimal.NewFromInt(int64(out.QuotesSent)))
+		out.ConversionRate = &rate
+	}
+	if err := r.readResponseTime(ctx, q, in, &out.ResponseTime); err != nil {
+		return nil, err
+	}
+	if err := r.readTimeToAcceptance(ctx, q, in, &out.TimeToAcceptance); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *SellerReportRepository) readFilterNames(
@@ -228,24 +260,13 @@ func (r *SellerReportRepository) readKPIs(
 	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportKPIs,
 ) error {
 	return q.QueryRow(ctx,
-		`WITH `+scopedRfqsCTE+`, first_sent AS (
-		   SELECT change.quote_id, min(change.changed_at) AS sent_at
-		   FROM quote_status_change change
-		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
-		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
-		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
-		   GROUP BY change.quote_id
-		 )
+		`WITH `+scopedRfqsCTE+`, `+firstSentCTE+`
 		 SELECT (SELECT count(*) FROM scoped_rfqs
 		         WHERE received_at >= $4 AND received_at < $5),
 		        (SELECT count(*) FROM first_sent WHERE sent_at >= $4 AND sent_at < $5),
 		        (SELECT count(*) FROM first_sent
 		         WHERE sent_at >= $4 AND sent_at < $5
-		           AND EXISTS (SELECT 1 FROM quote_status_change accepted
-		                       WHERE accepted.account_id = $1
-		                         AND accepted.quote_id = first_sent.quote_id
-		                         AND accepted.new_status = 'ACCEPTED'
-		                         AND accepted.changed_at >= first_sent.sent_at)),
+		           AND accepted_at >= sent_at),
 		        (SELECT count(*) FROM quote
 		         JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		         WHERE quote.account_id = $1 AND quote.needs_followup)`,
@@ -256,12 +277,41 @@ func (r *SellerReportRepository) readKPIs(
 func (r *SellerReportRepository) readAccepted(
 	ctx context.Context, q Querier, in domain.SellerReportQuery, out *domain.SellerReportKPIs,
 ) error {
-	return q.QueryRow(ctx, acceptedVersionsCTE+`
-		 SELECT count(*), COALESCE(sum(COALESCE(version.total, 0)), 0)
+	rows, err := q.Query(ctx, acceptedVersionsCTE+`
+		 SELECT version.currency, count(*), sum(version.total)
 		 FROM resolved
-		 LEFT JOIN quote_version version ON version.account_id = $1 AND version.id = resolved.version_id`,
+		 LEFT JOIN quote_version version ON version.account_id = $1 AND version.id = resolved.version_id
+		 GROUP BY version.currency ORDER BY version.currency`,
 		reportArgs(in)...,
-	).Scan(&out.QuotesAccepted, &out.AcceptedAmount)
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	out.QuotesAccepted = 0
+	out.AcceptedAmount, out.AcceptedCurrency = nil, nil
+	out.AcceptedAmounts = []domain.SellerReportAmount{}
+	for rows.Next() {
+		var currency *string
+		var amount *decimal.Decimal
+		var count int
+		if err := rows.Scan(&currency, &count, &amount); err != nil {
+			return err
+		}
+		out.QuotesAccepted += count
+		if currency != nil && amount != nil {
+			out.AcceptedAmounts = append(out.AcceptedAmounts,
+				domain.SellerReportAmount{Currency: *currency, Amount: *amount})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(out.AcceptedAmounts) == 1 {
+		out.AcceptedAmount = &out.AcceptedAmounts[0].Amount
+		out.AcceptedCurrency = &out.AcceptedAmounts[0].Currency
+	}
+	return nil
 }
 
 func (r *SellerReportRepository) readResponseTime(
@@ -309,7 +359,7 @@ func (r *SellerReportRepository) readTimeToAcceptance(
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5`+standingAcceptance("change")+`
 		   GROUP BY change.quote_id
 		 ), waits AS (
 		   SELECT extract(epoch FROM (accepted.accepted_at - min(sent.changed_at))) AS seconds
@@ -387,20 +437,9 @@ func (r *SellerReportRepository) readTimeline(
 		   FROM scoped_rfqs
 		   WHERE received_at >= $4 AND received_at < $5
 		   GROUP BY 1
-		 ), first_sent AS (
-		   SELECT change.quote_id, min(change.changed_at) AS sent_at
-		   FROM quote_status_change change
-		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
-		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
-		   WHERE change.account_id = $1 AND change.new_status = 'SENT'
-		   GROUP BY change.quote_id
-		 ), sent AS (
+		 ), `+firstSentCTE+`, sent AS (
 		   SELECT date_trunc($14, sent_at AT TIME ZONE $13)::date AS bucket, count(*) AS total,
-		          count(*) FILTER (WHERE EXISTS (
-		            SELECT 1 FROM quote_status_change accepted
-		            WHERE accepted.account_id = $1 AND accepted.quote_id = first_sent.quote_id
-		              AND accepted.new_status = 'ACCEPTED'
-		              AND accepted.changed_at >= first_sent.sent_at)) AS converted
+		          count(*) FILTER (WHERE accepted_at >= sent_at) AS converted
 		   FROM first_sent
 		   WHERE sent_at >= $4 AND sent_at < $5
 		   GROUP BY 1
@@ -410,7 +449,7 @@ func (r *SellerReportRepository) readTimeline(
 		   JOIN quote q ON q.account_id = change.account_id AND q.id = change.quote_id
 		   JOIN scoped_rfqs scoped ON scoped.id = q.rfq_id
 		   WHERE change.account_id = $1 AND change.new_status = 'ACCEPTED'
-		     AND change.changed_at >= $4 AND change.changed_at < $5
+		     AND change.changed_at >= $4 AND change.changed_at < $5`+standingAcceptance("change")+`
 		   ORDER BY change.quote_id, change.changed_at DESC
 		 ), accepted_by_bucket AS (
 		   SELECT date_trunc($14, changed_at AT TIME ZONE $13)::date AS bucket, count(*) AS total
@@ -494,19 +533,24 @@ func (r *SellerReportRepository) readTopRevenueProducts(
 	ctx context.Context, q Querier, in domain.SellerReportQuery,
 	out *[]domain.SellerReportRevenueProduct,
 ) error {
-	rows, err := q.Query(ctx, acceptedVersionsCTE+`
-		 SELECT item.product_id,
-		        COALESCE(max(product.canonical_name), min(item.requested_description)),
-		        sum(round(item.quantity * item.unit_price_snapshot, 2))
+	rows, err := q.Query(ctx, acceptedVersionsCTE+`, amounts AS (
+		 SELECT item.product_id, version.currency,
+		        COALESCE(max(product.canonical_name), min(item.requested_description)) AS name,
+		        sum(round(item.quantity * item.unit_price_snapshot, 2)) AS revenue
 		 FROM resolved
+		 JOIN quote_version version ON version.account_id = $1 AND version.id = resolved.version_id
 		 JOIN quote_item item ON item.account_id = $1
 		   AND item.version_id = resolved.version_id
 		 LEFT JOIN product ON product.account_id = $1 AND product.id = item.product_id
 		 WHERE item.product_id IS NOT NULL AND item.unit_price_snapshot IS NOT NULL
-		 GROUP BY item.product_id
+		 GROUP BY item.product_id, version.currency
 		 HAVING sum(round(item.quantity * item.unit_price_snapshot, 2)) > 0
-		 ORDER BY 3 DESC, 2, 1
-		 LIMIT 5`,
+		 ), ranked AS (
+		 SELECT product_id, name, currency, revenue,
+		        row_number() OVER (PARTITION BY currency ORDER BY revenue DESC, name, product_id) AS rank
+		 FROM amounts)
+		 SELECT product_id, name, currency, revenue FROM ranked WHERE rank <= 5
+		 ORDER BY currency, revenue DESC, name, product_id`,
 		reportArgs(in)...,
 	)
 	if err != nil {
@@ -515,7 +559,7 @@ func (r *SellerReportRepository) readTopRevenueProducts(
 	defer rows.Close()
 	for rows.Next() {
 		var item domain.SellerReportRevenueProduct
-		if err := rows.Scan(&item.ProductID, &item.Name, &item.Revenue); err != nil {
+		if err := rows.Scan(&item.ProductID, &item.Name, &item.Currency, &item.Revenue); err != nil {
 			return err
 		}
 		*out = append(*out, item)
@@ -527,22 +571,26 @@ func (r *SellerReportRepository) readTopClients(
 	ctx context.Context, q Querier, in domain.SellerReportQuery,
 	out *[]domain.SellerReportClient,
 ) error {
-	rows, err := q.Query(ctx, acceptedVersionsCTE+`
-		 SELECT quote.client_id,
+	rows, err := q.Query(ctx, acceptedVersionsCTE+`, amounts AS (
+		 SELECT quote.client_id, version.currency,
 		        COALESCE(max(client.name), max(client.email), max(client.phone),
-		                 max(rfq.client_label), ''),
-		        sum(COALESCE(version.total, 0))
+		                 max(rfq.client_label), '') AS name,
+		        sum(version.total) AS accepted_amount
 		 FROM resolved
 		 JOIN quote ON quote.account_id = $1 AND quote.id = resolved.quote_id
 		 JOIN rfq ON rfq.account_id = $1 AND rfq.id = quote.rfq_id
 		 LEFT JOIN client ON client.account_id = $1 AND client.id = quote.client_id
-		 LEFT JOIN quote_version version ON version.account_id = $1
+		 JOIN quote_version version ON version.account_id = $1
 		   AND version.id = resolved.version_id
 		 WHERE quote.client_id IS NOT NULL OR COALESCE(rfq.client_label, '') <> ''
-		 GROUP BY quote.client_id, CASE WHEN quote.client_id IS NULL THEN rfq.client_label END
-		 HAVING sum(COALESCE(version.total, 0)) > 0
-		 ORDER BY sum(COALESCE(version.total, 0)) DESC, 2, 1
-		 LIMIT 5`,
+		 GROUP BY quote.client_id, version.currency, CASE WHEN quote.client_id IS NULL THEN rfq.client_label END
+		 HAVING sum(version.total) > 0
+		 ), ranked AS (
+		 SELECT client_id, name, currency, accepted_amount,
+		        row_number() OVER (PARTITION BY currency ORDER BY accepted_amount DESC, name, client_id) AS rank
+		 FROM amounts)
+		 SELECT client_id, name, currency, accepted_amount FROM ranked WHERE rank <= 5
+		 ORDER BY currency, accepted_amount DESC, name, client_id`,
 		reportArgs(in)...,
 	)
 	if err != nil {
@@ -551,7 +599,7 @@ func (r *SellerReportRepository) readTopClients(
 	defer rows.Close()
 	for rows.Next() {
 		var item domain.SellerReportClient
-		if err := rows.Scan(&item.ClientID, &item.Name, &item.AcceptedAmount); err != nil {
+		if err := rows.Scan(&item.ClientID, &item.Name, &item.Currency, &item.AcceptedAmount); err != nil {
 			return err
 		}
 		*out = append(*out, item)
@@ -635,7 +683,10 @@ func (r *SellerReportRepository) readAssistant(
 		 JOIN quote ON quote.account_id = version.account_id AND quote.id = version.quote_id
 		 JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		 WHERE decision.account_id = $1
-		   AND decision.created_at >= $4 AND decision.created_at < $5`,
+		   AND decision.created_at >= $4 AND decision.created_at < $5
+		   -- A reply that asked for no change proposes nothing for the seller to decide.
+		   AND COALESCE(decision.ai_proposal::jsonb ->> 'no_match_reason', '') NOT IN
+		     ('CUSTOMER_ACCEPTS', 'CUSTOMER_REJECTS', 'CUSTOMER_QUESTION', 'NO_REQUEST')`,
 		reportArgs(in)...,
 	).Scan(&out.Proposals, &out.ApprovedAsIs, &out.Edited, &out.Rejected, &out.ManualOverride,
 		&out.Pending)

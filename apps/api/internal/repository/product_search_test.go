@@ -123,7 +123,7 @@ func searchCandidates(
 	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
 		var err error
 		candidates, err = repo.SearchCandidates(ctx, q, accountID, branchID, text,
-			queryVector(), fetch, 0.2)
+			queryVector(), text, queryVector(), fetch, 0.2)
 		return err
 	}); err != nil {
 		t.Fatalf("SearchCandidates() = %v, want no error", err)
@@ -198,6 +198,63 @@ func TestProductRepository_SearchCandidatesUsesAccountLocalCatalogCorrection(t *
 	candidates := searchCandidates(t, db, account, branch, "words absent from catalog", 10)
 	if len(candidates) != 1 || candidates[0].ProductID != product {
 		t.Fatalf("candidates = %+v, want the seller-taught product", candidates)
+	}
+}
+
+// A line whose words are not all in any product still reaches the product it names, through its
+// text alone: a client's "bolsa de arena" against a catalog's "Arena fina" that has no vector yet.
+func TestProductRepository_SearchCandidatesFallsBackToAnyWordWhenNoProductHasThemAll(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Arena")
+	branch := branchOf(t, db, account)
+	sand := seedCatalogProduct(t, db, account, "Arena fina", "Arena fina a granel")
+	stockBranch(t, db, account, branch, sand, true)
+	cement := seedCatalogProduct(t, db, account, "Cemento Portland 50kg", "bolsa de papel")
+	stockBranch(t, db, account, branch, cement, true)
+
+	candidates := searchCandidates(t, db, account, branch, "una bolsa de arena", 10)
+	if !slices.Contains(nameOf(candidates), "Arena fina") {
+		t.Fatalf("candidates = %v, want Arena fina reached without a vector", nameOf(candidates))
+	}
+	for _, c := range candidates {
+		if c.CanonicalName == "Arena fina" && (c.LexicalScore == nil || c.Distance != nil) {
+			t.Fatalf("Arena fina = %+v, want a text score and no distance", c)
+		}
+	}
+}
+
+// The fallback only runs when no product has every word, and only reaches products the semantic
+// half cannot: a line some product answers in full is not diluted with products sharing a word.
+func TestProductRepository_SearchCandidatesKeepsToEveryWordWhenAProductHasThemAll(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Bolsa")
+	branch := branchOf(t, db, account)
+	bagged := seedCatalogProduct(t, db, account, "Arena en bolsa 15kg", "")
+	stockBranch(t, db, account, branch, bagged, true)
+	loose := seedCatalogProduct(t, db, account, "Arena fina", "a granel")
+	stockBranch(t, db, account, branch, loose, true)
+
+	candidates := searchCandidates(t, db, account, branch, "bolsa de arena", 10)
+	if names := nameOf(candidates); !slices.Equal(names, []string{"Arena en bolsa 15kg"}) {
+		t.Fatalf("candidates = %v, want only the product with every word", names)
+	}
+}
+
+// An embedded product sharing one word is the semantic half's to find; the fallback leaves it out.
+func TestProductRepository_SearchCandidatesFallsBackOnlyToProductsWithNoVector(t *testing.T) {
+	db := testDB(t)
+	account := seedAccount(t, db, "Corralon Vector")
+	branch := branchOf(t, db, account)
+	embedded := seedCatalogProduct(t, db, account, "Arena gruesa", "")
+	stockBranch(t, db, account, branch, embedded, true)
+	writeEmbedding(t, db, account, embedded, alignedVector(0.1))
+	pending := seedCatalogProduct(t, db, account, "Arena fina", "")
+	stockBranch(t, db, account, branch, pending, true)
+
+	for _, c := range searchCandidates(t, db, account, branch, "bolsa de arena", 10) {
+		if c.CanonicalName == "Arena gruesa" && c.LexicalScore != nil {
+			t.Fatalf("Arena gruesa = %+v, want it found by its vector only", c)
+		}
 	}
 }
 
@@ -527,7 +584,7 @@ func TestProductRepository_SearchUsesTheVectorIndex(t *testing.T) {
 			return err
 		}
 		rows, err := q.Query(ctx, "EXPLAIN "+searchCandidatesQuery,
-			account, branch, "cemento", queryVector(), 10, 0.2, "cemento")
+			account, branch, "cemento", queryVector(), 10, 0.2, "cemento", queryVector())
 		if err != nil {
 			return err
 		}

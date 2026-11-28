@@ -148,6 +148,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 			customers.PUT("/profile", append(customerLimit("customer-profile", cfg.RateLimit.Profile), h.ClientContacts.UpdateProfile)...)
 			customers.POST("/profile/contacts/verification", append(customerLimit("contact-request", cfg.RateLimit.ContactVerification), h.ClientContacts.RequestVerification)...)
 			customers.POST("/profile/contacts/verification/confirm", append(customerLimit("contact-confirm", cfg.RateLimit.ContactVerification), h.ClientContacts.ConfirmVerification)...)
+			customers.GET("/profile/contacts/verification/:id", h.ClientContacts.GetVerification)
 		}
 		customers.POST("/auth/logout", h.CustomerAuth.Logout)
 		customers.POST("/auth/google/link", credentialBody, h.CustomerAuth.LinkGoogle)
@@ -272,9 +273,13 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/sends", h.Quote.Send)
 	quotes.POST("/:quoteId/transition", h.Quote.Transition)
 	quotes.POST("/:quoteId/reactivate", h.Quote.Reactivate)
+	quotes.POST("/:quoteId/acceptance/confirm", h.Quote.ConfirmAcceptance)
+	quotes.POST("/:quoteId/acceptance/undo", h.Quote.UndoAcceptance)
+	quotes.POST("/:quoteId/accept-sent-version", h.Quote.AcceptSentVersion)
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
 	quotes.POST("/:quoteId/followup-draft", h.QuoteFollowup.Draft)
 	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
+	quotes.POST("/:quoteId/customer-reply/read", h.Conversation.ReadCustomerReply)
 	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
 	quotes.POST("/:quoteId/payment", h.Quote.MarkPaid)
@@ -320,11 +325,16 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 		clients.GET("/:clientId/fiscal", h.Invoice.GetClientFiscal)
 		clients.PUT("/:clientId/fiscal", h.Invoice.UpdateClientFiscal)
 	}
+	clients.PUT("/:clientId/notes", h.Client.UpdateNotes)
 	clients.PUT("/:clientId/tags", h.Client.ReplaceTags)
+	clients.PUT("/:clientId/tag-exclusions/:tagId", h.Client.SetTagExclusion)
 
 	tags := verified.Group("/tags")
 	tags.GET("", h.Client.ListTags)
 	tags.POST("", h.Client.CreateTag)
+	tagRules := tags.Group("/rules", middleware.RequireAdmin())
+	tagRules.GET("", h.Client.ListTagRules)
+	tagRules.PUT("/:kind", h.Client.UpdateTagRule)
 
 	if !cfg.IsProduction() {
 		verified.POST("/dev/whatsapp/messages", ai, h.RFQ.CreateWhatsAppMockDraft)
@@ -345,6 +355,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 
 	onboarding := verified.Group("/onboarding", middleware.RequireAdmin())
 	onboarding.GET("", h.Onboarding.Get)
+	onboarding.GET("/readiness", h.Onboarding.GetReadiness)
 	onboarding.PUT("", h.Onboarding.SaveProgress)
 	onboarding.POST("/complete", h.Onboarding.Complete)
 	onboarding.POST("/dismiss", h.Onboarding.Dismiss)

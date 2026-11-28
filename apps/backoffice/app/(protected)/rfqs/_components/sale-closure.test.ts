@@ -35,6 +35,8 @@ describe('saleNextStep', () => {
     ['paid and invoiced', sale({ paidAt: AT, invoiced: true, saleComplete: true }), true, null],
     ['archived', sale({ archived: true }), true, null],
     ['no quote', sale({ quoteId: null }), true, null],
+    // The API refuses to close an acceptance read from a reply until the seller confirms it.
+    ['acceptance to confirm', sale({ acceptanceUnconfirmed: true }), true, null],
     ['sent', sale({ status: 'SENT' }), true, null],
     ['rejected', sale({ status: 'REJECTED' }), true, null],
   ] as const)('%s → %s', (_, record, invoicingEnabled, step) => {
@@ -57,6 +59,7 @@ describe('closingActions', () => {
     ['invoice pending', sale({ paidAt: AT, invoicePending: true }), true, ['UNMARK_PAID']],
     ['invoiced', sale({ paidAt: AT, invoiced: true }), true, ['UNMARK_PAID']],
     ['archived', sale({ archived: true }), true, []],
+    ['acceptance to confirm', sale({ acceptanceUnconfirmed: true }), true, []],
     ['quoted', sale({ status: 'QUOTED' }), true, []],
   ] as const)('%s → %j', (_, record, invoicingEnabled, actions) => {
     expect(closingActions(record, invoicingEnabled)).toEqual(actions);

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from 'motion/react';
 
 import { EASE, MOTION } from '../lib/motion';
 import { cn } from '../lib/utils';
@@ -22,6 +22,16 @@ interface PendingButtonProps extends ForwardedButtonProps {
   pendingLabel: string;
   children: React.ReactNode;
 }
+
+const PendingLabel = React.forwardRef<
+  HTMLSpanElement,
+  React.ComponentPropsWithoutRef<typeof motion.span>
+>(function PendingLabel(props, ref) {
+  const present = useIsPresent();
+
+  // Exit animations retain the old label visually, but it must stop naming the button immediately.
+  return <motion.span {...props} ref={ref} aria-hidden={!present} />;
+});
 
 /*
  * The button for an action that takes long enough to say so. Its two labels are different widths, and
@@ -60,7 +70,7 @@ function PendingButton({
       {...props}
     >
       <AnimatePresence initial={false} mode="popLayout">
-        <motion.span
+        <PendingLabel
           key={pending ? 'pending' : 'idle'}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -76,7 +86,7 @@ function PendingButton({
           ) : (
             children
           )}
-        </motion.span>
+        </PendingLabel>
       </AnimatePresence>
     </MotionButton>
   );

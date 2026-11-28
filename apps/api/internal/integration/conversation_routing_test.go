@@ -180,6 +180,8 @@ func TestConversationRouting_InboundRepliesJoinTheLiveQuote(t *testing.T) {
 		seed   func(t *testing.T) sentQuote
 		sender string
 		joins  bool
+		// recorded joins an accepted quote's conversation without opening a window.
+		recorded bool
 	}{
 		{name: "sent quote", sender: conversationSender, joins: true,
 			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusSent) }},
@@ -203,7 +205,7 @@ func TestConversationRouting_InboundRepliesJoinTheLiveQuote(t *testing.T) {
 				quote.archived = true
 				return quote
 			}},
-		{name: "accepted quote", sender: conversationSender,
+		{name: "accepted quote", sender: conversationSender, joins: true, recorded: true,
 			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusAccepted) }},
 		{name: "a sender no quote can have reached", sender: "54911-abc",
 			seed: func(*testing.T) sentQuote { return live("+5491155550101", domain.QuoteStatusSent) }},
@@ -239,9 +241,14 @@ func TestConversationRouting_InboundRepliesJoinTheLiveQuote(t *testing.T) {
 			}
 			messages, reserved := e.conversationOf(t, quoteID)
 			if test.joins {
-				if messages != 1 || reserved != 1 || rfqs.count() != 0 || len(e.openWindowsOf(t, quoteID)) != 1 {
-					t.Errorf("messages/reserved/rfqs = %d/%d/%d, want the reply in the quote's open window",
-						messages, reserved, rfqs.count())
+				windows := 1
+				if test.recorded {
+					windows = 0
+				}
+				if messages != 1 || reserved != 1 || rfqs.count() != 0 ||
+					len(e.openWindowsOf(t, quoteID)) != windows {
+					t.Errorf("messages/reserved/rfqs = %d/%d/%d, want the reply on the quote with %d open windows",
+						messages, reserved, rfqs.count(), windows)
 				}
 				return
 			}

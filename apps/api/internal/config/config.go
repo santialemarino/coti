@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+
+	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
 // minJWTSecretLength is the floor for AUTH_JWT_SECRET. HMAC-SHA256 keys shorter
@@ -81,6 +83,7 @@ type Config struct {
 	Signup          SignupConfig
 	CustomerAuth    CustomerAuthConfig
 	CustomerPortal  CustomerPortalConfig
+	ClientTagRules  [2]domain.ClientTagRule
 	Mail            MailConfig
 	AI              AIConfig
 	Web             WebConfig
@@ -358,8 +361,7 @@ func (m MailConfig) Delivers() bool {
 }
 
 // AIConfig holds the provider selection, credentials and limits for the three external AI
-// capabilities. Each is selected on its own because no single provider covers all three, and
-// because an environment may want the language model without the transcriber.
+// capabilities, each enabled independently for the environment.
 type AIConfig struct {
 	AnthropicAPIKey string
 	// AnthropicBaseURL is empty in normal use: the SDK carries the provider's own address, and
@@ -415,6 +417,16 @@ type AnthropicConfig struct {
 	Retry     AIRetryPolicy
 }
 
+// OpenAIGenerationConfig contains only the settings needed by OpenAI generation.
+type OpenAIGenerationConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	MaxTokens int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
 // EmbeddingsConfig is the slice of the AI settings the embedding adapter reads.
 type EmbeddingsConfig struct {
 	APIKey    string
@@ -448,6 +460,12 @@ func (a AIConfig) Anthropic() AnthropicConfig {
 	}
 }
 
+// OpenAIGeneration returns the explicit OpenAI credentials and language-model limits.
+func (a AIConfig) OpenAIGeneration() OpenAIGenerationConfig {
+	return OpenAIGenerationConfig{APIKey: a.OpenAIAPIKey, BaseURL: a.OpenAIBaseURL,
+		Model: a.LLMModel, MaxTokens: a.LLMMaxTokens, Timeout: a.LLMTimeout, Retry: a.Retry}
+}
+
 // Embeddings returns what the embedding adapter needs and nothing else.
 func (a AIConfig) Embeddings() EmbeddingsConfig {
 	return EmbeddingsConfig{
@@ -479,9 +497,10 @@ func (a AIConfig) problems() []string {
 
 	switch a.LLMProvider {
 	case AIProviderDisabled:
-	case AIProviderAnthropic:
-		needsAnthropic = true
-		if !slices.Contains(aiEfforts, a.LLMEffort) {
+	case AIProviderAnthropic, AIProviderOpenAI:
+		needsAnthropic = a.LLMProvider == AIProviderAnthropic
+		needsOpenAI = a.LLMProvider == AIProviderOpenAI
+		if a.LLMProvider == AIProviderAnthropic && !slices.Contains(aiEfforts, a.LLMEffort) {
 			problems = append(problems, fmt.Sprintf("AI_LLM_EFFORT must be one of %s, got %q",
 				strings.Join(aiEfforts, ", "), a.LLMEffort))
 		}
@@ -492,8 +511,8 @@ func (a AIConfig) problems() []string {
 			problems = append(problems, "AI_LLM_TIMEOUT_SECONDS must be greater than zero")
 		}
 	default:
-		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q or %q, got %q",
-			AIProviderDisabled, AIProviderAnthropic, a.LLMProvider))
+		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q, %q or %q, got %q",
+			AIProviderDisabled, AIProviderAnthropic, AIProviderOpenAI, a.LLMProvider))
 	}
 
 	switch a.EmbeddingsProvider {
@@ -529,7 +548,7 @@ func (a AIConfig) problems() []string {
 			string(AIProviderAnthropic))
 	}
 	if needsOpenAI && a.OpenAIAPIKey == "" {
-		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_EMBEDDINGS_PROVIDER "+
+		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_LLM_PROVIDER, AI_EMBEDDINGS_PROVIDER "+
 			"or AI_TRANSCRIPTION_PROVIDER is "+string(AIProviderOpenAI))
 	}
 	if needsOpenAI {
@@ -666,6 +685,13 @@ type ConversationConfig struct {
 	ProcessingTimeout time.Duration
 	// SweepBatchSize bounds each close and reclaim statement, and the claims one pass makes.
 	SweepBatchSize int
+	// AutoAcceptMinConfidencePercent is how sure the model must be for an acceptance to go
+	// through without the seller; below it, down to AcceptReviewMinConfidencePercent, the quote is
+	// accepted pending confirmation, and lower still it stays SENT with a signal.
+	AutoAcceptMinConfidencePercent   int
+	AcceptReviewMinConfidencePercent int
+	// AutoAcceptMaxWords caps how long a reply accepted without the seller may be.
+	AutoAcceptMaxWords int
 }
 
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
@@ -877,6 +903,7 @@ func Load() (*Config, error) {
 		},
 		CustomerAuth:   loadCustomerAuth(&problems),
 		CustomerPortal: loadCustomerPortal(env, &problems),
+		ClientTagRules: loadClientTagRules(&problems),
 		Auth: AuthConfig{
 			JWTSecret:            os.Getenv("AUTH_JWT_SECRET"),
 			AccessTTL:            getDuration("AUTH_ACCESS_TTL_MINUTES", 15*time.Minute, &problems),
@@ -1037,6 +1064,11 @@ func Load() (*Config, error) {
 			ProcessingTimeout: getDuration("CONVERSATION_PROCESSING_TIMEOUT_SECONDS", 600*time.Second,
 				&problems),
 			SweepBatchSize: getInt("CONVERSATION_SWEEP_BATCH_SIZE", 100, &problems),
+			AutoAcceptMinConfidencePercent: getInt("CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT",
+				85, &problems),
+			AcceptReviewMinConfidencePercent: getInt("CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT",
+				60, &problems),
+			AutoAcceptMaxWords: getInt("CONVERSATION_AUTO_ACCEPT_MAX_WORDS", 8, &problems),
 		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
@@ -1348,6 +1380,18 @@ func Load() (*Config, error) {
 	}
 	if cfg.Conversation.SweepBatchSize < 1 {
 		problems = append(problems, "CONVERSATION_SWEEP_BATCH_SIZE must be greater than zero")
+	}
+	if auto := cfg.Conversation.AutoAcceptMinConfidencePercent; auto < 0 || auto > 100 {
+		problems = append(problems,
+			"CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT must be between 0 and 100")
+	}
+	if review := cfg.Conversation.AcceptReviewMinConfidencePercent; review < 0 ||
+		review > cfg.Conversation.AutoAcceptMinConfidencePercent {
+		problems = append(problems, "CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT must be "+
+			"between 0 and CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT")
+	}
+	if cfg.Conversation.AutoAcceptMaxWords < 1 {
+		problems = append(problems, "CONVERSATION_AUTO_ACCEPT_MAX_WORDS must be greater than zero")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")

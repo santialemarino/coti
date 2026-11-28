@@ -116,6 +116,37 @@ func (r *QuoteSendRepository) CompleteBatch(ctx context.Context, q Querier, acco
 	return nil
 }
 
+// ApplyProviderStatuses moves the channel's sends the provider reported on forward only:
+// SENT → DELIVERED → VIEWED, and SENT → FAILED. References it never sent are ignored.
+// It returns the sends that changed.
+func (r *QuoteSendRepository) ApplyProviderStatuses(ctx context.Context, q Querier, accountID,
+	channelID uuid.UUID, statuses []domain.ProviderDeliveryStatus,
+) ([]domain.QuoteSend, error) {
+	payload, err := json.Marshal(statuses)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.Query(ctx, `WITH incoming AS (
+		  SELECT * FROM jsonb_to_recordset($3::jsonb) AS x("ProviderReference" text, "Status" text)
+		), updated AS (
+		  UPDATE quote_send send SET tracking_status = incoming."Status"::send_tracking_status
+		  FROM incoming
+		  WHERE send.account_id = $1 AND send.channel_id = $2
+		    AND send.provider_reference = incoming."ProviderReference"
+		    AND ((incoming."Status" = 'DELIVERED' AND send.tracking_status = 'SENT')
+		      OR (incoming."Status" = 'VIEWED' AND send.tracking_status IN ('SENT', 'DELIVERED'))
+		      OR (incoming."Status" = 'FAILED' AND send.tracking_status = 'SENT'))
+		  RETURNING send.*
+		)
+		SELECT `+quoteSendColumns+` FROM updated send
+		JOIN channel ON channel.account_id = send.account_id AND channel.id = send.channel_id
+		ORDER BY send.id`, accountID, channelID, payload)
+	if err != nil {
+		return nil, err
+	}
+	return scanQuoteSends(rows)
+}
+
 // ListByQuote loads every delivery attempt for a branch-scoped quote.
 func (r *QuoteSendRepository) ListByQuote(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,
@@ -164,13 +195,13 @@ func (r *QuoteSendRepository) ListClientLastQuoteSends(
 	return scanQuoteSends(rows)
 }
 
-// ListLiveConversations returns, newest send first, the branch's SENT or CHANGE_REQUESTED quotes
+// ListLiveConversations returns, newest send first, the branch's SENT, CHANGE_REQUESTED or ACCEPTED quotes
 // that are not archived and whose latest successful send on channelID to one of destinations has
 // not expired at now.
 func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Querier, accountID,
 	branchID, channelID uuid.UUID, destinations []string, now time.Time,
 ) ([]domain.ConversationCandidate, error) {
-	rows, err := q.Query(ctx, `SELECT latest.quote_id, latest.send_id, latest.sent_at
+	rows, err := q.Query(ctx, `SELECT latest.quote_id, quote.number, latest.send_id, latest.sent_at
 		FROM (
 		  SELECT DISTINCT ON (version.quote_id) version.quote_id, send.id AS send_id,
 		    send.sent_at, send.expires_at
@@ -183,7 +214,7 @@ func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Queri
 		) latest
 		JOIN quote ON quote.account_id = $1 AND quote.id = latest.quote_id
 		WHERE quote.branch_id = $2 AND quote.archived_at IS NULL
-		  AND quote.current_status IN ('SENT', 'CHANGE_REQUESTED')
+		  AND quote.current_status IN ('SENT', 'CHANGE_REQUESTED', 'ACCEPTED')
 		  AND latest.expires_at > $5
 		ORDER BY latest.sent_at DESC, latest.send_id DESC`,
 		accountID, branchID, channelID, destinations, now)
@@ -194,7 +225,8 @@ func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Queri
 	candidates := make([]domain.ConversationCandidate, 0)
 	for rows.Next() {
 		var candidate domain.ConversationCandidate
-		if err := rows.Scan(&candidate.QuoteID, &candidate.QuoteSendID, &candidate.SentAt); err != nil {
+		if err := rows.Scan(&candidate.QuoteID, &candidate.QuoteNumber, &candidate.QuoteSendID,
+			&candidate.SentAt); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, candidate)

@@ -19,6 +19,7 @@ interface AccountRaw {
   invoicing_enabled: boolean;
   has_invoices: boolean;
   invoice_on_payment: boolean;
+  whatsapp_auto_accept: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -40,6 +41,8 @@ export interface Account {
   hasInvoices: boolean;
   // Whether «Marcar cobrado» starts with «Facturar también» ticked.
   invoiceOnPayment: boolean;
+  // Whether an acceptance the backend's rules confirm in a WhatsApp reply needs no seller.
+  whatsappAutoAccept: boolean;
 }
 
 // --- Mappers ---
@@ -57,6 +60,7 @@ function mapAccount(raw: AccountRaw): Account {
     invoicingEnabled: raw.invoicing_enabled,
     hasInvoices: raw.has_invoices,
     invoiceOnPayment: raw.invoice_on_payment,
+    whatsappAutoAccept: raw.whatsapp_auto_accept,
   };
 }
 

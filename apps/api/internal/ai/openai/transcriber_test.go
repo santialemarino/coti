@@ -61,6 +61,8 @@ func TestTranscriber_UploadsTheRecordingAsMultipart(t *testing.T) {
 	srv, provider := serve(t, reply{http.StatusOK, `{"text":"necesito 300 bolsas"}`})
 
 	audio := voiceNote()
+	audio.Language = "es"
+	audio.Vocabulary = "Cemento Loma Negra 50 kg, Hierro aletado 8 mm"
 	if _, err := newTranscriber(srv, 3).Transcribe(context.Background(), audio); err != nil {
 		t.Fatalf("Transcribe() = %v, want nil", err)
 	}
@@ -110,6 +112,12 @@ func TestTranscriber_UploadsTheRecordingAsMultipart(t *testing.T) {
 	}
 	if fields["response_format"] != "json" {
 		t.Fatalf("response_format = %q, want json", fields["response_format"])
+	}
+	// Spanish and the account's own words: without them Whisper guesses the language from a short
+	// note and spells brands by ear.
+	if fields["language"] != "es" || fields["prompt"] != audio.Vocabulary {
+		t.Fatalf("language = %q, prompt = %q, want the recording's language and vocabulary",
+			fields["language"], fields["prompt"])
 	}
 }
 

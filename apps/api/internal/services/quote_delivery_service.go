@@ -170,6 +170,7 @@ type QuoteDeliveryService struct {
 	customerHostnames   customerQuoteHostnameReader
 	customerLocalOrigin string
 	channelOpener       channelConfigOpener
+	portalContacts      quotePortalContactReader
 	now                 func() time.Time
 	log                 *slog.Logger
 }
@@ -272,14 +273,8 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		return replayResult(*quote, *version, prepared)
 	}
 
-	if normalized.FollowupMessage != nil {
-		copyBundle := *bundle
-		copyBundle.Representation.Message = *normalized.FollowupMessage
-		bundle = &copyBundle
-	}
-	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle)
-	completedAt := s.now().UTC()
-	expiresAt := completedAt.AddDate(0, 0, prepared[0].ValidityDays)
+	// Set before dispatch so the validity a message states is the expiry the quote stores.
+	expiresAt := s.now().UTC().AddDate(0, 0, prepared[0].ValidityDays)
 	for _, delivery := range prepared {
 		if delivery.ExpiresAt != nil && hasSuccessfulSend([]domain.QuoteSend{delivery}) {
 			expiresAt = *delivery.ExpiresAt
@@ -289,6 +284,12 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 	if quote.ExpiresAt != nil && quote.CurrentStatus == domain.QuoteStatusSent {
 		expiresAt = *quote.ExpiresAt
 	}
+	messages, err := s.sendMessages(ctx, tenant, prepared, bundle, normalized.FollowupMessage, base, expiresAt)
+	if err != nil {
+		return nil, err
+	}
+	outcomes := s.dispatch(ctx, tenant, *quote, prepared, bundle, messages)
+	completedAt := s.now().UTC()
 	anySuccess := hasSuccessfulSend(prepared)
 	for i := range outcomes {
 		outcomes[i].ExpiresAt = &expiresAt
@@ -340,7 +341,7 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		} else if current.CurrentStatus != domain.QuoteStatusSent {
 			return domain.WithCode(domain.CodeQuoteNotSendable, domain.ErrConflict)
 		}
-		return s.recordSellerSends(commitCtx, q, tenant, quote.ID, prepared, outcomes, bundle,
+		return s.recordSellerSends(commitCtx, q, tenant, quote.ID, prepared, outcomes, messages,
 			completedAt)
 	})
 	if err != nil {
@@ -365,14 +366,10 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 // twice.
 func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q repository.Querier,
 	tenant domain.Tenant, quoteID uuid.UUID, sends []domain.QuoteSend,
-	outcomes []domain.QuoteSendOutcome, bundle *domain.QuoteRepresentationResult, at time.Time,
+	outcomes []domain.QuoteSendOutcome, messages map[uuid.UUID]quoteSendMessage, at time.Time,
 ) error {
 	if s.messages == nil {
 		return nil
-	}
-	body := sellerSendBody
-	if bundle != nil {
-		body = bundle.Representation.Message
 	}
 	channels := make(map[uuid.UUID]uuid.UUID, len(sends))
 	for _, send := range sends {
@@ -387,6 +384,10 @@ func (s *QuoteDeliveryService) recordSellerSends(ctx context.Context, q reposito
 		channelID, external := channels[outcome.ID]
 		if !external {
 			continue
+		}
+		body := sellerSendBody
+		if message, found := messages[outcome.ID]; found {
+			body = message.Body
 		}
 		if _, err := s.messages.Create(ctx, q, tenant.AccountID, tenant.BranchID,
 			domain.NewQuoteMessage{ID: uuid.New(), QuoteID: quoteID, ChannelID: &channelID,
@@ -618,6 +619,23 @@ func (s *QuoteDeliveryService) cycleStart(ctx context.Context, q repository.Quer
 	return start, nil
 }
 
+// ensureCurrentSendCycle prevents an unanswered historical link from closing a reactivated quote.
+func (s *QuoteDeliveryService) ensureCurrentSendCycle(ctx context.Context, q repository.Querier,
+	accountID uuid.UUID, quote domain.Quote, send domain.QuoteSend) error {
+	start, err := s.cycleStart(ctx, q, domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}, quote.ID)
+	if err != nil {
+		return err
+	}
+	published := send.CreatedAt
+	if send.SentAt != nil {
+		published = *send.SentAt
+	}
+	if published.Before(start) {
+		return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+	}
+	return nil
+}
+
 // deliveryPreset applies the preset rules: a resend and a reminder reuse what this cycle reached;
 // a first send reuses the version's own earlier cycle, else the last sent version, but only while
 // the dialog keeps the quote's client; «otro medio» starts from nothing.
@@ -790,7 +808,7 @@ func (s *QuoteDeliveryService) loadConcurrentReplay(ctx context.Context, tenant 
 
 func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenant,
 	quote domain.Quote, sends []domain.QuoteSend,
-	bundle *domain.QuoteRepresentationResult,
+	bundle *domain.QuoteRepresentationResult, messages map[uuid.UUID]quoteSendMessage,
 ) []domain.QuoteSendOutcome {
 	credentials, credentialsErr := s.whatsAppCredentials(ctx, tenant, sends)
 	if credentialsErr != nil {
@@ -808,13 +826,11 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 		go func(index int) {
 			defer wg.Done()
 			send := sends[index]
-			publicURL := send.PublicURL
-			messageBody := strings.ReplaceAll(sellerSendBody, domain.QuotePublicURLPlaceholder,
-				publicURL)
-			if bundle != nil {
-				messageBody = strings.ReplaceAll(bundle.Representation.Message,
-					domain.QuotePublicURLPlaceholder, publicURL)
+			message, found := messages[send.ID]
+			if !found {
+				message = quoteSendMessage{Body: sellerSendBody, Link: send.PublicURL}
 			}
+			messageBody := strings.ReplaceAll(message.Body, domain.QuotePublicURLPlaceholder, message.Link)
 			outcome := domain.QuoteSendOutcome{ID: send.ID,
 				Status: domain.SendTrackingStatusFailed}
 			var err error
@@ -826,7 +842,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				message := domain.QuoteWhatsAppMessage{
 					DeliveryID: send.ID, To: send.Destination,
 					Body:      messageBody,
-					PublicURL: publicURL,
+					PublicURL: message.Link,
 				}
 				if credentialsErr != nil {
 					err = credentialsErr
@@ -841,8 +857,13 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				}
 			case domain.ChannelTypeEmail:
 				clientID := quote.ClientID
-				subject := "Tu cotización está lista"
-				paragraphs := []string{"Revisá el detalle y la vigencia en la web."}
+				content := quoteEmailContent{Subject: "Tu cotización está lista",
+					Heading:     "Tu cotización está lista",
+					Paragraphs:  []string{"Revisá el detalle y la vigencia en la web."},
+					ActionLabel: "Ver cotización"}
+				if message.Email != nil {
+					content = *message.Email
+				}
 				// The client's answer goes to the branch mailbox, not to the platform's sender.
 				replyTo, replyToName, fromName := "", "", ""
 				if send.ChannelIdentifier != nil {
@@ -853,23 +874,20 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					// The customer reads the corralón as the sender, never the platform.
 					fromName = payload.Supplier.Name
 					replyToName = payload.Supplier.Name + " — " + payload.Branch.Name
-					subject = "Cotización " + payload.Reference + " de " + payload.Supplier.Name
-					paragraphs = []string{"Total: " + formatCommercialMoney(payload.Currency, payload.Total),
-						payload.ValidityNote}
 				}
-				heading := "Tu cotización está lista"
-				if send.Purpose == "FOLLOWUP" && send.Message != nil {
-					subject = "Seguimiento de cotización"
-					heading = subject
-					paragraphs = []string{*send.Message}
+				if send.Purpose == domain.QuoteDeliveryPurposeFollowup && send.Message != nil {
+					content = quoteEmailContent{Subject: "Seguimiento de cotización",
+						Heading: "Seguimiento de cotización", Paragraphs: []string{*send.Message},
+						ActionLabel: "Ver cotización"}
 				}
 				err = s.email.Send(ctx, OutboundMail{AccountID: tenant.AccountID,
 					UserID: &tenant.UserID, ClientID: clientID, QuoteID: &quote.ID,
 					Event: domain.NotificationEventQuoteSent, To: send.Destination,
 					FromName: fromName, ReplyTo: replyTo, ReplyToName: replyToName,
-					Subject: subject, Heading: heading,
-					Paragraphs:  paragraphs,
-					ActionLabel: "Ver cotización", ActionURL: publicURL})
+					Subject: content.Subject, Heading: content.Heading,
+					Paragraphs: content.Paragraphs, Items: content.Items, Closing: content.Closing,
+					ActionLabel: content.ActionLabel, ActionURL: message.Link,
+					Attachments: message.Attachments})
 			default:
 				err = fmt.Errorf("unsupported delivery channel %s", send.ChannelType)
 			}
@@ -961,6 +979,7 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	}
 	var send *domain.QuoteSend
 	var quote *domain.Quote
+	var cycleErr error
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
 		func(q repository.Querier) error {
 			var getErr error
@@ -971,7 +990,16 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 				return nil
 			}
 			quote, getErr = s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
-			return getErr
+			if getErr != nil {
+				return getErr
+			}
+			if quote.CurrentVersionID != nil && *quote.CurrentVersionID == send.VersionID {
+				cycleErr = s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send)
+			}
+			if errors.Is(cycleErr, domain.ErrConflict) {
+				return nil
+			}
+			return cycleErr
 		})
 	if err != nil {
 		return nil, err
@@ -983,9 +1011,8 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 		return &domain.PublicQuoteRepresentation{Status: "EXPIRED", ExpiresAt: *send.ExpiresAt}, nil
 	}
 	customerStatus := s.customerStatus(ctx, accountID, send.ID)
-	// An archived quote takes no answer, so it is no longer offered; one already answered still
-	// shows the customer what they said.
-	if quote.ArchivedAt != nil && customerStatus == nil {
+	// Answered deliveries retain their history even when the quote or send cycle is closed.
+	if (quote.ArchivedAt != nil || cycleErr != nil) && customerStatus == nil {
 		return &domain.PublicQuoteRepresentation{Status: domain.PublicQuoteStatusUnavailable,
 			ExpiresAt: *send.ExpiresAt}, nil
 	}
@@ -996,13 +1023,63 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.representations.ResolvePublic(ctx, accountID, send.VersionID, *send.ExpiresAt,
+	versionID, accepted := s.acceptedVersion(ctx, accountID, *quote, *send, customerStatus)
+	result, err := s.representations.ResolvePublic(ctx, accountID, versionID, *send.ExpiresAt,
 		customerQuoteURL(base, send.PublicToken))
 	if err != nil {
 		return nil, err
 	}
 	result.CustomerStatus = customerStatus
+	result.AcceptedVersion = accepted
+	result.InReview = quote.AcceptanceUnconfirmedAt != nil
 	return result, nil
+}
+
+// acceptedRepresentationEnsurer renders a version the customer's own choices froze.
+type acceptedRepresentationEnsurer interface {
+	EnsureAccepted(ctx context.Context, tenant domain.Tenant, quoteID,
+		versionID uuid.UUID) (*domain.QuoteRepresentationResult, error)
+}
+
+// acceptedVersion picks what the customer sees once they accepted through this send: the version
+// their alternatives produced, when one did. Anything that cannot render it keeps the sent version.
+func (s *QuoteDeliveryService) acceptedVersion(ctx context.Context, accountID uuid.UUID,
+	quote domain.Quote, send domain.QuoteSend, customerStatus *domain.ClientActionType,
+) (uuid.UUID, bool) {
+	if customerStatus == nil || *customerStatus != domain.ClientActionAccept ||
+		quote.CurrentStatus != domain.QuoteStatusAccepted || quote.CurrentVersionID == nil ||
+		*quote.CurrentVersionID == send.VersionID {
+		return send.VersionID, false
+	}
+	ensurer, ok := s.representations.(acceptedRepresentationEnsurer)
+	if !ok {
+		return send.VersionID, false
+	}
+	// The answer and the version its alternatives froze are written in one transaction, so they
+	// share now(): a version made any other way (a reactivation, a later send) never matches.
+	var producedByThisAnswer bool
+	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q repository.Querier) error {
+		action, err := s.actions.GetBySend(ctx, q, accountID, send.ID)
+		if err != nil {
+			return err
+		}
+		current, err := s.quotes.GetCurrentVersion(ctx, q, accountID, quote.BranchID, quote.ID)
+		if err != nil {
+			return err
+		}
+		producedByThisAnswer = current.ID == *quote.CurrentVersionID && current.CreatedAt.Equal(action.CreatedAt)
+		return nil
+	})
+	if err != nil || !producedByThisAnswer {
+		return send.VersionID, false
+	}
+	tenant := domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}
+	if _, err := ensurer.EnsureAccepted(ctx, tenant, quote.ID, *quote.CurrentVersionID); err != nil {
+		s.log.WarnContext(ctx, "accepted version unavailable; showing the sent one",
+			slog.String("quote_id", quote.ID.String()), slog.Any("error", err))
+		return send.VersionID, false
+	}
+	return *quote.CurrentVersionID, true
 }
 
 // PreviewPublic calculates the frozen commercial outcome of customer alternative choices.
@@ -1039,6 +1116,9 @@ func (s *QuoteDeliveryService) PreviewPublic(ctx context.Context, token string,
 			}
 			if quote.ArchivedAt != nil {
 				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if err := s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send); err != nil {
+				return err
 			}
 			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
 				quote.CurrentStatus != domain.QuoteStatusSent {
@@ -1254,6 +1334,9 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			}
 			if quote.ArchivedAt != nil {
 				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if err := s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send); err != nil {
+				return err
 			}
 			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
 				quote.CurrentStatus != domain.QuoteStatusSent {

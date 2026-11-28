@@ -440,6 +440,9 @@
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
     "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "QUOTE_ACCEPTANCE_UNCONFIRMED": "Confirmá la aceptación del cliente antes de cerrar la venta.",
+    "QUOTE_ACCEPTANCE_NOT_UNDOABLE": "Ya no se puede deshacer: la venta tiene cobro o factura, o el envío venció. Actualizá la pantalla.",
+    "QUOTE_NOT_CHANGE_REQUESTED": "La cotización ya no tiene un cambio solicitado. Actualizá la pantalla.",
     "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
     "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
     "CLIENT_REGISTERED": "El cliente administra esta ficha desde su cuenta. Para sumarle otra, el cliente verifica ese contacto desde su portal y vos confirmás la unión en Coincidencias.",
@@ -590,6 +593,10 @@
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
     "socialImageAlt": "Coti: respondé primero, vendé más. El que contesta primero, vende.",
+    "clientTagSettings": {
+      "title": "Etiquetas de clientes",
+      "description": "Configurá las reglas de las etiquetas automáticas."
+    },
     "invoicingSettings": {
       "title": "Facturación",
       "description": "Los datos con los que el corralón emite facturas electrónicas."
@@ -1424,6 +1431,8 @@
         "collapse": "Mostrar menos",
         "stackHint": "Mostrar los {count} pedidos de este estado",
         "stacks": {
+          "ACCEPTANCE_TO_CONFIRM": "Aceptada por WhatsApp · confirmar",
+          "CUSTOMER_WROTE": "El cliente escribió",
           "TO_CLOSE": "Por cerrar",
           "COMPLETED": "Completados",
           "ARCHIVED": "Archivados"
@@ -1465,6 +1474,12 @@
         "loading": "Trayendo los pedidos archivados…",
         "failed": "No pudimos traer los pedidos archivados.",
         "retry": "Reintentar"
+      },
+      "reply": {
+        "ACCEPTS": "Parece aceptar",
+        "REJECTS": "Parece rechazar",
+        "QUESTION": "Consultó",
+        "WROTE": "Escribió"
       }
     },
     "create": {
@@ -1581,6 +1596,7 @@
           "quote": "Cotización"
         },
         "destination": "Destinatario",
+        "portalPublication": "Publicada en el portal",
         "followupChannel": "Seguimiento por {channel}"
       },
       "confidence": {
@@ -1604,7 +1620,10 @@
         "rejected": {
           "title": "Cotización rechazada",
           "description": "La cotización quedó rechazada.",
-          "withReason": "La cotización quedó rechazada: {reason}"
+          "withReason": "La cotización quedó rechazada: {reason}",
+          "noReason": "Sin motivo informado",
+          "history": "Rechazo de la versión {version} · {date}",
+          "historyReopened": "Rechazo de la versión {version} · {date} · reabierta el {reopened}"
         },
         "changeRequested": {
           "title": "Cambio solicitado",
@@ -1645,6 +1664,56 @@
           "configure": "Configurar mi plantilla",
           "confirmSend": "Enviar mensaje",
           "description": "Revisá el mensaje y elegí los destinatarios antes de enviarlo."
+        },
+        "replyAcceptance": {
+          "unconfirmedTitle": "Aceptada por WhatsApp · a confirmar",
+          "unconfirmed": "El cliente aceptó respondiendo el mensaje, pero falta una condición para darla por segura. Confirmala para cobrar y facturar, o deshacela si no era una aceptación.",
+          "confirmedTitle": "Aceptada por WhatsApp",
+          "confirmed": "El cliente aceptó respondiendo el mensaje. Podés deshacerla mientras la venta no esté cobrada ni facturada.",
+          "confirm": "Confirmar",
+          "confirming": "Confirmando…",
+          "confirmSuccess": "Confirmamos la aceptación de la cotización {reference}. Ya podés cobrarla y facturarla.",
+          "undo": "Deshacer",
+          "undoTitle": "¿Deshacer la aceptación?",
+          "undoDescription": "La cotización {reference} vuelve a Enviada y el cliente puede responderla de nuevo desde el enlace.",
+          "undoConfirm": "Deshacer aceptación",
+          "undoing": "Deshaciendo…",
+          "undoSuccess": "La cotización {reference} volvió a Enviada."
+        },
+        "customerReply": {
+          "ACCEPTS": {
+            "title": "Parece aceptar",
+            "description": "El cliente respondió como si aceptara, pero no alcanza para darla por aceptada sola. Si aceptó, marcala vos."
+          },
+          "REJECTS": {
+            "title": "Parece rechazar",
+            "description": "El cliente respondió como si no fuera a comprar. Coti nunca rechaza sola: si es así, rechazala vos."
+          },
+          "QUESTION": {
+            "title": "El cliente consultó",
+            "description": "Hizo una consulta sin pedir cambios. Respondele y marcala como leída."
+          },
+          "WROTE": {
+            "title": "El cliente escribió",
+            "description": "Respondió sin pedir cambios. Leé el mensaje en la conversación y marcalo como leído."
+          },
+          "accept": "Marcar aceptada",
+          "accepting": "Marcando…",
+          "acceptSuccess": "La cotización {reference} quedó aceptada.",
+          "reject": "Rechazar",
+          "rejecting": "Rechazando…",
+          "rejectSuccess": "La cotización {reference} quedó rechazada. Podés reactivarla si hace falta.",
+          "read": "Marcar como leído",
+          "reading": "Marcando…",
+          "readSuccess": "Marcamos como leída la respuesta del cliente en la cotización {reference}."
+        },
+        "acceptSentVersion": {
+          "button": "Marcar aceptada (versión enviada)",
+          "title": "¿Marcar aceptada la versión enviada?",
+          "description": "La cotización queda aceptada con la versión {version}, la que recibió el cliente. Se descartan los cambios del borrador abierto.",
+          "confirm": "Marcar aceptada",
+          "pending": "Marcando…",
+          "success": "La cotización {reference} quedó aceptada con la versión que recibió el cliente."
         }
       },
       "items": {
@@ -1663,6 +1732,8 @@
         "generating": "Aprobando productos…",
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
+        "unitMismatch": "Pedido en {requested} · se vende por {sold}",
+        "taughtBySeller": "Elegido por una corrección de un vendedor",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "recommendationType": {
@@ -1819,9 +1890,18 @@
       "send": {
         "description": "Elegí cómo enviar la cotización al cliente. Cada mensaje incluye un enlace al detalle.",
         "modes": {
-          "FIRST": { "title": "Enviar cotización", "trigger": "Enviar cotización" },
-          "OTHER_MEDIUM": { "title": "Enviar por otro medio", "trigger": "Enviar por otro medio" },
-          "RESEND": { "title": "Reenviar cotización", "trigger": "Reenviar" }
+          "FIRST": {
+            "title": "Enviar cotización",
+            "trigger": "Enviar cotización"
+          },
+          "OTHER_MEDIUM": {
+            "title": "Enviar por otro medio",
+            "trigger": "Enviar por otro medio"
+          },
+          "RESEND": {
+            "title": "Reenviar cotización",
+            "trigger": "Reenviar"
+          }
         },
         "sendWhatsApp": "Enviar por WhatsApp",
         "phoneLabel": "WhatsApp del cliente",
@@ -1869,13 +1949,12 @@
         "clientChooseExisting": "Elegir uno existente",
         "clientNone": "La cotización no tiene un cliente asociado.",
         "clientChoose": "Seleccioná un cliente",
-        "clientName": "Nombre y apellido",
+        "clientName": "Nombre y apellido (opcional)",
         "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No pudimos cargar los clientes. Intentá de nuevo.",
         "clientRetry": "Reintentar carga de clientes",
-        "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
@@ -1906,7 +1985,12 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios.",
+            "NEW_ORDER": "El cliente pidió un pedido aparte: entró como pedido nuevo y esta cotización no cambió."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1939,6 +2023,8 @@
         "seller": "Cotización enviada",
         "quoteLink": "[enlace a la cotización]",
         "pending": "El cliente sigue escribiendo; la IA va a leer estos mensajes en unos minutos.",
+        "afterAcceptance": "Después de la aceptación",
+        "afterAcceptanceNote": "El cliente escribió después de aceptar. La IA no lee estos mensajes: respondele vos si hace falta.",
         "status": {
           "CLOSED": "En cola para la IA",
           "PROCESSING": "La IA lo está leyendo",
@@ -1952,7 +2038,12 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios.",
+            "NEW_ORDER": "El cliente pidió un pedido aparte: entró como pedido nuevo y esta cotización no cambió."
           }
         },
         "sellerDecision": {
@@ -2127,6 +2218,11 @@
       "numberPending": "Sin número"
     },
     "tags": {
+      "exclude": "Quitar",
+      "excludeLabel": "Quitar {name}",
+      "excluded": "{name} excluido",
+      "restore": "Volver a calcular",
+      "restoreLabel": "Volver a calcular {name}",
       "title": "Tags",
       "none": "Sin tags",
       "selected": "{total, plural, one {# seleccionado} other {# seleccionados}}",
@@ -2138,7 +2234,7 @@
       "saved": "Guardamos los tags del cliente.",
       "errors": {
         "INVALID_BODY": "Ingresá un nombre válido para el tag.",
-        "INVALID_INPUT": "El tag debe tener entre 1 y 128 caracteres.",
+        "INVALID_INPUT": "Usá un nombre de 1 a 128 caracteres distinto de Recurrente y Abandonador.",
         "NOT_FOUND": "El cliente o uno de los tags ya no existe. Actualizá la pantalla.",
         "INTERNAL": "No pudimos guardar los tags. Intentá de nuevo."
       }
@@ -2249,6 +2345,32 @@
         "DELIVERY_UNAVAILABLE": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
         "INTERNAL": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
       }
+    },
+    "notes": {
+      "label": "Notas",
+      "empty": "Sin notas",
+      "edit": "Editar notas",
+      "placeholder": "Notas opcionales...",
+      "hint": "Solo la ve el equipo del corralón.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "saved": "Guardamos las notas de «{name}».",
+      "invalidCharacters": "Quitá los caracteres de control. Podés usar saltos de línea.",
+      "errors": {
+        "INVALID_INPUT": "Revisá el texto de las notas.",
+        "NOT_FOUND": "La ficha del cliente ya no está disponible.",
+        "INTERNAL": "No pudimos guardar las notas. Intentá de nuevo."
+      }
+    },
+    "context": {
+      "title": "Cliente",
+      "viewProfile": "Ver ficha",
+      "lastPurchase": "Última compra",
+      "noPurchases": "Sin compras todavía",
+      "openQuotes": "Cotizaciones abiertas",
+      "averageTicket": "Ticket promedio",
+      "unavailable": "—"
     },
     "rename": {
       "label": "Nombre",
@@ -2381,7 +2503,7 @@
       "acceptedDetail": "Aceptaciones registradas en el período.",
       "conversion": "Tasa de conversión",
       "acceptedAmount": "Importe aceptado",
-      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "acceptedAmountDetail": "Sobre las versiones aceptadas, con descuentos aplicados y separado por moneda.",
       "responseTime": "Tiempo de respuesta",
       "timeToAcceptance": "Tiempo hasta la aceptación",
       "followUpPending": "Seguimientos pendientes",
@@ -2448,7 +2570,7 @@
     },
     "revenueProducts": {
       "title": "Productos con mayor ingreso",
-      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "description": "Hasta cinco productos por moneda. Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
       "empty": "Todavía no hay productos aceptados en el período."
     },
     "clients": {
@@ -2485,6 +2607,17 @@
         "manualOverride": "Resueltas a mano",
         "pending": "Sin decidir"
       }
+    },
+    "comparison": {
+      "period": "Comparación con {from}–{to} (igual cantidad de días)",
+      "previous": "Anterior: {value}",
+      "change": "Variación: {delta} · {percentage}",
+      "noData": "Sin datos",
+      "noBase": "Sin base de comparación",
+      "seconds": "{value} s",
+      "points": "{value} pp",
+      "percent": "{value}%",
+      "rate": "Puntos porcentuales"
     }
   },
   "catalog": {
@@ -2493,11 +2626,34 @@
     "stock": "Stock",
     "price": "Precio"
   },
+  "clientTagSettings": {
+    "title": "Etiquetas de clientes",
+    "rules": {
+      "RECURRING": {
+        "name": "Recurrente",
+        "description": "Clientes que alcanzan el mínimo de cotizaciones aceptadas."
+      },
+      "ABANDONER": {
+        "name": "Abandonador",
+        "description": "Clientes sin compras que alcanzan el mínimo de cotizaciones rechazadas o archivadas."
+      }
+    },
+    "enabled": "Activar regla",
+    "minimum": "Mínimo de cotizaciones",
+    "windowDays": "Últimos días",
+    "windowHint": "Ingresá 0 para contar todo el historial.",
+    "invalidMinimum": "Ingresá un número entero mayor que cero.",
+    "invalidWindow": "Ingresá un número entero mayor o igual a cero.",
+    "save": "Guardar regla",
+    "saving": "Guardando",
+    "saved": "Regla guardada"
+  },
   "settings": {
     "title": "Configuración",
     "indexHint": "Elegí una sección para ver o cambiar su configuración.",
     "backToSections": "Volver a la configuración",
     "nav": {
+      "clientTags": "Etiquetas de clientes",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",
@@ -2507,7 +2663,8 @@
       "combos": "Combos",
       "onboarding": "Configuración inicial · {done}/{total}",
       "invoicing": "Facturación",
-      "export": "Exportación de datos"
+      "export": "Exportación de datos",
+      "readiness": "Configuración operativa"
     },
     "backToInvoicing": "Volver a Facturación",
     "backToPromotions": "Volver a Promociones",
@@ -2663,7 +2820,9 @@
       "placeholder": "Ingresá el identificador de la cuenta",
       "required": "Ingresá el identificador de la cuenta de WhatsApp Business."
     },
-    "metaId": { "invalid": "Ingresá el identificador con dígitos únicamente." },
+    "metaId": {
+      "invalid": "Ingresá el identificador con dígitos únicamente."
+    },
     "accessToken": {
       "label": "Token de acceso de Meta",
       "placeholder": "Ingresá el token de acceso",
@@ -2757,6 +2916,11 @@
         "label": "Ajustar cantidades para alcanzar una promoción",
         "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
       }
+    },
+    "autoAccept": {
+      "title": "Respuestas por WhatsApp",
+      "label": "Aceptación automática por WhatsApp",
+      "hint": "Apagada, una aceptación que las reglas confirman espera tu confirmación."
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
@@ -3383,6 +3547,24 @@
       "title": "¿Cómo te encuentran tus clientes en internet?",
       "description": "Elegí la dirección del portal de clientes de tu corralón. Podés configurarla más tarde desde Cuenta.",
       "later": "Configurar más tarde"
+    },
+    "readiness": {
+      "title": "Preparación para operar",
+      "description": "Este diagnóstico se calcula con los datos actuales de la sucursal seleccionada o de todas las sucursales. No bloquea las operaciones manuales.",
+      "progress": "{done} de {total} requisitos completos",
+      "account": "Completá los datos de la empresa",
+      "noBranches": "Creá una sucursal activa",
+      "catalog": "Catálogo activo en la sucursal",
+      "prices": "Precios vigentes utilizables",
+      "staff": "Personal activo con acceso",
+      "channels": "Canales de entrada (opcionales)",
+      "complete": "Completo",
+      "pending": "Pendiente",
+      "optional": "Opcional",
+      "resolve": "Configurar",
+      "priceAlert": "{count, plural, one {# producto sin precio utilizable} other {# productos sin precio utilizable}}",
+      "managePrices": "Gestionar precios",
+      "priceScope": "Sucursal: {branch}. Se consideran productos activos disponibles y precios vigentes no negativos. Para corregirlos, seleccioná esta sucursal en el selector y abrí Precios."
     }
   },
   "priceImport": {

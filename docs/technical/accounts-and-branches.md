@@ -4,6 +4,22 @@ An account is one corralón and the tenant boundary every other table hangs off.
 operating location under it. Registration creates both, plus the first administrator, in one
 call.
 
+## Live operational setup
+
+Administrators can read `GET /v1/onboarding/readiness` and open `/settings/onboarding` after the
+wizard is complete. The diagnostic is recalculated from current data on every request, scoped
+to the selected branch or all authorized branches. It reports active branch catalog counts,
+missing current non-negative prices, staff access and optional intake channels, without secrets.
+Price validity uses the same predicate as quotation pricing; zero remains valid in the domain.
+Empty catalogs are incomplete rather than proof of valid prices. Inactive products and branch
+availability are excluded. A technical failure is an error, never a completed checklist.
+
+This diagnostic does not mutate the historical wizard state or block manual operations. Its
+settings entry remains available so removing configuration can be detected after setup. Price
+alerts name the branch and link to the existing price manager; select that branch before fixing
+prices. Branding, a second staff member and external integrations are not mandatory operating
+requirements.
+
 ## Registration
 
 `POST /v1/public/accounts` is the only write that runs with no tenant. There is no account
@@ -371,6 +387,12 @@ invoicing settings — omitted, it keeps its value — and read back there and, 
 [rfq-pipeline.md](rfq-pipeline.md#closing-a-sale-paid-and-no-requiere-factura).
 
 ## Identity
+
+Operational setup links open catalog and price settings with an explicit `branch_id` query.
+These pages validate it against the caller's active, authorized branches before rendering an
+import. The header shows this branch; selecting another branch clears the page override and
+returns to the session's selection. Import requests retain their own validated branch scope.
+The individual-price shortcut from price settings to the catalog carries the same branch.
 
 `GET /v1/me` returns the caller's id, name, email, role, account and branch reach. The frontend
 reads it instead of decoding the access token, so token structure stays a backend concern.

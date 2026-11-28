@@ -114,6 +114,11 @@ type Audio struct {
 	Filename  string
 	MediaType string
 	Data      []byte
+	// Language is the ISO-639-1 code the speaker uses, empty to let the provider guess.
+	Language string
+	// Vocabulary is words the recording is likely to name, such as the account's products, which
+	// steers the spelling of brands and trade terms.
+	Vocabulary string
 }
 
 // Validate reports a recording that cannot be sent at all.

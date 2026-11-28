@@ -85,6 +85,22 @@ type RfqListItemResponse struct {
 	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
 	// account does not invoice with Coti.
 	SaleComplete bool `json:"sale_complete"`
+	// AcceptanceUnconfirmed is an acceptance read from the customer's reply waiting for the seller.
+	AcceptanceUnconfirmed bool `json:"acceptance_unconfirmed"`
+	// CustomerReply is the latest unread reply on a SENT quote that changed nothing; null when none.
+	CustomerReply *CustomerReplyResponse `json:"customer_reply"`
+}
+
+// CustomerReplyResponse is a reply that left a SENT quote as it was, waiting for the seller.
+type CustomerReplyResponse struct {
+	Reason          string    `json:"reason" enums:"CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST"`
+	ReplyAcceptance *string   `json:"reply_acceptance" enums:"SIGNAL"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// ReadCustomerReplyRequest names the newest reply the seller saw: later ones stay unread.
+type ReadCustomerReplyRequest struct {
+	SeenUntil *time.Time `json:"seen_until" binding:"required"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
@@ -176,6 +192,8 @@ type RfqDetailResponse struct {
 	ChangesRequested     *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
 	ClientActions        []ClientActionResponse                    `json:"client_actions"`
 	Conversation         *ConversationResponse                     `json:"conversation,omitempty"`
+	// AcceptedByReply is a quote standing ACCEPTED on an acceptance read from the customer's reply.
+	AcceptedByReply bool `json:"accepted_by_reply"`
 }
 
 // ClientActionResponse is one customer response the quote's versions received. version_number
@@ -187,6 +205,8 @@ type ClientActionResponse struct {
 	Type          string    `json:"type"`
 	Comment       *string   `json:"comment"`
 	CreatedAt     time.Time `json:"created_at"`
+	// ReopenedAt is when the seller reactivated the quote after this answer; null while it stands.
+	ReopenedAt *time.Time `json:"reopened_at"`
 }
 
 // RFQStatusChangeResponse is one recorded transition on the RFQ status cache.
@@ -273,7 +293,7 @@ type ConversationMessageResponse struct {
 type ConversationDecisionResponse struct {
 	Interpretation string  `json:"interpretation"`
 	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST,NEW_ORDER"`
 	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	// StrategiesTried are the recipes run for a complex goal, in run order.
 	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
@@ -294,7 +314,7 @@ type HandlerDecisionResponse struct {
 	ClientInput    string  `json:"client_input"`
 	Interpretation string  `json:"interpretation"`
 	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST,NEW_ORDER"`
 	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	// StrategiesTried are the recipes run for a complex goal, in run order.
 	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`

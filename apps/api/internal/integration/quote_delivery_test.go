@@ -54,6 +54,9 @@ type stagedQuoteEmailSender struct {
 	to      []string
 	names   []string
 	senders []string
+	links   []string
+	closing [][]string
+	files   [][]domain.EmailAttachment
 	err     error
 }
 
@@ -71,6 +74,9 @@ func (s *stagedQuoteEmailSender) Send(_ context.Context, mail services.OutboundM
 	s.to = append(s.to, mail.To)
 	s.names = append(s.names, mail.ReplyToName)
 	s.senders = append(s.senders, mail.FromName)
+	s.links = append(s.links, mail.ActionURL)
+	s.closing = append(s.closing, mail.Closing)
+	s.files = append(s.files, mail.Attachments)
 	return s.err
 }
 
@@ -149,6 +155,31 @@ func (e *env) seedSendableQuote(t *testing.T, name string, corrected bool) senda
 	return sendableQuote{tenant: tenant, draft: draft}
 }
 
+// seedSendableQuoteIn adds a second sendable quote to the account and branch of seed.
+func (e *env) seedSendableQuoteIn(t *testing.T, seed sendableQuote, name string) sendableQuote {
+	t.Helper()
+	tenant := seed.tenant
+	productID := e.seedPricedProduct(t, tenant.AccountID, tenant.BranchID, name+" cement", "50", nil)
+	e.embedOn(t, productID, 1, 0.98)
+	unit := "bag"
+	draft, err := e.pipeline(t, stagedExtractor{lines: []domain.ExtractedRFQLine{{
+		RequestedDescription: "two cement bags", Quantity: decimal.NewFromInt(2), Unit: &unit,
+		Source: domain.QuantitySourceExplicit, QuantityRationale: "two bags were requested",
+	}}}, map[string]int{"two cement bags": 1}).CreateTextDraft(context.Background(), tenant,
+		domain.TextRFQDraftInput{ChannelID: seed.draft.RFQ.ChannelID, RawText: "two cement bags"})
+	if err != nil {
+		t.Fatalf("CreateTextDraft() = %v", err)
+	}
+	e.dropDraft(t, draft.RFQ.ID)
+	quoteService := services.NewQuoteService(e.db, repository.NewQuoteRepository(),
+		repository.NewProductPriceRepository(), domain.ARCAEnvironmentHomologation, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := quoteService.AcceptMaterials(context.Background(), tenant, draft.Quote.ID); err != nil {
+		t.Fatalf("AcceptMaterials() = %v", err)
+	}
+	e.seedKnownDeliveryClient(t, tenant, draft.Quote.ID, draft.RFQ.ID)
+	return sendableQuote{tenant: tenant, draft: draft}
+}
+
 func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSender,
 	email interface {
 		Send(context.Context, services.OutboundMail) error
@@ -171,7 +202,8 @@ func (e *env) quoteDeliveryService(t *testing.T, whatsapp domain.QuoteWhatsAppSe
 		repository.NewBranchRepository(), repository.NewProductPriceRepository(), whatsapp, email, evaluator,
 		"https://quotes.test", nil, slog.New(slog.NewTextHandler(io.Discard, nil))).
 		WithRepresentationService(representations).
-		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository()))
+		WithClientAssociations(services.NewClientService(e.db, repository.NewClientRepository(), repository.NewTagRepository(config.DefaultClientTagRules()), repository.NewQuoteRepository(), repository.NewRFQRepository(), repository.NewQuoteSendRepository())).
+		WithPortalContacts(repository.NewClientContactRepository())
 }
 
 func (e *env) realQualityEvaluator(embedder domain.Embedder) services.QuoteQualityEvaluator {
@@ -884,5 +916,47 @@ func TestQuoteClientAction_WebAndMessageLinksShareOneDecision(t *testing.T) {
 	replay, err := service.RespondPublic(context.Background(), second, domain.ClientActionInput{Type: domain.ClientActionReject})
 	if err != nil || replay.CustomerStatus != domain.ClientActionAccept {
 		t.Fatalf("cross-channel answer replay: %+v %v", replay, err)
+	}
+}
+
+func TestQuoteClientAction_RejectionFeedbackIsAtomicAndIdempotent(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Rejection feedback", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, _ := e.sentQuoteToken(t, service, seed)
+	oversized := strings.Repeat("x", 513)
+	if _, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{
+		Type: domain.ClientActionReject, Message: &oversized}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("oversized: %v", err)
+	}
+	message := "  Delivery takes too long.  "
+	first, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{
+		Type: domain.ClientActionReject, Message: &message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if err != nil || replay.CustomerStatus != domain.ClientActionReject || !replay.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("replay: %+v %v", replay, err)
+	}
+	err = e.db.InTenantTx(context.Background(), seed.tenant, func(q repository.Querier) error {
+		actions, err := repository.NewClientActionRepository().ListByQuote(context.Background(), q, seed.tenant.AccountID, seed.tenant.BranchID, seed.draft.Quote.ID)
+		if err != nil {
+			return err
+		}
+		if len(actions) != 1 || actions[0].Comment == nil || *actions[0].Comment != "Delivery takes too long." || actions[0].VersionID != seed.draft.Version.ID {
+			t.Fatalf("persisted feedback: %+v", actions)
+		}
+		other, err := repository.NewClientActionRepository().ListByQuote(context.Background(), q, uuid.New(), seed.tenant.BranchID, seed.draft.Quote.ID)
+		if err != nil {
+			return err
+		}
+		if len(other) != 0 {
+			t.Fatal("foreign feedback exposed")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

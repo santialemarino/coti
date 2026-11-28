@@ -278,7 +278,7 @@ func (r *RFQAttachmentRepository) fillBranches(
 		accountIDs = append(accountIDs, a.AccountID)
 	}
 	rows, err := q.Query(ctx,
-		`SELECT r.id, r.branch_id
+		`SELECT r.id, r.branch_id, r.channel_id
 		   FROM rfq r
 		   JOIN unnest($1::uuid[], $2::uuid[]) AS wanted(rfq_id, account_id)
 		     ON r.id = wanted.rfq_id AND r.account_id = wanted.account_id`,
@@ -288,26 +288,47 @@ func (r *RFQAttachmentRepository) fillBranches(
 	}
 	defer rows.Close()
 
-	branches := make(map[uuid.UUID]uuid.UUID, len(claimed))
+	type origin struct{ branchID, channelID uuid.UUID }
+	origins := make(map[uuid.UUID]origin, len(claimed))
 	for rows.Next() {
-		var rfqID, branchID uuid.UUID
-		if err := rows.Scan(&rfqID, &branchID); err != nil {
+		var rfqID uuid.UUID
+		var o origin
+		if err := rows.Scan(&rfqID, &o.branchID, &o.channelID); err != nil {
 			return nil, err
 		}
-		branches[rfqID] = branchID
+		origins[rfqID] = o
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	for i := range claimed {
-		branchID, ok := branches[claimed[i].RFQID]
+		o, ok := origins[claimed[i].RFQID]
 		if !ok {
 			return nil, fmt.Errorf("%w: attachment %s names an rfq its account does not own",
 				domain.ErrNotFound, claimed[i].ID)
 		}
-		claimed[i].BranchID = branchID
+		claimed[i].BranchID, claimed[i].ChannelID = o.branchID, o.channelID
 	}
 	return claimed, nil
+}
+
+// SetStoredFile records where a file a provider held now lives, and the kind its bytes turned out
+// to be: a document a client sent can be a photo.
+func (r *RFQAttachmentRepository) SetStoredFile(
+	ctx context.Context, q Querier, accountID, attachmentID uuid.UUID, storageKey string,
+	kind domain.AttachmentType,
+) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE rfq_attachment SET file_url = $3, type = $4
+		  WHERE account_id = $1 AND id = $2`,
+		accountID, attachmentID, storageKey, kind)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 func scanRFQAttachment(row pgx.Row) (*domain.RFQAttachment, error) {

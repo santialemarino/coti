@@ -166,6 +166,8 @@ interface RfqConversationProps {
   onChanged: () => Promise<void>;
   // Inside another card: the thread alone, with no card or header of its own.
   embedded?: boolean;
+  // The quote is accepted: messages outside a batch came after it and no AI will read them.
+  accepted?: boolean;
 }
 
 /*
@@ -179,12 +181,14 @@ export function RfqConversation({
   branchId,
   onChanged,
   embedded = false,
+  accepted = false,
 }: RfqConversationProps) {
   const t = useTranslations('rfqs.detail.conversation');
   const errorMessage = useApiErrorMessage('rfqs.detail.conversation.errors');
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const timeline = timelineOf(conversation);
+  const afterAcceptance = accepted && conversation.pending.length > 0;
 
   async function handleRetry(batchId: string) {
     setRetryingId(batchId);
@@ -222,8 +226,15 @@ export function RfqConversation({
       {conversation.pending.length > 0 ? (
         <li className="flex flex-col gap-y-3">
           {timeline.length > 0 ? <Separator /> : null}
+          {afterAcceptance ? (
+            <Badge tone="success" size="sm" className="self-start">
+              {t('afterAcceptance')}
+            </Badge>
+          ) : null}
           <MessageList messages={conversation.pending} />
-          <p className="text-paragraph-sm text-foreground-muted">{t('pending')}</p>
+          <p className="text-paragraph-sm text-foreground-muted">
+            {t(afterAcceptance ? 'afterAcceptanceNote' : 'pending')}
+          </p>
         </li>
       ) : null}
     </ol>
@@ -231,10 +242,13 @@ export function RfqConversation({
 
   if (embedded) return thread;
 
-  /* Collapsed by default: the history is reference, and the page's job is the quote below it. */
+  /*
+   * Collapsed by default: the history is reference, and the page's job is the quote below it. A
+   * message after the acceptance is news nothing else on the page reports, so it opens.
+   */
   return (
     <Card>
-      <Collapsible>
+      <Collapsible defaultOpen={afterAcceptance}>
         <CardHeader>
           <CollapsibleTrigger className="group/panel flex w-full items-center gap-x-2 rounded-md outline-none transition-colors duration-200 ease-out-soft hover:text-primary focus-visible:text-primary">
             <MessagesSquareIcon aria-hidden="true" className="size-4 text-foreground-muted" />

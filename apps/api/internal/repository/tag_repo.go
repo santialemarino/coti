@@ -11,20 +11,22 @@ import (
 
 const tagColumns = `id, account_id, name, color, created_at`
 
-var defaultClientTagNames = []string{"Recurrente", "Obra grande"}
-
 // TagRepository owns reusable client labels and their profile links.
-type TagRepository struct{}
+type TagRepository struct {
+	defaults [2]domain.ClientTagRule
+}
 
 // NewTagRepository builds a TagRepository.
-func NewTagRepository() *TagRepository { return &TagRepository{} }
+func NewTagRepository(defaults [2]domain.ClientTagRule) *TagRepository {
+	return &TagRepository{defaults: defaults}
+}
 
-// List returns every reusable tag in one account.
+// List returns every manually assignable tag in one account.
 func (r *TagRepository) List(
 	ctx context.Context, q Querier, accountID uuid.UUID,
 ) ([]domain.ClientTag, error) {
 	rows, err := q.Query(ctx, `SELECT `+tagColumns+` FROM tag
-		WHERE account_id = $1 ORDER BY lower(name), id`, accountID)
+		WHERE account_id = $1 AND rule_kind IS NULL ORDER BY lower(name), id`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +45,7 @@ func (r *TagRepository) ListByClientIDs(
 		tag.color, tag.created_at
 		FROM client_tag link
 		JOIN tag ON tag.account_id = link.account_id AND tag.id = link.tag_id
-		WHERE link.account_id = $1 AND link.client_id = ANY($2::uuid[])
+		WHERE link.account_id = $1 AND link.client_id = ANY($2::uuid[]) AND tag.rule_kind IS NULL
 		ORDER BY link.client_id, lower(tag.name), tag.id`, accountID, clientIDs)
 	if err != nil {
 		return nil, err
@@ -69,7 +71,7 @@ func (r *TagRepository) GetByIDs(
 		return []domain.ClientTag{}, nil
 	}
 	rows, err := q.Query(ctx, `SELECT `+tagColumns+` FROM tag
-		WHERE account_id = $1 AND id = ANY($2::uuid[])
+		WHERE account_id = $1 AND id = ANY($2::uuid[]) AND rule_kind IS NULL
 		ORDER BY lower(name), id`, accountID, tagIDs)
 	if err != nil {
 		return nil, err
@@ -91,9 +93,9 @@ func (r *TagRepository) Create(
 func (r *TagRepository) CreateDefaults(
 	ctx context.Context, q Querier, accountID uuid.UUID,
 ) error {
-	_, err := q.Exec(ctx, `INSERT INTO tag (account_id, name)
-		SELECT $1, name FROM unnest($2::text[]) AS defaults(name)
-		ON CONFLICT (account_id, lower(name)) DO NOTHING`, accountID, defaultClientTagNames)
+	_, err := q.Exec(ctx, `INSERT INTO tag (account_id, name, rule_kind, rule_enabled)
+		VALUES ($1, 'Recurrente', 'RECURRING', TRUE), ($1, 'Abandonador', 'ABANDONER', TRUE)
+		ON CONFLICT (account_id, rule_kind) DO NOTHING`, accountID)
 	return err
 }
 
