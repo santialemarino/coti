@@ -233,6 +233,11 @@ type WhatsAppConfig struct {
 	GraphAPIVersion   string
 	RequestTimeout    time.Duration
 	WebhookMaxBytes   int64
+	// QuoteTemplate and FollowupTemplate are approved utility templates sent outside the
+	// customer-service window; empty refuses those sends instead.
+	QuoteTemplate    string
+	FollowupTemplate string
+	TemplateLanguage string
 }
 
 // SignupEnabled reports whether the app-wide Embedded Signup configuration is present.
@@ -1101,6 +1106,9 @@ func Load() (*Config, error) {
 			GraphAPIVersion:   getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
 			RequestTimeout:    getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
 			WebhookMaxBytes:   int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
+			QuoteTemplate:     getString("WHATSAPP_QUOTE_TEMPLATE", ""),
+			FollowupTemplate:  getString("WHATSAPP_FOLLOWUP_TEMPLATE", ""),
+			TemplateLanguage:  getString("WHATSAPP_QUOTE_TEMPLATE_LANGUAGE", "es_AR"),
 		},
 		Gmail: GmailConfig{
 			ClientID:       getString("GMAIL_OAUTH_CLIENT_ID", ""),

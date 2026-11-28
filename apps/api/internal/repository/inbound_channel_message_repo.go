@@ -190,6 +190,33 @@ func (r *InboundChannelMessageRepository) FindSenderIDByRFQID(
 	return &senderID, nil
 }
 
+// ListRecentSenders returns, per channel, the senders among senders that wrote to it within window.
+func (r *InboundChannelMessageRepository) ListRecentSenders(ctx context.Context, q Querier,
+	accountID, branchID uuid.UUID, channelIDs []uuid.UUID, senders []string, window time.Duration,
+) (map[uuid.UUID]map[string]bool, error) {
+	rows, err := q.Query(ctx, `SELECT DISTINCT channel_id, sender_id FROM inbound_channel_message
+ WHERE account_id=$1 AND branch_id=$2 AND channel_id=ANY($3) AND sender_id=ANY($4)
+   AND provider_received_at>now()-make_interval(secs=>$5::double precision)`,
+		accountID, branchID, channelIDs, senders, window.Seconds())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	recent := map[uuid.UUID]map[string]bool{}
+	for rows.Next() {
+		var channelID uuid.UUID
+		var sender string
+		if err := rows.Scan(&channelID, &sender); err != nil {
+			return nil, err
+		}
+		if recent[channelID] == nil {
+			recent[channelID] = map[string]bool{}
+		}
+		recent[channelID][sender] = true
+	}
+	return recent, rows.Err()
+}
+
 func scanInboundChannelMessage(row channelScanner) (*domain.InboundChannelMessage, error) {
 	var message domain.InboundChannelMessage
 	err := row.Scan(&message.ID, &message.AccountID, &message.BranchID, &message.ChannelID,

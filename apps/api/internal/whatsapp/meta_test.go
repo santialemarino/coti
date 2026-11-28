@@ -3,8 +3,10 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -121,5 +123,94 @@ func TestMetaSender_SendQuote_DoesNotRetryArgentineFallbackOutsideDevelopment(t 
 	}
 	if calls != 1 {
 		t.Errorf("calls = %d, want one outside development", calls)
+	}
+}
+
+// Outside the customer-service window the quote goes as the approved template: the PDF is uploaded
+// first and the template's document header points at the returned media ID.
+func TestMetaSender_SendQuote_UploadsThePDFAndSendsTheTemplate(t *testing.T) {
+	t.Parallel()
+	var calls []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v25.0/phone-id/media":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse upload: %v", err)
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				t.Fatalf("upload has no file: %v", err)
+			}
+			content, _ := io.ReadAll(file)
+			if r.FormValue("messaging_product") != "whatsapp" || r.FormValue("type") != "application/pdf" ||
+				header.Filename != "Cotizacion-COT-000042.pdf" || string(content) != "%PDF" {
+				t.Errorf("upload = %q %q %q %q", r.FormValue("messaging_product"), r.FormValue("type"),
+					header.Filename, content)
+			}
+			_, _ = w.Write([]byte(`{"id":"media-1"}`))
+		case "/v25.0/phone-id/messages":
+			var body metaTemplateMessageRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			want := metaTemplateMessageRequest{MessagingProduct: "whatsapp", To: "5491112345678", Type: "template",
+				Template: metaTemplate{Name: "coti_cotizacion", Language: metaTemplateLanguage{Code: "es_AR"},
+					Components: []metaTemplateComponent{
+						{Type: "header", Parameters: []metaTemplateParameter{{Type: "document",
+							Document: &metaTemplateDocument{ID: "media-1", Filename: "Cotizacion-COT-000042.pdf"}}}},
+						{Type: "body", Parameters: []metaTemplateParameter{{Type: "text", Text: "Corralón"},
+							{Type: "text", Text: "https://c.test/quotes/tok"}}},
+					}}}
+			if !reflect.DeepEqual(body, want) {
+				t.Errorf("template request = %+v, want %+v", body, want)
+			}
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.9"}]}`))
+		default:
+			t.Fatalf("unexpected request %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	sender := newMetaSender(server.Client(), server.URL, "v25.0")
+	receipt, err := sender.SendQuote(context.Background(), domain.QuoteWhatsAppMessage{
+		To: "+5491112345678", Body: "recorded text",
+		Credentials: domain.WhatsAppDeliveryCredentials{PhoneNumberID: "phone-id", AccessToken: "access-token"},
+		Template: &domain.WhatsAppTemplate{Name: "coti_cotizacion", Language: "es_AR",
+			Parameters: []string{"Corralón", "https://c.test/quotes/tok"},
+			Document: &domain.WhatsAppDocument{Filename: "Cotizacion-COT-000042.pdf",
+				ContentType: "application/pdf", Content: []byte("%PDF")}},
+	})
+	if err != nil || receipt == nil || receipt.ProviderReference != "wamid.9" {
+		t.Fatalf("SendQuote() = %+v, %v; want the template's message ID", receipt, err)
+	}
+	if len(calls) != 2 || calls[0] != "/v25.0/phone-id/media" {
+		t.Errorf("calls = %v, want the upload before the message", calls)
+	}
+}
+
+// A failed upload sends nothing: a template without its document header would be refused anyway.
+func TestMetaSender_SendQuote_StopsWhenTheUploadFails(t *testing.T) {
+	t.Parallel()
+	var messages int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v25.0/phone-id/messages" {
+			messages++
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":131053}}`))
+	}))
+	defer server.Close()
+
+	sender := newMetaSender(server.Client(), server.URL, "v25.0")
+	_, err := sender.SendQuote(context.Background(), domain.QuoteWhatsAppMessage{
+		To:          "+5491112345678",
+		Credentials: domain.WhatsAppDeliveryCredentials{PhoneNumberID: "phone-id", AccessToken: "access-token"},
+		Template: &domain.WhatsAppTemplate{Name: "coti_cotizacion", Language: "es_AR",
+			Document: &domain.WhatsAppDocument{Filename: "c.pdf", ContentType: "application/pdf"}},
+	})
+	if err == nil || messages != 0 {
+		t.Errorf("SendQuote() = %v after %d message calls, want the upload error and no message", err, messages)
 	}
 }
