@@ -328,7 +328,10 @@ func run() error {
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer).
 		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin()).
-		WithPortalContacts(repository.NewClientContactRepository())
+		WithPortalContacts(repository.NewClientContactRepository()).
+		WithWhatsAppWindow(inboundChannelMessageRepo, domain.QuoteWhatsAppTemplates{
+			Quote: cfg.WhatsApp.QuoteTemplate, Followup: cfg.WhatsApp.FollowupTemplate,
+			Language: cfg.WhatsApp.TemplateLanguage})
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)

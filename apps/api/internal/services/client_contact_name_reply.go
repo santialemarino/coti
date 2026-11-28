@@ -12,8 +12,8 @@ import (
 // The reply heuristic's limits are properties of the rule, not deployment tuning: raising them
 // lets short orders through as names, so they are constants rather than settings.
 const (
-	// nameReplyWindow is WhatsApp's customer-service window, the span decision 79 allows a reply in.
-	nameReplyWindow = 24 * time.Hour
+	// whatsAppServiceWindow is WhatsApp's customer-service window, the span decision 79 allows a reply in.
+	whatsAppServiceWindow = 24 * time.Hour
 	// maxNameReplyLength bounds a recognized reply in characters, after greetings are removed.
 	maxNameReplyLength = 60
 	// minNameReplyWords asks for first and last name, which is what the prompt requests.

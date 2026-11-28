@@ -32,6 +32,10 @@ type quoteSendMessage struct {
 	Stage       quoteMessageStage
 	Email       *quoteEmailContent
 	Attachments []domain.EmailAttachment
+	// Template replaces the WhatsApp text outside the customer-service window.
+	Template *domain.WhatsAppTemplate
+	// Refusal fails the send without calling the provider.
+	Refusal error
 }
 
 // WithPortalContacts decides per destination between the order link and a sign-up invitation.
@@ -47,6 +51,7 @@ func (s *QuoteDeliveryService) sendMessages(ctx context.Context, tenant domain.T
 	validUntil time.Time,
 ) (map[uuid.UUID]quoteSendMessage, error) {
 	var phones, emails []string
+	var targets []whatsAppTarget
 	for _, send := range sends {
 		if send.TrackingStatus != domain.SendTrackingStatusPending {
 			continue
@@ -54,15 +59,25 @@ func (s *QuoteDeliveryService) sendMessages(ctx context.Context, tenant domain.T
 		switch send.ChannelType {
 		case domain.ChannelTypeWhatsApp:
 			phones = append(phones, send.Destination)
+			targets = append(targets, whatsAppTarget{ChannelID: send.ChannelID, Destination: send.Destination})
 		case domain.ChannelTypeEmail:
 			emails = append(emails, strings.ToLower(send.Destination))
 		}
 	}
 	portal := map[string]bool{}
-	if followup == nil && s.portalContacts != nil && len(phones)+len(emails) > 0 {
+	var closed map[whatsAppTarget]bool
+	usePortal := followup == nil && s.portalContacts != nil && len(phones)+len(emails) > 0
+	if template := s.whatsAppTemplate(followup != nil); usePortal || (template != "" && len(targets) > 0) {
 		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 			var err error
-			portal, err = s.portalContacts.ListPortalContacts(ctx, q, tenant.AccountID, phones, emails)
+			if usePortal {
+				if portal, err = s.portalContacts.ListPortalContacts(ctx, q, tenant.AccountID, phones, emails); err != nil {
+					return err
+				}
+			}
+			if template != "" {
+				closed, err = s.closedWhatsAppWindows(ctx, q, tenant, targets)
+			}
 			return err
 		})
 		if err != nil {
@@ -70,16 +85,20 @@ func (s *QuoteDeliveryService) sendMessages(ctx context.Context, tenant domain.T
 		}
 	}
 	var attachments []domain.EmailAttachment
-	if followup == nil && bundle != nil && len(emails) > 0 {
+	if followup == nil && bundle != nil && (len(emails) > 0 || len(closed) > 0) {
 		attachments = s.quotePDFAttachment(ctx, *bundle)
 	}
 
 	messages := make(map[uuid.UUID]quoteSendMessage, len(sends))
 	for _, send := range sends {
 		message := quoteSendMessage{Body: sellerSendBody, Link: send.PublicURL, Stage: quoteMessageOrderLink}
+		window := closed[whatsAppTarget{ChannelID: send.ChannelID, Destination: send.Destination}]
 		switch {
 		case followup != nil:
 			message.Body = *followup
+			if window && bundle != nil {
+				message = s.followupTemplateMessage(message, bundle.Representation.Payload.Supplier.Name, *followup)
+			}
 		case bundle != nil:
 			if s.portalContacts != nil && !portal[domain.ContactDestinationKey(send.ChannelType, send.Destination)] {
 				message.Stage = quoteMessageInvitation
@@ -91,6 +110,9 @@ func (s *QuoteDeliveryService) sendMessages(ctx context.Context, tenant domain.T
 				email := buildQuoteEmail(payload, &validUntil, message.Stage, len(attachments) > 0)
 				message.Email = &email
 				message.Attachments = attachments
+			}
+			if window {
+				message = s.quoteTemplateMessage(message, payload, validUntil, attachments)
 			}
 		}
 		messages[send.ID] = message

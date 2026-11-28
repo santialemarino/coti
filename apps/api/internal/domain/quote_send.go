@@ -160,6 +160,33 @@ type QuoteWhatsAppMessage struct {
 	Body        string
 	PublicURL   string
 	Credentials WhatsAppDeliveryCredentials
+	// Template replaces Body outside the customer-service window, where Meta refuses free text.
+	Template *WhatsAppTemplate
+}
+
+// WhatsAppTemplate is one send of an approved Meta template.
+type WhatsAppTemplate struct {
+	Name     string
+	Language string
+	// Parameters fill the body's variables in order; Meta refuses a newline inside one.
+	Parameters []string
+	// Document fills a DOCUMENT header; nil when the template has none.
+	Document *WhatsAppDocument
+}
+
+// WhatsAppDocument is a file sent as a template's document header.
+type WhatsAppDocument struct {
+	Filename    string
+	ContentType string
+	Content     []byte
+}
+
+// QuoteWhatsAppTemplates names the approved utility templates a quote and a follow-up use outside
+// the customer-service window; an empty name means that send has none.
+type QuoteWhatsAppTemplates struct {
+	Quote    string
+	Followup string
+	Language string
 }
 
 // WhatsAppDeliveryCredentials are the sealed channel settings opened only for one provider call.
