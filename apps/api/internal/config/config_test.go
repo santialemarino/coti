@@ -62,7 +62,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"QUOTE_FOLLOWUP_SELLER_IDLE_DAYS", "QUOTE_FOLLOWUP_CUSTOMER_SILENT_DAYS",
 		"QUOTE_FOLLOWUP_BATCH_SIZE",
 		"RFQ_MAX_TEXT_CHARACTERS", "RFQ_MAX_ITEMS", "RFQ_MAX_SPREADSHEET_ROWS",
-		"RFQ_PIPELINE_TIMEOUT_SECONDS",
+		"RFQ_PIPELINE_TIMEOUT_SECONDS", "RFQ_AUTO_QUOTE_ENABLED",
 		"REPORTS_MAX_RANGE_DAYS",
 		"QUOTE_CORRECTION_SIMILARITY_PERCENT", "QUOTE_CORRECTION_MAX_PATTERNS_PER_ACCOUNT",
 		"QUOTE_CORRECTION_MAX_INTERPRETATION_EXAMPLES", "QUOTE_CORRECTION_PROCESSING_BATCH_SIZE",
@@ -358,6 +358,28 @@ func TestLoad_RFQKeysLandOnTheirOwnFields(t *testing.T) {
 	}
 	if cfg.RFQ.PipelineTimeout != 9*time.Second {
 		t.Errorf("RFQ.PipelineTimeout = %v, want 9s", cfg.RFQ.PipelineTimeout)
+	}
+}
+
+// Automatic quotation is off unless the environment turns it on (decision 96).
+func TestLoad_AutoQuoteIsOffUnlessEnabled(t *testing.T) {
+	setEnv(t, minimalEnv())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if cfg.RFQ.AutoQuoteEnabled {
+		t.Error("RFQ.AutoQuoteEnabled = true with the key unset, want false")
+	}
+
+	env := minimalEnv()
+	env["RFQ_AUTO_QUOTE_ENABLED"] = "true"
+	setEnv(t, env)
+	if cfg, err = Load(); err != nil {
+		t.Fatalf("Load() = %v, want no error", err)
+	}
+	if !cfg.RFQ.AutoQuoteEnabled {
+		t.Error("RFQ.AutoQuoteEnabled = false with RFQ_AUTO_QUOTE_ENABLED=true, want true")
 	}
 }
 

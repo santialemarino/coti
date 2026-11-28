@@ -45,6 +45,10 @@ services:
       - key: CONVERSATION_AUTO_ACCEPT_MAX_WORDS
         scope: RUN_TIME
         value: '8'
+      # A fully matched, priced order reaches Cotizado on its own; the seller still sends it.
+      - key: RFQ_AUTO_QUOTE_ENABLED
+        scope: RUN_TIME
+        value: 'true'
       # Approved Meta utility templates for sends outside WhatsApp's 24-hour window; empty refuses
       # those sends with a seller error. Set them once Meta approves the templates.
       - key: WHATSAPP_QUOTE_TEMPLATE

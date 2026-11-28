@@ -641,6 +641,8 @@ type RFQConfig struct {
 	InlinePipelineTimeout time.Duration
 	// SplitOrderWindow is how close two orders from one sender must be for each to show the other.
 	SplitOrderWindow time.Duration
+	// AutoQuoteEnabled lets an order whose every line matched with a price reach Cotizado without the seller.
+	AutoQuoteEnabled bool
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -1033,6 +1035,7 @@ func Load() (*Config, error) {
 			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
 				75*time.Second, &problems),
 			SplitOrderWindow: getDuration("RFQ_SPLIT_ORDER_WINDOW_MINUTES", 60*time.Minute, &problems),
+			AutoQuoteEnabled: getBool("RFQ_AUTO_QUOTE_ENABLED", false, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),

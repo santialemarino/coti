@@ -302,7 +302,9 @@ func run() error {
 		WithRecommendationProducts(productRepo).
 		WithReplyAcceptance(quoteRepo, clientActionRepo, quoteSendRepo, quoteDiscountRepo,
 			handlerDecisionRepo)
-	rfqService.WithAutomaticQuoting(quoteService)
+	if cfg.RFQ.AutoQuoteEnabled {
+		rfqService.WithAutomaticQuoting(quoteService)
+	}
 	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
 		productAlternativeRepo, productPriceRepo)
 	quoteQualityService := services.NewQuoteQualityService(db, quoteQualityRepo).
