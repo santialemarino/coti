@@ -916,3 +916,14 @@ archived versions remain protected.
 Sending closes the send form and reports each channel's outcome. The order offers copying the
 customer link and sending through another channel; it never exposes the URL or opens the
 customer-only portal as the seller.
+
+### Customer responses across resend cycles
+
+Deliveries of the same frozen version share the first customer decision within one send cycle.
+The latest transition into `QUOTED` starts a new cycle, including `RESEND` reactivation that
+keeps the version. Its new deliveries accept a fresh decision; previous-cycle deliveries retain
+their original decision for replay and history. An unanswered historical link cannot close the
+reactivated quote. Expiry remains attached to each delivery.
+
+The customer order URL without a `delivery` parameter resolves the latest authorized publication.
+A URL pinned to an earlier delivery retains that publication and offers a link to the current order.

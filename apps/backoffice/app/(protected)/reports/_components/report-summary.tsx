@@ -15,24 +15,26 @@ export function SummaryCard({
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   detail?: string;
   className?: string;
   comparison?: ReactNode;
 }) {
   return (
-    <Card className={cn('gap-y-3 py-5', className)}>
-      <div className="flex items-start justify-between gap-x-3 px-5">
-        <p className="text-paragraph-sm text-foreground-muted">{label}</p>
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground">
+    <Card className={cn('h-full min-w-0 gap-y-0 overflow-hidden py-0', className)}>
+      <div className="flex items-center justify-between gap-x-3 px-5 pt-5">
+        <p className="text-paragraph-sm-medium text-foreground-muted">{label}</p>
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground">
           <Icon aria-hidden="true" className="size-4" />
         </span>
       </div>
-      <div className="px-5">
-        <p className="text-heading-4 tabular-nums text-foreground">{value}</p>
-        {detail ? <p className="mt-1 text-paragraph-xs text-foreground-subtle">{detail}</p> : null}
-        {comparison}
+      <div className="flex flex-1 flex-col px-5 pt-3 pb-5 gap-y-2">
+        <div className="break-words text-heading-3 tabular-nums text-foreground">{value}</div>
+        {detail ? <p className="text-paragraph-xs text-foreground-muted">{detail}</p> : null}
       </div>
+      {comparison ? (
+        <div className="mt-auto border-t border-border bg-sunken px-5 py-3">{comparison}</div>
+      ) : null}
     </Card>
   );
 }

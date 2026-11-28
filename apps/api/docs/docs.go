@@ -16035,6 +16035,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SellerReportAmountResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SellerReportAssistantResponse": {
             "type": "object",
             "properties": {
@@ -16099,6 +16110,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "client_id": {
+                    "type": "string"
+                },
+                "currency": {
                     "type": "string"
                 },
                 "name": {
@@ -16176,7 +16190,18 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "accepted_amount": {
-                    "type": "string"
+                    "type": "string",
+                    "x-nullable": true
+                },
+                "accepted_amounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SellerReportAmountResponse"
+                    }
+                },
+                "accepted_currency": {
+                    "type": "string",
+                    "x-nullable": true
                 },
                 "conversion_rate": {
                     "type": "string"
@@ -16322,6 +16347,9 @@ const docTemplate = `{
         "dto.SellerReportRevenueProductResponse": {
             "type": "object",
             "properties": {
+                "currency": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },

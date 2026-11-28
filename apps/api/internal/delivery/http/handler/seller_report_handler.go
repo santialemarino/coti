@@ -165,12 +165,14 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 		},
 		Filters: filters,
 		KPIs: dto.SellerReportKPIsResponse{
-			RFQsReceived:   report.KPIs.RFQsReceived,
-			QuotesSent:     report.KPIs.QuotesSent,
-			QuotesAccepted: report.KPIs.QuotesAccepted,
-			SentAccepted:   report.KPIs.SentAccepted,
-			ConversionRate: decimalString(report.KPIs.ConversionRate, 4),
-			AcceptedAmount: report.KPIs.AcceptedAmount.StringFixed(2),
+			RFQsReceived:     report.KPIs.RFQsReceived,
+			QuotesSent:       report.KPIs.QuotesSent,
+			QuotesAccepted:   report.KPIs.QuotesAccepted,
+			SentAccepted:     report.KPIs.SentAccepted,
+			ConversionRate:   decimalString(report.KPIs.ConversionRate, 4),
+			AcceptedAmount:   decimalString(report.KPIs.AcceptedAmount, 2),
+			AcceptedCurrency: report.KPIs.AcceptedCurrency,
+			AcceptedAmounts:  make([]dto.SellerReportAmountResponse, 0, len(report.KPIs.AcceptedAmounts)),
 			ResponseTime: dto.SellerReportResponseTimeResponse{
 				AverageSeconds: report.KPIs.ResponseTime.AverageSeconds,
 				MedianSeconds:  report.KPIs.ResponseTime.MedianSeconds,
@@ -212,6 +214,10 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			ApprovalRate:   decimalString(report.Assistant.ApprovalRate, 4),
 		},
 	}
+	for _, amount := range report.KPIs.AcceptedAmounts {
+		response.KPIs.AcceptedAmounts = append(response.KPIs.AcceptedAmounts,
+			dto.SellerReportAmountResponse{Currency: amount.Currency, Amount: amount.Amount.StringFixed(2)})
+	}
 	for _, branch := range report.Branches {
 		response.Branches = append(response.Branches, dto.SellerReportBranchResponse{
 			BranchID: branch.BranchID, BranchName: branch.BranchName, RFQs: branch.RFQs,
@@ -239,12 +245,14 @@ func toSellerReportResponse(report domain.SellerReport) dto.SellerReportResponse
 			dto.SellerReportRevenueProductResponse{
 				ProductID: product.ProductID,
 				Name:      product.Name,
+				Currency:  product.Currency,
 				Revenue:   product.Revenue.StringFixed(2),
 			})
 	}
 	for _, client := range report.TopClients {
 		response.TopClients = append(response.TopClients, dto.SellerReportClientResponse{
 			ClientID: client.ClientID, Name: client.Name,
+			Currency:       client.Currency,
 			AcceptedAmount: client.AcceptedAmount.StringFixed(2),
 		})
 	}

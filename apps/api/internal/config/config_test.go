@@ -1245,7 +1245,7 @@ func TestLoad_AIRejectsUnusableSettings(t *testing.T) {
 	}{
 		{
 			name: "unknown language model provider",
-			env:  map[string]string{"AI_LLM_PROVIDER": "openai"},
+			env:  map[string]string{"AI_LLM_PROVIDER": "unsupported"},
 			want: "AI_LLM_PROVIDER must be",
 		},
 		{
@@ -1848,5 +1848,24 @@ func TestLoad_ConversationProcessingTimeoutBounds(t *testing.T) {
 				t.Fatalf("Load() = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestLoad_OpenAILanguageModelRequiresItsOwnKey(t *testing.T) {
+	env := minimalEnv()
+	env["AI_LLM_PROVIDER"] = "openai"
+	env["AI_LLM_MODEL"] = "gpt-4.1-mini"
+	setEnv(t, env)
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_OPENAI_API_KEY") {
+		t.Fatalf("missing key = %v", err)
+	}
+	t.Setenv("AI_OPENAI_API_KEY", "test-openai-key")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := cfg.AI.OpenAIGeneration()
+	if adapter.APIKey != "test-openai-key" || adapter.Model != "gpt-4.1-mini" {
+		t.Fatalf("OpenAI config = %+v", adapter)
 	}
 }

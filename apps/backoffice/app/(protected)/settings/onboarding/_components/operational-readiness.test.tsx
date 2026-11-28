@@ -38,6 +38,16 @@ it('distinguishes empty catalog, missing prices and optional channels per branch
   expect(view.getByText('Opcional')).toBeTruthy();
   expect(view.getAllByText('Pendiente')).toHaveLength(3);
   expect(view.getByRole('link', { name: 'Gestionar precios' }).getAttribute('href')).toBe(
-    ROUTES.priceSettings,
+    ROUTES.branchPriceSettings('one'),
+  );
+  expect(
+    view
+      .getAllByRole('link', { name: messages.onboarding.readiness.resolve })
+      .map((link) => link.getAttribute('href')),
+  ).toEqual(
+    expect.arrayContaining([
+      ROUTES.branchPriceSettings('one'),
+      ROUTES.branchCatalogSettings('two'),
+    ]),
   );
 });

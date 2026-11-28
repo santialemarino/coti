@@ -17,15 +17,14 @@ without a cycle. Adapters live under `apps/api/internal/ai/`, one subpackage per
 | `Embedder`            | `Embed(ctx, texts)`           | Turns text into catalog-width vectors             |
 | `Transcriber`         | `Transcribe(ctx, audio)`      | Turns a recording into text                       |
 
-**Each capability is selected on its own**, because no provider covers all three: Anthropic
-exposes no embedding or speech-to-text API, which is the entire reason a second provider exists.
-An environment can run the language model with the transcriber off.
+**Each capability is selected on its own**. OpenAI supports all three ports; Anthropic binds
+the language-model port. An environment can run the language model with the transcriber off.
 
-| Capability                  | Setting                     | Providers               |
-| --------------------------- | --------------------------- | ----------------------- |
-| Language model, vision, PDF | `AI_LLM_PROVIDER`           | `disabled`, `anthropic` |
-| Embeddings                  | `AI_EMBEDDINGS_PROVIDER`    | `disabled`, `openai`    |
-| Transcription               | `AI_TRANSCRIPTION_PROVIDER` | `disabled`, `openai`    |
+| Capability                  | Setting                     | Providers                         |
+| --------------------------- | --------------------------- | --------------------------------- |
+| Language model, vision, PDF | `AI_LLM_PROVIDER`           | `disabled`, `anthropic`, `openai` |
+| Embeddings                  | `AI_EMBEDDINGS_PROVIDER`    | `disabled`, `openai`              |
+| Transcription               | `AI_TRANSCRIPTION_PROVIDER` | `disabled`, `openai`              |
 
 Adding a fourth provider is a new subpackage plus one `case` in the composition root. The retry
 policy, the usage meter and the error wrapping are provider-agnostic and already shared, so nothing
@@ -230,3 +229,18 @@ The invariants stay above the ports, in the services:
 Every key, with its default and what it selects, is documented in `apps/api/.env.example` under
 `--- AI providers ---`. Defaults live in `apps/api/internal/config`, and `config.Load` validates
 the lot at startup.
+
+## OpenAI structured generation
+
+Set `AI_LLM_PROVIDER=openai`, `AI_LLM_MODEL=gpt-4.1-mini` (or another compatible model), and
+`AI_OPENAI_API_KEY` to bind the language-model port to OpenAI. Provider selection is explicit;
+a rejected Anthropic request does not silently switch providers. `AI_LLM_EFFORT` applies to
+Anthropic only. The same token ceiling, timeout, retry policy and usage ledger cover both adapters.
+
+The OpenAI adapter calls `/responses` with `text.format.type=json_schema`, `strict=true`,
+and `store=false`. It maps text, images and PDF inputs, refuses unsupported document types,
+handles refusal and incomplete responses, and rejects unknown output fields and trailing data.
+Business validation and seller approval remain in the existing pipeline.
+
+References: [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses)
+and [file inputs](https://developers.openai.com/api/docs/guides/file-inputs).

@@ -5,8 +5,10 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -323,5 +325,80 @@ func assertLedger(t *testing.T, e *env, label, query string, id, sellerID uuid.U
 		if got[i] != want[i] {
 			t.Errorf("%s transition %d = %q, want %q", label, i, got[i], want[i])
 		}
+	}
+}
+
+func TestFirstOperationalFlow_ResendStartsANewCustomerResponseCycle(t *testing.T) {
+	e := newEnv(t)
+	run := firstOperationalFlow(t, e, "Fresh resend response")
+	ctx := context.Background()
+	tenant := domain.Tenant{AccountID: run.seller.AccountID, BranchID: run.draft.Quote.BranchID,
+		UserID: run.seller.ID, Role: domain.UserRoleSeller}
+	// A separate unanswered delivery must not remain actionable after reactivation.
+	historical, err := run.service.Send(ctx, tenant, run.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550188"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	historicalToken := historical.Deliveries[0].PublicURL
+	historicalToken = historicalToken[strings.LastIndex(historicalToken, "/")+1:]
+	if _, err := run.service.RecordClientAction(ctx, run.publicToken, domain.ClientActionReject); err != nil {
+		t.Fatal(err)
+	}
+	reactivateThroughAPI(t, e, run, domain.QuoteReactivationResend)
+	next, err := run.service.Send(ctx, tenant, run.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550189"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := next.Deliveries[0].PublicURL
+	token = token[strings.LastIndex(token, "/")+1:]
+	current, err := run.service.ResolvePublic(ctx, token)
+	if err != nil || current.CustomerStatus != nil {
+		t.Fatalf("new delivery = %+v, %v; want unanswered", current, err)
+	}
+	old, err := run.service.ResolvePublic(ctx, run.publicToken)
+	if err != nil || old.CustomerStatus == nil || *old.CustomerStatus != domain.ClientActionReject {
+		t.Fatalf("historical answer = %+v, %v; want REJECT", old, err)
+	}
+	// Every channel in the old cycle replays its original decision without mutating the new cycle.
+	replay, err := run.service.RespondPublic(ctx, historicalToken, domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if err != nil || replay.CustomerStatus != domain.ClientActionReject {
+		t.Fatalf("old replay = %+v, %v", replay, err)
+	}
+	accepted, err := run.service.RespondPublic(ctx, token, domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if err != nil || accepted.CustomerStatus != domain.ClientActionAccept {
+		t.Fatalf("new answer = %+v, %v", accepted, err)
+	}
+	replay, err = run.service.RespondPublic(ctx, token, domain.ClientActionInput{Type: domain.ClientActionReject})
+	if err != nil || replay.CustomerStatus != domain.ClientActionAccept {
+		t.Fatalf("new replay = %+v, %v", replay, err)
+	}
+	var count int
+	if err := e.db.CrossAccount().QueryRow(ctx, "SELECT count(*) FROM client_action WHERE account_id=$1 AND version_id=$2", tenant.AccountID, next.VersionID).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("responses = %d, %v; want two cycles", count, err)
+	}
+}
+
+func TestFirstOperationalFlow_UnansweredOldCycleCannotCloseAResentQuote(t *testing.T) {
+	e := newEnv(t)
+	run := firstOperationalFlow(t, e, "Stale unanswered send")
+	ctx := context.Background()
+	// The seller closes the quote without a customer action.
+	if _, err := e.db.CrossAccount().Exec(ctx, "UPDATE quote SET current_status='REJECTED' WHERE account_id=$1 AND id=$2", run.seller.AccountID, run.draft.Quote.ID); err != nil {
+		t.Fatal(err)
+	}
+	reactivateThroughAPI(t, e, run, domain.QuoteReactivationResend)
+	tenant := domain.Tenant{AccountID: run.seller.AccountID, BranchID: run.draft.Quote.BranchID, UserID: run.seller.ID, Role: domain.UserRoleSeller}
+	if _, err := run.service.Send(ctx, tenant, run.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phone: "+5491155550189"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := run.service.RespondPublic(ctx, run.publicToken, domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("stale answer = %v, want conflict", err)
+	}
+	old, err := run.service.ResolvePublic(ctx, run.publicToken)
+	if err != nil || old.Status != domain.PublicQuoteStatusUnavailable {
+		t.Fatalf("stale link = %+v, %v", old, err)
 	}
 }

@@ -1385,6 +1385,7 @@ CREATE UNIQUE INDEX uq_quote_item_alternative_recommendation
 CREATE INDEX idx_quote_ai_generation_account_quote ON quote_ai_generation(account_id, quote_id);
 CREATE INDEX idx_quote_ai_generation_account_quote_created ON quote_ai_generation(account_id, quote_id, created_at DESC);
 CREATE INDEX idx_quote_status_change_report ON quote_status_change(account_id, new_status, changed_at, quote_id) WHERE new_status IN ('SENT', 'ACCEPTED');
+CREATE INDEX idx_quote_status_change_quote_report ON quote_status_change(account_id, quote_id, new_status, changed_at) WHERE new_status IN ('SENT', 'ACCEPTED');
 CREATE INDEX idx_quote_send_report ON quote_send(account_id, version_id, sent_at DESC) WHERE tracking_status IN ('SENT', 'DELIVERED', 'VIEWED');
 CREATE INDEX idx_client_action_report ON client_action(account_id, version_id, created_at DESC) WHERE type = 'ACCEPT';
 CREATE INDEX idx_quote_ai_generation_item_account_generation ON quote_ai_generation_item(account_id, generation_id);

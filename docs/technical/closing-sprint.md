@@ -13,11 +13,12 @@ deployment, shared branch or outbound customer message was changed.
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Rejection feedback      | Portal `quote-actions.tsx`, seller `rfq-detail-view.tsx`, existing `QuoteDeliveryService` and `ClientActionRepository`           | Optional free text uses the existing 512-character `client_action.comment`. The customer action pins the send and version; rejection and feedback share the existing transaction. Seller history preserves earlier versions. Internal version notes are not customer feedback. No new commercial categories are assumed.                                                                                                                                                                                                               |
 | Automatic quotation     | `quote_auto.go`, `quote_service.go`, `rfq_service.go`, `product_price_repo.go`, API composition root                             | Explicitly authorized in this conversation. A complete initial generation can enter `QUOTED` in its creation transaction. It reuses manual valuation and the discount sweep, locks its catalog inputs, and leaves the version editable. Existing `MATCHED` decisions, positive quantities, compatible units, active branch availability and current prices are required. Zero prices remain valid because the existing domain allows them. Mixed currencies stay in manual review. No automatic send or seller approval is fabricated. |
-| Previous-period reports | `seller_report_comparison.go`, shared repository aggregations, report DTO/mapper, report KPI cards                               | The previous interval has the same number of Argentine calendar days and ends where the current interval begins. Both use the same authorization and filters. Rates use percentage points; undefined bases and absent samples remain null. Follow-up is a current snapshot and is not compared. Accepted money is not compared because the existing aggregate has no explicit currency scope. PDF behavior is preserved.                                                                                                               |
+| Previous-period reports | `seller_report_comparison.go`, shared repository aggregations, report DTO/mapper, report KPI cards                               | The previous interval has the same number of Argentine calendar days and ends where the current interval begins. Both use the same authorization and filters. Rates use percentage points; undefined bases and absent samples remain null. Follow-up is a current snapshot and is not compared. Accepted money is reported separately by currency and is not compared. Dashboard and PDF use the same currency groups.                                                                                                                 |
 | Operational setup       | `onboarding_readiness*.go`, admin `GET /v1/onboarding/readiness`, existing setup settings page and navigation                    | Diagnostics come from current account, branch, catalog, price and staff data. The wizard remains resumable, but its historical completion flags do not determine operational readiness. Empty catalogs are pending; inactive products are excluded. Channels are optional. Missing prices are counted per branch, using the existing validity predicate. Failures propagate to the error boundary.                                                                                                                                     |
 | Demo and benchmark      | `scripts/demo-catalog.mjs`, `scripts/lib/demo-catalog.mjs`, `testdata/catalog_match/demo.json`, `demo_catalog_benchmark_test.go` | Reuses the fixed synthetic demo seed, catalog embedding service, pgvector index and production hybrid search/matcher. The wrapper refuses production and remote databases, defaults to dry-run and scopes the seed and backfill to the demo account. Embedding batches resume using existing timestamps and provider retry policy. No alternative vector infrastructure or calibration changes were introduced.                                                                                                                        |
 
-No schema changes or new configuration variables are required. OpenAPI is regenerated for the
+Migration 00089 adds the partial quote-status index used by report cohort queries; the consolidated
+schema includes it. No new configuration variables are required. OpenAPI is regenerated for the
 additive report response and readiness endpoint. Existing consumers can ignore the new fields.
 
 ## Reproducing the demo
@@ -34,6 +35,8 @@ pnpm demo:catalog --apply --skip-embeddings
 Only `--apply` writes data. `--benchmark` calls the real embedding provider only with `--apply`.
 The fixed account is `a0000000-0000-4000-8000-000000000001`. The index is the existing shared
 pgvector index; rebuilding it is a local maintenance operation. No application server is needed.
+The environment guard validates the PostgreSQL driver's effective host, including connection-string
+query overrides. Both roles must resolve to the same local host, port and database.
 The report is `.artifacts/demo-catalog-benchmark/report.json` and contains the catalog hash,
 dataset version, expected codes and resolved IDs, model, dimension, commit, environment,
 per-query results, denominators, errors and latency measurements.
@@ -129,3 +132,23 @@ Browser automation was unavailable; no visual or complete browser E2E pass is cl
 
 No production-scale report benchmark or controlled browser accessibility/motion inspection is
 claimed. Both remain release QA limits rather than fabricated passes.
+
+## Independent audit and opt-in report timing
+
+The subsequent [independent QA report](../QA_SPRINT_CIERRE_REPORT.md) records fresh verification,
+corrected defects and the remaining release gates. Its measurements are separate from the
+implementation-run results above.
+
+`TestSellerReportSyntheticBenchmark` measures the complete report and comparison over 10,000
+synthetic RFQs, quotes, frozen versions and items, with 20,000 status events. It requires a
+disposable database rebuilt through migrations and both test database URLs. From `apps/api`,
+set `COTI_REPORT_BENCHMARK=1` and run:
+
+```bash
+go test -tags=integration ./internal/integration -run '^TestSellerReportSyntheticBenchmark$' -count=1 -timeout=10m -v
+```
+
+The opt-in test validates period counts and logs five service-call durations, excluding fixture
+preparation. It does not define a latency threshold or certify production capacity. The normal
+integration run skips this measurement. The independent QA report records the observed timings
+and their limitations.

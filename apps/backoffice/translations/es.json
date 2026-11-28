@@ -2392,7 +2392,7 @@
       "acceptedDetail": "Aceptaciones registradas en el período.",
       "conversion": "Tasa de conversión",
       "acceptedAmount": "Importe aceptado",
-      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "acceptedAmountDetail": "Sobre las versiones aceptadas, con descuentos aplicados y separado por moneda.",
       "responseTime": "Tiempo de respuesta",
       "timeToAcceptance": "Tiempo hasta la aceptación",
       "followUpPending": "Seguimientos pendientes",
@@ -2459,7 +2459,7 @@
     },
     "revenueProducts": {
       "title": "Productos con mayor ingreso",
-      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "description": "Hasta cinco productos por moneda. Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
       "empty": "Todavía no hay productos aceptados en el período."
     },
     "clients": {

@@ -86,7 +86,15 @@ export function ReportKpis({
       <SummaryCard
         icon={WalletIcon}
         label={t('kpis.acceptedAmount')}
-        value={fmt.currency(kpis.acceptedAmount)}
+        value={
+          kpis.acceptedAmounts.length === 0
+            ? t('noDataShort')
+            : kpis.acceptedAmounts.map(({ currency, amount }) => (
+                <span key={currency} className="block">
+                  {currency} {fmt.currency(amount, currency)}
+                </span>
+              ))
+        }
         detail={t('kpis.acceptedAmountDetail')}
       />
       <SummaryCard
@@ -157,13 +165,13 @@ function ReportChange({
     value.delta !== null && Number(value.delta) !== 0 ? Number(value.delta) > 0 !== duration : null;
   return (
     <div
-      className="mt-2 text-paragraph-xs"
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-paragraph-xs tabular-nums"
       title={t('period', {
         from: fmt.dateNumeric(comparison.range.from),
         to: fmt.dateNumeric(comparison.range.to),
       })}
     >
-      <p className="text-foreground-subtle">{t('previous', { value: previous })}</p>
+      <p className="text-foreground-muted">{t('previous', { value: previous })}</p>
       <p
         className={
           improvement === null

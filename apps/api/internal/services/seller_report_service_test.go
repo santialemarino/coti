@@ -151,7 +151,7 @@ func TestSellerReportScopesToSelectedBranchAndSeller(t *testing.T) {
 		Role: domain.UserRoleSeller, BranchID: branchID}
 	service, db, store := newSellerReportTestService(t, tenant)
 	store.report = &domain.SellerReport{KPIs: domain.SellerReportKPIs{
-		AcceptedAmount: decimal.RequireFromString("1250.50"),
+		AcceptedAmount: decPtr("1250.50"),
 	}}
 
 	report, err := service.Get(context.Background(), tenant, "2026-10-01", "2026-10-02", domain.SellerReportFilterInput{})
@@ -400,7 +400,7 @@ func TestSellerReportRenderPDFReusesTheReportScope(t *testing.T) {
 	tenant := domain.Tenant{AccountID: uuid.New(), Role: domain.UserRoleAdmin}
 	service, _, store := newSellerReportTestService(t, tenant)
 	store.report = &domain.SellerReport{KPIs: domain.SellerReportKPIs{
-		AcceptedAmount: decimal.RequireFromString("1250.50"),
+		AcceptedAmount: decPtr("1250.50"),
 	}}
 	renderer := service.renderer.(*sellerReportTestRenderer)
 

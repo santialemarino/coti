@@ -58,8 +58,8 @@ comparison base. Missing time samples remain null. Conversion uses percentage po
 relative percent. Decreasing response or acceptance time is presented as an improvement.
 
 The compared KPIs are RFQs, sends, acceptances, conversion, response time and acceptance time.
-Follow-up is a current snapshot, so it is excluded. Accepted money is excluded from comparisons
-until the existing report has an explicit currency scope. The PDF keeps its existing content.
+Follow-up is a current snapshot, so it is excluded. Accepted money is reported separately by currency
+and is excluded from period comparisons. The PDF uses the same currency groups as the dashboard.
 Even an empty current interval displays its headline numbers and previous comparison.
 
 ### Current-period aggregates
@@ -72,8 +72,11 @@ Even an empty current interval displays its headline numbers and previous compar
 - `kpis.conversion_rate`: `sent_accepted` over `quotes_sent`, a cohort share between `0` and `1`.
   An acceptance in the period of a quote sent before it counts in `quotes_accepted` but not here, so
   the rate never exceeds `1`. It is `null` when nothing was sent.
-- `kpis.accepted_amount`: sum of the commercial totals of the versions that were actually accepted.
-  See below.
+- `kpis.accepted_amounts`: commercial totals of the resolved accepted versions, grouped by their
+  original `currency`, with `amount` as a decimal string. No exchange rate or implicit ARS filter is
+  applied. The compatibility scalar `accepted_amount` and its `accepted_currency` are present only
+  when exactly one currency resolves; both are `null` for mixed currencies or no resolved versions.
+  A resolved zero is a real amount with its currency, not a missing measurement. See below.
 - `kpis.response_time`: first send minus RFQ arrival, for RFQs received in the period. Manual-entry
   channels are excluded because there was no inbound message to answer.
 - `kpis.time_to_acceptance`: for each quote accepted in the period, its latest acceptance minus its
@@ -92,11 +95,13 @@ Even an empty current interval displays its headline numbers and previous compar
   products use the canonical catalog name; unmatched lines use the requested description, grouped
   ignoring case and surrounding spaces. Every ranking breaks ties by name, then by id, so the same
   data always yields the same order.
-- `top_revenue_products`: the five matched products with the largest accepted line revenue in the
-  period. Revenue is `quantity × unit_price_snapshot` summed across the lines of the resolved
+- `top_revenue_products`: up to five matched products per currency with the largest accepted line
+  revenue in the period. Each row identifies its `currency`. Revenue is
+  `quantity × unit_price_snapshot` summed across the lines of the resolved
   accepted version, rounded to two decimals. Unmatched lines are excluded because they have no
   product identity.
-- `top_clients`: the five clients with the largest accepted amount in the period, one row per client.
+- `top_clients`: up to five clients per currency with the largest accepted amount in the period,
+  one row per client and currency.
   A client with no name is shown by its email, then its phone, then the order's label. Quotes with no
   client group by the order's label; anonymous quotes and zero-amount groups are omitted.
 - `ai_match`: the latest AI generation per quote, its matched-line rate, and the confidence split of
@@ -112,14 +117,14 @@ from the first of these that resolves:
 3. `quote.current_version_id`, but only when no version was created after the acceptance.
 
 The fallback is deliberately narrow. A later version is not charged to the client, and an
-acceptance that cannot be tied to a version contributes to the accepted count but zero to the
-amount. The same resolution feeds the accepted amount, the top clients and the product revenue
+acceptance that cannot be tied to a version contributes to the accepted count without inventing a
+currency or amount. The same resolution feeds the accepted amounts, the top clients and product revenue
 ranking.
 
 Product revenue is gross line value and subtracts no discounts: the ranking deliberately reports
 `quantity × unit_price_snapshot` even when an `ITEM` discount names a single line, because a
 `TOTAL` or `ITEM_SET` discount cannot be attributed to one product without inventing an allocation
-rule. This means `top_revenue_products` does not sum to `kpis.accepted_amount` when the accepted
+rule. This means `top_revenue_products` does not sum to its currency's accepted amount when the accepted
 version carries discounts, and it excludes unmatched lines.
 
 ## Assistant decisions
@@ -157,8 +162,10 @@ was asked; the response is `application/pdf` and is never stored by an intermedi
 database and never recomputes a metric. The document includes the Coti mark, period, generation
 timestamp and scope, the six headline KPIs, the status distribution and timeline, both product
 rankings, top clients, AI match confidence, the branch breakdown when the report spans branches,
-and the metric definitions that could otherwise be misread. Amounts are shown in Argentine pesos,
-matching the dashboard. Empty sections say so rather than printing fabricated zeroes.
+and the metric definitions that could otherwise be misread. Each currency has its own commercial
+section with its accepted total and both monetary rankings, matching the dashboard. Currency codes
+identify every monetary figure; currencies are never summed, ranked or scaled against one another.
+Empty sections say so rather than printing fabricated zeroes.
 
 ## Configuration and indexes
 
@@ -172,3 +179,32 @@ partial status and send indexes for the event reads, a partial client-action ind
 resolution, and a generation index for the AI summary; `00073_handler_decision_report_index.sql`
 adds the account/time index the assistant metrics read. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.
+
+`00089_quote_status_change_quote_report.sql` adds the complementary account/quote/status/time
+index for per-quote event lookups, including prepared statements that use generic plans. The
+period-oriented index remains useful for scanning events across an account. Cohort conversion
+aggregates the first send and latest acceptance once per quote before counting or grouping them
+into timeline buckets; acceptances after the report period still convert their original send
+cohort.
+
+### Synthetic performance check
+
+With `TEST_DATABASE_URL` and `TEST_DATABASE_ADMIN_URL` pointing to a disposable, migrated database,
+run this opt-in integration test from `apps/api`:
+
+```bash
+COTI_REPORT_BENCHMARK=1 go test -tags=integration ./internal/integration -run '^TestSellerReportSyntheticBenchmark$' -count=1 -timeout=5m -v
+```
+
+The fixture creates 10,000 RFQs, accepted quotes, versions and line items, plus 20,000 status events.
+The current and previous periods each contain 5,000 RFQs. Five complete service reads use the
+restricted application role and tenant transaction. The output reports every full-read duration,
+its median and maximum, and separate durations for the current report and previous-period KPIs.
+Fixture setup, statistics refresh and teardown are excluded from those measurements. The test
+asserts both period counts and removes its own rows. Local timings describe that synthetic workload
+and do not establish a production latency target.
+
+An empty selected period keeps zero-valued KPIs and the previous-period comparison visible, with
+a compact notice above them. KPI cards place comparisons in a separate footer. The PDF displays
+both accepted amounts in its headline card when exactly two currencies are present; larger
+currency sets retain the detailed currency sections without a combined total.

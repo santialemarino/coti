@@ -70,6 +70,8 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       sentAccepted: 2,
       conversionRate: 0.5,
       acceptedAmount: '1250.50',
+      acceptedCurrency: 'ARS',
+      acceptedAmounts: [{ currency: 'ARS', amount: '1250.50' }],
       responseTime: { averageSeconds: 900, medianSeconds: 600, sample: 3 },
       timeToAcceptance: { averageSeconds: 7200, medianSeconds: 3600, sample: 2 },
       followUpPending: 4,
@@ -85,8 +87,12 @@ function report(overrides: Partial<SellerReport> = {}): SellerReport {
       { date: '2026-10-05', rfqs: 0, sent: 0, accepted: 0, sentAccepted: 0, conversionRate: null },
     ],
     topProducts: [{ productId: 'product-1', name: 'Cemento', requests: 7 }],
-    topRevenueProducts: [{ productId: 'product-1', name: 'Cemento', revenue: '1000.00' }],
-    topClients: [{ clientId: 'client-1', name: 'Obra Norte', acceptedAmount: '1250.50' }],
+    topRevenueProducts: [
+      { productId: 'product-1', name: 'Cemento', currency: 'ARS', revenue: '1000.00' },
+    ],
+    topClients: [
+      { clientId: 'client-1', name: 'Obra Norte', currency: 'ARS', acceptedAmount: '1250.50' },
+    ],
     aiMatch: {
       matched: 8,
       total: 10,
@@ -147,7 +153,7 @@ describe('ReportsPage', () => {
     expect(screen.getByRole('button', { name: copy.download.label })).toBeTruthy();
     expect(screen.getByText(copy.kpis.rfqs)).toBeTruthy();
     expect(screen.getByText('12')).toBeTruthy();
-    expect(screen.getAllByText('$ 1250.50')).toHaveLength(2);
+    expect(screen.getAllByText('ARS $ 1250.50')).toHaveLength(2);
     expect(screen.getAllByText('50%').length).toBeGreaterThan(0);
     expect(screen.getByText(/10 minutos/)).toBeTruthy();
     expect(screen.queryByText(copy.branches.title)).toBeNull();
@@ -159,7 +165,7 @@ describe('ReportsPage', () => {
     expect(screen.getByRole('img', { name: copy.status.aria })).toBeTruthy();
     expect(screen.getByText(copy.revenueProducts.title)).toBeTruthy();
     expect(screen.getByText(copy.revenueProducts.description)).toBeTruthy();
-    expect(screen.getByText('$ 1000.00')).toBeTruthy();
+    expect(screen.getByText('ARS $ 1000.00')).toBeTruthy();
     expect(screen.getByText('7 líneas')).toBeTruthy();
   });
 
@@ -325,7 +331,9 @@ describe('ReportsPage', () => {
           quotesAccepted: 0,
           sentAccepted: 0,
           conversionRate: null,
-          acceptedAmount: '0',
+          acceptedAmount: null,
+          acceptedCurrency: null,
+          acceptedAmounts: [],
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
           timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
           followUpPending: 0,
@@ -381,6 +389,39 @@ describe('ReportsPage', () => {
     expect(screen.getByText('Obra Norte')).toBeTruthy();
     expect(screen.getAllByText('Cemento').length).toBeGreaterThan(0);
     expect(screen.getByText('80%')).toBeTruthy();
+  });
+
+  it('keeps the same client and product in separate currency rankings', async () => {
+    const mixed = report();
+    mixed.kpis.acceptedAmount = null;
+    mixed.kpis.acceptedCurrency = null;
+    mixed.kpis.acceptedAmounts = [
+      { currency: 'ARS', amount: '100.00' },
+      { currency: 'USD', amount: '10.00' },
+    ];
+    mixed.topRevenueProducts = [
+      { productId: 'same-product', name: 'Cemento', currency: 'ARS', revenue: '100.00' },
+      { productId: 'same-product', name: 'Cemento', currency: 'USD', revenue: '10.00' },
+    ];
+    mixed.topClients = [
+      {
+        clientId: 'same-client',
+        name: 'Obra compartida',
+        currency: 'ARS',
+        acceptedAmount: '100.00',
+      },
+      {
+        clientId: 'same-client',
+        name: 'Obra compartida',
+        currency: 'USD',
+        acceptedAmount: '10.00',
+      },
+    ];
+    await renderReport(mixed);
+    expect(screen.getAllByText('Obra compartida')).toHaveLength(2);
+    expect(screen.getAllByText('USD $ 10.00')).toHaveLength(3);
+    expect(screen.getAllByText('ARS $ 100.00')).toHaveLength(3);
+    expect(screen.queryByText('ARS $ 110.00')).toBeNull();
   });
 
   it("reads conversion as the share of the period's sends accepted so far", async () => {
@@ -523,7 +564,9 @@ describe('ReportsPage', () => {
           quotesAccepted: 0,
           sentAccepted: 0,
           conversionRate: null,
-          acceptedAmount: '0',
+          acceptedAmount: null,
+          acceptedCurrency: null,
+          acceptedAmounts: [],
           responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
           timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
           followUpPending: 0,

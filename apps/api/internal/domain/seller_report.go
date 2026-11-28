@@ -136,14 +136,22 @@ type SellerReportKPIs struct {
 	SentAccepted int
 	// ConversionRate is SentAccepted over QuotesSent, a cohort share in [0, 1]; nil when nothing was sent.
 	ConversionRate *decimal.Decimal
-	// AcceptedAmount sums the commercial totals of the accepted versions found for the period.
-	AcceptedAmount decimal.Decimal
+	// AcceptedAmount is present only when resolved accepted versions share one currency.
+	AcceptedAmount   *decimal.Decimal
+	AcceptedCurrency *string
+	AcceptedAmounts  []SellerReportAmount
 	// ResponseTime is the first send after an order arrived, manual entries excluded.
 	ResponseTime SellerReportResponseTime
 	// TimeToAcceptance runs from a quote's first send to its acceptance, for acceptances in the period.
 	TimeToAcceptance SellerReportResponseTime
 	// FollowUpPending counts the quotes in scope flagged for follow-up now, whatever the period.
 	FollowUpPending int
+}
+
+// SellerReportAmount is an accepted commercial total in one currency, without conversion.
+type SellerReportAmount struct {
+	Currency string
+	Amount   decimal.Decimal
 }
 
 // SellerReportResponseTime summarizes one measured interval: its mean, its median and the sample size.
@@ -190,6 +198,7 @@ type SellerReportProduct struct {
 type SellerReportRevenueProduct struct {
 	ProductID uuid.UUID
 	Name      string
+	Currency  string
 	Revenue   decimal.Decimal
 }
 
@@ -197,6 +206,7 @@ type SellerReportRevenueProduct struct {
 type SellerReportClient struct {
 	ClientID       *uuid.UUID
 	Name           string
+	Currency       string
 	AcceptedAmount decimal.Decimal
 }
 

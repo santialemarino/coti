@@ -19,11 +19,9 @@ async function main() {
     ...process.env,
     ENV: process.env.ENV ?? localConfig.match(/^ENV\s*=\s*["']?([^\s"']+)/m)?.[1],
   };
-  assertLocalDemoEnvironment(ownerUrl, environment);
-  assertLocalDemoEnvironment(appUrl, environment);
-  const owner = new URL(ownerUrl);
-  const app = new URL(appUrl);
-  if ((owner.port || '5432') !== (app.port || '5432') || owner.pathname !== app.pathname) {
+  const owner = assertLocalDemoEnvironment(ownerUrl, environment);
+  const app = assertLocalDemoEnvironment(appUrl, environment);
+  if (owner.host !== app.host || owner.port !== app.port || owner.database !== app.database) {
     throw new Error('Demo owner and application roles must target the same local database.');
   }
   console.log(`Demo account: ${DEMO_ACCOUNT_ID}. Mode: ${options.apply ? 'apply' : 'dry-run'}.`);

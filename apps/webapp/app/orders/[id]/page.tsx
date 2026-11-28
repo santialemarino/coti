@@ -1,10 +1,11 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
-import { Card } from '@repo/ui/components';
+import { Button, Card } from '@repo/ui/components';
 import { PublicQuoteView } from '@/app/quotes/_components/public-quote-view';
 import { CustomerFooter } from '@/components/customer-footer';
 import { CustomerHeader } from '@/components/customer-header';
+import { PortalLink } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
 import { customerPageMetadata, getCustomerAuthOptions } from '@/lib/api/customer-auth-options';
 import { getCustomerOrder, getCustomerOrderByToken } from '@/lib/api/customer-orders';
@@ -39,6 +40,24 @@ export default async function CustomerOrderPage({
         supplierName={portal.supplierName}
         logoUrl={portal.logoUrl}
       />
+      {delivery && order.deliveryToken && delivery !== order.deliveryToken ? (
+        <aside
+          className="mx-auto w-full max-w-5xl px-4 pt-6 sm:px-6"
+          aria-label={t('previousDelivery.title')}
+        >
+          <Card className="flex-row flex-wrap items-center justify-between px-5 py-4 gap-4">
+            <div className="space-y-1">
+              <p className="text-paragraph-sm-medium">{t('previousDelivery.title')}</p>
+              <p className="text-paragraph-sm text-foreground-muted">
+                {t('previousDelivery.description')}
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <PortalLink href={ROUTES.order(id)}>{t('previousDelivery.current')}</PortalLink>
+            </Button>
+          </Card>
+        </aside>
+      ) : null}
       {quote && token ? (
         <PublicQuoteView send={quote} token={token} />
       ) : (

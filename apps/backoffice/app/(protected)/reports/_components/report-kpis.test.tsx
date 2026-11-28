@@ -14,7 +14,9 @@ it('shows previous values, undefined bases and percentage points without infinit
     quotesAccepted: 0,
     sentAccepted: 0,
     conversionRate: 0.3,
-    acceptedAmount: '0.00',
+    acceptedAmount: null,
+    acceptedCurrency: null,
+    acceptedAmounts: [],
     responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
     timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
     followUpPending: 0,
@@ -37,4 +39,32 @@ it('shows previous values, undefined bases and percentage points without infinit
   expect(view.getByText(/Sin base de comparación/)).toBeTruthy();
   expect(view.getByText(/\+10 pp/)).toBeTruthy();
   expect(view.container.textContent).not.toMatch(/NaN|Infinity/);
+});
+
+it('shows each accepted currency without a mixed total or an implicit ARS label', () => {
+  const kpis: SellerReport['kpis'] = {
+    rfqsReceived: 2,
+    quotesSent: 2,
+    quotesAccepted: 2,
+    sentAccepted: 2,
+    conversionRate: 1,
+    acceptedAmount: null,
+    acceptedCurrency: null,
+    acceptedAmounts: [
+      { currency: 'ARS', amount: '100.00' },
+      { currency: 'USD', amount: '10.00' },
+    ],
+    responseTime: { averageSeconds: null, medianSeconds: null, sample: 0 },
+    timeToAcceptance: { averageSeconds: null, medianSeconds: null, sample: 0 },
+    followUpPending: 0,
+  };
+  const fmt = createFormatters('es-AR');
+  const view = render(
+    <NextIntlClientProvider locale="es" messages={messages}>
+      <ReportKpis kpis={kpis} fmt={fmt} />
+    </NextIntlClientProvider>,
+  );
+  expect(view.getByText(/ARS\s+\$\s*100,00/)).toBeTruthy();
+  expect(view.getByText(/USD\s+US\$\s*10,00/)).toBeTruthy();
+  expect(view.container.textContent).not.toContain(fmt.currency('110.00', 'ARS'));
 });

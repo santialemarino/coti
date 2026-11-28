@@ -388,6 +388,12 @@ invoicing settings — omitted, it keeps its value — and read back there and, 
 
 ## Identity
 
+Operational setup links open catalog and price settings with an explicit `branch_id` query.
+These pages validate it against the caller's active, authorized branches before rendering an
+import. The header shows this branch; selecting another branch clears the page override and
+returns to the session's selection. Import requests retain their own validated branch scope.
+The individual-price shortcut from price settings to the catalog carries the same branch.
+
 `GET /v1/me` returns the caller's id, name, email, role, account and branch reach. The frontend
 reads it instead of decoding the access token, so token structure stays a backend concern.
 

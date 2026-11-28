@@ -334,7 +334,12 @@
       "DRAFT": "En preparación"
     },
     "pagination": "Páginas de pedidos",
-    "profile": "Mis datos"
+    "profile": "Mis datos",
+    "previousDelivery": {
+      "title": "Estás viendo un envío anterior",
+      "description": "La respuesta y la vigencia que ves corresponden a ese envío.",
+      "current": "Ver cotización vigente"
+    }
   },
   "customerProfile": {
     "title": "Mis datos",

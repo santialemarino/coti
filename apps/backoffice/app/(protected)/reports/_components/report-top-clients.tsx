@@ -24,22 +24,31 @@ export function ReportTopClients({
       empty={clients.length === 0 ? t('empty') : undefined}
       className={className}
     >
-      <Table figures="end">
-        <TableHeader>
-          <TableRow>
-            <TableHead kind="text">{t('name')}</TableHead>
-            <TableHead kind="money">{t('acceptedAmount')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {clients.map((client, index) => (
-            <TableRow key={client.clientId ?? `label-${index}`}>
-              <TableCell>{client.name || t('unnamed')}</TableCell>
-              <TableCell>{fmt.currency(client.acceptedAmount)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {Array.from(new Set(clients.map((client) => client.currency))).map((currency) => (
+        <div key={currency} className="py-3">
+          <h3 className="px-5 pb-2 text-paragraph-sm-semibold text-foreground-muted">{currency}</h3>
+          <Table figures="end">
+            <TableHeader>
+              <TableRow>
+                <TableHead kind="text">{t('name')}</TableHead>
+                <TableHead kind="money">{t('acceptedAmount')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {clients
+                .filter((client) => client.currency === currency)
+                .map((client, index) => (
+                  <TableRow key={client.clientId ?? `label-${index}`}>
+                    <TableCell>{client.name || t('unnamed')}</TableCell>
+                    <TableCell kind="money">
+                      {currency} {fmt.currency(client.acceptedAmount, currency)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </div>
+      ))}
     </ReportSection>
   );
 }

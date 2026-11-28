@@ -15,10 +15,8 @@ import (
 const productPriceColumns = `id, account_id, branch_id, product_id, user_id, price, currency,
 	min_price, valid_from, valid_to, created_at`
 
-// priceInForce is the one definition of the price that applies right now: a period that has
-// started and has not ended. Every query that reads a current price uses this rather than
-// spelling the dates out again, so the definition cannot drift between them.
-const priceInForce = `valid_from <= now() AND (valid_to IS NULL OR valid_to > now())`
+// priceInForce uses statement time so reads after a lock see newly committed price periods.
+const priceInForce = `valid_from <= statement_timestamp() AND (valid_to IS NULL OR valid_to > statement_timestamp())`
 
 // ProductPriceRepository owns persistence for product_price.
 type ProductPriceRepository struct{}

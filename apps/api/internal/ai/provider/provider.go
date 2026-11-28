@@ -22,9 +22,7 @@ type Set struct {
 	Transcriber domain.Transcriber
 }
 
-// Bind selects an adapter per capability. No provider covers all three, so each is chosen on
-// its own and any of them can be left unbound. config.Load rejects a provider with no adapter.
-// Every call is metered to recorder, which may be nil to leave the log as the only record.
+// Bind selects independently configured adapters and meters their calls to the optional recorder.
 func Bind(cfg config.AIConfig, log *slog.Logger, recorder domain.AIUsageRecorder) (Set, error) {
 	meter := ai.NewMeter(log, recorder)
 	set := Set{
@@ -38,6 +36,8 @@ func Bind(cfg config.AIConfig, log *slog.Logger, recorder domain.AIUsageRecorder
 		log.Warn("no language model is bound: extraction and the change handler will refuse")
 	case config.AIProviderAnthropic:
 		set.Generator = anthropic.NewGenerator(cfg.Anthropic(), meter)
+	case config.AIProviderOpenAI:
+		set.Generator = openai.NewGenerator(cfg.OpenAIGeneration(), meter)
 	default:
 		return set, fmt.Errorf("no language model adapter for provider %q", cfg.LLMProvider)
 	}

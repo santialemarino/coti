@@ -358,8 +358,7 @@ func (m MailConfig) Delivers() bool {
 }
 
 // AIConfig holds the provider selection, credentials and limits for the three external AI
-// capabilities. Each is selected on its own because no single provider covers all three, and
-// because an environment may want the language model without the transcriber.
+// capabilities, each enabled independently for the environment.
 type AIConfig struct {
 	AnthropicAPIKey string
 	// AnthropicBaseURL is empty in normal use: the SDK carries the provider's own address, and
@@ -415,6 +414,16 @@ type AnthropicConfig struct {
 	Retry     AIRetryPolicy
 }
 
+// OpenAIGenerationConfig contains only the settings needed by OpenAI generation.
+type OpenAIGenerationConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	MaxTokens int
+	Timeout   time.Duration
+	Retry     AIRetryPolicy
+}
+
 // EmbeddingsConfig is the slice of the AI settings the embedding adapter reads.
 type EmbeddingsConfig struct {
 	APIKey    string
@@ -448,6 +457,12 @@ func (a AIConfig) Anthropic() AnthropicConfig {
 	}
 }
 
+// OpenAIGeneration returns the explicit OpenAI credentials and language-model limits.
+func (a AIConfig) OpenAIGeneration() OpenAIGenerationConfig {
+	return OpenAIGenerationConfig{APIKey: a.OpenAIAPIKey, BaseURL: a.OpenAIBaseURL,
+		Model: a.LLMModel, MaxTokens: a.LLMMaxTokens, Timeout: a.LLMTimeout, Retry: a.Retry}
+}
+
 // Embeddings returns what the embedding adapter needs and nothing else.
 func (a AIConfig) Embeddings() EmbeddingsConfig {
 	return EmbeddingsConfig{
@@ -479,9 +494,10 @@ func (a AIConfig) problems() []string {
 
 	switch a.LLMProvider {
 	case AIProviderDisabled:
-	case AIProviderAnthropic:
-		needsAnthropic = true
-		if !slices.Contains(aiEfforts, a.LLMEffort) {
+	case AIProviderAnthropic, AIProviderOpenAI:
+		needsAnthropic = a.LLMProvider == AIProviderAnthropic
+		needsOpenAI = a.LLMProvider == AIProviderOpenAI
+		if a.LLMProvider == AIProviderAnthropic && !slices.Contains(aiEfforts, a.LLMEffort) {
 			problems = append(problems, fmt.Sprintf("AI_LLM_EFFORT must be one of %s, got %q",
 				strings.Join(aiEfforts, ", "), a.LLMEffort))
 		}
@@ -492,8 +508,8 @@ func (a AIConfig) problems() []string {
 			problems = append(problems, "AI_LLM_TIMEOUT_SECONDS must be greater than zero")
 		}
 	default:
-		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q or %q, got %q",
-			AIProviderDisabled, AIProviderAnthropic, a.LLMProvider))
+		problems = append(problems, fmt.Sprintf("AI_LLM_PROVIDER must be %q, %q or %q, got %q",
+			AIProviderDisabled, AIProviderAnthropic, AIProviderOpenAI, a.LLMProvider))
 	}
 
 	switch a.EmbeddingsProvider {
@@ -529,7 +545,7 @@ func (a AIConfig) problems() []string {
 			string(AIProviderAnthropic))
 	}
 	if needsOpenAI && a.OpenAIAPIKey == "" {
-		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_EMBEDDINGS_PROVIDER "+
+		problems = append(problems, "AI_OPENAI_API_KEY is required when AI_LLM_PROVIDER, AI_EMBEDDINGS_PROVIDER "+
 			"or AI_TRANSCRIPTION_PROVIDER is "+string(AIProviderOpenAI))
 	}
 	if needsOpenAI {

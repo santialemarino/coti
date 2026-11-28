@@ -448,14 +448,16 @@ describe('TaxIdInput', () => {
 
     it('keeps the last hundred steps and drops the oldest', () => {
       render(<Harness kind="dni" />);
+      const field = input();
+      field.focus();
       Array.from({ length: 102 }, (_, i) => String((i % 2) + 1)).forEach((digit) => {
-        select(0, input().value.length);
-        paste(digit);
+        field.setSelectionRange(0, field.value.length);
+        fireEvent.paste(field, { clipboardData: { getData: () => digit } });
       });
 
-      Array.from({ length: 150 }, undo);
+      Array.from({ length: 150 }, () => fireEvent.keyDown(field, { key: 'z', metaKey: true }));
 
-      expect(input().value).toBe('2');
+      expect(field.value).toBe('2');
     });
 
     it('makes a change of edit kind its own step, and a run of deletions one', () => {

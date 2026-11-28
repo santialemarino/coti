@@ -67,11 +67,15 @@ export function OperationalReadinessCard({ readiness }: { readiness: Operational
             <h2 className="text-heading-6">{branch.name}</h2>
             <ul className="flex flex-col gap-y-2">
               {[
-                { key: 'catalog', done: branch.products > 0, href: ROUTES.catalogSettings },
+                {
+                  key: 'catalog',
+                  done: branch.products > 0,
+                  href: ROUTES.branchCatalogSettings(branch.id),
+                },
                 {
                   key: 'prices',
                   done: branch.products > 0 && branch.missingPrices === 0,
-                  href: ROUTES.priceSettings,
+                  href: ROUTES.branchPriceSettings(branch.id),
                 },
                 { key: 'staff', done: branch.hasStaff, href: ROUTES.userSettings },
                 {
@@ -105,7 +109,7 @@ export function OperationalReadinessCard({ readiness }: { readiness: Operational
                 title={t('priceAlert', { count: branch.missingPrices })}
                 action={
                   <Button asChild variant="outline">
-                    <Link href={ROUTES.priceSettings}>{t('managePrices')}</Link>
+                    <Link href={ROUTES.branchPriceSettings(branch.id)}>{t('managePrices')}</Link>
                   </Button>
                 }
               >

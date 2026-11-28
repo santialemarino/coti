@@ -207,6 +207,8 @@ still in the table.
   can run a few milliseconds ahead, and a period stamped with it would not be in force for the next
   request. A new product's first price and the catalog and price-list imports start their periods the
   same way.
+- Current-price reads use the database statement timestamp, including after waiting for a catalog
+  lock. A price committed after the reader's transaction began can therefore apply to that read.
 - A `valid_from` **before** the open period's start is rejected (**422**): it would close a
   period before it opened, and rewrite which price applied at a moment already quoted.
 - The first price for a product at a branch closes nothing.

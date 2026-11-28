@@ -618,6 +618,23 @@ func (s *QuoteDeliveryService) cycleStart(ctx context.Context, q repository.Quer
 	return start, nil
 }
 
+// ensureCurrentSendCycle prevents an unanswered historical link from closing a reactivated quote.
+func (s *QuoteDeliveryService) ensureCurrentSendCycle(ctx context.Context, q repository.Querier,
+	accountID uuid.UUID, quote domain.Quote, send domain.QuoteSend) error {
+	start, err := s.cycleStart(ctx, q, domain.Tenant{AccountID: accountID, BranchID: quote.BranchID}, quote.ID)
+	if err != nil {
+		return err
+	}
+	published := send.CreatedAt
+	if send.SentAt != nil {
+		published = *send.SentAt
+	}
+	if published.Before(start) {
+		return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+	}
+	return nil
+}
+
 // deliveryPreset applies the preset rules: a resend and a reminder reuse what this cycle reached;
 // a first send reuses the version's own earlier cycle, else the last sent version, but only while
 // the dialog keeps the quote's client; «otro medio» starts from nothing.
@@ -961,6 +978,7 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 	}
 	var send *domain.QuoteSend
 	var quote *domain.Quote
+	var cycleErr error
 	err = s.db.InTenantTx(ctx, domain.Tenant{AccountID: accountID},
 		func(q repository.Querier) error {
 			var getErr error
@@ -971,7 +989,16 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 				return nil
 			}
 			quote, getErr = s.quotes.GetByVersionID(ctx, q, accountID, send.VersionID)
-			return getErr
+			if getErr != nil {
+				return getErr
+			}
+			if quote.CurrentVersionID != nil && *quote.CurrentVersionID == send.VersionID {
+				cycleErr = s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send)
+			}
+			if errors.Is(cycleErr, domain.ErrConflict) {
+				return nil
+			}
+			return cycleErr
 		})
 	if err != nil {
 		return nil, err
@@ -983,9 +1010,8 @@ func (s *QuoteDeliveryService) ResolvePublic(ctx context.Context,
 		return &domain.PublicQuoteRepresentation{Status: "EXPIRED", ExpiresAt: *send.ExpiresAt}, nil
 	}
 	customerStatus := s.customerStatus(ctx, accountID, send.ID)
-	// An archived quote takes no answer, so it is no longer offered; one already answered still
-	// shows the customer what they said.
-	if quote.ArchivedAt != nil && customerStatus == nil {
+	// Answered deliveries retain their history even when the quote or send cycle is closed.
+	if (quote.ArchivedAt != nil || cycleErr != nil) && customerStatus == nil {
 		return &domain.PublicQuoteRepresentation{Status: domain.PublicQuoteStatusUnavailable,
 			ExpiresAt: *send.ExpiresAt}, nil
 	}
@@ -1039,6 +1065,9 @@ func (s *QuoteDeliveryService) PreviewPublic(ctx context.Context, token string,
 			}
 			if quote.ArchivedAt != nil {
 				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if err := s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send); err != nil {
+				return err
 			}
 			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
 				quote.CurrentStatus != domain.QuoteStatusSent {
@@ -1254,6 +1283,9 @@ func (s *QuoteDeliveryService) respondLocked(ctx context.Context, accountID uuid
 			}
 			if quote.ArchivedAt != nil {
 				return domain.WithCode(domain.CodeQuoteArchived, domain.ErrConflict)
+			}
+			if err := s.ensureCurrentSendCycle(ctx, q, accountID, *quote, *send); err != nil {
+				return err
 			}
 			if quote.CurrentVersionID == nil || *quote.CurrentVersionID != send.VersionID ||
 				quote.CurrentStatus != domain.QuoteStatusSent {

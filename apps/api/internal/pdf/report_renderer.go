@@ -89,14 +89,8 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 		y = reportPageTop
 	}
 	y = r.drawRankings(doc, report, y)
-	if y+reportSectionGap+r.clientsHeight(report) <= reportContentBottom {
-		r.drawClients(doc, report, y+reportSectionGap)
-		r.newContentPage(doc, report, generatedAt)
-		y = doc.GetY()
-	} else {
-		r.newContentPage(doc, report, generatedAt)
-		y = r.drawClients(doc, report, doc.GetY())
-	}
+	r.newContentPage(doc, report, generatedAt)
+	y = doc.GetY() - reportSectionGap
 	y = r.drawAIMatch(doc, report, y+reportSectionGap)
 	if y+reportSectionGap+reportAssistantHeight > reportContentBottom {
 		r.newContentPage(doc, report, generatedAt)
@@ -105,6 +99,10 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 	y = r.drawAssistant(doc, report, y+reportSectionGap)
 	if report.Scope.MultiBranch {
 		y = r.drawBranches(doc, report, generatedAt, y+reportSectionGap)
+	}
+	for _, amount := range report.KPIs.AcceptedAmounts {
+		r.newContentPage(doc, report, generatedAt)
+		y = r.drawCurrencyAmounts(doc, report, amount, doc.GetY())
 	}
 	r.drawMethodology(doc, report, generatedAt, y+reportSectionGap)
 
@@ -122,7 +120,7 @@ const (
 	reportAssistantHeight = 40.0
 	reportPageTop         = 20.0
 	reportContentBottom   = 270.0
-	reportKPIHeight       = 26.0
+	reportKPIHeight       = 30.0
 	reportKPIWidth        = 57.33
 )
 
@@ -189,7 +187,7 @@ func (r *SellerReportRenderer) drawKPIs(doc *gofpdf.Fpdf, kpis domain.SellerRepo
 		{"Cotizaciones enviadas", reportCount(kpis.QuotesSent), "Envíos comerciales realizados."},
 		{"Cotizaciones aceptadas", reportCount(kpis.QuotesAccepted), "Aceptaciones registradas."},
 		{"Tasa de aceptación", reportPercent(kpis.ConversionRate), conversionDetail},
-		{"Importe aceptado", reportMoney(kpis.AcceptedAmount), "Sobre la versión aceptada."},
+		{"Importe aceptado", reportAcceptedMoney(kpis), "Importes separados por moneda."},
 		{"Tiempo de respuesta", reportDuration(kpis.ResponseTime.AverageSeconds), r.responseDetail(kpis.ResponseTime)},
 	}
 
@@ -204,18 +202,31 @@ func (r *SellerReportRenderer) drawKPIs(doc *gofpdf.Fpdf, kpis domain.SellerRepo
 		doc.SetLineWidth(0.2)
 		doc.RoundedRect(x, y, reportKPIWidth, reportKPIHeight, reportCardRadius, "1234", "FD")
 		doc.SetFillColor(reportBrand[0], reportBrand[1], reportBrand[2])
-		doc.RoundedRect(x+6, y+6, 1.4, 6, 0.7, "1234", "F")
+		doc.RoundedRect(x+6, y+6, 5, 0.8, 0.4, "1234", "F")
 		doc.SetFont("Go", "B", 7)
 		doc.SetTextColor(reportMuted[0], reportMuted[1], reportMuted[2])
-		doc.SetXY(x+10, y+5.5)
+		doc.SetXY(x+6, y+8)
 		doc.CellFormat(reportKPIWidth-16, 4, item.label, "", 1, "L", false, 0, "")
-		doc.SetFont("Go", "B", 14)
+		lines := strings.Split(item.value, "\n")
+		size := 16.0
+		if len(lines) > 1 {
+			size = 10
+		}
+		doc.SetFont("Go", "B", size)
+		for _, line := range lines {
+			for doc.GetStringWidth(line) > reportKPIWidth-12 && size > 7 {
+				size--
+				doc.SetFontSize(size)
+			}
+		}
 		doc.SetTextColor(reportInk[0], reportInk[1], reportInk[2])
-		doc.SetXY(x+6, y+12)
-		doc.CellFormat(reportKPIWidth-12, 6, item.value, "", 1, "L", false, 0, "")
+		for index, line := range lines {
+			doc.SetXY(x+6, y+13+float64(index)*4)
+			doc.CellFormat(reportKPIWidth-12, 5, line, "", 1, "L", false, 0, "")
+		}
 		doc.SetFont("Go", "", 6)
 		doc.SetTextColor(reportSubtle[0], reportSubtle[1], reportSubtle[2])
-		doc.SetXY(x+6, y+20)
+		doc.SetXY(x+6, y+23)
 		doc.CellFormat(reportKPIWidth-12, 3.5, item.detail, "", 0, "L", false, 0, "")
 	}
 	doc.SetY(startY + 2*reportKPIHeight + reportSectionGap)
@@ -391,16 +402,42 @@ func (r *SellerReportRenderer) drawTimeline(
 }
 
 func (r *SellerReportRenderer) drawRankings(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
-	width := (pageWidth - reportSectionGap) / 2
-	height := max(float64(len(report.TopProducts)), float64(len(report.TopRevenueProducts))) * 9.2
+	width := pageWidth
+	height := float64(len(report.TopProducts)) * 9.2
 	height = max(42, 18+height)
 	r.drawCard(doc, leftMargin, y, width, height, "Productos más pedidos", "Por cantidad de veces solicitados.")
 	r.drawProductRanking(doc, report.TopProducts, leftMargin+6, y+16, width-12, reportBrandSoft, reportBrand)
-	r.drawCard(doc, leftMargin+width+reportSectionGap, y, width, height,
-		"Productos con mayor ingreso", "Versión aceptada, antes de descuentos.")
-	r.drawRevenueRanking(doc, report.TopRevenueProducts, leftMargin+width+reportSectionGap+6, y+16, width-12)
 	doc.SetY(y + height)
 	return y + height
+}
+
+func (r *SellerReportRenderer) drawCurrencyAmounts(doc *gofpdf.Fpdf, report domain.SellerReport, amount domain.SellerReportAmount, y float64) float64 {
+	r.drawCard(doc, leftMargin, y, pageWidth, 32, "Importe aceptado · "+amount.Currency,
+		"Sobre las versiones aceptadas. Sin conversión de moneda.")
+	doc.SetFont("Go", "B", 14)
+	doc.SetTextColor(reportInk[0], reportInk[1], reportInk[2])
+	doc.SetXY(leftMargin+6, y+18)
+	doc.CellFormat(pageWidth-12, 6, commercialMoney(amount.Currency, amount.Amount.StringFixed(2)), "", 0, "L", false, 0, "")
+	var products []domain.SellerReportRevenueProduct
+	var clients []domain.SellerReportClient
+	for _, product := range report.TopRevenueProducts {
+		if product.Currency == amount.Currency {
+			products = append(products, product)
+		}
+	}
+	for _, client := range report.TopClients {
+		if client.Currency == amount.Currency {
+			clients = append(clients, client)
+		}
+	}
+	y += 32 + reportSectionGap
+	height := max(42, 18+float64(len(products))*9.2)
+	r.drawCard(doc, leftMargin, y, pageWidth, height, "Productos con mayor ingreso · "+amount.Currency,
+		"Hasta cinco productos. Versión aceptada, antes de descuentos.")
+	r.drawRevenueRanking(doc, products, leftMargin+6, y+16, pageWidth-12)
+	scoped := report
+	scoped.TopClients = clients
+	return r.drawClients(doc, scoped, y+height+reportSectionGap)
 }
 
 func (r *SellerReportRenderer) drawProductRanking(
@@ -468,17 +505,17 @@ func (r *SellerReportRenderer) drawRevenueRanking(
 		if name == "" {
 			name = "Sin nombre"
 		}
-		doc.CellFormat(width-36, 5, r.fitText(doc, name, width-36), "", 0, "L", false, 0, "")
+		doc.CellFormat(width-65, 5, r.fitText(doc, name, width-65), "", 0, "L", false, 0, "")
 		doc.SetFont("Go", "B", 7)
 		doc.SetTextColor(reportAccepted[0], reportAccepted[1], reportAccepted[2])
-		doc.SetXY(x+width-31, rowY)
-		doc.CellFormat(31, 5, reportMoney(product.Revenue), "", 0, "R", false, 0, "")
+		doc.SetXY(x+width-60, rowY)
+		doc.CellFormat(60, 5, commercialMoney(product.Currency, product.Revenue.StringFixed(2)), "", 0, "R", false, 0, "")
 	}
 }
 
 func (r *SellerReportRenderer) drawClients(doc *gofpdf.Fpdf, report domain.SellerReport, y float64) float64 {
 	height := r.clientsHeight(report)
-	r.drawCard(doc, leftMargin, y, pageWidth, height, "Clientes por importe aceptado", "Ordenados por importe aceptado en el período.")
+	r.drawCard(doc, leftMargin, y, pageWidth, height, "Clientes por importe aceptado", "Hasta cinco clientes por moneda, ordenados por importe.")
 	if len(report.TopClients) == 0 {
 		r.drawEmpty(doc, leftMargin+6, y+18, pageWidth-12, "Sin datos en el período.")
 		return y + height
@@ -509,7 +546,7 @@ func (r *SellerReportRenderer) drawClients(doc *gofpdf.Fpdf, report domain.Selle
 		doc.CellFormat(tableWidth-66, 4, r.fitText(doc, name, tableWidth-66), "", 0, "L", false, 0, "")
 		doc.SetFont("Go", "B", 7)
 		doc.SetXY(tableX+tableWidth-63, rowY+2)
-		doc.CellFormat(60, 4, reportMoney(client.AcceptedAmount), "", 0, "R", false, 0, "")
+		doc.CellFormat(60, 4, commercialMoney(client.Currency, client.AcceptedAmount.StringFixed(2)), "", 0, "R", false, 0, "")
 	}
 	return y + height
 }
@@ -713,7 +750,7 @@ func (r *SellerReportRenderer) drawMethodology(
 	doc.SetFont("Go", "", 6.2)
 	doc.SetTextColor(reportSubtle[0], reportSubtle[1], reportSubtle[2])
 	doc.SetXY(leftMargin+8, y+65)
-	doc.CellFormat(pageWidth-16, 3.2, "Moneda: pesos argentinos (ARS). Alcance: "+r.scopeName(report)+".", "", 0, "L", false, 0, "")
+	doc.CellFormat(pageWidth-16, 3.2, "Importes separados por moneda, sin conversión. Alcance: "+r.scopeName(report)+".", "", 0, "L", false, 0, "")
 }
 
 func (r *SellerReportRenderer) drawCard(
@@ -963,8 +1000,21 @@ func reportCount(value int) string {
 	return builder.String()
 }
 
-func reportMoney(value decimal.Decimal) string {
-	return commercialMoney("$", value.StringFixed(2))
+func reportAcceptedMoney(kpis domain.SellerReportKPIs) string {
+	if kpis.AcceptedAmount != nil && kpis.AcceptedCurrency != nil {
+		return commercialMoney(*kpis.AcceptedCurrency, kpis.AcceptedAmount.StringFixed(2))
+	}
+	if len(kpis.AcceptedAmounts) == 2 {
+		values := make([]string, 0, 2)
+		for _, value := range kpis.AcceptedAmounts {
+			values = append(values, commercialMoney(value.Currency, value.Amount.StringFixed(2)))
+		}
+		return strings.Join(values, "\n")
+	}
+	if len(kpis.AcceptedAmounts) > 2 {
+		return "Por moneda"
+	}
+	return "Sin datos"
 }
 
 func reportPercent(value *decimal.Decimal) string {

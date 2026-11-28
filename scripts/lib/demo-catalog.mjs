@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import pg from 'pg';
 
 export const DEMO_ACCOUNT_ID = 'a0000000-0000-4000-8000-000000000001';
 
@@ -7,12 +8,14 @@ export function assertLocalDemoEnvironment(url, environment = process.env) {
     throw new Error('Demo operations are refused in production.');
   }
   const parsed = new URL(url);
+  const target = new pg.Client({ connectionString: url }).connectionParameters;
   if (
     !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
-    !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
+    !['localhost', '127.0.0.1', '::1', '[::1]'].includes(target.host)
   ) {
     throw new Error('Demo operations require an explicitly local PostgreSQL database.');
   }
+  return { host: target.host, port: target.port, database: target.database };
 }
 
 export function demoOptions(args) {
