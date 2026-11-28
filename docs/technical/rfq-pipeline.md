@@ -6,8 +6,11 @@ out, each line carrying the product it matched, how confident that is, why its q
 is, its configured economy and premium recommendations, and — when the line needs the seller's eye
 — the candidates it was decided against.
 
-That draft carries no prices. The seller accepting its materials is a second transition, and it is
-what freezes them — the last section here.
+Initial generations with every line matched, a positive quantity, a compatible catalog unit and
+a current non-negative branch price are valued automatically and move to `QUOTED` in their creation
+transaction. Mixed currencies and unresolved lines keep the normal `DRAFT` flow. Valuation uses
+the same deterministic pricing and discount sweep as manual material acceptance. The version
+remains editable and the seller reviews and sends it explicitly; valuation never publishes it.
 
 The AI provider layer is in [ai-providers.md](ai-providers.md), the search and matching behind the
 product decision in [catalog.md](catalog.md). This document is the flow that consumes both. The
@@ -940,3 +943,14 @@ archived versions remain protected.
 Sending closes the send form and reports each channel's outcome. The order offers copying the
 customer link and sending through another channel; it never exposes the URL or opens the
 customer-only portal as the seller.
+
+### Customer responses across resend cycles
+
+Deliveries of the same frozen version share the first customer decision within one send cycle.
+The latest transition into `QUOTED` starts a new cycle, including `RESEND` reactivation that
+keeps the version. Its new deliveries accept a fresh decision; previous-cycle deliveries retain
+their original decision for replay and history. An unanswered historical link cannot close the
+reactivated quote. Expiry remains attached to each delivery.
+
+The customer order URL without a `delivery` parameter resolves the latest authorized publication.
+A URL pinned to an earlier delivery retains that publication and offers a link to the current order.

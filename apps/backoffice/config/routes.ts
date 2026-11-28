@@ -35,6 +35,8 @@ export const ROUTES = {
   // A step of the ARCA guide, linked from the status card when that step is the one left.
   arcaStep: (step: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing/arca#${step}`,
   priceSettings: `${SETTINGS_ROOT}/prices`,
+  branchPriceSettings: (id: string) =>
+    `${SETTINGS_ROOT}/prices?branch_id=${encodeURIComponent(id)}`,
   promotionSettings: `${SETTINGS_ROOT}/promotions`,
   promotionNew: `${SETTINGS_ROOT}/promotions/new`,
   promotionEdit: (id: string) => `${SETTINGS_ROOT}/promotions/${encodeURIComponent(id)}`,
@@ -46,6 +48,8 @@ export const ROUTES = {
   // A section of the invoicing page, linked from where a missing piece of it is reported.
   invoicingSection: (section: 'points-of-sale') => `${SETTINGS_ROOT}/invoicing#${section}`,
   catalogSettings: `${SETTINGS_ROOT}/catalog`,
+  branchCatalogSettings: (id: string) =>
+    `${SETTINGS_ROOT}/catalog?branch_id=${encodeURIComponent(id)}`,
   branchSettings: `${SETTINGS_ROOT}/branches`,
   branchChannels: (id: string) => `${SETTINGS_ROOT}/branches/${encodeURIComponent(id)}/channels`,
   userSettings: `${SETTINGS_ROOT}/users`,

@@ -296,4 +296,40 @@ describe('quote selection acceptance', () => {
       });
     },
   );
+
+  it('submits an optional rejection reason and cancels without a wire call', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          customerStatus: 'REJECT',
+          createdAt: '2026-11-27T12:00:00Z',
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const view = renderQuote();
+    fireEvent.click(view.getByRole('button', { name: messages.quote.actions.rejectLabel }));
+    fireEvent.change(
+      view.getByRole('textbox', { name: messages.quote.actions.rejectionReasonLabel }),
+      {
+        target: { value: '  Compré en otro proveedor por el plazo de entrega.  ' },
+      },
+    );
+    fireEvent.click(view.getByRole('button', { name: messages.quote.actions.cancel }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(view.getByRole('button', { name: messages.quote.actions.rejectLabel }));
+    fireEvent.change(
+      view.getByRole('textbox', { name: messages.quote.actions.rejectionReasonLabel }),
+      {
+        target: { value: '  El precio supera mi presupuesto.  ' },
+      },
+    );
+    fireEvent.click(view.getByRole('button', { name: messages.quote.actions.confirm }));
+    await waitFor(() => expect(view.getByText(messages.quote.actions.resultReject)).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      token: 'tok-abc',
+      type: 'REJECT',
+      message: 'El precio supera mi presupuesto.',
+    });
+  });
 });

@@ -1,12 +1,15 @@
 'use client';
 
 import { useTransition } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Building2Icon, StoreIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Combobox, type ComboboxOption } from '@repo/ui/components';
 import { FitLabel } from '@/app/(protected)/_components/fit-label';
 import { selectBranch } from '@/app/(protected)/actions';
+import { ROUTES } from '@/config/routes';
+import { usePendingRouter } from '@/hooks/use-pending-router';
 import type { Branch } from '@/lib/api/branches';
 import { ALL_BRANCHES } from '@/lib/constants/branch';
 
@@ -23,7 +26,14 @@ interface BranchSwitcherProps {
 
 export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwitcherProps) {
   const t = useTranslations('common.branch');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = usePendingRouter();
   const [pending, startTransition] = useTransition();
+  const branchSettingsPage =
+    pathname === ROUTES.priceSettings || pathname === ROUTES.catalogSettings;
+  const requestedBranch = branchSettingsPage ? searchParams.get('branch_id') : null;
+  const effectiveBranchId = requestedBranch ?? activeBranchId;
 
   // "Todas" is account-wide, an admin's reach alone; a seller never sees an option the API
   // reads as something wider than their assignments.
@@ -56,6 +66,11 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
   function onValueChange(value: string) {
     startTransition(async () => {
       await selectBranch(value);
+      if (requestedBranch !== null) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('branch_id');
+        router.replace(`${pathname}${params.size > 0 ? `?${params}` : ''}`);
+      }
     });
   }
 
@@ -72,7 +87,7 @@ export function BranchSwitcher({ branches, activeBranchId, isAdmin }: BranchSwit
   return (
     <Combobox
       options={options}
-      value={activeBranchId ?? ALL_BRANCHES}
+      value={effectiveBranchId ?? ALL_BRANCHES}
       onValueChange={onValueChange}
       placeholder={t('placeholder')}
       searchable={branches.length >= SEARCHABLE_FROM}

@@ -53,15 +53,15 @@ describe('settingsNavItems', () => {
     const hrefs = items({ t, onboarding }).map((item) => item.href);
 
     expect(hrefs).toContain(ROUTES.onboardingSettings);
-    expect(t).toHaveBeenCalledWith('nav.onboarding', { done: 2, total: 3 });
+    expect(t).toHaveBeenCalledWith('nav.readiness');
   });
 
-  it('drops the initial setup once every step is done', () => {
+  it('keeps operational setup available after the wizard is complete', () => {
     const onboarding = {
       status: 'DISMISSED',
       checklist: [{ step: 'BRAND', done: true }],
     } as unknown as Onboarding;
 
-    expect(items({ onboarding }).map((item) => item.href)).not.toContain(ROUTES.onboardingSettings);
+    expect(items({ onboarding }).map((item) => item.href)).toContain(ROUTES.onboardingSettings);
   });
 });

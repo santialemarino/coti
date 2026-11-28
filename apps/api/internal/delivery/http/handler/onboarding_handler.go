@@ -12,12 +12,39 @@ import (
 
 // OnboardingService is the account setup surface the handler needs.
 type OnboardingService interface {
+	GetReadiness(context.Context, domain.Tenant) (*domain.OnboardingReadiness, error)
 	Get(ctx context.Context, tenant domain.Tenant) (*domain.Onboarding, error)
 	SaveProgress(ctx context.Context, tenant domain.Tenant, progress domain.OnboardingProgress) (*domain.Onboarding, error)
 	Complete(ctx context.Context, tenant domain.Tenant) error
 	Dismiss(ctx context.Context, tenant domain.Tenant) error
 	Resume(ctx context.Context, tenant domain.Tenant) error
 	SetChecklistHidden(ctx context.Context, tenant domain.Tenant, hidden bool) error
+}
+
+// GetReadiness returns current operational setup diagnostics without credentials.
+// @Summary Get operational setup diagnostics
+// @Tags onboarding
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} dto.OnboardingReadinessResponse
+// @Failure 401 {object} dto.ErrorResponse
+// @Failure 403 {object} dto.ErrorResponse
+// @Router /v1/onboarding/readiness [get]
+func (h *OnboardingHandler) GetReadiness(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	result, err := h.onboarding.GetReadiness(c.Request.Context(), tenant)
+	if err != nil {
+		Respond(c, err)
+		return
+	}
+	response := dto.OnboardingReadinessResponse{AccountReady: result.AccountReady, Branches: []dto.BranchReadinessResponse{}}
+	for _, branch := range result.Branches {
+		response.Branches = append(response.Branches, dto.BranchReadinessResponse{ID: branch.ID, Name: branch.Name, Products: branch.Products, MissingPrices: branch.MissingPrices, HasStaff: branch.HasStaff, HasChannel: branch.HasChannel})
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 // OnboardingHandler serves the account's resumable setup flow.

@@ -59,11 +59,12 @@ type catalogRecommendationWriter interface {
 
 // QuoteService owns the quote lifecycle from the seller's review of the generated materials on.
 type QuoteService struct {
-	db     tenantTxRunner
-	quotes quoteRepository
-	prices branchPriceReader
-	env    domain.ARCAEnvironment // where this server invoices; only an invoice issued there closes a sale.
-	log    *slog.Logger
+	automaticInputs automaticQuoteInputLocker
+	db              tenantTxRunner
+	quotes          quoteRepository
+	prices          branchPriceReader
+	env             domain.ARCAEnvironment // where this server invoices; only an invoice issued there closes a sale.
+	log             *slog.Logger
 	// sweep settles the version's discounts once its lines are priced; nil prices without them.
 	sweep *discountSweep
 	// carry starts a reactivated draft from the discounts the customer saw; nil without the engine.
@@ -125,116 +126,150 @@ func (s *QuoteService) AcceptMaterials(
 		return nil, err
 	}
 
-	var priced domain.PricedQuote
-	var unpricedProducts []uuid.UUID
+	var priced *domain.PricedQuote
 	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
-		if err != nil {
-			return err
-		}
-		if err := requireMaterialsPendingAcceptance(*quote); err != nil {
-			return err
-		}
-
-		version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
-			quote.ID)
-		if err != nil {
-			return err
-		}
-		if version.IsImmutable {
-			return domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
-		}
-		items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
-		if err != nil {
-			return err
-		}
-		// The candidates ride back with the lines: valuation does not change which line is
-		// flagged, and the seller reviews the gaps and the choices on one screen.
-		candidates, err := s.quotes.ListAlternativesByItemIDs(ctx, q, tenant.AccountID,
-			quoteItemIDs(items))
-		if err != nil {
-			return err
-		}
-
-		// The quote's own branch, not the caller's selection: the price a line freezes belongs to
-		// the branch the order arrived at. GetByID has already proved the two are the same.
-		prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
-			quoteProductIDs(items, candidates))
-		if err != nil {
-			return err
-		}
-		valuation, err := valueQuoteItems(items, prices)
-		if err != nil {
-			return err
-		}
-		unpricedProducts = valuation.unpricedProducts
-		if err := s.quotes.ApplyPricing(ctx, q, tenant.AccountID, version.ID,
-			valuation.pricings); err != nil {
-			return err
-		}
-		alternativePricings, err := valueQuoteAlternatives(candidates, prices, valuation.currency)
-		if err != nil {
-			return err
-		}
-		if err := s.quotes.ApplyAlternativePricing(ctx, q, tenant.AccountID, version.ID,
-			alternativePricings); err != nil {
-			return err
-		}
-		applyAlternativePricing(candidates, alternativePricings)
-		total := valuation.total
-		if s.sweep != nil {
-			total, err = s.sweep.settle(ctx, q, tenant.AccountID, quote.BranchID, version.ID,
-				valuation.items)
-			if err != nil {
-				return err
-			}
-		}
-		version, err = s.quotes.UpdateVersionValuation(ctx, q, tenant.AccountID, version.ID,
-			total, valuation.currency)
-		if err != nil {
-			return err
-		}
-
-		// The version stays unfrozen. QUOTED and a frozen version are correlated but different
-		// things: the seller still edits the draft, and freezing belongs to sending it.
-		previousStatus := quote.CurrentStatus
-		quote, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.BranchID, quote.ID,
-			previousStatus, domain.QuoteStatusQuoted)
-		if err != nil {
-			// The status moved between the read and the write. Same refusal as the check above,
-			// caught one statement later, so it reads the same to whoever clicked.
-			if errors.Is(err, domain.ErrConflict) {
-				return domain.WithCode(domain.CodeQuoteNotDraft, err)
-			}
-			return err
-		}
-		if _, err := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quote.ID,
-			&previousStatus, domain.QuoteStatusQuoted, &tenant.UserID); err != nil {
-			return err
-		}
-
-		priced = domain.PricedQuote{
-			Quote:           *quote,
-			Version:         *version,
-			Items:           valuation.items,
-			UnpricedItemIDs: valuation.unpricedItems,
-			Alternatives:    candidates,
-		}
-		return nil
+		var err error
+		priced, err = s.priceMaterialsInTx(ctx, q, tenant, quoteID, false)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	// Reported after the commit, not inside it: a warning about a quote whose transaction rolled
-	// back would describe a valuation that never happened.
-	if len(unpricedProducts) > 0 {
-		s.log.WarnContext(ctx, "quote priced with lines the branch cannot price",
-			slog.String("quote_id", priced.Quote.ID.String()),
-			slog.String("branch_id", priced.Quote.BranchID.String()),
-			slog.Int("lines", len(unpricedProducts)),
-			slog.Any("product_ids", unpricedProducts))
+	if len(priced.UnpricedItemIDs) > 0 {
+		s.log.WarnContext(ctx, "quote priced with unpriced lines", "quote_id", priced.Quote.ID, "lines", len(priced.UnpricedItemIDs))
 	}
-	return &priced, nil
+	return priced, nil
+}
+
+// TryAutoQuote values a newly generated draft inside its creation transaction.
+func (s *QuoteService) TryAutoQuote(ctx context.Context, q repository.Querier, tenant domain.Tenant, quoteID uuid.UUID) (*domain.PricedQuote, error) {
+	return s.priceMaterialsInTx(ctx, q, tenant, quoteID, true)
+}
+
+func (s *QuoteService) priceMaterialsInTx(ctx context.Context, q repository.Querier, tenant domain.Tenant, quoteID uuid.UUID, automatic bool) (*domain.PricedQuote, error) {
+	quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	if automatic && (quote.CurrentStatus != domain.QuoteStatusDraft || quote.ArchivedAt != nil) {
+		return nil, nil
+	}
+	if err := requireMaterialsPendingAcceptance(*quote); err != nil {
+		return nil, err
+	}
+
+	version, err := s.quotes.GetCurrentVersion(ctx, q, tenant.AccountID, quote.BranchID,
+		quote.ID)
+	if err != nil {
+		return nil, err
+	}
+	if automatic && (quote.CurrentStatus != domain.QuoteStatusDraft || version.VersionNumber != 1) {
+		return nil, nil
+	}
+	if version.IsImmutable {
+		return nil, domain.WithCode(domain.CodeQuoteNotDraft, domain.ErrConflict)
+	}
+	items, err := s.quotes.ListItems(ctx, q, tenant.AccountID, version.ID)
+	if err != nil {
+		return nil, err
+	}
+	// The candidates ride back with the lines: valuation does not change which line is
+	// flagged, and the seller reviews the gaps and the choices on one screen.
+	candidates, err := s.quotes.ListAlternativesByItemIDs(ctx, q, tenant.AccountID,
+		quoteItemIDs(items))
+	if err != nil {
+		return nil, err
+	}
+	if automatic {
+		if s.automaticInputs == nil {
+			return nil, nil
+		}
+		if err := s.automaticInputs.LockAutomaticQuoteInputs(ctx, q, tenant.AccountID, quote.BranchID, quoteProductIDs(items, candidates)); err != nil {
+			return nil, err
+		}
+	}
+
+	// The quote's own branch, not the caller's selection: the price a line freezes belongs to
+	// the branch the order arrived at. GetByID has already proved the two are the same.
+	prices, err := s.prices.GetCurrentByProductIDs(ctx, q, tenant.AccountID, quote.BranchID,
+		quoteProductIDs(items, candidates))
+	if err != nil {
+		return nil, err
+	}
+	if automatic {
+		eligible, err := s.automaticMaterialsEligible(ctx, q, tenant.AccountID, items, prices)
+		if err != nil {
+			return nil, err
+		}
+		if !eligible {
+			return nil, nil
+		}
+	}
+	valuation, err := valueQuoteItems(items, prices)
+	if err != nil {
+		if automatic && errors.Is(err, domain.ErrInvalidInput) {
+			s.log.InfoContext(ctx, "automatic quotation requires review", "reason", "AMOUNT_OUT_OF_RANGE")
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := s.quotes.ApplyPricing(ctx, q, tenant.AccountID, version.ID,
+		valuation.pricings); err != nil {
+		return nil, err
+	}
+	alternativePricings, err := valueQuoteAlternatives(candidates, prices, valuation.currency)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.quotes.ApplyAlternativePricing(ctx, q, tenant.AccountID, version.ID,
+		alternativePricings); err != nil {
+		return nil, err
+	}
+	applyAlternativePricing(candidates, alternativePricings)
+	total := valuation.total
+	if s.sweep != nil {
+		total, err = s.sweep.settle(ctx, q, tenant.AccountID, quote.BranchID, version.ID,
+			valuation.items)
+		if err != nil {
+			return nil, err
+		}
+	}
+	version, err = s.quotes.UpdateVersionValuation(ctx, q, tenant.AccountID, version.ID,
+		total, valuation.currency)
+	if err != nil {
+		return nil, err
+	}
+
+	// The version stays unfrozen. QUOTED and a frozen version are correlated but different
+	// things: the seller still edits the draft, and freezing belongs to sending it.
+	previousStatus := quote.CurrentStatus
+	quote, err = s.quotes.UpdateStatus(ctx, q, tenant.AccountID, quote.BranchID, quote.ID,
+		previousStatus, domain.QuoteStatusQuoted)
+	if err != nil {
+		// The status moved between the read and the write. Same refusal as the check above,
+		// caught one statement later, so it reads the same to whoever clicked.
+		if errors.Is(err, domain.ErrConflict) {
+			return nil, domain.WithCode(domain.CodeQuoteNotDraft, err)
+		}
+		return nil, err
+	}
+	var actorID *uuid.UUID
+	if !automatic {
+		actorID = &tenant.UserID
+	}
+	if _, err := s.quotes.AppendStatusChange(ctx, q, tenant.AccountID, quote.ID,
+		&previousStatus, domain.QuoteStatusQuoted, actorID); err != nil {
+		return nil, err
+	}
+
+	priced := &domain.PricedQuote{
+		Quote:           *quote,
+		Version:         *version,
+		Items:           valuation.items,
+		UnpricedItemIDs: valuation.unpricedItems,
+		Alternatives:    candidates,
+	}
+	return priced, nil
 }
 
 // ApproveAlternative records a seller decision on a priced candidate of the current version.

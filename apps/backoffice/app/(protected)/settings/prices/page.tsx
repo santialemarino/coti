@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { Button, Callout } from '@repo/ui/components';
@@ -12,11 +13,24 @@ import { generatePageMetadata } from '@/lib/utils/page';
 
 export const generateMetadata = () => generatePageMetadata('priceSettings');
 
-export default async function PriceSettingsPage() {
+export default async function PriceSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireAdmin();
   const t = await getTranslations('priceImport');
   const branches = await getBranches();
-  const activeBranchId = await getEffectiveBranchId(branches);
+  const params = await searchParams;
+  const requestedBranch = params.branch_id;
+  if (
+    requestedBranch !== undefined &&
+    (typeof requestedBranch !== 'string' ||
+      !branches.some((branch) => branch.id === requestedBranch))
+  ) {
+    notFound();
+  }
+  const activeBranchId = requestedBranch ?? (await getEffectiveBranchId(branches));
   const branch = branches.find((candidate) => candidate.id === activeBranchId);
 
   return (
@@ -25,7 +39,9 @@ export default async function PriceSettingsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-paragraph-sm text-foreground-muted">{t('individualHint')}</p>
         <Button asChild variant="outline">
-          <Link href={ROUTES.catalogSettings}>{t('individualAction')}</Link>
+          <Link href={branch ? ROUTES.branchCatalogSettings(branch.id) : ROUTES.catalogSettings}>
+            {t('individualAction')}
+          </Link>
         </Button>
       </div>
       {branch ? (

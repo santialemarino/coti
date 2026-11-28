@@ -1608,7 +1608,9 @@
         "rejected": {
           "title": "Cotización rechazada",
           "description": "La cotización quedó rechazada.",
-          "withReason": "La cotización quedó rechazada: {reason}"
+          "withReason": "La cotización quedó rechazada: {reason}",
+          "noReason": "Sin motivo informado",
+          "history": "Rechazo de la versión {version} · {date}"
         },
         "changeRequested": {
           "title": "Cambio solicitado",
@@ -1825,9 +1827,18 @@
       "send": {
         "description": "Elegí cómo enviar la cotización al cliente. Cada mensaje incluye un enlace al detalle.",
         "modes": {
-          "FIRST": { "title": "Enviar cotización", "trigger": "Enviar cotización" },
-          "OTHER_MEDIUM": { "title": "Enviar por otro medio", "trigger": "Enviar por otro medio" },
-          "RESEND": { "title": "Reenviar cotización", "trigger": "Reenviar" }
+          "FIRST": {
+            "title": "Enviar cotización",
+            "trigger": "Enviar cotización"
+          },
+          "OTHER_MEDIUM": {
+            "title": "Enviar por otro medio",
+            "trigger": "Enviar por otro medio"
+          },
+          "RESEND": {
+            "title": "Reenviar cotización",
+            "trigger": "Reenviar"
+          }
         },
         "sendWhatsApp": "Enviar por WhatsApp",
         "phoneLabel": "WhatsApp del cliente",
@@ -2425,7 +2436,7 @@
       "acceptedDetail": "Aceptaciones registradas en el período.",
       "conversion": "Tasa de conversión",
       "acceptedAmount": "Importe aceptado",
-      "acceptedAmountDetail": "Sobre la versión aceptada, con descuentos aplicados.",
+      "acceptedAmountDetail": "Sobre las versiones aceptadas, con descuentos aplicados y separado por moneda.",
       "responseTime": "Tiempo de respuesta",
       "timeToAcceptance": "Tiempo hasta la aceptación",
       "followUpPending": "Seguimientos pendientes",
@@ -2492,7 +2503,7 @@
     },
     "revenueProducts": {
       "title": "Productos con mayor ingreso",
-      "description": "Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
+      "description": "Hasta cinco productos por moneda. Precio unitario por cantidad en la versión aceptada, antes de descuentos.",
       "empty": "Todavía no hay productos aceptados en el período."
     },
     "clients": {
@@ -2529,6 +2540,17 @@
         "manualOverride": "Resueltas a mano",
         "pending": "Sin decidir"
       }
+    },
+    "comparison": {
+      "period": "Comparación con {from}–{to} (igual cantidad de días)",
+      "previous": "Anterior: {value}",
+      "change": "Variación: {delta} · {percentage}",
+      "noData": "Sin datos",
+      "noBase": "Sin base de comparación",
+      "seconds": "{value} s",
+      "points": "{value} pp",
+      "percent": "{value}%",
+      "rate": "Puntos porcentuales"
     }
   },
   "catalog": {
@@ -2574,7 +2596,8 @@
       "combos": "Combos",
       "onboarding": "Configuración inicial · {done}/{total}",
       "invoicing": "Facturación",
-      "export": "Exportación de datos"
+      "export": "Exportación de datos",
+      "readiness": "Configuración operativa"
     },
     "backToInvoicing": "Volver a Facturación",
     "backToPromotions": "Volver a Promociones",
@@ -2730,7 +2753,9 @@
       "placeholder": "Ingresá el identificador de la cuenta",
       "required": "Ingresá el identificador de la cuenta de WhatsApp Business."
     },
-    "metaId": { "invalid": "Ingresá el identificador con dígitos únicamente." },
+    "metaId": {
+      "invalid": "Ingresá el identificador con dígitos únicamente."
+    },
     "accessToken": {
       "label": "Token de acceso de Meta",
       "placeholder": "Ingresá el token de acceso",
@@ -3450,6 +3475,24 @@
       "title": "¿Cómo te encuentran tus clientes en internet?",
       "description": "Elegí la dirección del portal de clientes de tu corralón. Podés configurarla más tarde desde Cuenta.",
       "later": "Configurar más tarde"
+    },
+    "readiness": {
+      "title": "Preparación para operar",
+      "description": "Este diagnóstico se calcula con los datos actuales de la sucursal seleccionada o de todas las sucursales. No bloquea las operaciones manuales.",
+      "progress": "{done} de {total} requisitos completos",
+      "account": "Completá los datos de la empresa",
+      "noBranches": "Creá una sucursal activa",
+      "catalog": "Catálogo activo en la sucursal",
+      "prices": "Precios vigentes utilizables",
+      "staff": "Personal activo con acceso",
+      "channels": "Canales de entrada (opcionales)",
+      "complete": "Completo",
+      "pending": "Pendiente",
+      "optional": "Opcional",
+      "resolve": "Configurar",
+      "priceAlert": "{count, plural, one {# producto sin precio utilizable} other {# productos sin precio utilizable}}",
+      "managePrices": "Gestionar precios",
+      "priceScope": "Sucursal: {branch}. Se consideran productos activos disponibles y precios vigentes no negativos. Para corregirlos, seleccioná esta sucursal en el selector y abrí Precios."
     }
   },
   "priceImport": {
