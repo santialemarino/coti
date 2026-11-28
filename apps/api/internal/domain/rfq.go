@@ -115,6 +115,18 @@ type RfqListItem struct {
 	// FollowupFlaggedAt is when the quote was flagged for follow-up; NULL while it is not.
 	FollowupFlaggedAt *time.Time
 	Closure           SaleClosure
+	// AcceptanceUnconfirmed is an acceptance read from a reply that waits for the seller.
+	AcceptanceUnconfirmed bool
+	// CustomerReply is the latest unread reply on a SENT quote that changed nothing; nil when none.
+	CustomerReply *CustomerReply
+}
+
+// CustomerReply is a reply recorded on a SENT quote without changing it, waiting for the seller.
+type CustomerReply struct {
+	Reason HandlerNoMatchReason
+	// ReplyAcceptance is set on an acceptance the backend weighed; a SENT quote only carries SIGNAL.
+	ReplyAcceptance *ReplyAcceptance
+	CreatedAt       time.Time
 }
 
 // SaleComplete reports whether the order is a fully closed sale.
@@ -257,4 +269,18 @@ type RfqDetail struct {
 	// Conversation is the customer's messages after a send and what the handler did with them;
 	// nil when there are none.
 	Conversation *Conversation
+}
+
+// AcceptedByReply reports whether the quote stands ACCEPTED on an acceptance read from a reply.
+func (d RfqDetail) AcceptedByReply() bool {
+	if d.Quote == nil || d.Quote.CurrentStatus != QuoteStatusAccepted || d.Quote.CurrentVersionID == nil {
+		return false
+	}
+	for _, action := range d.ClientActions {
+		if action.Type == ClientActionAccept && action.VersionID == *d.Quote.CurrentVersionID &&
+			action.MessageBatchID != nil && action.RevokedAt == nil {
+			return true
+		}
+	}
+	return false
 }

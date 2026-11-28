@@ -58,6 +58,12 @@ const (
 	HandlerNoMatchNoRequest HandlerNoMatchReason = "NO_REQUEST"
 )
 
+// CustomerReplyReasons are the reasons a reply that changed nothing is recorded under.
+func CustomerReplyReasons() []string {
+	return []string{string(HandlerNoMatchCustomerAccepts), string(HandlerNoMatchCustomerRejects),
+		string(HandlerNoMatchCustomerQuestion), string(HandlerNoMatchNoRequest)}
+}
+
 // NoMatchReasonFor is the reason a decision that changes nothing is recorded under.
 func NoMatchReasonFor(decision CustomerDecision) (HandlerNoMatchReason, bool) {
 	switch decision {
