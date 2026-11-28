@@ -98,6 +98,15 @@ export function evaluateDraftChecks(expected, status, body) {
     return failures;
   }
 
+  if (expected.non_order_kind !== undefined && body?.non_order?.kind !== expected.non_order_kind) {
+    failures.push(
+      checkFailure(
+        'ai_extraction',
+        `non_order.kind ${show(body?.non_order?.kind)}, want ${show(expected.non_order_kind)}`,
+      ),
+    );
+  }
+
   if (expected.rfq_status !== undefined && body?.rfq?.status !== expected.rfq_status) {
     failures.push(
       checkFailure(

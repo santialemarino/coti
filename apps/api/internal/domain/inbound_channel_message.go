@@ -82,8 +82,30 @@ type InboundEmailAttachment struct {
 	Content     []byte
 }
 
+// InboundMessageKind is what a message that opened no order was read as.
+type InboundMessageKind string
+
+const (
+	InboundMessageGreeting  InboundMessageKind = "GREETING"
+	InboundMessageQuestion  InboundMessageKind = "QUESTION"
+	InboundMessageOther     InboundMessageKind = "OTHER"
+	InboundMessageAutomated InboundMessageKind = "AUTOMATED"
+)
+
+// InboundMessageKindFor maps an extractor's reading of a message that named no material.
+func InboundMessageKindFor(kind RFQMessageKind) InboundMessageKind {
+	switch kind {
+	case RFQMessageGreeting:
+		return InboundMessageGreeting
+	case RFQMessageQuestion:
+		return InboundMessageQuestion
+	default:
+		return InboundMessageOther
+	}
+}
+
 // InboundChannelMessage retains a provider event and the RFQ or conversation message it became.
-// Exactly one of RFQID and QuoteMessageID is set.
+// At most one of RFQID and QuoteMessageID is set; a message with neither carries its Kind.
 type InboundChannelMessage struct {
 	ID                 uuid.UUID
 	AccountID          uuid.UUID
@@ -91,21 +113,26 @@ type InboundChannelMessage struct {
 	ChannelID          uuid.UUID
 	RFQID              *uuid.UUID
 	QuoteMessageID     *uuid.UUID
+	Kind               *InboundMessageKind
 	ExternalMessageID  string
 	SenderID           string
 	SenderLabel        *string
 	Body               string
 	Payload            []byte
 	ProviderReceivedAt time.Time
+	DismissedAt        *time.Time
 	CreatedAt          time.Time
 }
 
 // NewInboundChannelMessage is the provider event retained before its RFQ or conversation work
-// runs. Exactly one of RFQID and QuoteMessageID is set.
+// runs. Exactly one of RFQID, QuoteMessageID and Kind is set.
 type NewInboundChannelMessage struct {
-	ID                 uuid.UUID
-	RFQID              *uuid.UUID
-	QuoteMessageID     *uuid.UUID
+	ID             uuid.UUID
+	RFQID          *uuid.UUID
+	QuoteMessageID *uuid.UUID
+	Kind           *InboundMessageKind
+	// Dismissed files a non-order the seller never needs to see, such as a name reply.
+	Dismissed          bool
 	ExternalMessageID  string
 	SenderID           string
 	SenderLabel        *string

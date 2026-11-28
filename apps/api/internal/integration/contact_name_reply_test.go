@@ -288,6 +288,16 @@ func TestContactNameReply_AutomatedMailNeverGetsTheQuestion(t *testing.T) {
 	if len(messenger.messages) != 0 {
 		t.Fatalf("automated mail got %d name prompts", len(messenger.messages))
 	}
+	var rfqs, automated int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT (SELECT count(*) FROM rfq WHERE account_id=$1),
+		        (SELECT count(*) FROM inbound_channel_message WHERE account_id=$1 AND kind='AUTOMATED' AND rfq_id IS NULL)`,
+		account).Scan(&rfqs, &automated); err != nil {
+		t.Fatal(err)
+	}
+	if rfqs != 0 || automated != 3 {
+		t.Fatalf("automated mail opened %d orders and kept %d messages, want 0 and 3", rfqs, automated)
+	}
 }
 
 func TestContactNameReply_AnAutoReplyIsNeverTheName(t *testing.T) {

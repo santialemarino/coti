@@ -220,7 +220,7 @@ func (s *WhatsAppInboundService) ingestOne(
 			if joined == nil && message.ConversationOnly {
 				return errInboundNoConversation
 			}
-			var pending *uuid.UUID
+			var pending *domain.PendingNameRequest
 			var name string
 			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && joined == nil &&
 				message.Media == nil {
@@ -234,7 +234,13 @@ func (s *WhatsAppInboundService) ingestOne(
 				in.QuoteMessageID = &joined.ID
 			case pending != nil:
 				hints.Name = &name
-				in.RFQID = pending
+				in.RFQID = pending.RFQID
+				// A name that answers a greeting joins no order, and the seller has nothing to read in it.
+				if pending.RFQID == nil {
+					kind := domain.InboundMessageOther
+					in.Kind = &kind
+					in.Dismissed = true
+				}
 				var payload map[string]any
 				if err := json.Unmarshal(in.Payload, &payload); err != nil {
 					return err

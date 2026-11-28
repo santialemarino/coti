@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -96,6 +97,23 @@ type rfqInboundMessageReader interface {
 	FindSenderIDByRFQID(ctx context.Context, q repository.Querier, accountID, branchID,
 		rfqID uuid.UUID) (*string, error)
 }
+
+// rfqNonOrderStore reserves channel messages and files the ones that turn out not to be orders.
+type rfqNonOrderStore interface {
+	Reserve(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID,
+		in domain.NewInboundChannelMessage) (*domain.InboundChannelMessage, error)
+	DetachNonOrder(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID,
+		kind domain.InboundMessageKind) (*domain.InboundChannelMessage, error)
+}
+
+// rfqUnworkedDeleter removes an RFQ a non-order message opened before it was read.
+type rfqUnworkedDeleter interface {
+	DeleteUnworked(ctx context.Context, q repository.Querier, accountID, branchID,
+		rfqID uuid.UUID) (bool, error)
+}
+
+// errRFQAlreadyWorked rolls back filing a non-order whose RFQ something was already built on.
+var errRFQAlreadyWorked = errors.New("rfq already worked on")
 
 type rfqPublicContactReader interface {
 	FindPublicContactByRFQID(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.PublicRFQContact, error)
@@ -1447,9 +1465,29 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	if profileName != nil {
 		clientLabel = fmt.Sprintf("%s (%s)", *profileName, from)
 	}
-	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
-		ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw,
-	}, nil, nil)
+	draftIn := domain.TextRFQDraftInput{ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw}
+	store, ok := s.inboundMessages.(rfqNonOrderStore)
+	if !ok {
+		return s.createTextDraft(ctx, tenant, draftIn, nil, nil)
+	}
+	// The message is retained the way a real delivery is, so a greeting files as a non-order here too.
+	rfqID := uuid.New()
+	payload, err := json.Marshal(map[string]string{"provider": "development"})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		_, err := store.Reserve(ctx, q, tenant.AccountID, tenant.BranchID, channel.ID,
+			domain.NewInboundChannelMessage{
+				ID: uuid.New(), RFQID: &rfqID, ExternalMessageID: "development-" + uuid.NewString(),
+				SenderID: from, SenderLabel: profileName, Body: raw, Payload: payload,
+				ProviderReceivedAt: time.Now().UTC(),
+			})
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return s.createTextDraft(ctx, tenant, draftIn, nil, &rfqID)
 }
 
 func (s *RFQService) createTextDraft(
@@ -1475,10 +1513,55 @@ func (s *RFQService) createTextDraft(
 		return nil, err
 	}
 	if len(items) == 0 {
+		// A channel message that names no material is a greeting or a question, not a failed order;
+		// a seller who opened the order anyway gets the failed order they asked for.
+		if rfqID != nil && sellerID == nil {
+			message, fileErr := s.fileNonOrder(ctx, tenant, rfq.ID, extraction.Kind)
+			if fileErr != nil {
+				return nil, fileErr
+			}
+			if message != nil {
+				return &domain.TextRFQDraft{NonOrder: message}, nil
+			}
+		}
 		s.log.InfoContext(ctx, "rfq produced no materials", slog.String("rfq_id", rfq.ID.String()))
 		return &domain.TextRFQDraft{RFQ: *s.markRFQFailed(ctx, tenant, rfq, sellerID)}, nil
 	}
 	return s.persistGeneratedDraft(ctx, tenant, rfq, sellerID, extraction, items, alternatives)
+}
+
+// fileNonOrder keeps the message reserved for rfqID as a non-order of kind and removes the RFQ
+// opened for it, in one transaction. It returns nil when the RFQ was already worked on or no
+// channel message names it, so the caller fails the order as before.
+func (s *RFQService) fileNonOrder(
+	ctx context.Context, tenant domain.Tenant, rfqID uuid.UUID, kind domain.RFQMessageKind,
+) (*domain.InboundChannelMessage, error) {
+	store, storeOK := s.inboundMessages.(rfqNonOrderStore)
+	deleter, deleterOK := s.rfqs.(rfqUnworkedDeleter)
+	if !storeOK || !deleterOK {
+		return nil, nil
+	}
+	var message *domain.InboundChannelMessage
+	err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		message, err = store.DetachNonOrder(ctx, q, tenant.AccountID, tenant.BranchID, rfqID,
+			domain.InboundMessageKindFor(kind))
+		if err != nil || message == nil {
+			return err
+		}
+		deleted, err := deleter.DeleteUnworked(ctx, q, tenant.AccountID, tenant.BranchID, rfqID)
+		if err == nil && !deleted {
+			return errRFQAlreadyWorked
+		}
+		return err
+	})
+	if errors.Is(err, errRFQAlreadyWorked) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return message, nil
 }
 
 // readMaterialsFromContent is readMaterials for an order that arrived as a file. Interpretation
