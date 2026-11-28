@@ -107,6 +107,8 @@ func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rate := decimal.RequireFromString("0.3333")
 	aiRate := decimal.RequireFromString("0.5")
+	accepted := decimal.RequireFromString("1250.5")
+	currency := "ARS"
 	sellerID, clientID := uuid.New(), uuid.New()
 	channel := domain.ChannelTypeEmail
 	service := &sellerReportServiceStub{report: &domain.SellerReport{
@@ -120,12 +122,15 @@ func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {
 			ClientName: "Obra Norte",
 		},
 		KPIs: domain.SellerReportKPIs{
-			ConversionRate: &rate,
-			AcceptedAmount: decimal.RequireFromString("1250.5"),
+			ConversionRate:   &rate,
+			AcceptedAmount:   &accepted,
+			AcceptedCurrency: &currency,
+			AcceptedAmounts:  []domain.SellerReportAmount{{Currency: currency, Amount: accepted}},
 		},
 		TopRevenueProducts: []domain.SellerReportRevenueProduct{{
 			ProductID: uuid.New(),
 			Name:      "Cemento",
+			Currency:  currency,
 			Revenue:   decimal.RequireFromString("1250.5"),
 		}},
 		AIMatch: domain.SellerReportAIMatch{Rate: &aiRate},
@@ -169,8 +174,8 @@ func TestSellerReportHandlerGetPassesDatesAndFormatsDecimals(t *testing.T) {
 	if response.KPIs.ConversionRate == nil || *response.KPIs.ConversionRate != "0.3333" {
 		t.Fatalf("conversion rate = %v, want 0.3333", response.KPIs.ConversionRate)
 	}
-	if response.KPIs.AcceptedAmount != "1250.50" {
-		t.Fatalf("accepted amount = %s, want 1250.50", response.KPIs.AcceptedAmount)
+	if response.KPIs.AcceptedAmount == nil || *response.KPIs.AcceptedAmount != "1250.50" {
+		t.Fatalf("accepted amount = %v, want 1250.50", response.KPIs.AcceptedAmount)
 	}
 	if response.AIMatch.Rate == nil || *response.AIMatch.Rate != "0.5000" {
 		t.Fatalf("AI rate = %v, want 0.5000", response.AIMatch.Rate)
@@ -192,6 +197,7 @@ func TestSellerReportResponseKeepsEmptyCollectionsAsArrays(t *testing.T) {
 		`"top_products":[]`,
 		`"top_revenue_products":[]`,
 		`"top_clients":[]`,
+		`"accepted_amounts":[]`,
 	} {
 		if !strings.Contains(string(payload), field) {
 			t.Fatalf("json = %s, want %s", payload, field)
@@ -209,5 +215,38 @@ func TestSellerReportResponseKeepsEmptyCollectionsAsArrays(t *testing.T) {
 		response.Filters.SellerID != nil || response.Filters.SellerName != "" ||
 		response.Filters.ClientID != nil || response.Filters.ClientName != "" {
 		t.Fatalf("empty report filters = %+v, want an unfiltered object", response.Filters)
+	}
+}
+
+func TestSellerReportResponseKeepsCurrencyAmountsSeparate(t *testing.T) {
+	ars, usd := decimal.RequireFromString("100.00"), decimal.RequireFromString("10.00")
+	report := domain.SellerReport{KPIs: domain.SellerReportKPIs{
+		QuotesAccepted: 2,
+		AcceptedAmounts: []domain.SellerReportAmount{
+			{Currency: "ARS", Amount: ars}, {Currency: "USD", Amount: usd},
+		},
+	}}
+	response := toSellerReportResponse(report)
+	if response.KPIs.AcceptedAmount != nil || response.KPIs.AcceptedCurrency != nil ||
+		len(response.KPIs.AcceptedAmounts) != 2 || response.KPIs.AcceptedAmounts[0].Currency != "ARS" ||
+		response.KPIs.AcceptedAmounts[0].Amount != "100.00" || response.KPIs.AcceptedAmounts[1].Currency != "USD" ||
+		response.KPIs.AcceptedAmounts[1].Amount != "10.00" {
+		t.Fatalf("mixed currency JSON model = %+v, want separate decimal strings and null scalar", response.KPIs)
+	}
+	currency := "USD"
+	report.KPIs.AcceptedAmount, report.KPIs.AcceptedCurrency = &usd, &currency
+	report.KPIs.AcceptedAmounts = report.KPIs.AcceptedAmounts[1:]
+	response = toSellerReportResponse(report)
+	if response.KPIs.AcceptedAmount == nil || *response.KPIs.AcceptedAmount != "10.00" ||
+		response.KPIs.AcceptedCurrency == nil || *response.KPIs.AcceptedCurrency != "USD" {
+		t.Fatalf("single currency JSON model = %+v, want USD 10.00", response.KPIs)
+	}
+	payload, err := json.Marshal(toSellerReportResponse(domain.SellerReport{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), `"accepted_amount":null`) ||
+		!strings.Contains(string(payload), `"accepted_currency":null`) {
+		t.Fatalf("empty currency JSON = %s, want unknown money left null", payload)
 	}
 }

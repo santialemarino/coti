@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { Callout, Card, CardContent, CardHeader } from '@repo/ui/components';
@@ -35,7 +36,15 @@ export default async function CatalogSettingsPage({
     getProductTaxonomy(),
     getAccount(),
   ]);
-  const activeBranchId = await getEffectiveBranchId(branches);
+  const requestedBranch = params.branch_id;
+  if (
+    requestedBranch !== undefined &&
+    (typeof requestedBranch !== 'string' ||
+      !branches.some((branch) => branch.id === requestedBranch))
+  ) {
+    notFound();
+  }
+  const activeBranchId = requestedBranch ?? (await getEffectiveBranchId(branches));
   const branch = branches.find((candidate) => candidate.id === activeBranchId);
 
   return (

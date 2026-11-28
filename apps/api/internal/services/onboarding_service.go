@@ -33,6 +33,7 @@ type onboardingRepository interface {
 
 // OnboardingService maintains the account's resumable setup flow.
 type OnboardingService struct {
+	readiness  onboardingReadinessReader
 	db         tenantScoper
 	onboarding onboardingRepository
 }

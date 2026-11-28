@@ -190,23 +190,30 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
       )}
 
       <Dialog open={choice !== null} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-md" closeOnClickOutside={!busy} showCloseButton={!busy}>
+        <DialogContent
+          className="sm:max-w-md"
+          closeOnClickOutside={!busy && message.trim() === ''}
+          showCloseButton={!busy}
+        >
           <DialogHeader>
             <DialogTitle>{choice ? t(DIALOG_TITLE_KEY[choice]) : ''}</DialogTitle>
             <DialogDescription>{choice ? t(DIALOG_DESCRIPTION_KEY[choice]) : ''}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-y-3">
-            {choice === 'REQUEST_CHANGE' ? (
+            {choice === 'REQUEST_CHANGE' || choice === 'REJECT' ? (
               <div className="flex flex-col gap-y-1.5">
-                <Label htmlFor="action-message" required>
-                  {t('messageLabel')}
+                <Label htmlFor="action-message" required={choice === 'REQUEST_CHANGE'}>
+                  {t(choice === 'REJECT' ? 'rejectionReasonLabel' : 'messageLabel')}
                 </Label>
                 <Textarea
                   id="action-message"
                   value={message}
+                  disabled={busy}
                   onChange={(event) => setMessage(event.target.value)}
-                  placeholder={t('messagePlaceholder')}
+                  placeholder={t(
+                    choice === 'REJECT' ? 'rejectionReasonPlaceholder' : 'messagePlaceholder',
+                  )}
                   aria-invalid={showMessageError}
                   maxLength={MAX_ACTION_MESSAGE}
                   autoFocus

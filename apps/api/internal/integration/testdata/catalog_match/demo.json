@@ -1,0 +1,126 @@
+{
+  "version": "demo-v1",
+  "split": "evaluation-only",
+  "cases": [
+    {
+      "id": "exact-cement",
+      "query": "Cemento Loma Negra 50 kg",
+      "category": "exact",
+      "expected_codes": ["CEM-LN-50"],
+      "expected_status": "MATCHED",
+      "reason": "Exact catalog name and presentation."
+    },
+    {
+      "id": "abbreviated-brick",
+      "query": "ladr hueco 12x18x33",
+      "category": "abbreviation",
+      "expected_codes": ["LAD-HUE-12"],
+      "expected_status": "MATCHED",
+      "reason": "Abbreviated brick with exact dimensions."
+    },
+    {
+      "id": "pvc-measure",
+      "query": "caño pvc 110",
+      "category": "measurement",
+      "expected_codes": ["CAN-PVC-110"],
+      "expected_status": "MATCHED",
+      "reason": "PVC drain pipe diameter distinguishes it from water pipe."
+    },
+    {
+      "id": "cement-variant",
+      "query": "cemento avellaneda 50kg",
+      "category": "variant",
+      "expected_codes": ["CEM-AVE-50"],
+      "expected_status": "MATCHED",
+      "reason": "Named brand distinguishes two cement products."
+    },
+    {
+      "id": "cement-typo",
+      "query": "cemnto loma negra 50 kg",
+      "category": "typo",
+      "expected_codes": ["CEM-LN-50"],
+      "expected_status": "MATCHED",
+      "reason": "Single omitted letter with explicit brand and size."
+    },
+    {
+      "id": "sand-synonym",
+      "query": "arena fina a granel",
+      "category": "synonym",
+      "expected_codes": ["AREN-M3"],
+      "expected_status": "MATCHED",
+      "reason": "Bulk aggregate description."
+    },
+    {
+      "id": "lime-unit",
+      "query": "cal hidratada 25 kg",
+      "category": "unit",
+      "expected_codes": ["CAL-HID-25"],
+      "expected_status": "MATCHED",
+      "reason": "The demo carries this bag size."
+    },
+    {
+      "id": "steel-8",
+      "query": "hierro aletado 8 mm",
+      "category": "similar-variants",
+      "expected_codes": ["HIE-8"],
+      "expected_status": "MATCHED",
+      "reason": "Diameter must not resolve to the 10 mm bar."
+    },
+    {
+      "id": "steel-10",
+      "query": "hierro aletado 10 mm",
+      "category": "similar-variants",
+      "expected_codes": ["HIE-10"],
+      "expected_status": "MATCHED",
+      "reason": "Diameter must not resolve to the 8 mm bar."
+    },
+    {
+      "id": "ceramic",
+      "query": "ceramico 45x45 esmaltado",
+      "category": "exact",
+      "expected_codes": ["CER-45"],
+      "expected_status": "MATCHED",
+      "reason": "The demo contains this ceramic size."
+    },
+    {
+      "id": "ambiguous-cement",
+      "query": "cemento",
+      "category": "ambiguous",
+      "expected_codes": ["CEM-LN-50", "CEM-AVE-50"],
+      "expected_status": "AMBIGUOUS",
+      "reason": "Brand is unspecified and both cement products are plausible."
+    },
+    {
+      "id": "ambiguous-steel",
+      "query": "hierro aletado",
+      "category": "ambiguous",
+      "expected_codes": ["HIE-8", "HIE-10"],
+      "expected_status": "AMBIGUOUS",
+      "reason": "Diameter is missing."
+    },
+    {
+      "id": "unknown-ceramic",
+      "query": "ceramica abeto 51x51",
+      "category": "no-match",
+      "expected_codes": [],
+      "expected_status": "NO_MATCH",
+      "reason": "Neither this model nor size exists in the demo."
+    },
+    {
+      "id": "unknown-cement-size",
+      "query": "cemento 25 kg",
+      "category": "no-match",
+      "expected_codes": [],
+      "expected_status": "NO_MATCH",
+      "reason": "Cement bags in the demo are 50 kg; lime is not cement."
+    },
+    {
+      "id": "unrelated",
+      "query": "computadora portatil gamer",
+      "category": "no-match",
+      "expected_codes": [],
+      "expected_status": "NO_MATCH",
+      "reason": "Outside the building-material catalog."
+    }
+  ]
+}

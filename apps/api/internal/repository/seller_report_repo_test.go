@@ -573,10 +573,10 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 			if report.KPIs.QuotesAccepted != 1 {
 				t.Fatalf("accepted quotes = %d, want 1", report.KPIs.QuotesAccepted)
 			}
-			if got := report.KPIs.AcceptedAmount.StringFixed(2); got != tc.wantAmount {
-				t.Fatalf("accepted amount = %s, want %s", got, tc.wantAmount)
-			}
 			if tc.wantAmount == "0.00" {
+				if report.KPIs.AcceptedAmount != nil || report.KPIs.AcceptedCurrency != nil || len(report.KPIs.AcceptedAmounts) != 0 {
+					t.Fatalf("accepted money = %+v, want no resolved currency or amount", report.KPIs)
+				}
 				if len(report.TopClients) != 0 {
 					t.Fatalf("top clients = %+v, want none for an unresolved acceptance", report.TopClients)
 				}
@@ -585,6 +585,9 @@ func TestSellerReportRepositoryResolvesTheAcceptedVersion(t *testing.T) {
 						report.TopRevenueProducts)
 				}
 				return
+			}
+			if report.KPIs.AcceptedAmount == nil || report.KPIs.AcceptedAmount.StringFixed(2) != tc.wantAmount {
+				t.Fatalf("accepted amount = %v, want %s", report.KPIs.AcceptedAmount, tc.wantAmount)
 			}
 			if len(report.TopClients) != 1 ||
 				report.TopClients[0].AcceptedAmount.StringFixed(2) != tc.wantAmount {
@@ -637,6 +640,47 @@ func TestSellerReportRepositoryMeasuresConversionAsACohort(t *testing.T) {
 	other := buildReport(t, db, domain.Tenant{AccountID: otherAccountID}, reportQuery(otherAccountID))
 	if other.KPIs.QuotesSent != 0 || other.KPIs.QuotesAccepted != 0 {
 		t.Fatalf("another account's report = %+v, want none of this account's activity", other.KPIs)
+	}
+}
+
+func TestSellerReportRepositoryCohortConversionUsesFirstSendAndLaterAcceptance(t *testing.T) {
+	cases := []struct {
+		name               string
+		sends, acceptances []int
+		converted          int
+	}{
+		{"acceptance before a resend", []int{10, 12}, []int{11}, 1},
+		{"acceptance at first send", []int{10}, []int{10}, 1},
+		{"only acceptance before first send", []int{10}, []int{9}, 0},
+		{"later acceptance after an earlier one", []int{10}, []int{9, 11}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testDB(t)
+			account := seedAccount(t, db, "Report cohort events")
+			branch := reportBranch(t, db, account)
+			product := seedProduct(t, db, account, "Cement")
+			quote, _, _ := seedQuoteChain(t, db, account, branch, product)
+			for _, events := range []struct {
+				status string
+				hours  []int
+			}{{"SENT", tc.sends}, {"ACCEPTED", tc.acceptances}} {
+				for _, hour := range events.hours {
+					reportExec(t, db, "cohort event", `INSERT INTO quote_status_change
+					 (account_id, quote_id, previous_status, new_status, changed_at)
+					 VALUES ($1, $2, 'QUOTED', $3, $4)`, account, quote, events.status,
+						time.Date(2026, 10, 1, hour, 0, 0, 0, time.UTC))
+				}
+			}
+			report := buildReport(t, db, domain.Tenant{AccountID: account}, reportQuery(account))
+			if report.KPIs.QuotesSent != 1 || report.KPIs.SentAccepted != tc.converted {
+				t.Fatalf("sent=%d converted=%d, want 1 and %d", report.KPIs.QuotesSent,
+					report.KPIs.SentAccepted, tc.converted)
+			}
+			if report.Timeline[0].Sent != 1 || report.Timeline[0].SentAccepted != tc.converted {
+				t.Fatalf("timeline=%+v, want one sent and %d converted", report.Timeline[0], tc.converted)
+			}
+		})
 	}
 }
 

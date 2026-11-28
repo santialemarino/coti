@@ -26,7 +26,9 @@ function rawReport(overrides: Record<string, unknown> = {}) {
       quotes_accepted: 0,
       sent_accepted: 0,
       conversion_rate: null,
-      accepted_amount: '0.00',
+      accepted_amount: null,
+      accepted_currency: null,
+      accepted_amounts: [],
       response_time: { average_seconds: null, median_seconds: null, sample: 0 },
       time_to_acceptance: { average_seconds: 3600, median_seconds: 1800, sample: 2 },
       follow_up_pending: 3,
@@ -60,6 +62,85 @@ function rawReport(overrides: Record<string, unknown> = {}) {
 
 describe('getSellerReport', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('preserves separate decimal currency amounts and nullable scalar money', async () => {
+    const raw = rawReport();
+    vi.mocked(apiRequest).mockResolvedValue({
+      ...raw,
+      kpis: {
+        ...raw.kpis,
+        quotes_accepted: 2,
+        accepted_amount: null,
+        accepted_currency: null,
+        accepted_amounts: [
+          { currency: 'ARS', amount: '100.00' },
+          { currency: 'USD', amount: '10.00' },
+        ],
+      },
+      top_revenue_products: [
+        { product_id: 'same-product', name: 'Cemento', currency: 'ARS', revenue: '100.00' },
+        { product_id: 'same-product', name: 'Cemento', currency: 'USD', revenue: '10.00' },
+      ],
+      top_clients: [
+        { client_id: 'same-client', name: 'Obra', currency: 'ARS', accepted_amount: '100.00' },
+        { client_id: 'same-client', name: 'Obra', currency: 'USD', accepted_amount: '10.00' },
+      ],
+    } as never);
+    const report = await getSellerReport();
+    expect(report.kpis.acceptedAmount).toBeNull();
+    expect(report.kpis.acceptedCurrency).toBeNull();
+    expect(report.kpis.acceptedAmounts).toEqual([
+      { currency: 'ARS', amount: '100.00' },
+      { currency: 'USD', amount: '10.00' },
+    ]);
+    expect(report.topRevenueProducts.map(({ currency, revenue }) => [currency, revenue])).toEqual([
+      ['ARS', '100.00'],
+      ['USD', '10.00'],
+    ]);
+    expect(
+      report.topClients.map(({ currency, acceptedAmount }) => [currency, acceptedAmount]),
+    ).toEqual([
+      ['ARS', '100.00'],
+      ['USD', '10.00'],
+    ]);
+  });
+
+  it('maps the exact previous range and decimal changes without losing null measurements', async () => {
+    vi.mocked(apiRequest).mockResolvedValue(
+      rawReport({
+        comparison: {
+          range: { from: '2026-09-29', to: '2026-09-30' },
+          metrics: {
+            conversion_rate: {
+              previous: '0.2000',
+              delta: '10.0000',
+              percentage: null,
+              percentage_points: true,
+            },
+            response_time: {
+              previous: null,
+              delta: null,
+              percentage: null,
+              percentage_points: false,
+            },
+          },
+        },
+      }) as never,
+    );
+    const report = await getSellerReport({});
+    expect(report.comparison).toEqual({
+      range: { from: '2026-09-29', to: '2026-09-30' },
+      metrics: {
+        conversionRate: {
+          previous: '0.2000',
+          delta: '10.0000',
+          percentage: null,
+          percentagePoints: true,
+        },
+        responseTime: { previous: null, delta: null, percentage: null, percentagePoints: false },
+      },
+    });
+  });
 
   it('maps every applied filter returned by the API', async () => {
     vi.mocked(apiRequest).mockResolvedValue(

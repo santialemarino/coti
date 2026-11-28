@@ -188,7 +188,9 @@
       "requestChangesTitle": "Solicitar cambios",
       "requestChangesDescription": "Contanos qué modificar. El corralón va a revisar el pedido y prepararte una nueva versión.",
       "rejectTitle": "¿Rechazás la cotización?",
-      "rejectDescription": "Quedará registrado tu rechazo. Si más adelante cambiás de idea, escribile al corralón.",
+      "rejectDescription": "Quedará registrado tu rechazo. Podés contarle al corralón por qué no concretaste la compra.",
+      "rejectionReasonLabel": "Motivo del rechazo (opcional)",
+      "rejectionReasonPlaceholder": "Contanos el motivo o dejá un comentario...",
       "messageLabel": "Qué hay que modificar",
       "messagePlaceholder": "Escribí qué cambiar…",
       "messageRequired": "Escribí qué cambiar para poder enviar tu solicitud.",
@@ -335,6 +337,11 @@
     },
     "pagination": "Páginas de pedidos",
     "profile": "Mis datos",
+    "previousDelivery": {
+      "title": "Estás viendo un envío anterior",
+      "description": "La respuesta y la vigencia que ves corresponden a ese envío.",
+      "current": "Ver cotización vigente"
+    },
     "verifyContact": "Confirmá tu contacto"
   },
   "customerProfile": {

@@ -958,3 +958,20 @@ func TestStatusForClientAction(t *testing.T) {
 		}
 	}
 }
+
+func TestQuoteDeliveryService_RespondPublic_RejectionFeedback(t *testing.T) {
+	h := newQuoteActionHarness()
+	send := h.seedActiveSend(testVersionID)
+	h.quotes.quote = &domain.Quote{ID: testQuoteID, BranchID: testBranchID,
+		CurrentVersionID: &testVersionID, CurrentStatus: domain.QuoteStatusSent}
+	message := "  Delivery takes too long.  "
+	result, err := h.service.RespondPublic(context.Background(), h.token,
+		domain.ClientActionInput{Type: domain.ClientActionReject, Message: &message})
+	if err != nil || result.QuoteStatus != domain.QuoteStatusRejected {
+		t.Fatalf("rejection: %+v %v", result, err)
+	}
+	action := h.clientActions.created[0]
+	if action.Comment == nil || *action.Comment != "Delivery takes too long." || action.VersionID != testVersionID || *action.QuoteSendID != send.ID {
+		t.Fatalf("feedback not pinned to the delivery: %+v", action)
+	}
+}

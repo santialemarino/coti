@@ -1,7 +1,7 @@
 import { ChartColumnIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { Card, CardContent, EmptyState } from '@repo/ui/components';
+import { Card, CardContent } from '@repo/ui/components';
 import { PageHeader } from '@/app/(protected)/_components/page-header';
 import { PageShell } from '@/app/(protected)/_components/page-shell';
 import { ReportAIMatch } from '@/app/(protected)/reports/_components/report-ai-match';
@@ -230,18 +230,30 @@ export default async function ReportsPage({
       </Card>
 
       {report && noActivity ? (
-        <EmptyState
-          icon={ChartColumnIcon}
-          size="lg"
-          title={t('empty.title')}
-          description={t('empty.description')}
-        />
+        <Card role="status" className="flex-row items-center px-5 py-4 gap-4">
+          <ChartColumnIcon aria-hidden="true" className="size-5 shrink-0 text-foreground-muted" />
+          <div className="space-y-1">
+            <p className="text-paragraph-sm-medium">{t('empty.title')}</p>
+            <p className="text-paragraph-sm text-foreground-muted">{t('empty.description')}</p>
+          </div>
+        </Card>
       ) : null}
 
+      {report ? (
+        <>
+          {report.comparison ? (
+            <p className="text-paragraph-sm text-foreground-muted">
+              {t('comparison.period', {
+                from: fmt.dateNumeric(report.comparison.range.from),
+                to: fmt.dateNumeric(report.comparison.range.to),
+              })}
+            </p>
+          ) : null}
+          <ReportKpis kpis={report.kpis} fmt={fmt} comparison={report.comparison} />
+        </>
+      ) : null}
       {report && !noActivity ? (
         <>
-          <ReportKpis kpis={report.kpis} fmt={fmt} />
-
           <div className="grid gap-5 xl:grid-cols-12">
             <ReportSection
               title={t('status.title')}
@@ -329,15 +341,26 @@ export default async function ReportsPage({
               }
               className="xl:col-span-6"
             >
-              <RankingList
-                tone="accepted"
-                items={report.topRevenueProducts.map((product) => ({
-                  key: product.productId,
-                  label: product.name || t('products.unnamed'),
-                  value: fmt.currency(product.revenue),
-                  magnitude: Number(product.revenue),
-                }))}
-              />
+              {Array.from(
+                new Set(report.topRevenueProducts.map((product) => product.currency)),
+              ).map((currency) => (
+                <div key={currency} className="py-3">
+                  <h3 className="px-5 pb-2 text-paragraph-sm-semibold text-foreground-muted">
+                    {currency}
+                  </h3>
+                  <RankingList
+                    tone="accepted"
+                    items={report.topRevenueProducts
+                      .filter((product) => product.currency === currency)
+                      .map((product) => ({
+                        key: product.productId,
+                        label: product.name || t('products.unnamed'),
+                        value: `${currency} ${fmt.currency(product.revenue, currency)}`,
+                        magnitude: Number(product.revenue),
+                      }))}
+                  />
+                </div>
+              ))}
             </ReportSection>
 
             <ReportTopClients clients={report.topClients} fmt={fmt} className="xl:col-span-7" />

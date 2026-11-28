@@ -7,6 +7,14 @@ import type { Branch } from '@/lib/api/branches';
 import messages from '@/translations/es.json';
 
 vi.mock('@/app/(protected)/actions', () => ({ selectBranch: vi.fn() }));
+const navigation = vi.hoisted(() => ({ pathname: '/inbox', params: '', replace: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.params),
+}));
+vi.mock('@/hooks/use-pending-router', () => ({
+  usePendingRouter: () => ({ replace: navigation.replace }),
+}));
 
 const { selectBranch } = await import('@/app/(protected)/actions');
 
@@ -39,9 +47,23 @@ function renderSwitcher(branches: Branch[], activeBranchId: string | null = null
 
 beforeEach(() => {
   vi.clearAllMocks();
+  navigation.pathname = '/inbox';
+  navigation.params = '';
 });
 
 describe('BranchSwitcher', () => {
+  it('shows the alerted branch and clears its override when the caller switches branches', async () => {
+    navigation.pathname = '/settings/prices';
+    navigation.params = `branch_id=${BRANCHES[1]!.id}&q=cement`;
+    const view = renderSwitcher(BRANCHES, BRANCHES[0]!.id, true);
+    expect(view.getByRole('combobox').textContent).toBe('Norte');
+    fireEvent.click(view.getByRole('combobox'));
+    fireEvent.click(await view.findByRole('option', { name: BRANCHES[0]!.name }));
+    await vi.waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith('/settings/prices?q=cement'),
+    );
+    expect(selectBranch).toHaveBeenCalledWith(BRANCHES[0]!.id);
+  });
   // A disabled menu is a control that explains nothing; one branch is shown as the context it is.
   it.each([
     ['a seller', false],

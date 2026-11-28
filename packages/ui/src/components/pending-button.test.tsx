@@ -11,6 +11,21 @@ function button() {
 }
 
 describe('PendingButton', () => {
+  it('announces only the current label while the previous label animates out', () => {
+    const view = render(<PendingButton pendingLabel={PENDING_LABEL}>{LABEL}</PendingButton>);
+
+    view.rerender(
+      <PendingButton pending pendingLabel={PENDING_LABEL}>
+        {LABEL}
+      </PendingButton>,
+    );
+    expect(screen.getByRole('button', { name: PENDING_LABEL })).toBeTruthy();
+
+    view.rerender(<PendingButton pendingLabel={PENDING_LABEL}>{LABEL}</PendingButton>);
+    expect(screen.getByRole('button', { name: LABEL })).toBeTruthy();
+    expect(button().getAttribute('aria-busy')).toBe('false');
+  });
+
   it('shows its own label and stays operable when idle', () => {
     render(<PendingButton pendingLabel={PENDING_LABEL}>{LABEL}</PendingButton>);
 

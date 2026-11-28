@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -13,7 +13,7 @@ const APP = dirname(fileURLToPath(import.meta.url));
 const LOADING_FILE = /^loading\.(tsx|ts|jsx|js)$/;
 
 function directoriesUnder(dir: string): string[] {
-  const out = [relative(APP, dir) || '.'];
+  const out = [relative(APP, dir).split(sep).join('/') || '.'];
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) out.push(...directoriesUnder(full));

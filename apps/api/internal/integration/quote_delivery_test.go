@@ -918,3 +918,45 @@ func TestQuoteClientAction_WebAndMessageLinksShareOneDecision(t *testing.T) {
 		t.Fatalf("cross-channel answer replay: %+v %v", replay, err)
 	}
 }
+
+func TestQuoteClientAction_RejectionFeedbackIsAtomicAndIdempotent(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Rejection feedback", false)
+	service := e.clientAnswerService(t, &captureWhatsAppSender{}, &stagedQuoteEmailSender{})
+	token, _ := e.sentQuoteToken(t, service, seed)
+	oversized := strings.Repeat("x", 513)
+	if _, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{
+		Type: domain.ClientActionReject, Message: &oversized}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("oversized: %v", err)
+	}
+	message := "  Delivery takes too long.  "
+	first, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{
+		Type: domain.ClientActionReject, Message: &message})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, err := service.RespondPublic(context.Background(), token, domain.ClientActionInput{Type: domain.ClientActionAccept})
+	if err != nil || replay.CustomerStatus != domain.ClientActionReject || !replay.CreatedAt.Equal(first.CreatedAt) {
+		t.Fatalf("replay: %+v %v", replay, err)
+	}
+	err = e.db.InTenantTx(context.Background(), seed.tenant, func(q repository.Querier) error {
+		actions, err := repository.NewClientActionRepository().ListByQuote(context.Background(), q, seed.tenant.AccountID, seed.tenant.BranchID, seed.draft.Quote.ID)
+		if err != nil {
+			return err
+		}
+		if len(actions) != 1 || actions[0].Comment == nil || *actions[0].Comment != "Delivery takes too long." || actions[0].VersionID != seed.draft.Version.ID {
+			t.Fatalf("persisted feedback: %+v", actions)
+		}
+		other, err := repository.NewClientActionRepository().ListByQuote(context.Background(), q, uuid.New(), seed.tenant.BranchID, seed.draft.Quote.ID)
+		if err != nil {
+			return err
+		}
+		if len(other) != 0 {
+			t.Fatal("foreign feedback exposed")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
