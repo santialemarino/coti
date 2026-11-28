@@ -1927,7 +1927,8 @@
             "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
             "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
             "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
-            "NO_REQUEST": "El cliente respondió sin pedir cambios."
+            "NO_REQUEST": "El cliente respondió sin pedir cambios.",
+            "NEW_ORDER": "El cliente pidió un pedido aparte: entró como pedido nuevo y esta cotización no cambió."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1977,7 +1978,8 @@
             "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
             "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
             "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
-            "NO_REQUEST": "El cliente respondió sin pedir cambios."
+            "NO_REQUEST": "El cliente respondió sin pedir cambios.",
+            "NEW_ORDER": "El cliente pidió un pedido aparte: entró como pedido nuevo y esta cotización no cambió."
           }
         },
         "sellerDecision": {

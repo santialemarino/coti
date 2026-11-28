@@ -60,13 +60,15 @@ const (
 	CustomerDecisionQuestion CustomerDecision = "QUESTION"
 	// CustomerDecisionNone decides nothing: thanks, a reaction, "lo pienso".
 	CustomerDecisionNone CustomerDecision = "NONE"
+	// CustomerDecisionNewOrder asks for a separate order; it goes to intake, not to this quote.
+	CustomerDecisionNewOrder CustomerDecision = "NEW_ORDER"
 )
 
 // Valid reports whether d is a known customer decision.
 func (d CustomerDecision) Valid() bool {
 	switch d {
 	case CustomerDecisionChange, CustomerDecisionAccept, CustomerDecisionReject,
-		CustomerDecisionQuestion, CustomerDecisionNone:
+		CustomerDecisionQuestion, CustomerDecisionNone, CustomerDecisionNewOrder:
 		return true
 	}
 	return false

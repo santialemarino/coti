@@ -245,7 +245,8 @@ func run() error {
 	batchChangeHandler := services.NewBatchChangeHandler(db, accountRepo, quoteRepo, quoteMessageRepo,
 		messageBatchRepo, handlerDecisionRepo, productPriceRepo, quoteDiscountRepo, promotionRepo,
 		productAlternativeRepo, changeProposer, catalogMatchService, services.BatchChangeHandlerConfig{
-			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log)
+			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log).
+		WithNewOrders(rfqService)
 	conversationTicker := services.NewConversationBatchTicker(
 		services.NewConversationBatchService(db, messageBatchRepo,
 			batchChangeHandler, cfg.Conversation, nil, log),

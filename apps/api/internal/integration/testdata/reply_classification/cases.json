@@ -239,5 +239,24 @@
     "name": "expensive but buys",
     "messages": ["está caro pero bueno, lo llevo"],
     "want": "ACCEPT"
+  },
+  {
+    "name": "separate order",
+    "messages": [
+      "Hola, necesito cotizar un pedido nuevo: 5 bolsas de Cemento Avellaneda de 50 kg y 2 baldes de Hidrófugo de 20 kg. Gracias."
+    ],
+    "want": "NEW_ORDER"
+  },
+  {
+    "name": "another order too",
+    "messages": ["aparte de esto, cotizame otro pedido para la obra de Ramos: 10 bolsas de cal"],
+    "want": "NEW_ORDER"
+  },
+  {
+    "name": "change naming the quote",
+    "messages": [
+      "Sobre la cotización COT-000027 que me enviaron, necesito un cambio: en lugar de 3 bolsas de Cemento Avellaneda de 50 kg, quiero 5 bolsas. Mantené los 2 baldes de Hidrófugo de 20 kg. Por favor actualizá esa misma cotización y enviámela nuevamente. Gracias."
+    ],
+    "want": "CHANGE"
   }
 ]

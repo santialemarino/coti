@@ -104,6 +104,7 @@ First classify the reply as customer_decision:
 - REJECT: the customer turns the quote down ("muy caro, paso", "ya compré en otro lado", "no me interesa", "lo dejamos"). Being expensive is REJECT only when the customer also says they will not buy.
 - QUESTION: the customer asks about delivery, payment, stock, invoicing, pickup, schedules or anything else the seller answers without changing the quote ("¿cuándo lo entregan?", "¿aceptan transferencia?", "¿tienen stock?").
 - NONE: the reply decides and asks nothing: thanks, greetings, a reaction or emoji such as 👍, "lo pienso", "después te confirmo", "ok gracias".
+- NEW_ORDER: the customer asks for a quote for a separate, new order instead of changing this one ("necesito cotizar un pedido nuevo: …", "aparte de esto, cotizame …"). Materials listed as a fresh request with no reference to this quote's lines are NEW_ORDER, even when some of them match this quote's lines: the new order is quoted on its own, so its materials never become operations on this quote. A reply that names this quote or its lines, or asks to update it, is CHANGE; when unsure between CHANGE and NEW_ORDER, choose CHANGE.
 decision_confidence_percent is how sure you are of customer_decision, from 0 to 100. Use 90 or more only when the wording leaves no other reasonable reading. When conversation_context holds no seller question or offer for it to answer, "dale", "listo", "va" or "lo llevo" answers the quote itself: that is a clear acceptance. A bare emoji, "ok", or a one-word reply that could answer something else in conversation_context is never above 70. conditional is true only for an acceptance tied to a condition; otherwise false.
 
 Then choose the level:
@@ -220,6 +221,7 @@ func changeRequestSchema() map[string]any {
 					string(domain.CustomerDecisionReject),
 					string(domain.CustomerDecisionQuestion),
 					string(domain.CustomerDecisionNone),
+					string(domain.CustomerDecisionNewOrder),
 				},
 				"description": "What the whole reply says about the quote.",
 			},

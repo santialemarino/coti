@@ -273,7 +273,7 @@ type ConversationMessageResponse struct {
 type ConversationDecisionResponse struct {
 	Interpretation string  `json:"interpretation"`
 	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST,NEW_ORDER"`
 	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	// StrategiesTried are the recipes run for a complex goal, in run order.
 	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`
@@ -294,7 +294,7 @@ type HandlerDecisionResponse struct {
 	ClientInput    string  `json:"client_input"`
 	Interpretation string  `json:"interpretation"`
 	Outcome        string  `json:"outcome" enums:"APPLIED,NO_MATCH"`
-	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST"`
+	NoMatchReason  *string `json:"no_match_reason" enums:"REQUIRES_SELLER,AI_DISABLED,PROPOSAL_REFUSED,PIPELINE_EXHAUSTED,PROMOTION_NOT_EARNED,CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST,NEW_ORDER"`
 	SellerDecision *string `json:"seller_decision" enums:"APPROVED_AS_IS,EDITED,REJECTED,MANUAL_OVERRIDE"`
 	// StrategiesTried are the recipes run for a complex goal, in run order.
 	StrategiesTried []string                   `json:"strategies_tried" enums:"FIND_CHEAPER_ALTERNATIVES,IMPROVE_QUALITY,ADAPT_TO_REACH_DISCOUNT"`

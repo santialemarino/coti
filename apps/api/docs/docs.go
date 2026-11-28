@@ -13165,7 +13165,8 @@ const docTemplate = `{
                         "CUSTOMER_ACCEPTS",
                         "CUSTOMER_REJECTS",
                         "CUSTOMER_QUESTION",
-                        "NO_REQUEST"
+                        "NO_REQUEST",
+                        "NEW_ORDER"
                     ]
                 },
                 "outcome": {
@@ -14174,7 +14175,8 @@ const docTemplate = `{
                         "CUSTOMER_ACCEPTS",
                         "CUSTOMER_REJECTS",
                         "CUSTOMER_QUESTION",
-                        "NO_REQUEST"
+                        "NO_REQUEST",
+                        "NEW_ORDER"
                     ]
                 },
                 "outcome": {

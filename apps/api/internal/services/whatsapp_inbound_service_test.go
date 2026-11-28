@@ -79,7 +79,7 @@ type fakeWhatsAppInboundConversations struct {
 }
 
 func (f *fakeWhatsAppInboundConversations) Route(context.Context, repository.Querier,
-	domain.InboundChannelRoute, string,
+	domain.InboundChannelRoute, string, string,
 ) (*domain.ConversationRoute, error) {
 	return f.match, nil
 }

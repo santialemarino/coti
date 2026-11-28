@@ -201,7 +201,7 @@ func (r *QuoteSendRepository) ListClientLastQuoteSends(
 func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Querier, accountID,
 	branchID, channelID uuid.UUID, destinations []string, now time.Time,
 ) ([]domain.ConversationCandidate, error) {
-	rows, err := q.Query(ctx, `SELECT latest.quote_id, latest.send_id, latest.sent_at
+	rows, err := q.Query(ctx, `SELECT latest.quote_id, quote.number, latest.send_id, latest.sent_at
 		FROM (
 		  SELECT DISTINCT ON (version.quote_id) version.quote_id, send.id AS send_id,
 		    send.sent_at, send.expires_at
@@ -225,7 +225,8 @@ func (r *QuoteSendRepository) ListLiveConversations(ctx context.Context, q Queri
 	candidates := make([]domain.ConversationCandidate, 0)
 	for rows.Next() {
 		var candidate domain.ConversationCandidate
-		if err := rows.Scan(&candidate.QuoteID, &candidate.QuoteSendID, &candidate.SentAt); err != nil {
+		if err := rows.Scan(&candidate.QuoteID, &candidate.QuoteNumber, &candidate.QuoteSendID,
+			&candidate.SentAt); err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, candidate)

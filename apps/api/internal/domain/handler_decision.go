@@ -56,6 +56,8 @@ const (
 	HandlerNoMatchCustomerQuestion HandlerNoMatchReason = "CUSTOMER_QUESTION"
 	// HandlerNoMatchNoRequest means the messages decide and ask nothing.
 	HandlerNoMatchNoRequest HandlerNoMatchReason = "NO_REQUEST"
+	// HandlerNoMatchNewOrder means the customer asked for a separate order, which went to intake.
+	HandlerNoMatchNewOrder HandlerNoMatchReason = "NEW_ORDER"
 )
 
 // NoMatchReasonFor is the reason a decision that changes nothing is recorded under.
@@ -69,6 +71,8 @@ func NoMatchReasonFor(decision CustomerDecision) (HandlerNoMatchReason, bool) {
 		return HandlerNoMatchCustomerQuestion, true
 	case CustomerDecisionNone:
 		return HandlerNoMatchNoRequest, true
+	case CustomerDecisionNewOrder:
+		return HandlerNoMatchNewOrder, true
 	}
 	return "", false
 }
@@ -132,6 +136,8 @@ type HandlerProposalRecord struct {
 	// ReplyAcceptance is what an acceptance became, and AcceptanceHolds why it was not automatic.
 	ReplyAcceptance *ReplyAcceptance      `json:"reply_acceptance,omitempty"`
 	AcceptanceHolds []ReplyAcceptanceHold `json:"acceptance_holds,omitempty"`
+	// NewOrderRFQID is the order a NEW_ORDER batch became.
+	NewOrderRFQID *uuid.UUID `json:"new_order_rfq_id,omitempty"`
 }
 
 // NewHandlerDecision is one unreviewed AI proposal recorded for pilot quality metrics.

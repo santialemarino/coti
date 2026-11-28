@@ -476,7 +476,8 @@ export type HandlerNoMatchReason =
   | 'CUSTOMER_ACCEPTS'
   | 'CUSTOMER_REJECTS'
   | 'CUSTOMER_QUESTION'
-  | 'NO_REQUEST';
+  | 'NO_REQUEST'
+  | 'NEW_ORDER';
 
 // One line the AI raised to reach a promotion; quantities and totals are decimal strings.
 export interface HandlerAdaptedLine {

@@ -47,6 +47,7 @@ const NO_MATCH_OUTCOMES = {
   CUSTOMER_REJECTS: 'outcome.noMatch.CUSTOMER_REJECTS',
   CUSTOMER_QUESTION: 'outcome.noMatch.CUSTOMER_QUESTION',
   NO_REQUEST: 'outcome.noMatch.NO_REQUEST',
+  NEW_ORDER: 'outcome.noMatch.NEW_ORDER',
 } as const satisfies Record<HandlerNoMatchReason, string>;
 
 type Formatters = ReturnType<typeof useFormatters>;
