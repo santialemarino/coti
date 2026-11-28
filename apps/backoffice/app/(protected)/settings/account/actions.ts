@@ -57,6 +57,7 @@ function bodyOf(values: AccountValues) {
     brand_logo_url: values.brandLogoUrl || undefined,
     brand_color: values.brandColor ? `#${values.brandColor}` : undefined,
     preferred_lower_price_strategy: values.lowerPriceStrategy,
+    whatsapp_auto_accept: values.whatsappAutoAccept,
     followup_template: values.followupTemplate,
   };
 }

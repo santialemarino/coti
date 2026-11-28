@@ -25,6 +25,7 @@ const VALUES: AccountValues = {
   brandLogoUrl: 'https://tucorralon.com/logo.png',
   brandColor: 'C2410C',
   lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+  whatsappAutoAccept: false,
 };
 
 function requestSent() {
@@ -61,6 +62,7 @@ describe('updateAccount', () => {
       brand_logo_url: 'https://tucorralon.com/logo.png',
       brand_color: '#C2410C',
       preferred_lower_price_strategy: 'FIND_CHEAPER_ALTERNATIVES',
+      whatsapp_auto_accept: false,
       disconnect_arca: false,
     });
   });

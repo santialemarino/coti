@@ -2850,6 +2850,11 @@
         "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
       }
     },
+    "autoAccept": {
+      "title": "Respuestas por WhatsApp",
+      "label": "Aceptación automática por WhatsApp",
+      "hint": "Apagada, una aceptación que las reglas confirman espera tu confirmación."
+    },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",
     "saved": "Guardamos los datos del corralón. Tu cliente los va a ver en la próxima cotización que le envíes.",

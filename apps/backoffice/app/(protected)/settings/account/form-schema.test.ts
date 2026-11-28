@@ -11,6 +11,7 @@ const VALID: AccountValues = {
   brandLogoUrl: '',
   brandColor: '',
   lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+  whatsappAutoAccept: true,
 };
 
 function messagesFor(values: Partial<AccountValues>) {

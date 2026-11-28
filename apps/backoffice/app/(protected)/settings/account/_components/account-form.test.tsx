@@ -46,6 +46,7 @@ const ACCOUNT: Account = {
   invoicingEnabled: false,
   hasInvoices: false,
   invoiceOnPayment: false,
+  whatsappAutoAccept: true,
 };
 
 // The real catalog, so a renamed or missing key fails here rather than rendering its own name.
@@ -146,6 +147,7 @@ describe('AccountForm', () => {
         brandLogoUrl: '',
         brandColor: '',
         lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+        whatsappAutoAccept: true,
       },
       undefined,
       false,
@@ -185,6 +187,21 @@ describe('AccountForm', () => {
     );
   });
 
+  // On by default; turned off, what the rules confirm waits for the seller.
+  it('shows the stored auto-acceptance and sends it switched off', async () => {
+    vi.mocked(updateAccount).mockResolvedValue({ ok: true });
+    const view = renderForm();
+    const toggle = view.getByRole('switch', { name: copy.autoAccept.label });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(view.getByText(copy.autoAccept.hint)).toBeDefined();
+
+    fireEvent.click(toggle);
+    submit(view);
+
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledOnce());
+    expect(vi.mocked(updateAccount).mock.calls[0]?.[0].whatsappAutoAccept).toBe(false);
+  });
+
   it('sends what is on screen and says it saved', async () => {
     vi.mocked(updateAccount).mockResolvedValue({ ok: true });
     const view = renderForm();
@@ -201,6 +218,7 @@ describe('AccountForm', () => {
         brandLogoUrl: ACCOUNT.brandLogoUrl,
         brandColor: 'C2410C',
         lowerPriceStrategy: 'FIND_CHEAPER_ALTERNATIVES',
+        whatsappAutoAccept: true,
       },
       undefined,
       false,
