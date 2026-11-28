@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strings"
 
@@ -44,7 +47,8 @@ func (s *MetaSender) WithArgentineTestRecipientFallback(enabled bool) *MetaSende
 	return s
 }
 
-// SendQuote submits one seller-approved quote link and returns Meta's durable message identifier.
+// SendQuote submits one seller-approved quote message, as text or as an approved template, and
+// returns Meta's durable message identifier.
 func (s *MetaSender) SendQuote(ctx context.Context,
 	message domain.QuoteWhatsAppMessage,
 ) (*domain.DeliveryReceipt, error) {
@@ -52,7 +56,14 @@ func (s *MetaSender) SendQuote(ctx context.Context,
 		strings.TrimSpace(message.Credentials.AccessToken) == "" {
 		return nil, fmt.Errorf("%w: WhatsApp channel credentials are unavailable", domain.ErrNotConfigured)
 	}
-	receipt, err := s.sendText(ctx, message)
+	documentID := ""
+	if message.Template != nil && message.Template.Document != nil {
+		var err error
+		if documentID, err = s.uploadMedia(ctx, message.Credentials, *message.Template.Document); err != nil {
+			return nil, err
+		}
+	}
+	receipt, err := s.deliver(ctx, message, documentID)
 	if err == nil || !s.allowArgentineTestRecipientFallback {
 		return receipt, err
 	}
@@ -67,13 +78,40 @@ func (s *MetaSender) SendQuote(ctx context.Context,
 		return nil, err
 	}
 	message.To = fallbackRecipient
-	return s.sendText(ctx, message)
+	return s.deliver(ctx, message, documentID)
+}
+
+func (s *MetaSender) deliver(ctx context.Context, message domain.QuoteWhatsAppMessage,
+	documentID string,
+) (*domain.DeliveryReceipt, error) {
+	if message.Template == nil {
+		return s.sendText(ctx, message)
+	}
+	template := message.Template
+	var components []metaTemplateComponent
+	if template.Document != nil {
+		components = append(components, metaTemplateComponent{Type: "header",
+			Parameters: []metaTemplateParameter{{Type: "document",
+				Document: &metaTemplateDocument{ID: documentID, Filename: template.Document.Filename}}}})
+	}
+	if len(template.Parameters) > 0 {
+		body := metaTemplateComponent{Type: "body"}
+		for _, value := range template.Parameters {
+			body.Parameters = append(body.Parameters, metaTemplateParameter{Type: "text", Text: value})
+		}
+		components = append(components, body)
+	}
+	return s.post(ctx, message.Credentials, metaTemplateMessageRequest{
+		MessagingProduct: "whatsapp", To: strings.TrimPrefix(message.To, "+"), Type: "template",
+		Template: metaTemplate{Name: template.Name, Language: metaTemplateLanguage{Code: template.Language},
+			Components: components},
+	})
 }
 
 func (s *MetaSender) sendText(ctx context.Context,
 	message domain.QuoteWhatsAppMessage,
 ) (*domain.DeliveryReceipt, error) {
-	body, err := json.Marshal(metaTextMessageRequest{
+	return s.post(ctx, message.Credentials, metaTextMessageRequest{
 		MessagingProduct: "whatsapp",
 		To:               strings.TrimPrefix(message.To, "+"),
 		Type:             "text",
@@ -82,16 +120,22 @@ func (s *MetaSender) sendText(ctx context.Context,
 			Body:       message.Body,
 		},
 	})
+}
+
+func (s *MetaSender) post(ctx context.Context, credentials domain.WhatsAppDeliveryCredentials,
+	payload any,
+) (*domain.DeliveryReceipt, error) {
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	endpoint := s.baseURL + "/" + s.apiVersion + "/" +
-		url.PathEscape(message.Credentials.PhoneNumberID) + "/messages"
+		url.PathEscape(credentials.PhoneNumberID) + "/messages"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+message.Credentials.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+credentials.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	response, err := s.client.Do(req)
@@ -111,6 +155,61 @@ func (s *MetaSender) sendText(ctx context.Context,
 		return nil, fmt.Errorf("WhatsApp Cloud API response did not acknowledge a message")
 	}
 	return &domain.DeliveryReceipt{ProviderReference: parsed.Messages[0].ID}, nil
+}
+
+// uploadMedia stores a file with Meta and returns the media ID a template header points at, so the
+// file never needs a public URL.
+func (s *MetaSender) uploadMedia(ctx context.Context, credentials domain.WhatsAppDeliveryCredentials,
+	document domain.WhatsAppDocument,
+) (string, error) {
+	var form bytes.Buffer
+	writer := multipart.NewWriter(&form)
+	if err := writer.WriteField("messaging_product", "whatsapp"); err != nil {
+		return "", err
+	}
+	if err := writer.WriteField("type", document.ContentType); err != nil {
+		return "", err
+	}
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", mime.FormatMediaType("form-data",
+		map[string]string{"name": "file", "filename": document.Filename}))
+	header.Set("Content-Type", document.ContentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return "", err
+	}
+	if _, err := part.Write(document.Content); err != nil {
+		return "", err
+	}
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+	endpoint := s.baseURL + "/" + s.apiVersion + "/" +
+		url.PathEscape(credentials.PhoneNumberID) + "/media"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &form)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+credentials.AccessToken)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	response, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("WhatsApp media upload: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", readMetaResponseError(response)
+	}
+	var parsed struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
+		return "", fmt.Errorf("decode WhatsApp media upload response: %w", err)
+	}
+	if strings.TrimSpace(parsed.ID) == "" {
+		return "", fmt.Errorf("WhatsApp media upload returned no media ID")
+	}
+	return parsed.ID, nil
 }
 
 // argentineTestRecipientFallback uses the alternate representation Meta's development allow-list
@@ -158,6 +257,39 @@ type metaTextMessageRequest struct {
 type metaTextBody struct {
 	PreviewURL bool   `json:"preview_url"`
 	Body       string `json:"body"`
+}
+
+type metaTemplateMessageRequest struct {
+	MessagingProduct string       `json:"messaging_product"`
+	To               string       `json:"to"`
+	Type             string       `json:"type"`
+	Template         metaTemplate `json:"template"`
+}
+
+type metaTemplate struct {
+	Name       string                  `json:"name"`
+	Language   metaTemplateLanguage    `json:"language"`
+	Components []metaTemplateComponent `json:"components,omitempty"`
+}
+
+type metaTemplateLanguage struct {
+	Code string `json:"code"`
+}
+
+type metaTemplateComponent struct {
+	Type       string                  `json:"type"`
+	Parameters []metaTemplateParameter `json:"parameters"`
+}
+
+type metaTemplateParameter struct {
+	Type     string                `json:"type"`
+	Text     string                `json:"text,omitempty"`
+	Document *metaTemplateDocument `json:"document,omitempty"`
+}
+
+type metaTemplateDocument struct {
+	ID       string `json:"id"`
+	Filename string `json:"filename"`
 }
 
 type metaTextMessageResponse struct {
