@@ -1585,6 +1585,7 @@
           "quote": "Cotización"
         },
         "destination": "Destinatario",
+        "portalPublication": "Publicada en el portal",
         "followupChannel": "Seguimiento por {channel}"
       },
       "confidence": {
