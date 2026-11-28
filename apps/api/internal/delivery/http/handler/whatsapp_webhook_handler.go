@@ -20,12 +20,18 @@ type WhatsAppWebhookService interface {
 	Ingest(ctx context.Context, messages []domain.InboundTextMessage) error
 }
 
+// WhatsAppDeliveryStatusRecorder records what Meta reports about messages a branch number sent.
+type WhatsAppDeliveryStatusRecorder interface {
+	Record(ctx context.Context, statuses []domain.ProviderDeliveryStatus) error
+}
+
 // WhatsAppWebhookHandler serves the public Meta verification and message webhook endpoints.
 type WhatsAppWebhookHandler struct {
 	appSecret         string
 	signupVerifyToken string
 	maxBytes          int64
 	service           WhatsAppWebhookService
+	statuses          WhatsAppDeliveryStatusRecorder
 }
 
 // NewWhatsAppWebhookHandler builds a WhatsAppWebhookHandler.
@@ -38,6 +44,14 @@ func NewWhatsAppWebhookHandler(appSecret string, maxBytes int64,
 // WithSignupVerifyToken enables the app-wide verification challenge.
 func (h *WhatsAppWebhookHandler) WithSignupVerifyToken(token string) *WhatsAppWebhookHandler {
 	h.signupVerifyToken = token
+	return h
+}
+
+// WithDeliveryStatuses records the delivered, read and failed statuses each delivery carries.
+func (h *WhatsAppWebhookHandler) WithDeliveryStatuses(
+	recorder WhatsAppDeliveryStatusRecorder,
+) *WhatsAppWebhookHandler {
+	h.statuses = recorder
 	return h
 }
 
@@ -98,6 +112,17 @@ func (h *WhatsAppWebhookHandler) Receive(c *gin.Context) {
 	if err := h.service.Ingest(c.Request.Context(), messages); err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
+	}
+	if h.statuses != nil {
+		statuses, err := whatsapp.ParseStatuses(body)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if err := h.statuses.Record(c.Request.Context(), statuses); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 	}
 	c.Status(http.StatusOK)
 }

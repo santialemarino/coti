@@ -38,6 +38,10 @@ type clientProfileRepository interface {
 }
 
 type clientTagRepository interface {
+	ListAutomaticByClientIDs(context.Context, repository.Querier, domain.Tenant, []uuid.UUID) (map[uuid.UUID]domain.AutomaticClientTags, error)
+	ListRules(context.Context, repository.Querier, uuid.UUID) ([]domain.ClientTagRule, error)
+	UpdateRule(context.Context, repository.Querier, uuid.UUID, domain.ClientTagRule) error
+	SetExclusion(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error
 	List(ctx context.Context, q repository.Querier,
 		accountID uuid.UUID) ([]domain.ClientTag, error)
 	ListByClientIDs(ctx context.Context, q repository.Querier, accountID uuid.UUID,
@@ -126,6 +130,10 @@ func (s *ClientService) ListClients(
 		if err != nil {
 			return err
 		}
+		automatic, err := s.tags.ListAutomaticByClientIDs(ctx, q, tenant, ids)
+		if err != nil {
+			return err
+		}
 		if s.contacts != nil {
 			contacts, err := s.contacts.List(ctx, q, tenant.AccountID, ids)
 			if err != nil {
@@ -136,7 +144,7 @@ func (s *ClientService) ListClients(
 			}
 		}
 		for i := range summaries {
-			summaries[i].Tags = nonNilTags(byClient[summaries[i].ID])
+			summaries[i].Tags = nonNilTags(append(byClient[summaries[i].ID], automatic[summaries[i].ID].Applied...))
 		}
 		return nil
 	})
@@ -167,12 +175,16 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
+		automatic, err := s.tags.ListAutomaticByClientIDs(ctx, q, tenant, []uuid.UUID{clientID})
+		if err != nil {
+			return err
+		}
 		sales, err := s.clients.ListAcceptedSales(ctx, q, tenant, clientID, s.invoicingEnv)
 		if err != nil {
 			return err
 		}
-		profile = &domain.ClientProfile{Client: *client, Registered: registered, Tags: nonNilTags(byClient[clientID]),
-			Sales: sales}
+		profile = &domain.ClientProfile{Client: *client, Registered: registered, Tags: nonNilTags(append(byClient[clientID], automatic[clientID].Applied...)),
+			ExcludedTags: nonNilTags(automatic[clientID].Excluded), Sales: sales}
 		return nil
 	})
 	return profile, err
@@ -295,6 +307,9 @@ func (s *ClientService) CreateTag(
 	if err != nil {
 		return nil, err
 	}
+	if strings.EqualFold(name, "Recurrente") || strings.EqualFold(name, "Abandonador") {
+		return nil, fmt.Errorf("%w: automatic tag name is reserved", domain.ErrInvalidInput)
+	}
 	var tag *domain.ClientTag
 	err = s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
 		var createErr error
@@ -350,8 +365,8 @@ func normalizeNewClient(client *domain.NewClient) error {
 	client.Name = normalizedOptional(client.Name)
 	client.Phone = normalizedOptional(client.Phone)
 	client.Email = normalizedOptional(client.Email)
-	if client.Name == nil || (client.Phone == nil && client.Email == nil) {
-		return fmt.Errorf("%w: a client needs a full name and at least one contact", domain.ErrInvalidInput)
+	if client.Phone == nil && client.Email == nil {
+		return fmt.Errorf("%w: a client needs at least one contact", domain.ErrInvalidInput)
 	}
 	if client.Name != nil && utf8.RuneCountInString(*client.Name) > maxClientNameLength {
 		return fmt.Errorf("%w: client name exceeds %d characters", domain.ErrInvalidInput,

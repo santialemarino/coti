@@ -139,3 +139,37 @@ func TestWhatsAppWebhookHandler_ReceiveVerifiesAndIngestsText(t *testing.T) {
 		t.Errorf("response/messages = %d/%d, want 200/one text", response.Code, len(service.messages))
 	}
 }
+
+type stubWhatsAppStatusRecorder struct {
+	statuses []domain.ProviderDeliveryStatus
+}
+
+func (s *stubWhatsAppStatusRecorder) Record(_ context.Context,
+	statuses []domain.ProviderDeliveryStatus,
+) error {
+	s.statuses = statuses
+	return nil
+}
+
+func TestWhatsAppWebhookHandler_ReceiveRecordsDeliveryStatuses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &stubWhatsAppWebhookService{}
+	recorder := &stubWhatsAppStatusRecorder{}
+	router := gin.New()
+	router.POST("/webhook", NewWhatsAppWebhookHandler("app-secret", 4096, service).
+		WithDeliveryStatuses(recorder).Receive)
+	body := []byte(`{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages","value":{"metadata":{"phone_number_id":"phone-id"},"statuses":[{"id":"wamid.quote","status":"read","timestamp":"1760000000","recipient_id":"5491112345678"}]}}]}]}`)
+	mac := hmac.New(sha256.New, []byte("app-secret"))
+	_, _ = mac.Write(body)
+	request := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
+	request.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || len(recorder.statuses) != 1 ||
+		recorder.statuses[0].ProviderReference != "wamid.quote" ||
+		recorder.statuses[0].Status != domain.SendTrackingStatusViewed {
+		t.Errorf("response/statuses = %d/%#v, want 200 and the read status recorded",
+			response.Code, recorder.statuses)
+	}
+}

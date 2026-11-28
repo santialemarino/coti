@@ -1,0 +1,243 @@
+[
+  {
+    "name": "dale",
+    "messages": ["dale"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "lo compro",
+    "messages": ["listo, lo compro"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "acepto",
+    "messages": ["Acepto la cotización"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "confirmo",
+    "messages": ["confirmo, mandalo"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "va",
+    "messages": ["va, dale para adelante"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "split acceptance",
+    "messages": ["buenísimo", "lo llevo"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "vamos para adelante",
+    "messages": ["Vamos para adelante, me gusta"],
+    "want": "ACCEPT",
+    "clear": true
+  },
+  {
+    "name": "accept and pickup question",
+    "messages": ["dale, lo llevo. ¿Paso a buscarlo mañana?"],
+    "want": "ACCEPT"
+  },
+  {
+    "name": "pick an alternative",
+    "messages": ["me quedo con la opción más barata"],
+    "want": "ACCEPT",
+    "partial": true
+  },
+  {
+    "name": "accept only part",
+    "messages": ["por ahora llevo solo una parte, después vemos"],
+    "want": "ACCEPT",
+    "partial": true
+  },
+  {
+    "name": "change wins over dale",
+    "messages": ["dale, pero sumale 5 bolsas de cal"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "dale pero sumame",
+    "messages": ["Dale pero sumame 2 bolsas"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "change in a later message",
+    "messages": ["dale", "ah, y que sean 20 bolsas de cemento"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "dale to a seller offer",
+    "context": [
+      {
+        "author": "SELLER",
+        "text": "¿Querés que te cambie el cemento por la marca más económica?"
+      }
+    ],
+    "messages": ["dale"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "si to a seller offer",
+    "context": [
+      {
+        "author": "SELLER",
+        "text": "Te puedo sumar el flete por 15 mil, ¿lo agrego?"
+      }
+    ],
+    "messages": ["sí, agregalo"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "conditional on price",
+    "messages": ["lo llevo si me lo dejás en 100 mil"],
+    "want": "CHANGE",
+    "conditional": true
+  },
+  {
+    "name": "conditional on delivery",
+    "messages": ["si me hacés el envío gratis, dale"],
+    "want": "CHANGE",
+    "conditional": true
+  },
+  {
+    "name": "requantify",
+    "messages": ["mejor que sean 15 bolsas de cemento"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "remove a line",
+    "messages": ["sacá la arena, ya tengo"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "add a material",
+    "messages": ["agregame 3 bolsas de cal hidratada"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "expensive alone",
+    "messages": ["está caro"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "cheaper option",
+    "messages": ["¿no tenés algo más barato?"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "better quality",
+    "messages": ["quiero algo de mejor calidad"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "accept dropping a line",
+    "messages": ["lo llevo pero sin la arena"],
+    "want": "CHANGE"
+  },
+  {
+    "name": "expensive pass",
+    "messages": ["muy caro, paso"],
+    "want": "REJECT"
+  },
+  {
+    "name": "bought elsewhere",
+    "messages": ["ya compré en otro lado, gracias igual"],
+    "want": "REJECT"
+  },
+  {
+    "name": "not interested",
+    "messages": ["no me interesa"],
+    "want": "REJECT"
+  },
+  {
+    "name": "lo dejamos",
+    "messages": ["al final lo dejamos, se suspendió la obra"],
+    "want": "REJECT"
+  },
+  {
+    "name": "delivery date",
+    "messages": ["¿cuándo lo entregan?"],
+    "want": "QUESTION"
+  },
+  {
+    "name": "payment",
+    "messages": ["¿aceptan transferencia?"],
+    "want": "QUESTION"
+  },
+  {
+    "name": "stock",
+    "messages": ["¿tienen stock del cemento?"],
+    "want": "QUESTION"
+  },
+  {
+    "name": "invoice",
+    "messages": ["¿me hacen factura A?"],
+    "want": "QUESTION"
+  },
+  {
+    "name": "pickup hours",
+    "messages": ["¿hasta qué hora puedo pasar a retirar?"],
+    "want": "QUESTION"
+  },
+  {
+    "name": "thumbs up",
+    "messages": ["👍"],
+    "want": "NONE"
+  },
+  {
+    "name": "thanks",
+    "messages": ["gracias!"],
+    "want": "NONE"
+  },
+  {
+    "name": "lo pienso",
+    "messages": ["lo pienso y te aviso"],
+    "want": "NONE"
+  },
+  {
+    "name": "later",
+    "messages": ["después te confirmo"],
+    "want": "NONE"
+  },
+  {
+    "name": "ok gracias",
+    "messages": ["ok gracias"],
+    "want": "NONE"
+  },
+  {
+    "name": "greeting",
+    "messages": ["hola, buenas tardes"],
+    "want": "NONE"
+  },
+  {
+    "name": "thumbs up to a seller question",
+    "context": [
+      {
+        "author": "SELLER",
+        "text": "¿Te lo mando el lunes?"
+      }
+    ],
+    "messages": ["👍"],
+    "want": "QUESTION",
+    "also": ["NONE", "ACCEPT"],
+    "forbid_confident_accept": true
+  },
+  {
+    "name": "checking with partner",
+    "messages": ["lo hablo con mi socio y te digo"],
+    "want": "NONE"
+  },
+  {
+    "name": "expensive but buys",
+    "messages": ["está caro pero bueno, lo llevo"],
+    "want": "ACCEPT"
+  }
+]

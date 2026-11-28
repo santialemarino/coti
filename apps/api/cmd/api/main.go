@@ -101,7 +101,7 @@ func run() error {
 	messageBatchRepo := repository.NewMessageBatchRepository()
 	quoteRepresentationRepo := repository.NewQuoteRepresentationRepository()
 	clientRepo := repository.NewClientRepository()
-	tagRepo := repository.NewTagRepository()
+	tagRepo := repository.NewTagRepository(cfg.ClientTagRules)
 	accountRepo := repository.NewAccountRepository()
 	onboardingRepo := repository.NewOnboardingRepository()
 	channelRepo := repository.NewChannelRepository()
@@ -321,7 +321,8 @@ func run() error {
 		WithMessages(quoteMessageRepo, messageBatchRepo).
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer).
-		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin())
+		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin()).
+		WithPortalContacts(repository.NewClientContactRepository())
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)
@@ -366,7 +367,9 @@ func run() error {
 			AccountLogo:    handler.NewBrandLogoHandler(accountService, cfg.Storage.MaxFileSize),
 			Onboarding:     handler.NewOnboardingHandler(onboardingService),
 			WhatsApp: handler.NewWhatsAppWebhookHandler(cfg.WhatsApp.AppSecret,
-				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken),
+				cfg.WhatsApp.WebhookMaxBytes, whatsAppInboundService).WithSignupVerifyToken(cfg.WhatsApp.SignupVerifyToken).
+				WithDeliveryStatuses(services.NewWhatsAppDeliveryStatusService(db, inboundRoutingService,
+					quoteSendRepo, log)),
 			Gmail:     gmailHandler,
 			File:      fileHandler(objectStorage),
 			ARCASetup: handler.NewARCASetupHandler(arcaSetupService),

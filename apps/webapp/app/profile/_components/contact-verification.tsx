@@ -32,13 +32,23 @@ interface ContactVerificationProps {
   kind: ContactKind;
   value: string;
   verified: boolean;
+  /* The portal page the proof returns to once confirmed. */
+  next?: string;
+  /* A code already sent for this contact, whose entry opens at once. */
+  initialChallenge?: string;
 }
 
-export function ContactVerification({ kind, value, verified }: ContactVerificationProps) {
+export function ContactVerification({
+  kind,
+  value,
+  verified,
+  next,
+  initialChallenge,
+}: ContactVerificationProps) {
   const t = useTranslations('customerProfile');
   const router = useRouter();
   const [sending, setSending] = useState(false);
-  const [challenge, setChallenge] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<string | null>(initialChallenge ?? null);
   const form = useForm({
     resolver: zodResolver(z.object({ code: z.string().regex(/^\d{6}$/, t('codeInvalid')) })),
     defaultValues: { code: '' },
@@ -47,7 +57,7 @@ export function ContactVerification({ kind, value, verified }: ContactVerificati
   async function request() {
     setSending(true);
     try {
-      const result = await requestContactVerification(kind, value);
+      const result = await requestContactVerification(kind, value, next);
       if (result.error) {
         toast.error(result.error);
         return;

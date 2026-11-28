@@ -112,6 +112,24 @@ func (f *fakeClientTags) List(
 	return f.available, nil
 }
 
+func (f *fakeClientTags) ListAutomaticByClientIDs(
+	_ context.Context, _ repository.Querier, _ domain.Tenant, _ []uuid.UUID,
+) (map[uuid.UUID]domain.AutomaticClientTags, error) {
+	return nil, nil
+}
+
+func (f *fakeClientTags) ListRules(context.Context, repository.Querier, uuid.UUID) ([]domain.ClientTagRule, error) {
+	return nil, nil
+}
+
+func (f *fakeClientTags) UpdateRule(context.Context, repository.Querier, uuid.UUID, domain.ClientTagRule) error {
+	return nil
+}
+
+func (f *fakeClientTags) SetExclusion(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, bool) error {
+	return nil
+}
+
 func (f *fakeClientTags) ListByClientIDs(_ context.Context, _ repository.Querier, _ uuid.UUID,
 	clientIDs []uuid.UUID) (map[uuid.UUID][]domain.ClientTag, error) {
 	result := make(map[uuid.UUID][]domain.ClientTag, len(clientIDs))
@@ -351,6 +369,47 @@ func TestClientService_ConfirmForSend_NewProfileRaisesContactMatches(t *testing.
 	want := []contactMatch{{source, domain.ChannelTypeWhatsApp, "+5491155550000"}, {source, domain.ChannelTypeEmail, email}}
 	if len(h.clients.matched) != len(want) || h.clients.matched[0] != want[0] || h.clients.matched[1] != want[1] {
 		t.Fatalf("matches = %v, want %v", h.clients.matched, want)
+	}
+}
+
+// Decision 92: a send no longer needs a name; an unnamed profile takes the request's profile name,
+// then the number, then the email.
+func TestClientService_ConfirmForSend_NamesAnUnnamedProfileFromWhatTheRequestCarried(t *testing.T) {
+	profileName, phone, email := "Juan Obra", "+54 11 5555-0000", "compras@cliente.test"
+	for _, tc := range []struct {
+		label        string
+		requestName  *string
+		phone, email *string
+		want         *string
+	}{
+		{"profile name", &profileName, &phone, &email, &profileName},
+		{"phone", nil, &phone, &email, ptr("+5491155550000")},
+		{"email", nil, nil, &email, &email},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			h := newClientServiceHarness()
+			h.clients.requestContact = domain.ClientContactHints{Name: tc.requestName}
+			err := h.service.ConfirmForSend(context.Background(), nil, branchTenant(), *h.quotes.quote,
+				&domain.AssociateQuoteClientInput{New: &domain.NewClient{Phone: tc.phone, Email: tc.email}})
+			if err != nil {
+				t.Fatalf("ConfirmForSend() = %v, want no error", err)
+			}
+			if h.clients.created == nil || h.clients.created.Name == nil || *h.clients.created.Name != *tc.want {
+				t.Fatalf("created profile = %+v, want name %q", h.clients.created, *tc.want)
+			}
+		})
+	}
+}
+
+func TestClientService_ValidateForSend_AcceptsAnUnnamedProfileWithAContact(t *testing.T) {
+	h := newClientServiceHarness()
+	clientID := uuid.New()
+	phone := "+5491155550000"
+	h.clients.clients[clientID] = domain.Client{ID: clientID, AccountID: testAccountID, Phone: &phone}
+	h.quotes.quote.ClientID = &clientID
+
+	if err := h.service.ValidateForSend(context.Background(), nil, branchTenant(), *h.quotes.quote, nil); err != nil {
+		t.Fatalf("ValidateForSend() = %v, want no error for a profile without a name", err)
 	}
 }
 

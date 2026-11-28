@@ -2,6 +2,7 @@
 export type SaleInvoiceStatus = 'INVOICED' | 'PENDING' | 'WAIVED' | 'UNINVOICED';
 
 export interface ClientTagRaw {
+  automatic?: boolean;
   id: string;
   name: string;
   created_at: string;
@@ -52,6 +53,7 @@ export interface ClientSaleRaw {
 }
 
 export interface ClientProfileRaw {
+  excluded_tags?: ClientTagRaw[];
   client: ClientRaw;
   registered: boolean;
   tags: ClientTagRaw[];
@@ -76,6 +78,7 @@ export interface QuoteClientAssociationRaw {
 }
 
 export interface ClientTag {
+  automatic?: boolean;
   id: string;
   name: string;
   createdAt: string;
@@ -112,6 +115,7 @@ export interface ClientSale {
 }
 
 export interface ClientProfile {
+  excludedTags?: ClientTag[];
   client: Client;
   // A customer account manages the profile, so the seller neither renames nor merges it.
   registered: boolean;
@@ -152,7 +156,12 @@ export function mapClient(raw: ClientRaw): Client {
 }
 
 export function mapClientTag(raw: ClientTagRaw): ClientTag {
-  return { id: raw.id, name: raw.name, createdAt: raw.created_at };
+  return {
+    id: raw.id,
+    name: raw.name,
+    createdAt: raw.created_at,
+    ...(raw.automatic && { automatic: true }),
+  };
 }
 
 export function mapClientSummary(raw: ClientSummaryRaw): ClientSummary {
@@ -178,7 +187,7 @@ export function clientMatchFromSummary(summary: ClientSummary): ClientMatch {
       createdAt: summary.createdAt,
       updatedAt: summary.updatedAt,
     },
-    tags: summary.tags,
+    tags: summary.tags.filter((tag) => !tag.automatic),
   };
 }
 
@@ -186,6 +195,7 @@ export function mapClientProfile(raw: ClientProfileRaw): ClientProfile {
   return {
     client: mapClient(raw.client),
     registered: raw.registered,
+    excludedTags: (raw.excluded_tags ?? []).map(mapClientTag),
     tags: raw.tags.map(mapClientTag),
     sales: raw.sales.map((sale) => ({
       quoteId: sale.quote_id,

@@ -21,7 +21,7 @@ func newProposeOnlyHandler(proposer domain.ChangeRequestHandler, matcher catalog
 
 func preparedWithLine() (preparedBatch, uuid.UUID) {
 	lineID := uuid.New()
-	return preparedBatch{status: domain.QuoteStatusChangeRequested,
+	return preparedBatch{stateAtClaim: domain.QuoteStatusChangeRequested,
 		items: []domain.QuoteItem{{ID: lineID, RequestedDescription: "cemento",
 			Quantity: decimal.NewFromInt(2)}},
 		messages: []domain.QuoteMessage{{Body: " sumá cal "}, {Body: "y sacá el cemento"}},
@@ -93,5 +93,91 @@ func TestBatchChangeHandler_Propose_LeavesWhatItCannotApplyToTheSeller(t *testin
 				t.Errorf("proposal = %+v, want a %s no-match with no operations", proposal.record, tc.want)
 			}
 		})
+	}
+}
+
+func TestBatchChangeHandler_Propose_ActsOnTheDecisionAndLetsAChangeWin(t *testing.T) {
+	prepared, lineID := preparedWithLine()
+	quantity := decimal.NewFromInt(4)
+	requantified := []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationUpdateQuantity,
+		TargetItemID: &lineID, Quantity: &quantity}}
+	escape := []domain.ChangeRequestOperation{{Type: domain.ChangeRequestOperationRequiresSeller}}
+	cases := []struct {
+		name        string
+		level       domain.ChangeRequestLevel
+		decision    domain.CustomerDecision
+		conditional bool
+		operations  []domain.ChangeRequestOperation
+		wantChange  bool
+		wantReason  domain.HandlerNoMatchReason
+		wantActedOn domain.CustomerDecision
+	}{
+		{"acceptance", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionAccept, false, escape,
+			false, domain.HandlerNoMatchCustomerAccepts, domain.CustomerDecisionAccept},
+		{"rejection", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionReject, false, escape,
+			false, domain.HandlerNoMatchCustomerRejects, domain.CustomerDecisionReject},
+		{"question", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionQuestion, false, escape,
+			false, domain.HandlerNoMatchCustomerQuestion, domain.CustomerDecisionQuestion},
+		{"nothing", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionNone, false, escape,
+			false, domain.HandlerNoMatchNoRequest, domain.CustomerDecisionNone},
+		{"conditional acceptance", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionAccept,
+			true, escape, true, domain.HandlerNoMatchRequiresSeller, domain.CustomerDecisionChange},
+		{"unmapped change", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionChange, false,
+			escape, true, domain.HandlerNoMatchRequiresSeller, domain.CustomerDecisionChange},
+		{"acceptance with a change", domain.ChangeRequestLevelAtomic, domain.CustomerDecisionAccept,
+			false, requantified, true, "", domain.CustomerDecisionChange},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proposer := &fakeChangeRequestHandler{proposal: &domain.ChangeRequestProposal{
+				Level: tc.level, Interpretation: "Responde a la cotización.", CustomerDecision: tc.decision,
+				DecisionConfidencePercent: 120, Conditional: tc.conditional, Operations: tc.operations}}
+			proposal, err := newProposeOnlyHandler(proposer, nil).propose(context.Background(), prepared)
+			if err != nil {
+				t.Fatalf("propose() = %v", err)
+			}
+			if proposal.change != tc.wantChange {
+				t.Errorf("change = %v, want %v", proposal.change, tc.wantChange)
+			}
+			record := proposal.record
+			if tc.wantReason == "" {
+				if record.Outcome != domain.HandlerOutcomeApplied || proposal.resolved == nil {
+					t.Errorf("record = %+v, want the change applied", record)
+				}
+			} else if record.NoMatchReason == nil || *record.NoMatchReason != tc.wantReason {
+				t.Errorf("reason = %v, want %s", record.NoMatchReason, tc.wantReason)
+			}
+			if record.CustomerDecision == nil || *record.CustomerDecision != tc.wantActedOn ||
+				record.DecisionConfidencePercent == nil || *record.DecisionConfidencePercent != 100 {
+				t.Errorf("decision = %v at %v, want %s clamped to 100", record.CustomerDecision,
+					record.DecisionConfidencePercent, tc.wantActedOn)
+			}
+		})
+	}
+}
+
+func TestRemapChangeRequest_PointsEveryNamedLineAtItsClone(t *testing.T) {
+	sent, cloned, other := uuid.New(), uuid.New(), uuid.New()
+	quantity := decimal.NewFromInt(4)
+	operation := domain.ChangeRequestOperation{Type: domain.ChangeRequestOperationUpdateQuantity,
+		TargetItemID: &sent, Quantity: &quantity}
+	resolved := resolvedChangeRequest{
+		Proposal: domain.ChangeRequestProposal{IntentItemIDs: []uuid.UUID{sent},
+			Operations: []domain.ChangeRequestOperation{operation}},
+		Operations: []resolvedChangeOperation{{Operation: operation}}}
+
+	remapped, err := remapChangeRequest(resolved, map[uuid.UUID]uuid.UUID{sent: cloned})
+	if err != nil {
+		t.Fatalf("remapChangeRequest() = %v", err)
+	}
+	if remapped.Proposal.IntentItemIDs[0] != cloned || *remapped.Proposal.Operations[0].TargetItemID != cloned ||
+		*remapped.Operations[0].Operation.TargetItemID != cloned {
+		t.Errorf("remapped = %+v, want every reference on the clone's line", remapped)
+	}
+	if *resolved.Operations[0].Operation.TargetItemID != sent {
+		t.Error("the original proposal changed, want it kept for a retried run")
+	}
+	if _, err := remapChangeRequest(resolved, map[uuid.UUID]uuid.UUID{other: cloned}); err != errDraftMoved {
+		t.Errorf("remap with the line missing = %v, want errDraftMoved", err)
 	}
 }

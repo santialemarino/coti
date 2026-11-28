@@ -579,6 +579,10 @@ definitions:
     properties:
       client:
         $ref: '#/definitions/dto.ClientResponse'
+      excluded_tags:
+        items:
+          $ref: '#/definitions/dto.ClientTagResponse'
+        type: array
       registered:
         description: Registered is true when a customer account manages the profile;
           no seller renames or merges it.
@@ -686,12 +690,35 @@ definitions:
     type: object
   dto.ClientTagResponse:
     properties:
+      automatic:
+        type: boolean
       created_at:
         type: string
       id:
         type: string
       name:
         type: string
+    type: object
+  dto.ClientTagRuleResponse:
+    properties:
+      enabled:
+        type: boolean
+      kind:
+        enum:
+        - RECURRING
+        - ABANDONER
+        type: string
+      minimum:
+        type: integer
+      window_days:
+        type: integer
+    type: object
+  dto.ClientTagRulesResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClientTagRuleResponse'
+        type: array
     type: object
   dto.ComboItemRequest:
     properties:
@@ -924,12 +951,22 @@ definitions:
     - id
     - token
     type: object
+  dto.ContactVerificationConfirmed:
+    properties:
+      next:
+        type: string
+    type: object
   dto.ContactVerificationRequest:
     properties:
       kind:
         enum:
         - EMAIL
         - WHATSAPP
+        type: string
+      next:
+        description: Next is the portal page the confirmation returns to; any other
+          value is ignored.
+        maxLength: 255
         type: string
       value:
         maxLength: 255
@@ -943,6 +980,21 @@ definitions:
       expires_at:
         type: string
       id:
+        type: string
+    type: object
+  dto.ContactVerificationStatusResponse:
+    properties:
+      kind:
+        type: string
+      next:
+        type: string
+      status:
+        enum:
+        - PENDING
+        - VERIFIED
+        - EXPIRED
+        type: string
+      value:
         type: string
     type: object
   dto.ConversationBatchResponse:
@@ -989,6 +1041,10 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
         type: string
       outcome:
         enum:
@@ -1694,6 +1750,10 @@ definitions:
         - PROPOSAL_REFUSED
         - PIPELINE_EXHAUSTED
         - PROMOTION_NOT_EARNED
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
         type: string
       outcome:
         enum:
@@ -3634,6 +3694,13 @@ definitions:
       stock:
         type: string
     type: object
+  dto.SetClientTagExclusionRequest:
+    properties:
+      excluded:
+        type: boolean
+    required:
+    - excluded
+    type: object
   dto.SetInvoicingEnabledRequest:
     properties:
       enabled:
@@ -3877,6 +3944,20 @@ definitions:
       legal_name:
         maxLength: 255
         type: string
+    type: object
+  dto.UpdateClientTagRuleRequest:
+    properties:
+      enabled:
+        type: boolean
+      minimum:
+        minimum: 1
+        type: integer
+      window_days:
+        minimum: 0
+        type: integer
+    required:
+    - enabled
+    - window_days
     type: object
   dto.UpdateCustomerPortalRequest:
     properties:
@@ -5182,9 +5263,8 @@ paths:
       - clients
   /v1/clients:
     get:
-      description: Returns account-level client profiles. Tags are account-wide; accepted
-        sale counts and dates are limited to the branches and seller assignments the
-        caller may inspect.
+      description: Returns account-level client profiles. Manual tags are account-wide.
+        Automatic tags and sales activity use the caller's branch and seller reach.
       parameters:
       - description: Optional branch filter
         in: header
@@ -5212,8 +5292,8 @@ paths:
       - clients
   /v1/clients/{clientId}:
     get:
-      description: Returns one account-level profile and its currently accepted quotes
-        inside the caller's branch and seller reach.
+      description: Returns the profile, its manual and automatic labels, and currently
+        accepted quotes in the caller's branch and seller reach.
       parameters:
       - description: Optional branch filter
         in: header
@@ -5525,6 +5605,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Send customer registration or profile link
+      tags:
+      - clients
+  /v1/clients/{clientId}/tag-exclusions/{tagId}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Automatic tag id
+        in: path
+        name: tagId
+        required: true
+        type: string
+      - description: Exclusion state
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetClientTagExclusionRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set or clear a client's automatic tag exclusion
       tags:
       - clients
   /v1/clients/{clientId}/tags:
@@ -6345,6 +6470,43 @@ paths:
       summary: Request customer contact verification
       tags:
       - customer-profile
+  /v1/customer/sites/{hostname}/profile/contacts/verification/{id}:
+    get:
+      parameters:
+      - description: Registered supplier hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Verification identifier
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a customer contact verification
+      tags:
+      - customer-profile
   /v1/customer/sites/{hostname}/profile/contacts/verification/confirm:
     post:
       consumes:
@@ -6362,8 +6524,10 @@ paths:
         schema:
           $ref: '#/definitions/dto.ContactVerificationConfirmation'
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContactVerificationConfirmed'
         "401":
           description: Unauthorized
           schema:
@@ -11181,6 +11345,75 @@ paths:
       security:
       - BearerAuth: []
       summary: Create a client tag
+      tags:
+      - clients
+  /v1/tags/rules:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientTagRulesResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List automatic client tag rules
+      tags:
+      - clients
+  /v1/tags/rules/{kind}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Rule kind
+        enum:
+        - RECURRING
+        - ABANDONER
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: Rule settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientTagRuleRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an automatic client tag rule
       tags:
       - clients
   /v1/users:

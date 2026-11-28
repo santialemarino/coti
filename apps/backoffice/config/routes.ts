@@ -29,6 +29,7 @@ export const ROUTES = {
   sessionEnded: '/session-ended',
   changePassword: `${SETTINGS_ROOT}/password`,
   emailSettings: `${SETTINGS_ROOT}/email`,
+  clientTagSettings: `${SETTINGS_ROOT}/client-tags`,
   accountSettings: `${SETTINGS_ROOT}/account`,
   arcaSettings: `${SETTINGS_ROOT}/invoicing/arca`,
   // A step of the ARCA guide, linked from the status card when that step is the one left.

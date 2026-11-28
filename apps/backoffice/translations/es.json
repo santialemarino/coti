@@ -590,6 +590,10 @@
       "description": "Las condiciones de uso de Coti para corralones y sus usuarios."
     },
     "socialImageAlt": "Coti: respondé primero, vendé más. El que contesta primero, vende.",
+    "clientTagSettings": {
+      "title": "Etiquetas de clientes",
+      "description": "Configurá las reglas de las etiquetas automáticas."
+    },
     "invoicingSettings": {
       "title": "Facturación",
       "description": "Los datos con los que el corralón emite facturas electrónicas."
@@ -1880,13 +1884,12 @@
         "clientChooseExisting": "Elegir uno existente",
         "clientNone": "La cotización no tiene un cliente asociado.",
         "clientChoose": "Seleccioná un cliente",
-        "clientName": "Nombre y apellido",
+        "clientName": "Nombre y apellido (opcional)",
         "clientEmail": "Correo (opcional)",
         "clientPhone": "Teléfono (opcional)",
         "clientLoading": "Cargando clientes…",
         "clientLoadFailed": "No pudimos cargar los clientes. Intentá de nuevo.",
         "clientRetry": "Reintentar carga de clientes",
-        "clientNameRequired": "Ingresá el nombre o razón social.",
         "clientEmailInvalid": "Ingresá una dirección de correo válida.",
         "clientPhoneInvalid": "Ingresá un teléfono válido.",
         "clientTags": "Etiquetas",
@@ -1917,7 +1920,11 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios."
           }
         },
         "changesTitle": "Cambios respecto de lo que recibió el cliente",
@@ -1963,7 +1970,11 @@
             "AI_DISABLED": "No se aplicaron cambios: la interpretación automática no está activa.",
             "PROPOSAL_REFUSED": "No se aplicaron cambios: no se pudo armar una propuesta válida.",
             "PIPELINE_EXHAUSTED": "No se aplicaron cambios: ninguna de las estrategias probadas cumple el pedido.",
-            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades."
+            "PROMOTION_NOT_EARNED": "No se aplicaron cambios: la cotización no alcanza esa promoción, ni subiendo cantidades.",
+            "CUSTOMER_ACCEPTS": "El cliente parece aceptar la cotización tal como la recibió.",
+            "CUSTOMER_REJECTS": "El cliente parece rechazar la cotización. Si es así, rechazala vos.",
+            "CUSTOMER_QUESTION": "El cliente hizo una consulta: la cotización no cambió.",
+            "NO_REQUEST": "El cliente respondió sin pedir cambios."
           }
         },
         "sellerDecision": {
@@ -2138,6 +2149,11 @@
       "numberPending": "Sin número"
     },
     "tags": {
+      "exclude": "Quitar",
+      "excludeLabel": "Quitar {name}",
+      "excluded": "{name} excluido",
+      "restore": "Volver a calcular",
+      "restoreLabel": "Volver a calcular {name}",
       "title": "Tags",
       "none": "Sin tags",
       "selected": "{total, plural, one {# seleccionado} other {# seleccionados}}",
@@ -2149,7 +2165,7 @@
       "saved": "Guardamos los tags del cliente.",
       "errors": {
         "INVALID_BODY": "Ingresá un nombre válido para el tag.",
-        "INVALID_INPUT": "El tag debe tener entre 1 y 128 caracteres.",
+        "INVALID_INPUT": "Usá un nombre de 1 a 128 caracteres distinto de Recurrente y Abandonador.",
         "NOT_FOUND": "El cliente o uno de los tags ya no existe. Actualizá la pantalla.",
         "INTERNAL": "No pudimos guardar los tags. Intentá de nuevo."
       }
@@ -2515,11 +2531,34 @@
     "stock": "Stock",
     "price": "Precio"
   },
+  "clientTagSettings": {
+    "title": "Etiquetas de clientes",
+    "rules": {
+      "RECURRING": {
+        "name": "Recurrente",
+        "description": "Clientes que alcanzan el mínimo de cotizaciones aceptadas."
+      },
+      "ABANDONER": {
+        "name": "Abandonador",
+        "description": "Clientes sin compras que alcanzan el mínimo de cotizaciones rechazadas o archivadas."
+      }
+    },
+    "enabled": "Activar regla",
+    "minimum": "Mínimo de cotizaciones",
+    "windowDays": "Últimos días",
+    "windowHint": "Ingresá 0 para contar todo el historial.",
+    "invalidMinimum": "Ingresá un número entero mayor que cero.",
+    "invalidWindow": "Ingresá un número entero mayor o igual a cero.",
+    "save": "Guardar regla",
+    "saving": "Guardando",
+    "saved": "Regla guardada"
+  },
   "settings": {
     "title": "Configuración",
     "indexHint": "Elegí una sección para ver o cambiar su configuración.",
     "backToSections": "Volver a la configuración",
     "nav": {
+      "clientTags": "Etiquetas de clientes",
       "account": "Cuenta",
       "branches": "Sucursales",
       "users": "Usuarios",

@@ -129,7 +129,7 @@ func (r *SellerReportRepository) Build(
 		return nil, err
 	}
 	if err := r.readFilterOptions(ctx, q, `SELECT id, name FROM tag
-		 WHERE account_id = $1 AND id = ANY($2::uuid[]) ORDER BY name, id`,
+		 WHERE account_id = $1 AND rule_kind IS NULL AND id = ANY($2::uuid[]) ORDER BY name, id`,
 		in.AccountID, in.TagFilter, &report.Filters.Tags); err != nil {
 		return nil, err
 	}
@@ -674,7 +674,10 @@ func (r *SellerReportRepository) readAssistant(
 		 JOIN quote ON quote.account_id = version.account_id AND quote.id = version.quote_id
 		 JOIN scoped_rfqs scoped ON scoped.id = quote.rfq_id
 		 WHERE decision.account_id = $1
-		   AND decision.created_at >= $4 AND decision.created_at < $5`,
+		   AND decision.created_at >= $4 AND decision.created_at < $5
+		   -- A reply that asked for no change proposes nothing for the seller to decide.
+		   AND COALESCE(decision.ai_proposal::jsonb ->> 'no_match_reason', '') NOT IN
+		     ('CUSTOMER_ACCEPTS', 'CUSTOMER_REJECTS', 'CUSTOMER_QUESTION', 'NO_REQUEST')`,
 		reportArgs(in)...,
 	).Scan(&out.Proposals, &out.ApprovedAsIs, &out.Edited, &out.Rejected, &out.ManualOverride,
 		&out.Pending)

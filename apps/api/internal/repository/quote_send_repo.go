@@ -116,6 +116,37 @@ func (r *QuoteSendRepository) CompleteBatch(ctx context.Context, q Querier, acco
 	return nil
 }
 
+// ApplyProviderStatuses moves the channel's sends the provider reported on forward only:
+// SENT → DELIVERED → VIEWED, and SENT → FAILED. References it never sent are ignored.
+// It returns the sends that changed.
+func (r *QuoteSendRepository) ApplyProviderStatuses(ctx context.Context, q Querier, accountID,
+	channelID uuid.UUID, statuses []domain.ProviderDeliveryStatus,
+) ([]domain.QuoteSend, error) {
+	payload, err := json.Marshal(statuses)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.Query(ctx, `WITH incoming AS (
+		  SELECT * FROM jsonb_to_recordset($3::jsonb) AS x("ProviderReference" text, "Status" text)
+		), updated AS (
+		  UPDATE quote_send send SET tracking_status = incoming."Status"::send_tracking_status
+		  FROM incoming
+		  WHERE send.account_id = $1 AND send.channel_id = $2
+		    AND send.provider_reference = incoming."ProviderReference"
+		    AND ((incoming."Status" = 'DELIVERED' AND send.tracking_status = 'SENT')
+		      OR (incoming."Status" = 'VIEWED' AND send.tracking_status IN ('SENT', 'DELIVERED'))
+		      OR (incoming."Status" = 'FAILED' AND send.tracking_status = 'SENT'))
+		  RETURNING send.*
+		)
+		SELECT `+quoteSendColumns+` FROM updated send
+		JOIN channel ON channel.account_id = send.account_id AND channel.id = send.channel_id
+		ORDER BY send.id`, accountID, channelID, payload)
+	if err != nil {
+		return nil, err
+	}
+	return scanQuoteSends(rows)
+}
+
 // ListByQuote loads every delivery attempt for a branch-scoped quote.
 func (r *QuoteSendRepository) ListByQuote(
 	ctx context.Context, q Querier, accountID, branchID, quoteID uuid.UUID,

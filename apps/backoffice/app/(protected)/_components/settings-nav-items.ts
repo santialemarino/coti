@@ -26,6 +26,7 @@ export function settingsNavItems({ t, tSetup, branches }: SettingsNavInput): Set
       attention: anyBranchMissesEmail(branches) ? tSetup('attention') : undefined,
     },
     { href: ROUTES.userSettings, label: t('nav.users') },
+    { href: ROUTES.clientTagSettings, label: t('nav.clientTags') },
     { href: ROUTES.catalogSettings, label: t('nav.catalog') },
     { href: ROUTES.priceSettings, label: t('nav.prices') },
     { href: ROUTES.comboSettings, label: t('nav.combos') },

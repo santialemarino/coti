@@ -26,7 +26,8 @@ CUIT matching alone grants no access. Unknown channel senders get a provisional 
 Customers verify new contacts before claiming their earlier requests, choose a main contact in
 **My data**, and recover their account with a one-use code sent to a verified contact. See
 [Client profiles](docs/technical/client-profiles.md) for identity rules, migrations, contact delivery
-configuration and account recovery.
+configuration and account recovery. Backoffice administrators configure automatic client tags
+in Settings, and sellers manage manual labels and exclusions from client profiles.
 An empty, unproved history links directly to contact verification; earlier seller-entered requests
 require proof of a contact already on the profile.
 Quotations sent to a verified contact after its proof also appear in that customer's history,
