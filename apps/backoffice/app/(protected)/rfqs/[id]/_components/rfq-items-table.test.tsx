@@ -77,6 +77,8 @@ const PRICED_ITEM: QuoteItemResponse = {
   alternatives: [],
   pricing_unavailable: false,
   quantity_rationale: null,
+  unit_mismatch: false,
+  taught_by_seller: false,
   created_at: '2026-09-07T20:45:00.000Z',
 };
 
@@ -956,5 +958,25 @@ describe('RfqItemsTable discount actions', () => {
 
     expect(view.getByText(copy.detail.items.discounts.suppressed)).toBeTruthy();
     expect(view.getByRole('button', { name: copy.detail.items.discounts.restore })).toBeTruthy();
+  });
+});
+
+describe('RfqItemsTable unit mismatch', () => {
+  it('tells the seller the line was asked for in a unit its product is not sold in', () => {
+    const view = renderItems(BRANCH_ID, 'GENERATED', [
+      { ...PRICED_ITEM, unit: 'bolsa', product_unit: 'm3', unit_mismatch: true },
+    ]);
+    expect(view.getByText('Pedido en bolsa · se vende por m3')).toBeTruthy();
+  });
+
+  it('says why a line a seller already taught was decided', () => {
+    const view = renderItems(BRANCH_ID, 'GENERATED', [{ ...PRICED_ITEM, taught_by_seller: true }]);
+    expect(view.getByText('Elegido por una corrección de un vendedor')).toBeTruthy();
+  });
+
+  it('says nothing when the units agree', () => {
+    const view = renderItems();
+    expect(view.queryByText(/se vende por/)).toBeNull();
+    expect(view.queryByText(/corrección de un vendedor/)).toBeNull();
   });
 });

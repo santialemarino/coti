@@ -180,6 +180,14 @@ describe('getPublicQuoteByToken', () => {
     expect(logoOf(await getPublicQuoteByToken('tok-1'))).toBeUndefined();
   });
 
+  it('marks the version the customer accepted with their alternatives', async () => {
+    stubFetch(200, { ...rawSend(), customer_status: 'ACCEPT', accepted_version: true });
+    await expect(getPublicQuoteByToken('tok-1')).resolves.toMatchObject({
+      customerStatus: 'ACCEPT',
+      acceptedVersion: true,
+    });
+  });
+
   it('maps an expired send, which carries no quote', async () => {
     stubFetch(200, { status: 'EXPIRED', expires_at: '2026-09-01T12:00:00Z' });
 

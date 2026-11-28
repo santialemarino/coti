@@ -144,8 +144,8 @@ type ExtractedRFQLine struct {
 	Quantity decimal.Decimal
 	Unit     *string
 	Source   QuantitySource
-	// QuantityRationale is why the quantity is what it is, and is required on every line: a
-	// seller reads it instead of reopening the message, and it names what is missing.
+	// QuantityRationale is why the quantity is what it is: a seller reads it instead of reopening
+	// the message, and it names what is missing. Empty when the quantity had to be discarded.
 	QuantityRationale   string
 	SearchDescription   string
 	SelectionPreference RFQSelectionPreference

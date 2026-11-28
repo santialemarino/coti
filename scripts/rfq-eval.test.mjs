@@ -61,6 +61,38 @@ describe('rfq-eval.mjs', () => {
     );
   });
 
+  it('checks the matched product and a unit the product is not sold in', () => {
+    const expected = {
+      items: [{ product_contains: 'Arena fina', unit_mismatch: true, match_status: 'AMBIGUOUS' }],
+    };
+    const body = (item) => ({ rfq: { status: 'GENERATED' }, quote: null, items: [item] });
+
+    assert.deepEqual(
+      evaluateDraft(
+        expected,
+        201,
+        body({
+          product_name: 'Arena fina',
+          unit_mismatch: true,
+          match_status: 'AMBIGUOUS',
+        }),
+      ),
+      [],
+    );
+    assert.equal(
+      evaluateDraft(
+        expected,
+        201,
+        body({
+          product_name: 'Arena gruesa',
+          unit_mismatch: false,
+          match_status: 'AMBIGUOUS',
+        }),
+      ).length,
+      2,
+    );
+  });
+
   it('reports every observable mismatch', () => {
     const failures = evaluateDraft(
       {

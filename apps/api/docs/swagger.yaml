@@ -464,6 +464,17 @@ definitions:
       version_number:
         type: integer
     type: object
+  dto.ClientActivityResponse:
+    properties:
+      accepted_count:
+        type: integer
+      average_ticket:
+        type: string
+      last_accepted_at:
+        type: string
+      open_quotes:
+        type: integer
+    type: object
   dto.ClientContactHintsResponse:
     properties:
       email:
@@ -577,6 +588,8 @@ definitions:
     type: object
   dto.ClientProfileResponse:
     properties:
+      activity:
+        $ref: '#/definitions/dto.ClientActivityResponse'
       client:
         $ref: '#/definitions/dto.ClientResponse'
       excluded_tags:
@@ -2458,6 +2471,10 @@ definitions:
     type: object
   dto.PublicQuoteSendResponse:
     properties:
+      accepted_version:
+        description: AcceptedVersion marks a quote shown as the customer accepted
+          it, with their chosen alternatives.
+        type: boolean
       customer_status:
         description: |-
           CustomerStatus is the answer this token already received, present only when the
@@ -2731,8 +2748,18 @@ definitions:
         type: string
       subtotal:
         type: string
+      taught_by_seller:
+        description: |-
+          TaughtBySeller marks a line decided because a seller already resolved this exact wording to
+          its product.
+        type: boolean
       unit:
         type: string
+      unit_mismatch:
+        description: |-
+          UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a
+          product priced by the cubic metre, so its quantity needs the seller's conversion.
+        type: boolean
       unit_price_snapshot:
         type: string
       version_id:
@@ -3943,6 +3970,12 @@ definitions:
         type: string
       legal_name:
         maxLength: 255
+        type: string
+    type: object
+  dto.UpdateClientNotesRequest:
+    properties:
+      notes:
+        maxLength: 512
         type: string
     type: object
   dto.UpdateClientTagRuleRequest:
@@ -5556,6 +5589,50 @@ paths:
       security:
       - BearerAuth: []
       summary: Rename a client profile without a CUIT
+      tags:
+      - clients
+  /v1/clients/{clientId}/notes:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client id
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Internal notes
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateClientNotesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ClientResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update internal client notes
       tags:
       - clients
   /v1/clients/{clientId}/registration-link:

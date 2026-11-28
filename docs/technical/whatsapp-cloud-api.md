@@ -109,13 +109,27 @@ inactive account or branch makes the delivery return `500` so Meta can retry it.
 active destinations in the same delivery are processed first and deduplicated on retry; recovery for
 the unavailable destination still depends on Meta's retry window.
 
-Only inbound text messages are materialized in this release. Their Meta message ID is retained in
-`inbound_channel_message` with a unique `(channel_id, external_message_id)` constraint, the original
-provider payload, sender metadata, and exactly one target: a reserved RFQ ID or the
-`quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry keeps
-the first delivery's target — it resumes that RFQ, or does nothing for a message already joined —
-so it can create neither a second order nor a second message. Media events are acknowledged but do
-not create RFQs.
+Inbound text messages, photos, recordings, documents and videos are materialized. Their Meta message
+ID is retained in `inbound_channel_message` with a unique `(channel_id, external_message_id)`
+constraint, the original provider payload, sender metadata, and exactly one target: a reserved RFQ ID
+or the `quote_message` the text became (see [Conversation routing](#conversation-routing)). A retry
+keeps the first delivery's target — it resumes that RFQ, or does nothing for a message already
+joined — so it can create neither a second order nor a second message. Stickers, locations and
+contact cards are acknowledged and never become orders.
+
+**A file arrives as a reference.** Meta sends the media ID, not the bytes, and the download link that
+ID resolves to expires within minutes, so the webhook stores the order at `RECEIVED` with the file as
+a pending attachment keyed `whatsapp-media:<media id>` and the caption, when there is one, as a text
+attachment, then wakes the attachment sweep. The sweep resolves the ID with the channel's own access
+token, stores the file under the order's key and reads it as any other file, within
+`STORAGE_MAX_FILE_SIZE_BYTES` (and 25 MB for a recording, the transcription limit): a recording is
+transcribed in Spanish with the account's most-quoted product names as vocabulary; a photo or PDF
+reaches the model as it is. A file with no stored object yet, or one that never got one, is listed
+on the order without a download link. The format is decided by the bytes' media type, so an
+image sent as a document is read as a photo. A file no format accepts (a video) leaves the order
+`FAILED` with the file on it, so the seller sees it rather than nothing; Meta being unreachable
+leaves the order claimed for the next run instead. A file whose sender has a live quote joins that
+conversation as «[Foto]», «[Audio]», «[Documento]» or «[Video]» plus its caption.
 
 A **reaction** (👍 on a quote message) is materialized as a message whose text is the emoji, but only
 when its sender has a live quote conversation: it joins that conversation like any reply, and with no

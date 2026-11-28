@@ -259,6 +259,37 @@ func (r *ProductRepository) Delete(ctx context.Context, q Querier, accountID, id
 	return nil
 }
 
+// ListVocabulary returns the names of the account's active products its quotes name most, then
+// alphabetically: the words a client's recording is likeliest to say.
+func (r *ProductRepository) ListVocabulary(
+	ctx context.Context, q Querier, accountID uuid.UUID, limit int,
+) ([]string, error) {
+	rows, err := q.Query(ctx,
+		`SELECT p.canonical_name
+		   FROM product p
+		   LEFT JOIN (SELECT product_id, count(*) AS uses
+		                FROM quote_item
+		               WHERE account_id = $1 AND product_id IS NOT NULL
+		               GROUP BY product_id) u ON u.product_id = p.id
+		  WHERE p.account_id = $1 AND p.is_active = TRUE
+		  ORDER BY COALESCE(u.uses, 0) DESC, p.canonical_name
+		  LIMIT $2`,
+		accountID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 // SetSearchProbes tells the approximate vector scan how many index partitions to visit,
 // for the rest of the transaction. The database's own default is one, which recalls too
 // little of the catalog to survive the branch filter.
@@ -271,6 +302,13 @@ func (r *ProductRepository) SetSearchProbes(ctx context.Context, q Querier, prob
 // matches over product names and their synonyms, narrowed to what the branch carries. Every
 // candidate that has a vector is measured against the line, whichever half found it, so a missing
 // distance means the product has no vector rather than that it was not among the closest.
+//
+// The text half asks for every word first and, only when no product or synonym has them all, for
+// any of them among the products with no vector yet: "bolsa de arena" must still reach a
+// "Arena fina" the embedding job has not reached. A product with a vector is already found loosely
+// by the semantic half, and letting every one sharing a word in would crowd it out of the pool.
+// Seller corrections are looked up by the client's original words ($7, $8), which is what they
+// were recorded against.
 //
 // Kept as a const so the test that reads its execution plan measures this statement rather than
 // a copy of it.
@@ -293,14 +331,14 @@ const searchCandidatesQuery = `
 	    LIMIT $5
 	),
 	learned AS (
-	    SELECT product_id, min(embedding <=> $4) AS distance,
+	    SELECT product_id, min(embedding <=> $8) AS distance,
 	           bool_or(normalized_source = $7 AND support_count > 1) AS confirmed
 	    FROM quote_correction_memory
 	    WHERE account_id = $1 AND kind = 'CATALOG' AND status = 'READY'
-	      AND embedding <=> $4 <= $6
+	      AND embedding <=> $8 <= $6
 	    GROUP BY product_id
 	),
-	lexical_hit AS (
+	every_term_hit AS (
 	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.query)::float8 AS score,
 	           NULL::text AS term
 	    FROM product p, ask
@@ -318,9 +356,20 @@ const searchCandidatesQuery = `
 	      AND s.search_document @@ ask.any_term_query
 	      AND ask.document @@ plainto_tsquery('spanish_unaccent'::regconfig, s.term)
 	),
+	any_term_hit AS (
+	    SELECT p.id AS product_id, ts_rank(p.search_document, ask.any_term_query)::float8 AS score,
+	           NULL::text AS term
+	    FROM product p, ask
+	    WHERE p.account_id = $1 AND p.is_active = TRUE
+	      AND p.embedding IS NULL
+	      AND NOT EXISTS (SELECT 1 FROM every_term_hit h
+	                      JOIN branch_product hb ON hb.product_id = h.product_id
+	                       AND hb.account_id = $1 AND hb.branch_id = $2 AND hb.is_active = TRUE)
+	      AND p.search_document @@ ask.any_term_query
+	),
 	lexical AS (
 	    SELECT product_id, max(score)::float8 AS score, array_remove(array_agg(term), NULL) AS terms
-	    FROM lexical_hit
+	    FROM (SELECT * FROM every_term_hit UNION ALL SELECT * FROM any_term_hit) AS hit
 	    GROUP BY product_id
 	    ORDER BY score DESC
 	    LIMIT $5
@@ -342,17 +391,18 @@ const searchCandidatesQuery = `
 	LEFT JOIN lexical ON lexical.product_id = p.id`
 
 // SearchCandidates returns the catalog items the branch carries that either half of the search
-// reached.
+// reached for text, and the ones a seller taught for memoryText, the line as the client wrote it.
 //
 // Each half is asked for fetch rows because the approximate scan orders before the branch filter
 // runs, so the result comes back short of what the caller wanted rather than wrong. Ranking the
 // two halves together and trimming to the caller's K is the service's job.
 func (r *ProductRepository) SearchCandidates(
 	ctx context.Context, q Querier, accountID, branchID uuid.UUID,
-	text string, embedding pgvector.Vector, fetch int, correctionMaxDistance float64,
+	text string, embedding pgvector.Vector, memoryText string, memoryEmbedding pgvector.Vector,
+	fetch int, correctionMaxDistance float64,
 ) ([]domain.CatalogCandidate, error) {
 	rows, err := q.Query(ctx, searchCandidatesQuery, accountID, branchID, text, embedding, fetch,
-		correctionMaxDistance, normalizeCorrectionSource(text))
+		correctionMaxDistance, normalizeCorrectionSource(memoryText), memoryEmbedding)
 	if err != nil {
 		return nil, err
 	}

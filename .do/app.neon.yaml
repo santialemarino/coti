@@ -352,6 +352,10 @@ jobs:
       - key: AUTH_JWT_SECRET
         scope: RUN_TIME
         type: SECRET
+      # A file a client sent by WhatsApp is fetched with its channel's token when the sweep reads it.
+      - key: CHANNEL_CONFIG_ENCRYPTION_KEY
+        scope: RUN_TIME
+        type: SECRET
       - key: STORAGE_PROVIDER
         scope: RUN_TIME
         value: neon

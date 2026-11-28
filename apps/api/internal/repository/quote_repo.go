@@ -1406,13 +1406,22 @@ func scanQuoteItemRow(row pgx.Row) (*domain.QuoteItem, error) {
 	return &item, nil
 }
 
+// itemProductColumns are the catalog identity a line is read with, and whether a seller taught
+// this exact wording that product: the same normalisation the correction memory keys on.
+const itemProductColumns = `p.code, p.canonical_name, p.unit,
+	EXISTS (SELECT 1 FROM quote_correction_memory m
+	        WHERE m.account_id = qi.account_id AND m.kind = 'CATALOG' AND m.status = 'READY'
+	          AND m.product_id = qi.product_id
+	          AND m.normalized_source =
+	              lower(regexp_replace(btrim(qi.requested_description), '\s+', ' ', 'g')))`
+
 // ListItemsWithProduct loads a version's lines joined with product catalog identity. The product
 // columns populate QuoteItem.ProductCode/Product Name/ProductUnit; bare ListItems leaves them nil.
 func (r *QuoteRepository) ListItemsWithProduct(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
 	rows, err := q.Query(ctx,
-		`SELECT `+quoteItemColumnsPrefixed+`, p.code, p.canonical_name, p.unit
+		`SELECT `+quoteItemColumnsPrefixed+`, `+itemProductColumns+`
 		 FROM quote_item qi
 		 LEFT JOIN product p ON p.account_id = qi.account_id AND p.id = qi.product_id
 		 WHERE qi.account_id = $1 AND qi.version_id = $2
@@ -1589,7 +1598,7 @@ func scanQuoteItemWithProductRow(row pgx.Row) (*domain.QuoteItem, error) {
 		&item.RequestedDescription, &item.Quantity, &item.Unit, &item.UnitPriceSnapshot,
 		&item.MinPriceSnapshot, &item.Subtotal, &item.ConfidenceScore, &item.MatchStatus,
 		&item.QuantityRationale, &item.CreatedAt, &item.SourceItemID,
-		&item.ProductCode, &item.ProductName, &item.ProductUnit)
+		&item.ProductCode, &item.ProductName, &item.ProductUnit, &item.TaughtBySeller)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}

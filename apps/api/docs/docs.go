@@ -2023,6 +2023,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/clients/{clientId}/notes": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "clients"
+                ],
+                "summary": "Update internal client notes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client id",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Internal notes",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateClientNotesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ClientResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/clients/{clientId}/registration-link": {
             "post": {
                 "security": [
@@ -12026,6 +12095,23 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ClientActivityResponse": {
+            "type": "object",
+            "properties": {
+                "accepted_count": {
+                    "type": "integer"
+                },
+                "average_ticket": {
+                    "type": "string"
+                },
+                "last_accepted_at": {
+                    "type": "string"
+                },
+                "open_quotes": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ClientContactHintsResponse": {
             "type": "object",
             "properties": {
@@ -12195,6 +12281,9 @@ const docTemplate = `{
         "dto.ClientProfileResponse": {
             "type": "object",
             "properties": {
+                "activity": {
+                    "$ref": "#/definitions/dto.ClientActivityResponse"
+                },
                 "client": {
                     "$ref": "#/definitions/dto.ClientResponse"
                 },
@@ -14920,6 +15009,10 @@ const docTemplate = `{
         "dto.PublicQuoteSendResponse": {
             "type": "object",
             "properties": {
+                "accepted_version": {
+                    "description": "AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.",
+                    "type": "boolean"
+                },
                 "customer_status": {
                     "description": "CustomerStatus is the answer this token already received, present only when the\ncustomer responded through the link.",
                     "type": "string"
@@ -15318,8 +15411,16 @@ const docTemplate = `{
                 "subtotal": {
                     "type": "string"
                 },
+                "taught_by_seller": {
+                    "description": "TaughtBySeller marks a line decided because a seller already resolved this exact wording to\nits product.",
+                    "type": "boolean"
+                },
                 "unit": {
                     "type": "string"
+                },
+                "unit_mismatch": {
+                    "description": "UnitMismatch marks a line asked for in a unit its product is not sold in, such as bags of a\nproduct priced by the cubic metre, so its quantity needs the seller's conversion.",
+                    "type": "boolean"
                 },
                 "unit_price_snapshot": {
                     "type": "string"
@@ -17101,6 +17202,15 @@ const docTemplate = `{
                 "legal_name": {
                     "type": "string",
                     "maxLength": 255
+                }
+            }
+        },
+        "dto.UpdateClientNotesRequest": {
+            "type": "object",
+            "properties": {
+                "notes": {
+                    "type": "string",
+                    "maxLength": 512
                 }
             }
         },

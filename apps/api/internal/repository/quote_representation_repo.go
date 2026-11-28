@@ -157,7 +157,7 @@ func (r *QuoteRepresentationRepository) LoadSource(
 func (r *QuoteRepresentationRepository) listItems(
 	ctx context.Context, q Querier, accountID, versionID uuid.UUID,
 ) ([]domain.QuoteItem, error) {
-	rows, err := q.Query(ctx, `SELECT `+quoteItemColumnsPrefixed+`, p.code, p.canonical_name, p.unit
+	rows, err := q.Query(ctx, `SELECT `+quoteItemColumnsPrefixed+`, `+itemProductColumns+`
 		FROM quote_item qi
 		LEFT JOIN product p ON p.account_id = qi.account_id AND p.id = qi.product_id
 		WHERE qi.account_id = $1 AND qi.version_id = $2

@@ -91,6 +91,8 @@ const DRAFT_ITEM: QuoteItemResponse = {
   alternatives: [],
   pricing_unavailable: null,
   quantity_rationale: null,
+  unit_mismatch: false,
+  taught_by_seller: false,
   created_at: BASE_TIME,
 };
 

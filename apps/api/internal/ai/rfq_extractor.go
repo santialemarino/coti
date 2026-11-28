@@ -16,7 +16,7 @@ var (
 )
 
 const (
-	rfqExtractionPromptVersion = "rfq-extraction-prompt-v6"
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v7"
 	rfqExtractionSchemaVersion = "rfq-extraction-schema-v3"
 )
 
@@ -127,6 +127,8 @@ Return one item per material, in the order the client mentions them, at most %d 
 - quantity: a positive decimal with at most two decimals, as a string. Send "0" on UNRESOLVED.
 - unit: the unit the client used, as they wrote it, or null when they gave none. Under 64 characters.
 - quantity_rationale: one short sentence in Argentine Spanish telling the seller where the number came from, or which datum is missing when the source is UNRESOLVED. Under 512 characters.
+
+Clients write the way they talk at the counter. A container or its diminutive is the unit, never the material: "una bolsita de cal" is quantity "1", unit "bolsita", search_description "cal". "Medio" and "media" are half: "medio metro de arena" is quantity "0.5", unit "metro", search_description "arena". "Un par de" is two, DERIVED. A number standing for an item names the material around it: "una de cal" is quantity "1" of cal with no unit, and "hierro del 8" is an 8 mm iron, search_description "hierro 8 mm". A purpose is context, not identity: "arena para revocar" searches "arena". A brand clients use as the everyday name of a material ("durlock", "klaukol", "tacurú") is kept as written in search_description; never swap it for the generic name or another brand.
 
 List the material even when its quantity is UNRESOLVED — the seller completes the line, and dropping it loses what the client asked for.
 

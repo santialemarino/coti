@@ -1669,6 +1669,8 @@
         "generating": "Aprobando productos…",
         "chooseProduct": "Elegir producto",
         "confirmMatch": "Confirmar producto",
+        "unitMismatch": "Pedido en {requested} · se vende por {sold}",
+        "taughtBySeller": "Elegido por una corrección de un vendedor",
         "select": "Seleccionar",
         "suggested": "Sugerido",
         "recommendationType": {
@@ -2276,6 +2278,32 @@
         "DELIVERY_UNAVAILABLE": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo.",
         "INTERNAL": "No pudimos enviar el enlace. Revisá la configuración del canal e intentá de nuevo."
       }
+    },
+    "notes": {
+      "label": "Notas",
+      "empty": "Sin notas",
+      "edit": "Editar notas",
+      "placeholder": "Notas opcionales...",
+      "hint": "Solo la ve el equipo del corralón.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "cancel": "Cancelar",
+      "saved": "Guardamos las notas de «{name}».",
+      "invalidCharacters": "Quitá los caracteres de control. Podés usar saltos de línea.",
+      "errors": {
+        "INVALID_INPUT": "Revisá el texto de las notas.",
+        "NOT_FOUND": "La ficha del cliente ya no está disponible.",
+        "INTERNAL": "No pudimos guardar las notas. Intentá de nuevo."
+      }
+    },
+    "context": {
+      "title": "Cliente",
+      "viewProfile": "Ver ficha",
+      "lastPurchase": "Última compra",
+      "noPurchases": "Sin compras todavía",
+      "openQuotes": "Cotizaciones abiertas",
+      "averageTicket": "Ticket promedio",
+      "unavailable": "—"
     },
     "rename": {
       "label": "Nombre",

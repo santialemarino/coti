@@ -250,13 +250,30 @@ func run() error {
 		services.NewConversationBatchService(db, messageBatchRepo,
 			batchChangeHandler, cfg.Conversation, nil, log),
 		cfg.Conversation.TickerInterval, log)
+	attachmentWake := make(chan struct{}, 1)
+	wakeAttachments := func() {
+		select {
+		case attachmentWake <- struct{}{}:
+		default:
+		}
+	}
+	var attachmentJobs *services.JobService
+	if providers.LanguageModelBound() {
+		reader := attachmentReader(db, rfqAttachmentService, rfqAttachmentRepo, channelRepo, productRepo,
+			channelSealer, objectStorage.Storage, providers.Transcriber, cfg, log)
+		attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
+			services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
+		if err != nil {
+			return err
+		}
+	}
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
-		WithConversations(conversationService).WithContacts(contactService)
+		WithConversations(conversationService).WithContacts(contactService).
+		WithMedia(services.NewWhatsAppMediaIntake(db, rfqRepo, rfqAttachmentRepo,
+			objectStorage.Storage, wakeAttachments))
 	var gmailHandler *handler.GmailHandler
 	var gmailWorker *services.GmailSyncWorker
-	var attachmentJobs *services.JobService
-	attachmentWake := make(chan struct{}, 1)
 	if cfg.Gmail.Enabled() {
 		oauth, err := gmail.NewOAuth(cfg.Gmail.ClientID, cfg.Gmail.ClientSecret, cfg.Gmail.RedirectURL,
 			cfg.Gmail.RequestTimeout, cfg.Gmail.MaxJSONBytes)
@@ -270,23 +287,9 @@ func run() error {
 		intake := services.NewEmailInboundService(db, inboundChannelMessageRepo, rfqRepo,
 			rfqAttachmentRepo, channelRepo, objectStorage.Storage, cfg.Storage.MaxFileSize).
 			WithContacts(contactService).
-			WithRecordedCallback(func() {
-				select {
-				case attachmentWake <- struct{}{}:
-				default:
-				}
-			})
+			WithRecordedCallback(wakeAttachments)
 		gmailWorker = services.NewGmailSyncWorker(db, mailboxes, channelSealer,
 			gmail.NewFactory(cfg.Gmail), services.NewEmailSyncService(intake), cfg.Gmail.PollInterval, log)
-		if providers.LanguageModelBound() {
-			reader := rfqAttachmentService.WithStoredReading(providers.Transcriber,
-				cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows)
-			attachmentJobs, err = services.NewJobService(db, repository.NewJobRunRepository(), log,
-				services.NewAttachmentExtractionJob(rfqAttachmentRepo, reader, rfqService, cfg.Attachment, log))
-			if err != nil {
-				return err
-			}
-		}
 	}
 	quoteService := services.NewQuoteService(db, quoteRepo, productPriceRepo, arcaEnvironment, log).
 		WithAutomaticQuoteInputs(productPriceRepo).
@@ -445,6 +448,21 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	return server.Shutdown(shutdownCtx)
+}
+
+// attachmentReader is the sweep's file reader: stored files, the ones WhatsApp still holds, and
+// recordings transcribed with the account's own product names.
+func attachmentReader(db *repository.DB, files *services.RFQAttachmentService,
+	attachments *repository.RFQAttachmentRepository, channels *repository.ChannelRepository,
+	products *repository.ProductRepository, sealer *secrets.AESGCM, storage domain.ObjectStorage,
+	transcriber domain.Transcriber, cfg *config.Config, log *slog.Logger,
+) *services.RFQAttachmentService {
+	fetcher := whatsapp.NewMetaMediaFetcher(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout},
+		cfg.WhatsApp.GraphAPIVersion)
+	return files.WithStoredReading(transcriber, cfg.RFQ.MaxTextCharacters, cfg.RFQ.MaxSpreadsheetRows).
+		WithWhatsAppMedia(services.NewWhatsAppMediaSource(db, channels, attachments, sealer,
+			fetcher, storage, cfg.Storage.MaxFileSize)).
+		WithTranscriptionVocabulary(services.NewTranscriptionVocabulary(db, products, log).For)
 }
 
 func runAttachmentWake(ctx context.Context, wake chan struct{}, jobs *services.JobService,

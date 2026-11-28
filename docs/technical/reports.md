@@ -180,7 +180,7 @@ resolution, and a generation index for the AI summary; `00073_handler_decision_r
 adds the account/time index the assistant metrics read. They are in the consolidated reference
 schema in `apps/api/database/01_create_tables.sql` as well.
 
-`00089_quote_status_change_quote_report.sql` adds the complementary account/quote/status/time
+`00090_quote_status_change_quote_report.sql` adds the complementary account/quote/status/time
 index for per-quote event lookups, including prepared statements that use generic plans. The
 period-oriented index remains useful for scanning events across an account. Cohort conversion
 aggregates the first send and latest acceptance once per quote before counting or grouping them

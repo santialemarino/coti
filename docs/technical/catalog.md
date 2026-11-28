@@ -348,6 +348,10 @@ carries the exact trade vocabulary that a vector model has no way to know.
   `spanish_unaccent` text search configuration, a copy of
   `spanish` with `unaccent` in front of the stemmer: informal request text drops accents
   constantly, and under the stock configuration "hormigon" would never reach "hormigón".
+  It asks for every word of the line first. Only when no product and no synonym has them all does
+  it settle for any of them, and then only among products with no vector yet: "bolsa de arena"
+  still reaches an "Arena fina" the embedding job has not reached, while a product with a vector is
+  left to the semantic half, which already finds it loosely and is not crowded out of the pool.
 - **The semantic half** orders `product.embedding` by cosine distance (`<=>`).
 - **Both halves are account-scoped in the query**, and the result is joined against
   `branch_product` so a search can only ever offer what the active branch carries. A search with
@@ -392,6 +396,20 @@ the matcher, never which candidate leads.
 
 Its caller is the plain-text RFQ pipeline — see [rfq-pipeline.md](rfq-pipeline.md), which also
 describes what a line looks like when matching cannot answer at all.
+
+A line can be matched on two texts at once: the one the catalog is searched and scored on, and the
+client's own words, which seller corrections are looked up by and the review reads. The pipeline
+passes the extractor's cleaned `search_description` as the first when it is safe to (see
+rfq-pipeline.md), and every other caller passes the same text twice. A quantity word opening a
+line ("medio metro de arena", "un par de bolsas") is read like a leading figure: it says how many,
+and it and a unit bound to it are not counted against the products. The line is scored on the
+cleaned text too, unless it dropped a word of the client's that some candidate carries: a dropped
+purpose ("para revocar") names no product, a dropped brand tells two products apart.
+
+**Every item says when a seller already decided it.** `taught_by_seller` is read with the line:
+true when the correction memory holds a ready teaching of the line's exact wording, normalised the
+way the memory keys it, to the product the line carries. A teaching the search reached through a
+near phrase is not shown, since the line does not record which memory led it.
 
 ### Confidence: what the name accounts for, and how close the vector sits
 
@@ -450,8 +468,9 @@ contesting `PVC CUPLA 110` for `cupla pvc 110`.
 
 A seller-taught leader is contested differently, because its score is the memory's, not the
 text's. Two taught answers for one phrase are always a rival. So is a product that clears the
-match floor and answers the whole line while the taught one does not: that is what a substitution
-leaves behind. A seller who swapped in what was in stock taught `cemento loma negra` the other
+match floor and answers the whole line at least as fully as the taught one: a substitution leaves
+one behind, and so does a generic term the catalog answers several ways (`ladrillos`, taught once
+as the common brick, still names the hollow one). A seller who swapped in what was in stock taught `cemento loma negra` the other
 brand, and the line still names the original. The taught answer still leads, and the seller
 settles it one of two ways, both remembered:
 

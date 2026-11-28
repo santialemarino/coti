@@ -222,7 +222,10 @@ type QuoteItem struct {
 	ProductCode          *string
 	ProductName          *string
 	ProductUnit          *string
-	CreatedAt            time.Time
+	// TaughtBySeller marks a line whose exact wording a seller already resolved to its product,
+	// which is why it was decided without asking. Read-time, like the product columns.
+	TaughtBySeller bool
+	CreatedAt      time.Time
 	// SourceItemID is the sent line a draft line was copied from; nil for one added to the draft.
 	SourceItemID *uuid.UUID
 }

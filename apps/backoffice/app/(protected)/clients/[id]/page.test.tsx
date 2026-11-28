@@ -26,6 +26,11 @@ vi.mock('@/app/(protected)/clients/[id]/_components/client-registration-link', (
   ClientRegistrationLink: () => null,
 }));
 vi.mock('@/components/back-link', () => ({ BackLink: () => null }));
+vi.mock('@/components/client-notes-editor', () => ({
+  ClientNotesEditor: ({ notes }: { notes: string | null }) => (
+    <div data-testid="notes-editor">{notes}</div>
+  ),
+}));
 vi.mock('@/app/(protected)/clients/[id]/_components/client-tag-editor', () => ({
   ClientTagEditor: () => null,
 }));
@@ -174,9 +179,16 @@ describe('ClientProfilePage seller actions', () => {
   });
 
   // A registered profile's name is its customer's; a seller can still merge another profile into it.
-  it('locks the name of a registered profile but still offers merging into it', async () => {
+  it('shows internal notes and merge actions on a registered profile with a locked name', async () => {
     vi.mocked(getClient).mockResolvedValue({
-      client: { id: 'c1', name: 'Obra Norte', phone: null, email: null, taxId: '20123456786' },
+      client: {
+        id: 'c1',
+        name: 'Obra Norte',
+        phone: null,
+        email: null,
+        taxId: '20123456786',
+        notes: 'Call before delivery',
+      },
       registered: true,
       tags: [],
       sales: [],
@@ -185,6 +197,7 @@ describe('ClientProfilePage seller actions', () => {
     const view = await renderPage();
 
     expect(view.getByTestId('name-editor').dataset.registered).toBe('true');
+    expect(view.getByTestId('notes-editor').textContent).toBe('Call before delivery');
     expect(view.getByTestId('merge-dialog')).toBeTruthy();
   });
 

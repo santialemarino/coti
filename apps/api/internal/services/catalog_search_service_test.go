@@ -91,6 +91,7 @@ type fakeSearch struct {
 	fetches      []int
 	probes       []int
 	searched     []string
+	remembered   []string
 	err          error
 }
 
@@ -101,10 +102,11 @@ func (f *fakeSearch) SetSearchProbes(_ context.Context, _ repository.Querier, pr
 
 func (f *fakeSearch) SearchCandidates(
 	_ context.Context, _ repository.Querier, _, _ uuid.UUID,
-	text string, _ pgvector.Vector, fetch int, _ float64,
+	text string, _ pgvector.Vector, memoryText string, _ pgvector.Vector, fetch int, _ float64,
 ) ([]domain.CatalogCandidate, error) {
 	f.fetches = append(f.fetches, fetch)
 	f.searched = append(f.searched, text)
+	f.remembered = append(f.remembered, memoryText)
 	if f.err != nil {
 		return nil, f.err
 	}

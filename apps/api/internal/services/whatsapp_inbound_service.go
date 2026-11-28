@@ -59,6 +59,11 @@ type whatsAppInboundRFQCreator interface {
 		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
 }
 
+type whatsAppInboundMediaCreator interface {
+	CreateMediaOrder(ctx context.Context, route domain.InboundChannelRoute, rfqID uuid.UUID,
+		message domain.InboundTextMessage) error
+}
+
 // WhatsAppInboundService turns verified WhatsApp messages into idempotent inbound RFQ drafts, or
 // into client messages on the live quote conversation their sender continues.
 type WhatsAppInboundService struct {
@@ -69,6 +74,7 @@ type WhatsAppInboundService struct {
 	configs       whatsAppInboundConfigReader
 	rfqs          whatsAppInboundRFQCreator
 	conversations whatsAppInboundConversations
+	media         whatsAppInboundMediaCreator
 	opener        channelConfigOpener
 	now           func() time.Time
 	log           *slog.Logger
@@ -91,6 +97,13 @@ func (s *WhatsAppInboundService) WithConversations(
 	conversations whatsAppInboundConversations,
 ) *WhatsAppInboundService {
 	s.conversations = conversations
+	return s
+}
+
+// WithMedia opens an order for a photo, a recording or a document a client sends. Without it a
+// file is ignored, since an order made of its caption alone would misread what was asked.
+func (s *WhatsAppInboundService) WithMedia(media whatsAppInboundMediaCreator) *WhatsAppInboundService {
+	s.media = media
 	return s
 }
 
@@ -162,6 +175,10 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			}
 			continue
 		}
+		if message.Media != nil && s.media == nil {
+			s.log.WarnContext(ctx, "whatsapp file ignored: media intake is not wired")
+			continue
+		}
 		err := s.ingestOne(ctx, route, message)
 		if errors.Is(err, errInboundNoConversation) {
 			continue
@@ -190,7 +207,7 @@ func (s *WhatsAppInboundService) ingestOne(
 				ExternalMessageID:  message.ExternalMessageID,
 				SenderID:           message.SenderID,
 				SenderLabel:        message.SenderLabel,
-				Body:               message.Body,
+				Body:               mediaMessageText(message),
 				Payload:            message.Payload,
 				ProviderReceivedAt: message.ProviderReceivedAt,
 			}
@@ -205,7 +222,8 @@ func (s *WhatsAppInboundService) ingestOne(
 			}
 			var pending *uuid.UUID
 			var name string
-			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && joined == nil {
+			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && joined == nil &&
+				message.Media == nil {
 				pending, name, err = resolver.NameReply(ctx, q, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body)
 				if err != nil {
 					return err
@@ -237,7 +255,7 @@ func (s *WhatsAppInboundService) ingestOne(
 				return errInboundAlreadyReserved
 			}
 			if s.contacts != nil {
-				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), message.Body, hints)
+				return s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), mediaMessageText(message), hints)
 			}
 			return nil
 		})
@@ -250,6 +268,9 @@ func (s *WhatsAppInboundService) ingestOne(
 		_ = json.Unmarshal(reserved.Payload, &payload)
 		if reserved.RFQID == nil || payload.NameReply {
 			return nil
+		}
+		if message.Media != nil {
+			return s.media.CreateMediaOrder(ctx, route, *reserved.RFQID, message)
 		}
 		_, err = s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
 			domain.InboundTextRFQDraftInput{ClientLabel: message.SenderLabel, RawText: message.Body},
@@ -272,7 +293,7 @@ func (s *WhatsAppInboundService) joinConversation(ctx context.Context, q reposit
 	}
 	return s.conversations.AppendMessage(ctx, q, route.Tenant(), domain.NewQuoteMessage{
 		ID: uuid.New(), QuoteID: match.QuoteID, ChannelID: &route.ChannelID,
-		AuthorType: domain.MessageAuthorClient, Body: message.Body,
+		AuthorType: domain.MessageAuthorClient, Body: mediaMessageText(message),
 		ReceivedAt: message.ProviderReceivedAt, OtherLiveQuotes: match.OtherLiveQuotes,
 	})
 }
@@ -289,7 +310,16 @@ func normalizeInboundTextMessage(
 	message.ExternalMessageID = strings.TrimSpace(message.ExternalMessageID)
 	message.SenderID = strings.TrimSpace(message.SenderID)
 	message.Body = strings.TrimSpace(message.Body)
-	if message.ExternalMessageID == "" || message.SenderID == "" || message.Body == "" {
+	if message.Media != nil {
+		message.Media.ProviderID = strings.TrimSpace(message.Media.ProviderID)
+		if message.Media.ProviderID == "" ||
+			len(message.Media.ProviderID) > maxInboundProviderIdentifierLength {
+			return message, fmt.Errorf("%w: inbound WhatsApp file has no usable media ID",
+				domain.ErrInvalidInput)
+		}
+	}
+	if message.ExternalMessageID == "" || message.SenderID == "" ||
+		(message.Body == "" && message.Media == nil) {
 		return message, fmt.Errorf("%w: inbound WhatsApp message is incomplete", domain.ErrInvalidInput)
 	}
 	if len(message.ExternalMessageID) > maxInboundProviderIdentifierLength ||

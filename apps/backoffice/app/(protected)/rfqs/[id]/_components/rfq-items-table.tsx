@@ -768,6 +768,19 @@ export function RfqItemsTable({
                             {item.product_code}
                           </span>
                         )}
+                        {item.unit_mismatch && item.unit && item.product_unit && (
+                          <span className="text-paragraph-xs text-warning-foreground">
+                            {t('detail.items.unitMismatch', {
+                              requested: item.unit,
+                              sold: item.product_unit,
+                            })}
+                          </span>
+                        )}
+                        {item.taught_by_seller && (
+                          <span className="text-paragraph-xs text-foreground-muted">
+                            {t('detail.items.taughtBySeller')}
+                          </span>
+                        )}
                         {canResolve && item.match_status === 'AMBIGUOUS' && (
                           <Button
                             type="button"

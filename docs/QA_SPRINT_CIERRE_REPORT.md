@@ -45,7 +45,7 @@ reverted. The internal results mirror was updated locally and remains gitignored
 | Task                               | Initial state                                                                                                                                   | Verified outcome and limit                                                                                                                                                                                                                                                                        |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Automatic quotation                | Shared deterministic valuation, eligibility and transaction existed; a concurrent price commit could still produce a stale snapshot.            | Fixed the price clock. Real-database replacement/first-price regressions pass. Live AI customer intake produces a mutable `QUOTED` offer; edit and explicit publication work. Missing price retains the line in `DRAFT`, with no send. Browser interaction remains unverified.                    |
-| Previous-period reports            | Equal-length Argentine calendar comparison existed. Existing money aggregates combined currencies; synthetic load exposed repeated event scans. | Comparisons and filter scope pass regression tests. Currency-aware JSON, dashboard and PDF are implemented. Cohort query and migration 89 remove the measured repeated-scan pathology. Full service timing is measured below; it is not a production SLO. Browser layout remains unverified.      |
+| Previous-period reports            | Equal-length Argentine calendar comparison existed. Existing money aggregates combined currencies; synthetic load exposed repeated event scans. | Comparisons and filter scope pass regression tests. Currency-aware JSON, dashboard and PDF are implemented. Cohort query and migration 90 remove the measured repeated-scan pathology. Full service timing is measured below; it is not a production SLO. Browser layout remains unverified.      |
 | Portal rejection feedback          | Optional comment reused transactional version-bound client actions.                                                                             | HTTP authorization, length validation, normalization, rejection, replay and historical version binding pass. Frontend cancel/action/history tests run. A later version can be edited and published without altering the earlier rejection. Actual browser round trip remains blocked.             |
 | Operational setup and price alerts | Readiness used real account/branch/catalog/price/staff data, but action links lost branch context.                                              | Explicit authorized branch links and destination resolution fixed. Navigation regressions pass. Live removal of one current price exposes only the affected branch's gap; restoring it clears the gap and leaves an already frozen offer unchanged. Browser alert interaction remains unverified. |
 | Demo catalog and benchmark         | Real seed, backfill and matcher existed; the local-only guard trusted the URL authority instead of the driver's effective target.               | Effective-driver target validation fixed. Live embedding backfill and benchmark executed on synthetic local data. All positive retrievals succeed; one negative remains conservatively ambiguous, explicitly reported below.                                                                      |
@@ -111,7 +111,7 @@ rule including acceptance after the report period. Tests cover acceptance before
 after first send, later acceptance and re-sends.
 
 Prepared generic plans also degraded per-quote response-time lookups. Migration
-`00089_quote_status_change_quote_report.sql` adds the complementary partial index on
+`00090_quote_status_change_quote_report.sql` adds the complementary partial index on
 `(account_id, quote_id, new_status, changed_at)` for SENT/ACCEPTED events. The period-oriented index
 remains available. The consolidated reference contains the identical index. Fresh migrations,
 84 down/up, real query plans and the full-service benchmark were executed. Both repeated-scan query forms already exist in the `ab117efa` base. The sprint adds a
@@ -332,7 +332,7 @@ A apps/api/internal/repository/seller_report_currency_test.go
 M apps/api/internal/repository/seller_report_repo_test.go
 M apps/api/internal/repository/seller_report_repo.go
 M apps/api/internal/services/seller_report_service_test.go
-A apps/api/migrations/00089_quote_status_change_quote_report.sql
+A apps/api/migrations/00090_quote_status_change_quote_report.sql
 M apps/backoffice/app/(protected)/_components/branch-switcher.test.tsx
 M apps/backoffice/app/(protected)/_components/branch-switcher.tsx
 M apps/backoffice/app/(protected)/reports/_components/report-kpis.test.tsx

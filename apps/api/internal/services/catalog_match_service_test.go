@@ -426,14 +426,15 @@ func TestCatalogMatchService_ARivalUnderTheFloorDoesNotContestATaughtAnswer(t *t
 	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
 }
 
-// When the taught product answers the line as fully as its rival, the words take no side.
-func TestCatalogMatchService_ATaughtAnswerThatCoversTheLineIsNotContested(t *testing.T) {
-	taught := learned("Cemento Loma Negra 50kg", 0.05)
-	rival := semantic("Cemento Loma Negra 25kg", 0.10)
+// A generic term the catalog answers with several products stays for the seller until a teaching
+// is confirmed: «ladrillos» taught once as the common brick still names the hollow one.
+func TestCatalogMatchService_AnUnconfirmedTeachingIsContestedByAnEqualAnswer(t *testing.T) {
+	taught := learned("Ladrillo común", 0.05)
+	rival := semantic("Ladrillo hueco 12x18x33", 0.10)
 
-	got := matchOne(t, "cemento loma negra", []domain.CatalogCandidate{rival, taught})
+	got := matchOne(t, "ladrillos", []domain.CatalogCandidate{rival, taught})
 
-	wantDecision(t, got, domain.ItemMatchStatusMatched, "0.95", &taught.ProductID)
+	wantDecision(t, got, domain.ItemMatchStatusAmbiguous, "0.95", &taught.ProductID)
 }
 
 // A seller who taught a phrase and later kept the answer on a flagged line chose it twice: that
@@ -907,5 +908,40 @@ func TestCatalogMatchService_DoesNotReviewAConflictBetweenSellerAnswers(t *testi
 	}
 	if len(reviewer.asked) != 0 {
 		t.Errorf("review calls = %d, want none for a seller conflict", len(reviewer.asked))
+	}
+}
+
+// A search text that dropped the brand the client named is not what the line is scored on: the
+// other brand must not lead as confidently as if the client had asked for it.
+func TestCatalogMatchService_ScoresOnTheClientsWordsWhenTheSearchDroppedABrandACandidateCarries(t *testing.T) {
+	asked := semantic("Cemento Avellaneda 50kg", 0.30)
+	other := semantic("Cemento Loma Negra 50kg", 0.10)
+	service := NewCatalogMatchService(&fakeSearcher{perLine: [][]domain.CatalogCandidate{
+		{other, asked}}}, testMatchConfig())
+
+	got, err := service.MatchQueries(context.Background(), testSearchTenant(), []domain.MatchQuery{
+		{Text: "cemento", Original: "cemento avellaneda"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].ProductID == nil || *got[0].ProductID != asked.ProductID {
+		t.Fatalf("leader = %v, want the brand the client named", got[0].ProductID)
+	}
+}
+
+// A dropped purpose no product carries stays dropped, so the cleaned text is what scores.
+func TestCatalogMatchService_ScoresOnTheSearchTextWhenTheDroppedWordsNameNoProduct(t *testing.T) {
+	sand := semantic("Arena fina", 0.15)
+	service := NewCatalogMatchService(&fakeSearcher{perLine: [][]domain.CatalogCandidate{
+		{sand}}}, testMatchConfig())
+
+	got, err := service.MatchQueries(context.Background(), testSearchTenant(), []domain.MatchQuery{
+		{Text: "arena", Original: "arena para revocar"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].MatchStatus != domain.ItemMatchStatusMatched {
+		t.Fatalf("status = %s at %s, want MATCHED on the cleaned text", got[0].MatchStatus,
+			got[0].Confidence)
 	}
 }

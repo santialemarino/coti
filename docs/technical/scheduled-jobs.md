@@ -144,6 +144,13 @@ material, so an order whose photo was read an hour ago and whose recording arriv
 extracted from the recording alone. Only stored text is reused — an earlier image or PDF is not
 downloaded again.
 
+**A file WhatsApp still holds is fetched first.** An attachment keyed `whatsapp-media:<id>` is
+downloaded with its order's channel token, stored under the order's key and then read like the
+rest, which is why this job carries `CHANNEL_CONFIG_ENCRYPTION_KEY`. A provider outage leaves the
+whole order claimed for a later run rather than closing a readable file out as failed. The API runs
+the same sweep in-process, woken the moment an email or a WhatsApp file is stored, whenever a
+language model is bound; the scheduled run is its backstop.
+
 **It also catches what the request path could not finish.** The inline file intake runs on a budget
 below the platform's edge timeout (`RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS`, 75s), which is smaller than
 a large order costs. When it runs out — or the provider is unavailable — it returns the attachment to
