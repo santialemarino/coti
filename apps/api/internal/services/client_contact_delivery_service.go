@@ -124,6 +124,7 @@ func (s *ClientContactDeliveryService) sendMailboxReply(ctx context.Context, mes
 		ReplyTo:     mailbox.Address,
 		ReplyToName: mailbox.SupplierName + " — " + mailbox.BranchName,
 		InReplyTo:   message.InReplyTo,
+		AutoReplied: true,
 	})
 }
 
