@@ -260,11 +260,41 @@ func TestRFQAttachmentRepository_ClaimPendingByRFQ_TakesPendingRowsAndCarriesThe
 	if got.StorageKey == "" {
 		t.Errorf("claimed storage key is empty, want the stored object key")
 	}
+	var channelID uuid.UUID
+	if err := db.CrossAccount().QueryRow(ctx, `SELECT channel_id FROM rfq WHERE id = $1`,
+		rfqID).Scan(&channelID); err != nil || got.ChannelID != channelID {
+		t.Errorf("claimed channel = %v, want the order's %v (%v)", got.ChannelID, channelID, err)
+	}
 	if status := statusOf(t, db, pendingID); status != "PROCESSING" {
 		t.Errorf("claimed row status = %q, want PROCESSING", status)
 	}
 	if status := statusOf(t, db, doneID); status != "DONE" {
 		t.Errorf("untouched row status = %q, want DONE", status)
+	}
+}
+
+// A file fetched from WhatsApp lands where the order's files live, as the kind its bytes are.
+func TestRFQAttachmentRepository_SetStoredFile_RecordsTheFetchedFile(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Attachment stored file")
+	branchID := branchOf(t, db, accountID)
+	rfqID := seedRFQFor(t, db, accountID, branchID)
+	id := insertAttachment(t, db, accountID, rfqID, "PROCESSING", nil)
+
+	if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID}, func(q Querier) error {
+		return NewRFQAttachmentRepository().SetStoredFile(ctx, q, accountID, id,
+			"accounts/x/photo.png", domain.AttachmentTypeImage)
+	}); err != nil {
+		t.Fatalf("SetStoredFile() = %v", err)
+	}
+	var key, kind string
+	if err := db.CrossAccount().QueryRow(ctx,
+		`SELECT file_url, type::text FROM rfq_attachment WHERE id = $1`, id).Scan(&key, &kind); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if key != "accounts/x/photo.png" || kind != "IMAGE" {
+		t.Fatalf("stored = (%q, %q), want the new key as an IMAGE", key, kind)
 	}
 }
 

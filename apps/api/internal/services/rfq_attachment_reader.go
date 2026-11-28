@@ -7,6 +7,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -25,6 +27,32 @@ func (s *RFQAttachmentService) WithStoredReading(
 	return s
 }
 
+// transcriptionLanguage is the language every Coti client speaks; telling the provider spares it
+// guessing from a few seconds of a voice note.
+const transcriptionLanguage = "es"
+
+// whatsAppMediaMaterializer brings a file a provider still holds into storage before it is read.
+type whatsAppMediaMaterializer interface {
+	Materialize(ctx context.Context,
+		attachment domain.ClaimedAttachment) (domain.ClaimedAttachment, error)
+}
+
+// WithWhatsAppMedia reads files clients sent by WhatsApp, fetched when the sweep reaches them.
+func (s *RFQAttachmentService) WithWhatsAppMedia(
+	media whatsAppMediaMaterializer,
+) *RFQAttachmentService {
+	s.media = media
+	return s
+}
+
+// WithTranscriptionVocabulary steers each recording's transcription with the account's own words.
+func (s *RFQAttachmentService) WithTranscriptionVocabulary(
+	vocabulary func(ctx context.Context, accountID uuid.UUID) string,
+) *RFQAttachmentService {
+	s.vocabulary = vocabulary
+	return s
+}
+
 /*
  * ReadStoredAttachment reads one already-stored file into the block a model reads and the text the
  * attachment row keeps. It is the sweep's half of the multi-format engine: the inline intake reads
@@ -37,6 +65,16 @@ func (s *RFQAttachmentService) WithStoredReading(
 func (s *RFQAttachmentService) ReadStoredAttachment(
 	ctx context.Context, attachment domain.ClaimedAttachment,
 ) (domain.Content, string, error) {
+	if strings.HasPrefix(attachment.StorageKey, domain.WhatsAppMediaKeyPrefix) {
+		if s.media == nil {
+			return domain.Content{}, "", fmt.Errorf("%w: WhatsApp media is not wired",
+				domain.ErrMediaUnavailable)
+		}
+		var err error
+		if attachment, err = s.media.Materialize(ctx, attachment); err != nil {
+			return domain.Content{}, "", err
+		}
+	}
 	if strings.TrimSpace(attachment.StorageKey) == "" {
 		return domain.Content{}, "", fmt.Errorf("%w: attachment %s has no stored file",
 			domain.ErrInvalidInput, attachment.ID)
@@ -84,6 +122,10 @@ func (s *RFQAttachmentService) ReadStoredAttachment(
 			Filename:  filename,
 			MediaType: object.ContentType,
 			Data:      data,
+			Language:  transcriptionLanguage,
+		}
+		if s.vocabulary != nil {
+			audio.Vocabulary = s.vocabulary(ctx, attachment.AccountID)
 		}
 		if validateErr := audio.Validate(); validateErr != nil {
 			return domain.Content{}, "", validateErr

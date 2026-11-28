@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -28,8 +29,10 @@ import (
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 	"github.com/santialemarino/coti/apps/api/internal/repository"
+	"github.com/santialemarino/coti/apps/api/internal/secrets"
 	"github.com/santialemarino/coti/apps/api/internal/services"
 	storageprovider "github.com/santialemarino/coti/apps/api/internal/storage/provider"
+	"github.com/santialemarino/coti/apps/api/internal/whatsapp"
 )
 
 func main() {
@@ -90,10 +93,22 @@ func run() error {
 		return err
 	}
 	attachmentRepo := repository.NewRFQAttachmentRepository()
+	channelSealer, err := secrets.NewAESGCM(cfg.Channel.EncryptionKey)
+	if err != nil {
+		return err
+	}
 	attachmentReader := services.NewRFQAttachmentService(db, attachmentRepo,
 		objectStorage.Storage, cfg.Storage, nil).
 		WithStoredReading(providers.Transcriber, cfg.RFQ.MaxTextCharacters,
-			cfg.RFQ.MaxSpreadsheetRows)
+			cfg.RFQ.MaxSpreadsheetRows).
+		// A file a client sent by WhatsApp is fetched with its channel's token the first time it
+		// is read, so the sweep needs the key that opens channel credentials.
+		WithWhatsAppMedia(services.NewWhatsAppMediaSource(db, repository.NewChannelRepository(),
+			attachmentRepo, channelSealer, whatsapp.NewMetaMediaFetcher(
+				&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion),
+			objectStorage.Storage, cfg.Storage.MaxFileSize)).
+		WithTranscriptionVocabulary(services.NewTranscriptionVocabulary(db,
+			repository.NewProductRepository(), log).For)
 	// The sweep extracts, so it needs the RFQ engine the request path uses — the same extractor,
 	// the same catalog matching, the same persistence. Reading a file and interpreting it are one
 	// decision, and a second implementation of it here would be a second one to keep honest.

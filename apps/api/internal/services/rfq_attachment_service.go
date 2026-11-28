@@ -38,6 +38,8 @@ type RFQAttachmentService struct {
 	transcriber        domain.Transcriber
 	maxTextCharacters  int
 	maxSpreadsheetRows int
+	media              whatsAppMediaMaterializer
+	vocabulary         func(ctx context.Context, accountID uuid.UUID) string
 }
 
 // NewRFQAttachmentService builds an RFQAttachmentService. A nil now means time.Now.

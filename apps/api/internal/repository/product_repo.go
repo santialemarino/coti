@@ -259,6 +259,37 @@ func (r *ProductRepository) Delete(ctx context.Context, q Querier, accountID, id
 	return nil
 }
 
+// ListVocabulary returns the names of the account's active products its quotes name most, then
+// alphabetically: the words a client's recording is likeliest to say.
+func (r *ProductRepository) ListVocabulary(
+	ctx context.Context, q Querier, accountID uuid.UUID, limit int,
+) ([]string, error) {
+	rows, err := q.Query(ctx,
+		`SELECT p.canonical_name
+		   FROM product p
+		   LEFT JOIN (SELECT product_id, count(*) AS uses
+		                FROM quote_item
+		               WHERE account_id = $1 AND product_id IS NOT NULL
+		               GROUP BY product_id) u ON u.product_id = p.id
+		  WHERE p.account_id = $1 AND p.is_active = TRUE
+		  ORDER BY COALESCE(u.uses, 0) DESC, p.canonical_name
+		  LIMIT $2`,
+		accountID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 // SetSearchProbes tells the approximate vector scan how many index partitions to visit,
 // for the rest of the transaction. The database's own default is one, which recalls too
 // little of the catalog to survive the branch filter.
