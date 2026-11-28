@@ -7963,6 +7963,80 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/quotes/{quoteId}/customer-reply/read": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Settles the pending replies that left a sent quote unchanged up to seen_until, the newest one the seller saw; a later one stays unread.",
+                "tags": [
+                    "quotes"
+                ],
+                "summary": "Mark a customer's reply as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Quote id",
+                        "name": "quoteId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The newest reply seen",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReadCustomerReplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No such quote in the selected branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "QUOTE_NOT_SENT",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "No active branch",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/quotes/{quoteId}/delivery-preset": {
             "get": {
                 "security": [
@@ -13963,6 +14037,29 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CustomerReplyResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "CUSTOMER_ACCEPTS",
+                        "CUSTOMER_REJECTS",
+                        "CUSTOMER_QUESTION",
+                        "NO_REQUEST"
+                    ]
+                },
+                "reply_acceptance": {
+                    "type": "string",
+                    "enum": [
+                        "SIGNAL"
+                    ]
+                }
+            }
+        },
         "dto.CustomerSessionResponse": {
             "type": "object",
             "properties": {
@@ -16203,6 +16300,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ReadCustomerReplyRequest": {
+            "type": "object",
+            "required": [
+                "seen_until"
+            ],
+            "properties": {
+                "seen_until": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.RecommendationFillResponse": {
             "type": "object",
             "properties": {
@@ -16342,6 +16450,10 @@ const docTemplate = `{
         "dto.RfqDetailResponse": {
             "type": "object",
             "properties": {
+                "accepted_by_reply": {
+                    "description": "AcceptedByReply is a quote standing ACCEPTED on an acceptance read from the customer's reply.",
+                    "type": "boolean"
+                },
                 "alternatives": {
                     "type": "object",
                     "additionalProperties": {
@@ -16425,6 +16537,10 @@ const docTemplate = `{
         "dto.RfqListItemResponse": {
             "type": "object",
             "properties": {
+                "acceptance_unconfirmed": {
+                    "description": "AcceptanceUnconfirmed is an acceptance read from the customer's reply waiting for the seller.",
+                    "type": "boolean"
+                },
                 "archived_at": {
                     "type": "string"
                 },
@@ -16445,6 +16561,14 @@ const docTemplate = `{
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "customer_reply": {
+                    "description": "CustomerReply is the latest unread reply on a SENT quote that changed nothing; null when none.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.CustomerReplyResponse"
+                        }
+                    ]
                 },
                 "followup_flagged_at": {
                     "description": "FollowupFlaggedAt is when the quote was flagged for follow-up; null while it is not.",

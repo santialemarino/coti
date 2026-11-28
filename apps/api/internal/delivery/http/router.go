@@ -279,6 +279,7 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	quotes.POST("/:quoteId/archive", h.Quote.Archive)
 	quotes.POST("/:quoteId/followup-draft", h.QuoteFollowup.Draft)
 	quotes.POST("/:quoteId/discard-ai-changes", h.Conversation.DiscardAIChanges)
+	quotes.POST("/:quoteId/customer-reply/read", h.Conversation.ReadCustomerReply)
 	quotes.POST("/:quoteId/message-batches/:batchId/retry", h.Conversation.RetryBatch)
 	quotes.POST("/:quoteId/unarchive", h.Quote.Unarchive)
 	quotes.POST("/:quoteId/payment", h.Quote.MarkPaid)

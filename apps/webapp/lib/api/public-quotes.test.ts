@@ -188,6 +188,18 @@ describe('getPublicQuoteByToken', () => {
     });
   });
 
+  // An acceptance read from the customer's message waits for the corralón before it is final.
+  it('marks an acceptance the corralón is still confirming', async () => {
+    stubFetch(200, { ...rawSend(), customer_status: 'ACCEPT', in_review: true });
+    await expect(getPublicQuoteByToken('tok-1')).resolves.toMatchObject({
+      customerStatus: 'ACCEPT',
+      inReview: true,
+    });
+
+    stubFetch(200, { ...rawSend(), in_review: false });
+    expect((await getPublicQuoteByToken('tok-1'))?.inReview).toBeUndefined();
+  });
+
   it('maps an expired send, which carries no quote', async () => {
     stubFetch(200, { status: 'EXPIRED', expires_at: '2026-09-01T12:00:00Z' });
 

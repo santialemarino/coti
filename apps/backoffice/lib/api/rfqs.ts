@@ -68,6 +68,31 @@ export interface RfqRecord {
   invoicePending: boolean;
   // Accepted, paid, and invoiced or waived (or the account does not invoice), as the API derives it.
   saleComplete: boolean;
+  // An acceptance read from the customer's reply that waits for the seller's confirmation.
+  acceptanceUnconfirmed?: boolean;
+  // The latest unread reply that left a sent quote as it was; null when there is none.
+  customerReply?: CustomerReply | null;
+}
+
+// The reasons a reply that changed nothing is recorded under.
+export type CustomerReplyReason = Extract<
+  HandlerNoMatchReason,
+  'CUSTOMER_ACCEPTS' | 'CUSTOMER_REJECTS' | 'CUSTOMER_QUESTION' | 'NO_REQUEST'
+>;
+
+// What the backend made of an acceptance read from a reply; a sent quote only carries SIGNAL.
+export type ReplyAcceptance = 'AUTOMATIC' | 'UNCONFIRMED' | 'SIGNAL';
+
+export interface CustomerReply {
+  reason: CustomerReplyReason;
+  replyAcceptance: ReplyAcceptance | null;
+  createdAt: string;
+}
+
+interface CustomerReplyRaw {
+  reason: CustomerReplyReason;
+  reply_acceptance: ReplyAcceptance | null;
+  created_at: string;
 }
 
 // Raw shape returned by GET /v1/rfqs; mapListItem turns it into an RfqRecord.
@@ -97,6 +122,8 @@ export interface RfqListItem {
   invoiced: boolean;
   invoice_pending: boolean;
   sale_complete: boolean;
+  acceptance_unconfirmed?: boolean;
+  customer_reply?: CustomerReplyRaw | null;
 }
 
 export function mapListItem(item: RfqListItem): RfqRecord {
@@ -123,6 +150,14 @@ export function mapListItem(item: RfqListItem): RfqRecord {
     invoiced: item.invoiced,
     invoicePending: item.invoice_pending,
     saleComplete: item.sale_complete,
+    acceptanceUnconfirmed: item.acceptance_unconfirmed ?? false,
+    customerReply: item.customer_reply
+      ? {
+          reason: item.customer_reply.reason,
+          replyAcceptance: item.customer_reply.reply_acceptance,
+          createdAt: item.customer_reply.created_at,
+        }
+      : null,
   };
 }
 
@@ -153,6 +188,8 @@ export interface RfqDetailResponse {
   changes_requested?: ChangeRequestDiff;
   client_actions?: ClientActionResponse[];
   conversation?: ConversationResponse;
+  // The quote stands accepted on an acceptance read from the customer's reply.
+  accepted_by_reply?: boolean;
 }
 
 interface PublicRfqDetailRaw extends RfqDetailResponse {
@@ -211,6 +248,8 @@ export interface QuoteResponse {
   paid_by_user_id: string | null;
   invoice_waived_at: string | null;
   invoice_waived_by_user_id: string | null;
+  // Set while an acceptance read from the customer's reply waits for the seller.
+  acceptance_unconfirmed_at?: string | null;
 }
 
 // A follow-up message drafted for the seller to edit and send themselves.

@@ -5,6 +5,7 @@ import {
   CheckCircle2Icon,
   CheckIcon,
   CircleCheckIcon,
+  HourglassIcon,
   MessageCircleIcon,
   PencilIcon,
   XIcon,
@@ -40,6 +41,8 @@ interface QuoteActionsProps {
   /* Absent on the dev-only preview route, which demos the flow without a wire call. */
   token?: string;
   customerStatus?: CustomerActionType;
+  // The corralón is confirming an acceptance read from the customer's message.
+  inReview?: boolean;
   currency?: string;
 }
 
@@ -84,7 +87,12 @@ const RESPONDED_DESCRIPTION_KEY: Record<CustomerActionType, string> = {
  * The customer's answer to the frozen quote. A change request requires a message so the seller
  * knows what to rework. The preview route simulates the round trip without a running API.
  */
-export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteActionsProps) {
+export function QuoteActions({
+  token,
+  customerStatus,
+  inReview = false,
+  currency = 'ARS',
+}: QuoteActionsProps) {
   const t = useTranslations('quote.actions');
   const { selections, previewReady } = useQuoteSelections();
 
@@ -146,7 +154,19 @@ export function QuoteActions({ token, customerStatus, currency = 'ARS' }: QuoteA
   // The dialog stays mounted once the answer lands, so it can play its exit over the result.
   return (
     <section className="flex flex-col gap-y-4">
-      {answered ? (
+      {inReview && !result ? (
+        <>
+          <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
+          <Card>
+            <StatusScreen
+              icon={HourglassIcon}
+              tone="info"
+              title={t('inReviewTitle')}
+              description={t('inReviewDescription')}
+            />
+          </Card>
+        </>
+      ) : answered ? (
         <>
           <h2 className="text-heading-6 text-foreground">{t('heading')}</h2>
           <Card>

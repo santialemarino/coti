@@ -1626,6 +1626,22 @@ definitions:
     - password
     - tax_id
     type: object
+  dto.CustomerReplyResponse:
+    properties:
+      created_at:
+        type: string
+      reason:
+        enum:
+        - CUSTOMER_ACCEPTS
+        - CUSTOMER_REJECTS
+        - CUSTOMER_QUESTION
+        - NO_REQUEST
+        type: string
+      reply_acceptance:
+        enum:
+        - SIGNAL
+        type: string
+    type: object
   dto.CustomerSessionResponse:
     properties:
       customer:
@@ -3159,6 +3175,13 @@ definitions:
     required:
     - mode
     type: object
+  dto.ReadCustomerReplyRequest:
+    properties:
+      seen_until:
+        type: string
+    required:
+    - seen_until
+    type: object
   dto.RecommendationFillResponse:
     properties:
       items:
@@ -3251,6 +3274,10 @@ definitions:
     type: object
   dto.RfqDetailResponse:
     properties:
+      accepted_by_reply:
+        description: AcceptedByReply is a quote standing ACCEPTED on an acceptance
+          read from the customer's reply.
+        type: boolean
       alternatives:
         additionalProperties:
           items:
@@ -3306,6 +3333,10 @@ definitions:
     type: object
   dto.RfqListItemResponse:
     properties:
+      acceptance_unconfirmed:
+        description: AcceptanceUnconfirmed is an acceptance read from the customer's
+          reply waiting for the seller.
+        type: boolean
       archived_at:
         type: string
       branch:
@@ -3320,6 +3351,11 @@ definitions:
         type: string
       created_at:
         type: string
+      customer_reply:
+        allOf:
+        - $ref: '#/definitions/dto.CustomerReplyResponse'
+        description: CustomerReply is the latest unread reply on a SENT quote that
+          changed nothing; null when none.
       followup_flagged_at:
         description: FollowupFlaggedAt is when the quote was flagged for follow-up;
           null while it is not.
@@ -9471,6 +9507,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Complete a combo on a quote
+      tags:
+      - quotes
+  /v1/quotes/{quoteId}/customer-reply/read:
+    post:
+      description: Settles the pending replies that left a sent quote unchanged up
+        to seen_until, the newest one the seller saw; a later one stays unread.
+      parameters:
+      - description: Active branch
+        in: header
+        name: X-Branch-Id
+        required: true
+        type: string
+      - description: Quote id
+        in: path
+        name: quoteId
+        required: true
+        type: string
+      - description: The newest reply seen
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ReadCustomerReplyRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: No such quote in the selected branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: QUOTE_NOT_SENT
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "422":
+          description: No active branch
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark a customer's reply as read
       tags:
       - quotes
   /v1/quotes/{quoteId}/delivery-preset:

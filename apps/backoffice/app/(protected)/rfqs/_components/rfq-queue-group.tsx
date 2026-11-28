@@ -25,13 +25,24 @@ const PEEK_FADE_STEP = 0.2;
 // A card arriving as the stack unfolds drops in from just above its place.
 const ENTER_OFFSET_PX = -8;
 
-// Both halves of an accepted order keep the accepted hue.
+// Every part of an accepted order keeps the accepted hue, and a reply keeps the sent one.
 const STACK_DOT: Record<QueueStack, string> = {
   ...STATUS_DOT,
   ARCHIVED: 'bg-foreground-subtle',
+  ACCEPTANCE_TO_CONFIRM: STATUS_DOT.ACCEPTED,
+  CUSTOMER_WROTE: STATUS_DOT.SENT,
   TO_CLOSE: STATUS_DOT.ACCEPTED,
   COMPLETED: STATUS_DOT.ACCEPTED,
 };
+
+// The stacks that are not one status, so the status labels cannot name them.
+const NAMED_STACKS: ReadonlySet<QueueStack> = new Set([
+  'ACCEPTANCE_TO_CONFIRM',
+  'CUSTOMER_WROTE',
+  'TO_CLOSE',
+  'COMPLETED',
+  'ARCHIVED',
+]);
 
 interface RfqQueueGroupProps {
   group: QueueStatusGroup;
@@ -69,10 +80,7 @@ export function RfqQueueGroup({
   const peeks = Math.min(records.length - 1, PEEK_COUNT);
   const visible = foldsAway && !expanded ? [] : stacked ? records.slice(0, peeks + 1) : records;
   const spring = reduced ? { duration: 0 } : expanded ? SPRING.expand : SPRING.collapse;
-  const label =
-    stack === 'TO_CLOSE' || stack === 'COMPLETED' || stack === 'ARCHIVED'
-      ? t(`list.groups.stacks.${stack}`)
-      : t(`status.${stack}`);
+  const label = NAMED_STACKS.has(stack) ? t(`list.groups.stacks.${stack}`) : t(`status.${stack}`);
 
   return (
     <motion.div

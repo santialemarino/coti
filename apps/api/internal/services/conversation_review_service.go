@@ -42,14 +42,21 @@ type conversationReviewBatches interface {
 		batchID uuid.UUID) (*domain.MessageBatch, error)
 }
 
+type conversationReviewDecisions interface {
+	handlerDecisionSettleStore
+	ReadCustomerReplies(ctx context.Context, q repository.Querier, accountID, versionID,
+		userID uuid.UUID, seenUntil time.Time) (int, error)
+}
+
 // ConversationReviewService holds the seller's actions on the conversation handler's work: undoing
-// its changes to a draft, and sending a batch that ran out of attempts back to the queue.
+// its changes to a draft, sending a batch that ran out of attempts back to the queue, and reading a
+// reply that changed nothing.
 type ConversationReviewService struct {
 	db        tenantTxRunner
 	quotes    conversationReviewQuotes
 	prices    branchPriceReader
 	discounts conversationReviewDiscounts
-	decisions handlerDecisionSettleStore
+	decisions conversationReviewDecisions
 	batches   conversationReviewBatches
 	sweep     *discountSweep
 }
@@ -57,7 +64,7 @@ type ConversationReviewService struct {
 // NewConversationReviewService builds a ConversationReviewService.
 func NewConversationReviewService(db tenantTxRunner, quotes conversationReviewQuotes,
 	prices branchPriceReader, discounts conversationReviewDiscounts, promotions promotionReader,
-	decisions handlerDecisionSettleStore, batches conversationReviewBatches,
+	decisions conversationReviewDecisions, batches conversationReviewBatches,
 ) *ConversationReviewService {
 	return &ConversationReviewService{db: db, quotes: quotes, prices: prices, discounts: discounts,
 		decisions: decisions, batches: batches,
@@ -190,6 +197,29 @@ func (s *ConversationReviewService) RetryBatch(ctx context.Context, tenant domai
 		return nil, err
 	}
 	return requeued, nil
+}
+
+// ReadCustomerReply settles a SENT quote's pending replies that changed nothing, up to the newest
+// one the seller saw, so the order leaves «El cliente escribió» until the customer writes again; a
+// reply recorded after the seller's screen loaded stays unread.
+func (s *ConversationReviewService) ReadCustomerReply(ctx context.Context, tenant domain.Tenant,
+	quoteID uuid.UUID, seenUntil time.Time,
+) error {
+	if err := requireBranch(tenant, "reading a customer's reply"); err != nil {
+		return err
+	}
+	return s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		quote, err := s.quotes.GetByIDForUpdate(ctx, q, tenant.AccountID, tenant.BranchID, quoteID)
+		if err != nil {
+			return err
+		}
+		if quote.CurrentStatus != domain.QuoteStatusSent || quote.CurrentVersionID == nil {
+			return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
+		}
+		_, err = s.decisions.ReadCustomerReplies(ctx, q, tenant.AccountID, *quote.CurrentVersionID,
+			tenant.UserID, seenUntil)
+		return err
+	})
 }
 
 type conversationBatchLister interface {

@@ -661,6 +661,57 @@ export async function reactivateQuote(
   return response.json() as Promise<QuoteResponse>;
 }
 
+// Settle an acceptance read from the customer's reply: confirm it, or take it back to sent.
+export async function settleReplyAcceptance(
+  quoteId: string,
+  branchId: string,
+  action: 'confirm' | 'undo',
+): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/acceptance/${action}`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
+}
+
+// Accept the version the customer received, discarding the open draft of a change request.
+export async function acceptSentVersion(quoteId: string, branchId: string): Promise<QuoteResponse> {
+  const response = await fetch(`/api/quotes/${quoteId}/accept-sent-version`, {
+    method: 'POST',
+    headers: branchHeaders(branchId),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+  return response.json() as Promise<QuoteResponse>;
+}
+
+// Dismiss a sent quote's replies that changed nothing until the customer writes again.
+// seenUntil is the newest reply the seller saw; one recorded after it stays unread.
+export async function readCustomerReply(
+  quoteId: string,
+  branchId: string,
+  seenUntil: string,
+): Promise<void> {
+  const response = await fetch(`/api/quotes/${quoteId}/customer-reply/read`, {
+    method: 'POST',
+    headers: branchHeaders(branchId, true),
+    body: JSON.stringify({ seen_until: seenUntil }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    await throwApiError(response);
+  }
+}
+
 // --- Combo suggestions ---
 
 interface ComboItemRaw {

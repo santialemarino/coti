@@ -440,6 +440,9 @@
     "ACCOUNT_INVOICING_OFF": "La facturación electrónica está desactivada. Un administrador puede activarla en la configuración de Facturación.",
     "QUOTE_ALREADY_PAID": "La venta está marcada como cobrada. Desmarcá el cobro antes de reactivarla.",
     "QUOTE_NOT_ACCEPTED": "La cotización ya no está aceptada. Actualizá la pantalla.",
+    "QUOTE_ACCEPTANCE_UNCONFIRMED": "Confirmá la aceptación del cliente antes de cerrar la venta.",
+    "QUOTE_ACCEPTANCE_NOT_UNDOABLE": "Ya no se puede deshacer: la venta tiene cobro o factura, o el envío venció. Actualizá la pantalla.",
+    "QUOTE_NOT_CHANGE_REQUESTED": "La cotización ya no tiene un cambio solicitado. Actualizá la pantalla.",
     "PORTAL_NOT_CONFIGURED": "El corralón todavía no tiene su sitio de clientes. Pedile al equipo de Coti que lo configure.",
     "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en 24 h. Mandalo por correo si tiene, o esperá a que te escriba.",
     "CLIENT_REGISTERED": "El cliente administra esta ficha desde su cuenta. Para sumarle otra, el cliente verifica ese contacto desde su portal y vos confirmás la unión en Coincidencias.",
@@ -1428,6 +1431,8 @@
         "collapse": "Mostrar menos",
         "stackHint": "Mostrar los {count} pedidos de este estado",
         "stacks": {
+          "ACCEPTANCE_TO_CONFIRM": "Aceptada por WhatsApp · confirmar",
+          "CUSTOMER_WROTE": "El cliente escribió",
           "TO_CLOSE": "Por cerrar",
           "COMPLETED": "Completados",
           "ARCHIVED": "Archivados"
@@ -1469,6 +1474,12 @@
         "loading": "Trayendo los pedidos archivados…",
         "failed": "No pudimos traer los pedidos archivados.",
         "retry": "Reintentar"
+      },
+      "reply": {
+        "ACCEPTS": "Parece aceptar",
+        "REJECTS": "Parece rechazar",
+        "QUESTION": "Consultó",
+        "WROTE": "Escribió"
       }
     },
     "create": {
@@ -1653,6 +1664,56 @@
           "configure": "Configurar mi plantilla",
           "confirmSend": "Enviar mensaje",
           "description": "Revisá el mensaje y elegí los destinatarios antes de enviarlo."
+        },
+        "replyAcceptance": {
+          "unconfirmedTitle": "Aceptada por WhatsApp · a confirmar",
+          "unconfirmed": "El cliente aceptó respondiendo el mensaje, pero falta una condición para darla por segura. Confirmala para cobrar y facturar, o deshacela si no era una aceptación.",
+          "confirmedTitle": "Aceptada por WhatsApp",
+          "confirmed": "El cliente aceptó respondiendo el mensaje. Podés deshacerla mientras la venta no esté cobrada ni facturada.",
+          "confirm": "Confirmar",
+          "confirming": "Confirmando…",
+          "confirmSuccess": "Confirmamos la aceptación de la cotización {reference}. Ya podés cobrarla y facturarla.",
+          "undo": "Deshacer",
+          "undoTitle": "¿Deshacer la aceptación?",
+          "undoDescription": "La cotización {reference} vuelve a Enviada y el cliente puede responderla de nuevo desde el enlace.",
+          "undoConfirm": "Deshacer aceptación",
+          "undoing": "Deshaciendo…",
+          "undoSuccess": "La cotización {reference} volvió a Enviada."
+        },
+        "customerReply": {
+          "ACCEPTS": {
+            "title": "Parece aceptar",
+            "description": "El cliente respondió como si aceptara, pero no alcanza para darla por aceptada sola. Si aceptó, marcala vos."
+          },
+          "REJECTS": {
+            "title": "Parece rechazar",
+            "description": "El cliente respondió como si no fuera a comprar. Coti nunca rechaza sola: si es así, rechazala vos."
+          },
+          "QUESTION": {
+            "title": "El cliente consultó",
+            "description": "Hizo una consulta sin pedir cambios. Respondele y marcala como leída."
+          },
+          "WROTE": {
+            "title": "El cliente escribió",
+            "description": "Respondió sin pedir cambios. Leé el mensaje en la conversación y marcalo como leído."
+          },
+          "accept": "Marcar aceptada",
+          "accepting": "Marcando…",
+          "acceptSuccess": "La cotización {reference} quedó aceptada.",
+          "reject": "Rechazar",
+          "rejecting": "Rechazando…",
+          "rejectSuccess": "La cotización {reference} quedó rechazada. Podés reactivarla si hace falta.",
+          "read": "Marcar como leído",
+          "reading": "Marcando…",
+          "readSuccess": "Marcamos como leída la respuesta del cliente en la cotización {reference}."
+        },
+        "acceptSentVersion": {
+          "button": "Marcar aceptada (versión enviada)",
+          "title": "¿Marcar aceptada la versión enviada?",
+          "description": "La cotización queda aceptada con la versión {version}, la que recibió el cliente. Se descartan los cambios del borrador abierto.",
+          "confirm": "Marcar aceptada",
+          "pending": "Marcando…",
+          "success": "La cotización {reference} quedó aceptada con la versión que recibió el cliente."
         }
       },
       "items": {
@@ -1962,6 +2023,8 @@
         "seller": "Cotización enviada",
         "quoteLink": "[enlace a la cotización]",
         "pending": "El cliente sigue escribiendo; la IA va a leer estos mensajes en unos minutos.",
+        "afterAcceptance": "Después de la aceptación",
+        "afterAcceptanceNote": "El cliente escribió después de aceptar. La IA no lee estos mensajes: respondele vos si hace falta.",
         "status": {
           "CLOSED": "En cola para la IA",
           "PROCESSING": "La IA lo está leyendo",
@@ -2853,6 +2916,11 @@
         "label": "Ajustar cantidades para alcanzar una promoción",
         "hint": "Sube cantidades hasta el mínimo de una promoción vigente, solo si así baja el total."
       }
+    },
+    "autoAccept": {
+      "title": "Respuestas por WhatsApp",
+      "label": "Aceptación automática por WhatsApp",
+      "hint": "Apagada, una aceptación que las reglas confirman espera tu confirmación."
     },
     "submit": "Guardar cambios",
     "submitting": "Guardando…",

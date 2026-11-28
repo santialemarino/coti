@@ -18,6 +18,7 @@ function renderStep(taxId: string | null) {
     invoicingEnabled: false,
     hasInvoices: false,
     invoiceOnPayment: false,
+    whatsappAutoAccept: true,
   };
   render(
     <NextIntlClientProvider locale="es" messages={messages}>

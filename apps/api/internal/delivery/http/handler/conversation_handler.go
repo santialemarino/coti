@@ -3,10 +3,12 @@ package handler
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/santialemarino/coti/apps/api/internal/delivery/http/dto"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
 )
 
@@ -16,6 +18,7 @@ type ConversationReviewService interface {
 		quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	RetryBatch(ctx context.Context, tenant domain.Tenant, quoteID,
 		batchID uuid.UUID) (*domain.MessageBatch, error)
+	ReadCustomerReply(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID, seenUntil time.Time) error
 }
 
 // ConversationHandler serves the seller's actions on a quote's conversation.
@@ -97,4 +100,43 @@ func (h *ConversationHandler) RetryBatch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toConversationBatchResponse(*batch))
+}
+
+// ReadCustomerReply marks a SENT quote's replies that changed nothing as read.
+//
+//	@Summary		Mark a customer's reply as read
+//	@Description	Settles the pending replies that left a sent quote unchanged up to seen_until, the newest one the seller saw; a later one stays unread.
+//	@Tags			quotes
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header	string	true	"Active branch"
+//	@Param			quoteId		path	string	true	"Quote id"
+//	@Param			body		body	dto.ReadCustomerReplyRequest	true	"The newest reply seen"
+//	@Success		204
+//	@Failure		400	{object}	dto.ErrorResponse
+//	@Failure		401	{object}	dto.ErrorResponse
+//	@Failure		404	{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409	{object}	dto.ErrorResponse	"QUOTE_NOT_SENT"
+//	@Failure		422	{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/customer-reply/read [post]
+func (h *ConversationHandler) ReadCustomerReply(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+
+	var request dto.ReadCustomerReplyRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		RespondBindError(c, err)
+		return
+	}
+	if err := h.reviews.ReadCustomerReply(c.Request.Context(), tenant, quoteID,
+		*request.SeenUntil); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

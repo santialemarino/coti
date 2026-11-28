@@ -85,6 +85,22 @@ type RfqListItemResponse struct {
 	// SaleComplete is whether the sale is closed: accepted, paid, and invoiced or waived, or the
 	// account does not invoice with Coti.
 	SaleComplete bool `json:"sale_complete"`
+	// AcceptanceUnconfirmed is an acceptance read from the customer's reply waiting for the seller.
+	AcceptanceUnconfirmed bool `json:"acceptance_unconfirmed"`
+	// CustomerReply is the latest unread reply on a SENT quote that changed nothing; null when none.
+	CustomerReply *CustomerReplyResponse `json:"customer_reply"`
+}
+
+// CustomerReplyResponse is a reply that left a SENT quote as it was, waiting for the seller.
+type CustomerReplyResponse struct {
+	Reason          string    `json:"reason" enums:"CUSTOMER_ACCEPTS,CUSTOMER_REJECTS,CUSTOMER_QUESTION,NO_REQUEST"`
+	ReplyAcceptance *string   `json:"reply_acceptance" enums:"SIGNAL"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// ReadCustomerReplyRequest names the newest reply the seller saw: later ones stay unread.
+type ReadCustomerReplyRequest struct {
+	SeenUntil *time.Time `json:"seen_until" binding:"required"`
 }
 
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
@@ -176,6 +192,8 @@ type RfqDetailResponse struct {
 	ChangesRequested     *ChangeRequestDiffResponse                `json:"changes_requested,omitempty"`
 	ClientActions        []ClientActionResponse                    `json:"client_actions"`
 	Conversation         *ConversationResponse                     `json:"conversation,omitempty"`
+	// AcceptedByReply is a quote standing ACCEPTED on an acceptance read from the customer's reply.
+	AcceptedByReply bool `json:"accepted_by_reply"`
 }
 
 // ClientActionResponse is one customer response the quote's versions received. version_number
