@@ -33,6 +33,11 @@ Without `mode`, `followup_message` means `FOLLOWUP`, `other_channels_only` means
 and otherwise the status decides between `FIRST` and `RESEND`; a mode contradicting those fields is
 **400**.
 
+A WhatsApp destination that has not written to the branch number within 24 hours gets the approved
+utility template when one is configured, and otherwise the whole send is **422**
+`WHATSAPP_WINDOW_CLOSED` before anything goes out (see
+[WhatsApp Cloud API](whatsapp-cloud-api.md#customer-service-window)).
+
 ## Presets
 
 `GET /v1/quotes/{id}/delivery-preset?mode=…&client_id=…` returns what the dialog preselects

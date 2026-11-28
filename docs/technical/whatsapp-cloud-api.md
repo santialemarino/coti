@@ -21,6 +21,10 @@ do not place them in source control, a browser client, or a log.
 | `access_token`         | `channel.config` | Authorizes one outbound Meta API call.                   |
 | `webhook_verify_token` | `channel.config` | Matches Meta's callback verification request.            |
 
+The two quote templates are app-wide (`WHATSAPP_QUOTE_TEMPLATE`, `WHATSAPP_FOLLOWUP_TEMPLATE` and
+`WHATSAPP_QUOTE_TEMPLATE_LANGUAGE`, default `es_AR`); see
+[the customer-service window](#customer-service-window) for what they carry.
+
 `channel.config` is submitted through the admin channel API and is encrypted with
 `CHANNEL_CONFIG_ENCRYPTION_KEY` before it reaches PostgreSQL. It never appears in API responses.
 The channel's `identifier` is the human-facing number; Meta's `phone_number_id` is not a phone
@@ -263,6 +267,62 @@ active channel remains usable even if the original channel is no longer active.
 Use a dedicated test recipient added in Meta while the app is in development. A production number
 requires Meta's production registration and the usual business verification; the integration code
 does not make an unregistered number sendable.
+
+### Customer-service window
+
+Meta accepts free text only within 24 hours of the customer's last message to that number. Before a
+quote or a follow-up creates any `quote_send`, the API looks for a message from each WhatsApp
+destination on the channel the send goes out through, received within the last 24 hours
+(`inbound_channel_message.provider_received_at`, every form `domain.InboundSenderDestinations`
+returns, with and without the plus). When one destination has none:
+
+- **A template is configured** for that send (`WHATSAPP_QUOTE_TEMPLATE` for a quote,
+  `WHATSAPP_FOLLOWUP_TEMPLATE` for a follow-up): that destination receives the approved template
+  instead of the text, and destinations inside the window keep the text.
+- **None is configured:** the whole request is refused with 422 `WHATSAPP_WINDOW_CLOSED` before
+  anything is created or sent, and the seller sends by email instead.
+
+Template parameters cannot hold a newline, a tab or four spaces in a row, so each value is flattened.
+The templates are registered in each number's WhatsApp Business Account, category UTILITY, under the
+configured name and language, with exactly these bodies (Coti fills the variables in this order and
+stores the filled text, link left out, in the quote's conversation):
+
+- **Quote:** a DOCUMENT header (the quote PDF, uploaded to Meta per send so it never needs a public
+  URL; a send whose PDF cannot be read fails without calling Meta), then:
+
+  ```text
+  Hola, {{1}} te envía la cotización de tu pedido.
+
+  Total: {{2}}
+  Válida hasta el {{3}}
+
+  Podés verla y responderla desde este enlace:
+  {{4}}
+
+  Si tenés dudas, respondé este mensaje.
+  ```
+
+  `{{1}}` supplier, `{{2}}` total, `{{3}}` validity date (`d/m/yyyy`), `{{4}}` the destination's link
+  (the order, or the sign-up that returns to it).
+
+- **Follow-up:** no header, then:
+
+  ```text
+  Hola, te escribimos de {{1}} por la cotización que te enviamos.
+
+  {{2}}
+
+  Podés verla desde este enlace:
+  {{3}}
+
+  Si tenés dudas, respondé este mensaje.
+  ```
+
+  `{{1}}` supplier, `{{2}}` the seller's follow-up text (at most 700 characters), `{{3}}` the link.
+
+The check happens again just before dispatch, so a send whose window closed in between still gets
+the template; one that closes after Meta accepted the text comes back as error `131047` (see
+[delivery statuses](#delivery-statuses)).
 
 Meta's development recipient allow-list can reject an Argentine inbound `wa_id` (`549...`) even
 when it accepts the same test recipient without the mobile prefix (`54...`). In development only,

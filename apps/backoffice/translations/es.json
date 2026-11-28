@@ -1946,6 +1946,7 @@
           "NOT_FOUND": "No encontramos esta cotización. Actualizá la pantalla e intentá de nuevo.",
           "INVALID_INPUT": "Revisá el teléfono y el correo.",
           "DELIVERY_CHANNEL": "Falta un canal activo de WhatsApp o correo en esta sucursal. Pedile a un administrador que lo configure.",
+          "WHATSAPP_WINDOW_CLOSED": "El cliente no te escribió por WhatsApp en las últimas 24 horas, y WhatsApp no deja escribirle primero. Usá el correo, o esperá a que te escriba.",
           "CHANNEL_ALREADY_USED": "Esta versión ya salió por ese medio. Elegí otro o usá «Reenviar».",
           "QUOTE_NOT_SENT": "La cotización ya no está esperando respuesta del cliente. Actualizá la pantalla.",
           "DELIVERY_UNAVAILABLE": "No pudimos entregar la cotización por ningún canal. Revisá la configuración de envío o intentá más tarde.",
