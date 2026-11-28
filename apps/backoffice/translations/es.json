@@ -1324,6 +1324,20 @@
     "createdAt": "Creada el {date}"
   },
   "rfqs": {
+    "nonOrders": {
+      "title": "Mensajes sin pedido",
+      "show": "Mostrar",
+      "hide": "Ocultar",
+      "createOrder": "Crear pedido",
+      "dismiss": "Archivar",
+      "dismissed": "El mensaje se archivó.",
+      "kind": {
+        "GREETING": "Saludo",
+        "QUESTION": "Consulta",
+        "OTHER": "Otro",
+        "AUTOMATED": "Correo automático"
+      }
+    },
     "originalRequest": {
       "title": "Pedido original",
       "files": "Archivos recibidos",
