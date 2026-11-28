@@ -8,8 +8,9 @@ import (
 
 // ContactVerificationRequest names a destination already saved in the customer's own profile.
 type ContactVerificationRequest struct {
-	Kind  string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
-	Value string `json:"value" binding:"required,max=255"`
+	Kind string `json:"kind" binding:"required,oneof=EMAIL WHATSAPP"`
+	// Value is the email to verify; a WhatsApp number is proved by the customer writing from it.
+	Value string `json:"value" binding:"required_if=Kind EMAIL,max=255"`
 	// Next is the portal page the confirmation returns to; any other value is ignored.
 	Next string `json:"next" binding:"max=255"`
 }
@@ -29,6 +30,9 @@ type ContactRegistrationLinkRequest struct {
 type ContactVerificationResponse struct {
 	ID        uuid.UUID `json:"id"`
 	ExpiresAt string    `json:"expires_at"`
+	// Code and WhatsAppLink are the message a WhatsApp proof asks the customer to send, and the chat.
+	Code         string `json:"code,omitempty"`
+	WhatsAppLink string `json:"whatsapp_link,omitempty"`
 }
 
 // ContactVerificationConfirmed is returned by POST .../profile/contacts/verification/confirm.
@@ -42,6 +46,9 @@ type ContactVerificationStatusResponse struct {
 	Value  string  `json:"value"`
 	Status string  `json:"status" enums:"PENDING,VERIFIED,EXPIRED"`
 	Next   *string `json:"next"`
+	// Code and WhatsAppLink stay set while a WhatsApp proof the customer sends is pending.
+	Code         string `json:"code,omitempty"`
+	WhatsAppLink string `json:"whatsapp_link,omitempty"`
 }
 
 // ContactVerificationConfirmation redeems a one-use email token or WhatsApp code.

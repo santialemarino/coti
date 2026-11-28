@@ -80,7 +80,8 @@ func (h *ClientContactHandler) WithVerification(service contactVerificationServi
 	return h
 }
 
-// RequestVerification sends an expiring ownership proof for a saved customer contact.
+// RequestVerification sends an expiring ownership proof for a saved email, or returns the code a
+// customer sends from WhatsApp to prove that number.
 // @Summary Request customer contact verification
 // @Tags customer-profile
 // @Accept json
@@ -112,7 +113,8 @@ func (h *ClientContactHandler) RequestVerification(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, dto.ContactVerificationResponse{ID: challenge.ID, ExpiresAt: challenge.ExpiresAt.Format(time.RFC3339)})
+	c.JSON(http.StatusOK, dto.ContactVerificationResponse{ID: challenge.ID, ExpiresAt: challenge.ExpiresAt.Format(time.RFC3339),
+		Code: challenge.InboundCode, WhatsAppLink: challenge.WhatsAppLink})
 }
 
 // ConfirmVerification verifies contact control and attaches its previous provisional orders.
@@ -183,7 +185,8 @@ func (h *ClientContactHandler) GetVerification(c *gin.Context) {
 		Respond(c, err)
 		return
 	}
-	response := dto.ContactVerificationStatusResponse{Kind: string(view.Kind), Value: view.Value, Status: string(view.Status)}
+	response := dto.ContactVerificationStatusResponse{Kind: string(view.Kind), Value: view.Value, Status: string(view.Status),
+		Code: view.Code, WhatsAppLink: view.WhatsAppLink}
 	if view.NextPath != "" {
 		response.Next = &view.NextPath
 	}

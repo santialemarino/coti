@@ -231,7 +231,8 @@ func run() error {
 	customerAuthService.WithClientProfiles(contactService)
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), accountRepo, mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.LinkLocalOrigin()).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
-	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth).
+		WithInboundProofs([]byte(cfg.Auth.JWTSecret))
 	customerAuthService.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
@@ -271,6 +272,7 @@ func run() error {
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService).WithContacts(contactService).
+		WithContactProofs(contactVerification).
 		WithMedia(services.NewWhatsAppMediaIntake(db, rfqRepo, rfqAttachmentRepo,
 			objectStorage.Storage, wakeAttachments))
 	var gmailHandler *handler.GmailHandler

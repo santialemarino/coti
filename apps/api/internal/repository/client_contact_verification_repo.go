@@ -188,3 +188,68 @@ func (r *ClientContactRepository) LockDestination(ctx context.Context, q Querier
 	_, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('contact-destination:' || $1 || ':' || $2,0))`, string(kind), value)
 	return err
 }
+
+const inboundChallengeColumns = `id,customer_id,client_id,kind,value,token_hash,attempts,expires_at,consumed_at,COALESCE(next_path,''),proved_at`
+
+func scanInboundChallenge(row pgx.Row, accountID uuid.UUID) (*domain.ContactChallenge, error) {
+	c := &domain.ContactChallenge{AccountID: accountID, Purpose: domain.ContactChallengeVerify}
+	err := row.Scan(&c.ID, &c.CustomerID, &c.ClientID, &c.Kind, &c.Value, &c.TokenHash, &c.Attempts, &c.ExpiresAt,
+		&c.ConsumedAt, &c.NextPath, &c.ProvedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	return c, err
+}
+
+// GetPendingInboundChallenge returns the customer's live WhatsApp proof waiting for their message.
+func (r *ClientContactRepository) GetPendingInboundChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal) (*domain.ContactChallenge, error) {
+	return scanInboundChallenge(q.QueryRow(ctx, `SELECT `+inboundChallengeColumns+` FROM client_contact_challenge
+ WHERE account_id=$1 AND customer_id=$2 AND purpose='VERIFY' AND kind='WHATSAPP' AND value=''
+   AND consumed_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 1`, p.AccountID, p.CustomerID), p.AccountID)
+}
+
+// HasPendingInboundCode reports whether a live WhatsApp proof in the account already uses tokenHash.
+func (r *ClientContactRepository) HasPendingInboundCode(ctx context.Context, q Querier, accountID uuid.UUID, tokenHash string) (bool, error) {
+	var found bool
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM client_contact_challenge WHERE account_id=$1 AND purpose='VERIFY'
+ AND kind='WHATSAPP' AND token_hash=$2 AND consumed_at IS NULL AND expires_at>now())`, accountID, tokenHash).Scan(&found)
+	return found, err
+}
+
+// LockInboundChallenge locks the latest WhatsApp proof in the account carrying tokenHash.
+func (r *ClientContactRepository) LockInboundChallenge(ctx context.Context, q Querier, accountID uuid.UUID, tokenHash string) (*domain.ContactChallenge, error) {
+	return scanInboundChallenge(q.QueryRow(ctx, `SELECT `+inboundChallengeColumns+` FROM client_contact_challenge
+ WHERE account_id=$1 AND purpose='VERIFY' AND kind='WHATSAPP' AND token_hash=$2
+ ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, accountID, tokenHash), accountID)
+}
+
+// ProveInboundChallenge records the number that sent the proof as the destination it verified.
+func (r *ClientContactRepository) ProveInboundChallenge(ctx context.Context, q Querier, p domain.CustomerPrincipal, id uuid.UUID, value string) error {
+	result, err := q.Exec(ctx, `UPDATE client_contact_challenge SET value=$4,proved_at=now(),consumed_at=now(),attempts=attempts+1
+ WHERE account_id=$1 AND customer_id=$2 AND id=$3 AND purpose='VERIFY' AND proved_at IS NULL`, p.AccountID, p.CustomerID, id, value)
+	if err == nil && result.RowsAffected() != 1 {
+		return domain.ErrConflict
+	}
+	return err
+}
+
+// GetVerificationNumber returns the WhatsApp number a customer writes to: the one the quote went out
+// on, else its branch's, else the account's first; empty when no active channel shows a number.
+func (r *ClientContactRepository) GetVerificationNumber(ctx context.Context, q Querier, accountID uuid.UUID, quoteToken string) (string, error) {
+	var number string
+	err := q.QueryRow(ctx, `WITH sent AS (
+   SELECT s.channel_id, qt.branch_id FROM quote_send s
+   JOIN quote_version v ON v.account_id=s.account_id AND v.id=s.version_id
+   JOIN quote qt ON qt.account_id=v.account_id AND qt.id=v.quote_id
+   WHERE s.account_id=$1 AND $2<>'' AND s.public_token=$2)
+ SELECT c.identifier FROM channel c
+ JOIN branch b ON b.account_id=c.account_id AND b.id=c.branch_id AND b.is_active
+ LEFT JOIN sent ON TRUE
+ WHERE c.account_id=$1 AND c.type='WHATSAPP' AND c.is_active AND COALESCE(c.identifier,'')<>''
+ ORDER BY c.id=sent.channel_id DESC NULLS LAST, c.branch_id=sent.branch_id DESC NULLS LAST, c.created_at, c.id
+ LIMIT 1`, accountID, quoteToken).Scan(&number)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return number, err
+}

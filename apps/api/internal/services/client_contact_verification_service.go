@@ -40,6 +40,8 @@ type ClientContactVerificationService struct {
 	messenger domain.ContactMessenger
 	cfg       config.CustomerAuthConfig
 	now       func() time.Time
+	// inboundSecret derives WhatsApp proof codes; empty sends the code by template instead.
+	inboundSecret []byte
 }
 
 // NewClientContactVerificationService wires contact proofs to account-scoped persistence and delivery.
@@ -52,6 +54,10 @@ func NewClientContactVerificationService(contacts *ClientContactService, store c
 func (s *ClientContactVerificationService) Request(ctx context.Context, p domain.CustomerPrincipal, kind domain.ChannelType, value, next string) (*domain.ContactChallenge, error) {
 	if p.CustomerID == uuid.Nil || s.messenger == nil {
 		return nil, domain.ErrUnauthenticated
+	}
+	// Decision 94: the customer proves a WhatsApp number by writing from it, so none is typed.
+	if store, ok := s.inboundProofs(); ok && kind == domain.ChannelTypeWhatsApp {
+		return s.requestByMessage(ctx, store, p, next)
 	}
 	value, err := domain.NormalizeClientContact(kind, value)
 	if err != nil {
@@ -150,6 +156,10 @@ func (s *ClientContactVerificationService) Confirm(ctx context.Context, p domain
 		if err != nil {
 			return err
 		}
+		// A WhatsApp proof the customer sends is redeemed by their message, never by a typed code.
+		if c.Kind == domain.ChannelTypeWhatsApp && c.Value == "" && c.ProvedAt == nil {
+			return domain.ErrUnauthenticated
+		}
 		if err := s.contacts.lockContactValues(ctx, q, p.AccountID, []domain.ClientContact{{Kind: c.Kind, Value: c.Value}}); err != nil {
 			return err
 		}
@@ -215,6 +225,16 @@ func (s *ClientContactVerificationService) Describe(ctx context.Context, p domai
 		if c.ConsumedAt == nil {
 			if !c.ExpiresAt.After(s.now()) || c.Attempts >= s.cfg.ContactVerificationAttempts {
 				view.Status = domain.ContactChallengeExpired
+				return nil
+			}
+			// A pending WhatsApp proof the customer sends shows its code again, and where to send it.
+			if store, ok := s.inboundProofs(); ok && c.Kind == domain.ChannelTypeWhatsApp && c.Value == "" {
+				view.Code = s.inboundCode(c.ID)
+				number, err := store.GetVerificationNumber(ctx, q, p.AccountID, quoteToken(c.NextPath))
+				if err != nil {
+					return err
+				}
+				view.WhatsAppLink = domain.WhatsAppVerificationLink(number, view.Code)
 			}
 			return nil
 		}

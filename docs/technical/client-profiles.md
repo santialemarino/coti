@@ -73,9 +73,26 @@ the profile again.
 
 New customer-managed contacts remain unverified. Requesting a proof uses POST
 /profile/contacts/verification; confirming uses POST /profile/contacts/verification/confirm under
-the same supplier-scoped customer prefix. Email uses a random link capability; WhatsApp uses a
-six-digit code through an approved authentication copy-code template. Email confirmation requires
+the same supplier-scoped customer prefix. Email uses a random link capability; confirmation requires
 an explicit action on /verify-contact; loading the page does not consume the capability.
+
+WhatsApp is proved by a message the customer sends, so the number is never typed. The request needs
+no `value`: it returns the customer's live WhatsApp proof, or starts one, with a six-digit `code` and
+a `whatsapp_link` (`https://wa.me/<number>?text=VERIFICAR%20<code>`) to the number the quote in
+`next` went out on, else its branch's, else the account's first active WhatsApp channel that shows a
+number (`channel.identifier`); with none, 503 `NOT_CONFIGURED`. The code is an HMAC of the challenge
+id under `AUTH_JWT_SECRET`, so GET /profile/contacts/verification/{id} shows it again while pending,
+and the challenge stores only its hash, scoped to the supplier. The challenge's `value` stays empty
+until the message arrives, and the code can never be typed into the confirm route.
+
+The WhatsApp webhook intercepts a text that is exactly «VERIFICAR 123456» (case, a colon and a final
+period tolerated) before conversation routing and intake, so it never becomes an order, a reply or a
+non-order, and is not stored as an inbound message. The sender's number (`+` + wa_id, normalized)
+joins the customer's profile if missing and goes through the same proof as a confirmed code
+(merge, ownership, «Coincidencias» observations); the challenge then records that number as its
+`value` and `proved_at`. The sender gets one fixed reply through the same channel: verified; code
+invalid, expired or spent by another number; or the number already verified on another account
+(the proof stays pending). A redelivered message gets the same answer and changes nothing.
 
 A request may carry `next`, the portal page to return to (`/quotes/{token}`, `/orders/{id}`,
 `/orders`, `/new-request`, `/profile`; anything else is dropped). It is stored with the challenge
@@ -392,7 +409,7 @@ proof gets. What the list reveals is only what a masked list inherently does, th
 account with at least one verified contact exists. Each route is limited per caller address and per
 CUIT/CUIL named (the reset per code), on the route limiter.
 
-A WhatsApp code outside the 24-hour window needs Meta's authentication template, so while
+A WhatsApp recovery code outside the 24-hour window needs Meta's authentication template, so while
 `WHATSAPP_CONTACT_CODE_TEMPLATE` is empty WhatsApp contacts are listed but not available; the rule
 lives in one function (`codeDeliverable`) and switches on with the template.
 

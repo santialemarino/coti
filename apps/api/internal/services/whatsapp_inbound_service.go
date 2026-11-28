@@ -59,6 +59,10 @@ type whatsAppInboundRFQCreator interface {
 		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
 }
 
+type whatsAppInboundProver interface {
+	ProveByMessage(ctx context.Context, route domain.InboundChannelRoute, sender, code string) error
+}
+
 type whatsAppInboundMediaCreator interface {
 	CreateMediaOrder(ctx context.Context, route domain.InboundChannelRoute, rfqID uuid.UUID,
 		message domain.InboundTextMessage) error
@@ -75,6 +79,7 @@ type WhatsAppInboundService struct {
 	rfqs          whatsAppInboundRFQCreator
 	conversations whatsAppInboundConversations
 	media         whatsAppInboundMediaCreator
+	proofs        whatsAppInboundProver
 	opener        channelConfigOpener
 	now           func() time.Time
 	log           *slog.Logger
@@ -97,6 +102,13 @@ func (s *WhatsAppInboundService) WithConversations(
 	conversations whatsAppInboundConversations,
 ) *WhatsAppInboundService {
 	s.conversations = conversations
+	return s
+}
+
+// WithContactProofs answers a «VERIFICAR 123456» message as a customer proving their number, before
+// it can become an order, a conversation reply or a non-order.
+func (s *WhatsAppInboundService) WithContactProofs(proofs whatsAppInboundProver) *WhatsAppInboundService {
+	s.proofs = proofs
 	return s
 }
 
@@ -172,6 +184,20 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 		if !found {
 			if routingErr == nil {
 				s.log.InfoContext(ctx, "whatsapp message ignored for an unconfigured destination")
+			}
+			continue
+		}
+		if code, proof := InboundProofCode(message.Body); proof && s.proofs != nil && message.Media == nil {
+			err := s.db.WithAdvisoryLock(ctx, "whatsapp-inbound:"+route.ChannelID.String()+":"+
+				message.ExternalMessageID, func() error {
+				return s.proofs.ProveByMessage(ctx, route, message.SenderID, code)
+			})
+			if errors.Is(err, ErrProofReplyUndelivered) {
+				s.log.WarnContext(ctx, "whatsapp proof answered nothing", slog.Any("error", err))
+				continue
+			}
+			if err != nil {
+				return err
 			}
 			continue
 		}
