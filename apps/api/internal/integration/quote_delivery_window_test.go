@@ -132,3 +132,33 @@ func TestQuoteDelivery_SendsTheQuoteTemplateOutsideTheWindow(t *testing.T) {
 		t.Fatalf("template = %+v, want the quote template with its PDF", template)
 	}
 }
+
+// With only the follow-up template configured, a follow-up outside the window goes as that template.
+func TestQuoteDelivery_SendsTheFollowupTemplateOutsideTheWindow(t *testing.T) {
+	e := newEnv(t)
+	seed := e.seedSendableQuote(t, "Window follow-up", false)
+	e.seedInboundWhatsApp(t, seed.tenant, seed.draft.RFQ.ChannelID, "5491155550101", time.Now().Add(-time.Hour))
+	whatsapp := &captureWhatsAppSender{}
+	service := e.windowDeliveryService(t, whatsapp, domain.QuoteWhatsAppTemplates{Followup: "coti_seguimiento",
+		Language: "es_AR"})
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phones: []string{"+5491155550101"},
+			Mode: domain.QuoteDeliveryModeFirst}); err != nil {
+		t.Fatalf("Send() = %v", err)
+	}
+	if _, err := e.db.CrossAccount().Exec(context.Background(), `UPDATE inbound_channel_message
+ SET provider_received_at = now() - interval '25 hours' WHERE channel_id = $1`, seed.draft.RFQ.ChannelID); err != nil {
+		t.Fatal(err)
+	}
+
+	followup := "¿Pudiste revisarla?"
+	if _, err := service.Send(context.Background(), seed.tenant, seed.draft.Quote.ID,
+		domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(), Phones: []string{"+5491155550101"},
+			FollowupMessage: &followup}); err != nil {
+		t.Fatalf("follow-up outside the window = %v, want the template", err)
+	}
+	if whatsapp.count() != 2 || whatsapp.messages[1].Template == nil ||
+		whatsapp.messages[1].Template.Name != "coti_seguimiento" {
+		t.Errorf("follow-up message = %+v, want the follow-up template", whatsapp.messages[len(whatsapp.messages)-1])
+	}
+}

@@ -27,6 +27,9 @@ const whatsAppFollowupTemplateBody = "Hola, te escribimos de {{1}} por la cotiza
 	"Podés verla desde este enlace:\n{{3}}\n\n" +
 	"Si tenés dudas, respondé este mensaje."
 
+// whatsAppServiceWindow is how long after a customer's last message WhatsApp accepts free text.
+const whatsAppServiceWindow = 24 * time.Hour
+
 // whatsAppFollowupParameterMax keeps the seller's text inside Meta's 1,024-character template body.
 const whatsAppFollowupParameterMax = 700
 
@@ -159,14 +162,12 @@ func (s *QuoteDeliveryService) quoteTemplateMessage(message quoteSendMessage,
 func (s *QuoteDeliveryService) followupTemplateMessage(message quoteSendMessage, supplier string,
 	text string,
 ) quoteSendMessage {
-	parameters := []string{templateParameter(supplier, 0),
-		templateParameter(strings.ReplaceAll(text, domain.QuotePublicURLPlaceholder, message.Link),
-			whatsAppFollowupParameterMax)}
-	message.Template = &domain.WhatsAppTemplate{Name: s.templates.Followup,
-		Language: s.templates.Language, Parameters: append(parameters, message.Link)}
-	recorded := parameters[:1:1]
-	recorded = append(recorded, templateParameter(text, whatsAppFollowupParameterMax),
-		domain.QuotePublicURLPlaceholder)
+	supplier = templateParameter(supplier, 0)
+	text = templateParameter(text, whatsAppFollowupParameterMax)
+	message.Template = &domain.WhatsAppTemplate{Name: s.templates.Followup, Language: s.templates.Language,
+		Parameters: []string{supplier, strings.ReplaceAll(text, domain.QuotePublicURLPlaceholder, message.Link),
+			message.Link}}
+	recorded := []string{supplier, text, domain.QuotePublicURLPlaceholder}
 	message.Body = renderTemplateBody(whatsAppFollowupTemplateBody, recorded)
 	return message
 }

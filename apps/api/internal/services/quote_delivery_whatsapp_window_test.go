@@ -154,6 +154,23 @@ func TestQuoteDeliveryService_SendMessages_UsesTheFollowupTemplateOutsideTheWind
 	}
 }
 
+// Each purpose uses its own template: with only the quote's configured, a follow-up keeps its text.
+func TestQuoteDeliveryService_SendMessages_AFollowupNeverUsesTheQuoteTemplate(t *testing.T) {
+	t.Parallel()
+	service, _, sends, bundle := windowFixture(t, domain.QuoteWhatsAppTemplates{Quote: "coti_cotizacion",
+		Language: "es_AR"}, nil)
+	followup := "¿Pudiste ver la cotización?"
+
+	messages, err := service.sendMessages(context.Background(), domain.Tenant{AccountID: uuid.New()},
+		sends, bundle, &followup, "https://c.test", time.Now())
+	if err != nil {
+		t.Fatalf("sendMessages() = %v", err)
+	}
+	if closed := messages[sends[1].ID]; closed.Template != nil || closed.Body != followup {
+		t.Errorf("follow-up outside the window = %+v, want its own text and no quote template", closed)
+	}
+}
+
 // Without a configured template the send stops before anything is created or sent, for a quote
 // and for a follow-up; an open window, a template or an email-only send pass.
 func TestQuoteDeliveryService_RequireWhatsAppReach(t *testing.T) {
@@ -182,6 +199,12 @@ func TestQuoteDeliveryService_RequireWhatsAppReach(t *testing.T) {
 		{name: "follow-up template only covers follow-ups", channels: []domain.Channel{whatsApp},
 			templates: domain.QuoteWhatsAppTemplates{Followup: "coti_seguimiento"},
 			phones:    []string{"+5491122222222"}, refused: true, queried: true},
+		{name: "follow-up template covers a follow-up", channels: []domain.Channel{whatsApp},
+			templates: domain.QuoteWhatsAppTemplates{Followup: "coti_seguimiento"},
+			phones:    []string{"+5491122222222"}, followup: true},
+		{name: "quote template does not cover a follow-up", channels: []domain.Channel{whatsApp},
+			templates: domain.QuoteWhatsAppTemplates{Quote: "coti_cotizacion"},
+			phones:    []string{"+5491122222222"}, followup: true, refused: true, queried: true},
 		{name: "email only", channels: []domain.Channel{email}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

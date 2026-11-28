@@ -131,7 +131,7 @@ func (s *QuoteDeliveryService) quotePDFAttachment(ctx context.Context,
 	}
 	content, err := loader.LoadPDF(ctx, bundle.Representation)
 	if err != nil {
-		s.log.WarnContext(ctx, "quote PDF unavailable; emailing without it",
+		s.log.WarnContext(ctx, "quote PDF unavailable; sending without it",
 			slog.String("quote_id", bundle.Representation.QuoteID.String()), slog.Any("error", err))
 		return nil
 	}
