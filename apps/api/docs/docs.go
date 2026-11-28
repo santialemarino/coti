@@ -13292,8 +13292,7 @@ const docTemplate = `{
         "dto.ContactVerificationRequest": {
             "type": "object",
             "required": [
-                "kind",
-                "value"
+                "kind"
             ],
             "properties": {
                 "kind": {
@@ -13309,6 +13308,7 @@ const docTemplate = `{
                     "maxLength": 255
                 },
                 "value": {
+                    "description": "Value is the email to verify; a WhatsApp number is proved by the customer writing from it.",
                     "type": "string",
                     "maxLength": 255
                 }
@@ -13317,10 +13317,17 @@ const docTemplate = `{
         "dto.ContactVerificationResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code and WhatsAppLink are the message a WhatsApp proof asks the customer to send, and the chat.",
+                    "type": "string"
+                },
                 "expires_at": {
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "whatsapp_link": {
                     "type": "string"
                 }
             }
@@ -13328,6 +13335,10 @@ const docTemplate = `{
         "dto.ContactVerificationStatusResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code and WhatsAppLink stay set while a WhatsApp proof the customer sends is pending.",
+                    "type": "string"
+                },
                 "kind": {
                     "type": "string"
                 },
@@ -13343,6 +13354,9 @@ const docTemplate = `{
                     ]
                 },
                 "value": {
+                    "type": "string"
+                },
+                "whatsapp_link": {
                     "type": "string"
                 }
             }

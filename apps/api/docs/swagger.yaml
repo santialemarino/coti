@@ -990,21 +990,32 @@ definitions:
         maxLength: 255
         type: string
       value:
+        description: Value is the email to verify; a WhatsApp number is proved by
+          the customer writing from it.
         maxLength: 255
         type: string
     required:
     - kind
-    - value
     type: object
   dto.ContactVerificationResponse:
     properties:
+      code:
+        description: Code and WhatsAppLink are the message a WhatsApp proof asks the
+          customer to send, and the chat.
+        type: string
       expires_at:
         type: string
       id:
         type: string
+      whatsapp_link:
+        type: string
     type: object
   dto.ContactVerificationStatusResponse:
     properties:
+      code:
+        description: Code and WhatsAppLink stay set while a WhatsApp proof the customer
+          sends is pending.
+        type: string
       kind:
         type: string
       next:
@@ -1016,6 +1027,8 @@ definitions:
         - EXPIRED
         type: string
       value:
+        type: string
+      whatsapp_link:
         type: string
     type: object
   dto.ConversationBatchResponse:
