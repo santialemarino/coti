@@ -20,6 +20,7 @@ import { ContactVerification } from '@/app/profile/_components/contact-verificat
 import { requestContactVerification } from '@/app/profile/actions';
 import { PortalLink as Link } from '@/components/portal-link';
 import { ROUTES } from '@/config/routes';
+import type { WhatsAppProof } from '@/lib/api/customer-profile';
 import type { CustomerContact } from '@/lib/api/customer-profile-model';
 
 interface PendingVerificationProps {
@@ -30,8 +31,8 @@ interface PendingVerificationProps {
   ownershipUnproved: boolean;
   /* An email link this very flow sent, so the screen can say it is on its way. */
   sentEmail?: string;
-  /* A WhatsApp code sent on sign-up, as the contact it went to and its proof id. */
-  sentCode?: { value: string; challenge: string };
+  /* The WhatsApp proof sign-up started, by its id, so its message shows at once. */
+  sentProof?: WhatsAppProof & { id: string };
 }
 
 export function PendingVerification({
@@ -40,10 +41,13 @@ export function PendingVerification({
   supplierName,
   ownershipUnproved,
   sentEmail,
-  sentCode,
+  sentProof,
 }: PendingVerificationProps) {
   const t = useTranslations('customerVerification');
   const forQuote = next.startsWith('/quotes/');
+  const emails = contacts.filter((contact) => contact.kind === 'EMAIL');
+  // One proof covers WhatsApp: the number the customer writes from is the one confirmed.
+  const phones = contacts.filter((contact) => contact.kind === 'WHATSAPP');
 
   return (
     <Card>
@@ -70,63 +74,58 @@ export function PendingVerification({
             {t('pending.earlierProfile', { supplier: supplierName })}
           </Callout>
         ) : null}
-        {contacts.length === 0 && !ownershipUnproved ? (
-          <p className="text-center text-paragraph-sm text-foreground-muted">{t('pending.none')}</p>
-        ) : null}
-        {contacts.length > 0 ? (
-          <ul className="flex flex-col gap-y-3">
-            {contacts.map((contact) => (
-              <li
-                key={`${contact.kind}:${contact.value}`}
-                className="flex flex-col p-4 gap-y-3 border border-border rounded-lg"
-              >
-                <div className="flex min-w-0 items-center gap-x-3">
-                  {contact.kind === 'EMAIL' ? (
-                    <MailIcon
-                      className="size-4 shrink-0 text-foreground-muted"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <MessageCircleIcon
-                      className="size-4 shrink-0 text-foreground-muted"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <p className="min-w-0 text-paragraph-sm-medium [overflow-wrap:anywhere]">
-                    {contact.value}
-                  </p>
-                </div>
-                {contact.kind === 'EMAIL' ? (
-                  <EmailStep
-                    value={contact.value}
-                    next={next}
-                    initiallySent={sentEmail === contact.value}
-                  />
-                ) : (
-                  <div className="flex flex-col gap-y-2">
-                    <p className="text-paragraph-sm text-foreground-muted">
-                      {t(sentCode?.value === contact.value ? 'pending.phoneSent' : 'pending.phone')}
-                    </p>
-                    <ContactVerification
-                      kind="WHATSAPP"
-                      value={contact.value}
-                      verified={false}
-                      next={next}
-                      initialChallenge={
-                        sentCode?.value === contact.value ? sentCode.challenge : undefined
-                      }
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <ul className="flex flex-col gap-y-3">
+          {emails.map((contact) => (
+            <li
+              key={contact.value}
+              className="flex flex-col p-4 gap-y-3 border border-border rounded-lg"
+            >
+              <ContactLabel kind="EMAIL" label={contact.value} />
+              <EmailStep
+                value={contact.value}
+                next={next}
+                initiallySent={sentEmail === contact.value}
+              />
+            </li>
+          ))}
+          <li className="flex flex-col p-4 gap-y-3 border border-border rounded-lg">
+            <ContactLabel
+              kind="WHATSAPP"
+              label={
+                phones.length > 0
+                  ? phones.map((phone) => phone.value).join(' · ')
+                  : t('pending.whatsappAny')
+              }
+            />
+            <div className="flex flex-col gap-y-2">
+              <p className="text-paragraph-sm text-foreground-muted">
+                {t(sentProof ? 'pending.phoneSent' : 'pending.phone')}
+              </p>
+              <ContactVerification
+                kind="WHATSAPP"
+                value={phones[0]?.value ?? ''}
+                verified={false}
+                next={next}
+                initialProof={sentProof}
+              />
+            </div>
+          </li>
+        </ul>
         <InlineLink asChild tone="muted" className="self-center">
           <Link href={ROUTES.profile}>{t('pending.profile')}</Link>
         </InlineLink>
       </CardContent>
     </Card>
+  );
+}
+
+function ContactLabel({ kind, label }: { kind: 'EMAIL' | 'WHATSAPP'; label: string }) {
+  const Icon = kind === 'EMAIL' ? MailIcon : MessageCircleIcon;
+  return (
+    <div className="flex min-w-0 items-center gap-x-3">
+      <Icon className="size-4 shrink-0 text-foreground-muted" aria-hidden="true" />
+      <p className="min-w-0 text-paragraph-sm-medium [overflow-wrap:anywhere]">{label}</p>
+    </div>
   );
 }
 

@@ -12,9 +12,11 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/app/profile/actions', () => ({
   requestContactVerification: vi.fn(),
   confirmContactVerification: vi.fn(),
+  readContactVerification: vi.fn(),
 }));
 
 const copy = messages.customerVerification.pending;
+const proofCopy = messages.customerProfile.whatsappProof;
 const email: CustomerContact = { kind: 'EMAIL', value: 'obra@cliente.test', primary: true };
 const phone: CustomerContact = { kind: 'WHATSAPP', value: '+5491155550000', primary: false };
 
@@ -40,10 +42,20 @@ it('says a link is on its way only when this flow sent it', () => {
   expect(screen.getByRole('button', { name: copy.resend })).toBeTruthy();
 });
 
-it('opens the code entry at once for a code this flow sent', () => {
-  renderPending({ sentCode: { value: phone.value, challenge: 'c-1' } });
+it('shows the WhatsApp message to send at once for a proof this flow started', () => {
+  renderPending({
+    sentProof: {
+      id: 'c-1',
+      code: '123456',
+      link: 'https://wa.me/5491100000000?text=VERIFICAR%20123456',
+    },
+  });
   expect(screen.getByText(copy.phoneSent)).toBeTruthy();
   expect(screen.getByRole('dialog')).toBeTruthy();
+  expect(screen.getByText('VERIFICAR 123456')).toBeTruthy();
+  expect(screen.getByRole('link', { name: proofCopy.open }).getAttribute('href')).toBe(
+    'https://wa.me/5491100000000?text=VERIFICAR%20123456',
+  );
 });
 
 it('offers to send them when nothing went out yet', () => {
@@ -68,13 +80,13 @@ it('guides an earlier profile owner to the contacts that profile held instead of
   expect(
     screen.getByText(copy.earlierProfile.replace('{supplier}', 'Corralón San Martín')),
   ).toBeTruthy();
-  expect(screen.queryByText(copy.none)).toBeNull();
   expect(screen.getByRole('link', { name: copy.earlierProfileAction }).getAttribute('href')).toBe(
     '/profile',
   );
 });
 
-it('tells a customer with no contact at all where to add one', () => {
+it('offers WhatsApp to a customer with no contact at all, since the number they write from is confirmed', () => {
   renderPending({ contacts: [] });
-  expect(screen.getByText(copy.none)).toBeTruthy();
+  expect(screen.getByText(copy.whatsappAny)).toBeTruthy();
+  expect(screen.getByText(copy.phone)).toBeTruthy();
 });

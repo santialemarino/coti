@@ -5,6 +5,11 @@ import { getTranslations } from 'next-intl/server';
 import { customerProfileSchema, type CustomerProfileValues } from '@/app/profile/form-schema';
 import { ROUTES } from '@/config/routes';
 import { customerFetch } from '@/lib/api/customer-orders';
+import {
+  getContactVerification,
+  type ContactVerificationState,
+  type WhatsAppProof,
+} from '@/lib/api/customer-profile';
 import { requireCustomer, safeCustomerDestination } from '@/lib/auth/customer-flow';
 
 export async function saveCustomerProfile(
@@ -53,7 +58,7 @@ export async function requestContactVerification(
   kind: 'EMAIL' | 'WHATSAPP',
   value: string,
   next?: string,
-): Promise<{ id?: string; error?: string }> {
+): Promise<{ id?: string; whatsappProof?: WhatsAppProof; error?: string }> {
   await requireCustomer(ROUTES.profile);
   const t = await getTranslations('customerProfile.errors');
   try {
@@ -74,10 +79,27 @@ export async function requestContactVerification(
         ),
       };
     }
-    const raw = (await response.json()) as { id: string };
-    return { id: raw.id };
+    const raw = (await response.json()) as { id: string; code?: string; whatsapp_link?: string };
+    return {
+      id: raw.id,
+      ...(raw.code && raw.whatsapp_link
+        ? { whatsappProof: { code: raw.code, link: raw.whatsapp_link } }
+        : {}),
+    };
   } catch {
     return { error: t('verificationUnavailable') };
+  }
+}
+
+/* Where a WhatsApp proof stands, for the screen that waits on the customer's message. */
+export async function readContactVerification(
+  id: string,
+): Promise<ContactVerificationState | null> {
+  await requireCustomer(ROUTES.profile);
+  try {
+    return (await getContactVerification(id))?.status ?? null;
+  } catch {
+    return null;
   }
 }
 

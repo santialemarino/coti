@@ -84,9 +84,11 @@ export default async function Page({
             ? sentEmail.value
             : undefined
         }
-        sentCode={
-          sentPhone?.kind === 'WHATSAPP' && sentPhone.status === 'PENDING'
-            ? { value: sentPhone.value, challenge: query.phone || '' }
+        sentProof={
+          sentPhone?.kind === 'WHATSAPP' &&
+          sentPhone.status === 'PENDING' &&
+          sentPhone.whatsappProof
+            ? { id: query.phone || '', ...sentPhone.whatsappProof }
             : undefined
         }
       />

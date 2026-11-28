@@ -22,6 +22,8 @@ interface ContactVerificationRaw {
   value: string;
   status: ContactVerificationState;
   next: string | null;
+  code?: string;
+  whatsapp_link?: string;
 }
 
 export type ContactVerificationState = 'PENDING' | 'VERIFIED' | 'EXPIRED';
@@ -31,6 +33,13 @@ export interface ContactVerificationStatus {
   value: string;
   status: ContactVerificationState;
   next: string | null;
+  /* A pending WhatsApp proof: the message the customer sends, and the chat it goes to. */
+  whatsappProof?: WhatsAppProof;
+}
+
+export interface WhatsAppProof {
+  code: string;
+  link: string;
 }
 
 const VERIFICATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,5 +53,13 @@ export async function getContactVerification(
   if (response.status === 404 || response.status === 400) return null;
   if (!response.ok) throw new CustomerAuthError(response.status);
   const raw = (await response.json()) as ContactVerificationRaw;
-  return { kind: raw.kind, value: raw.value, status: raw.status, next: raw.next };
+  return {
+    kind: raw.kind,
+    value: raw.value,
+    status: raw.status,
+    next: raw.next,
+    ...(raw.code && raw.whatsapp_link
+      ? { whatsappProof: { code: raw.code, link: raw.whatsapp_link } }
+      : {}),
+  };
 }
