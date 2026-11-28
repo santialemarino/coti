@@ -44,7 +44,13 @@ func (s *ClientContactService) WithPromptLease(lease time.Duration) *ClientConta
 	return s
 }
 
-// CompleteInbound associates retained requests and dispatches an unknown sender's pending name prompt.
+type orderAcknowledgementStore interface {
+	ClaimOrderAcknowledgement(context.Context, repository.Querier, domain.InboundChannelRoute, uuid.UUID) (bool, error)
+}
+
+// CompleteInbound associates retained requests and sends the sender's fixed replies: the receipt
+// acknowledgement of a new order and an unknown sender's name question, as one message when both
+// are due.
 func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain.InboundChannelRoute, kind domain.ChannelType, value string, reply domain.ContactReplyContext) error {
 	store, ok := s.contacts.(contactOnboardingStore)
 	if !ok {
@@ -55,6 +61,7 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 		return nil
 	}
 	var id *uuid.UUID
+	acknowledge := false
 	err = s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 		if err := store.AssociateObservedRequests(ctx, q, route.AccountID, kind, value); err != nil {
 			return err
@@ -63,13 +70,28 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 			return nil
 		}
 		var err error
-		id, err = store.ClaimNameRequest(ctx, q, route, kind, value, s.prompts.lease)
+		if id, err = store.ClaimNameRequest(ctx, q, route, kind, value, s.prompts.lease); err != nil {
+			return err
+		}
+		if acknowledgements, ok := s.contacts.(orderAcknowledgementStore); ok && reply.ReceivedRFQ != nil {
+			acknowledge, err = acknowledgements.ClaimOrderAcknowledgement(ctx, q, route, *reply.ReceivedRFQ)
+		}
 		return err
 	})
-	if err != nil || id == nil {
+	if err != nil || (id == nil && !acknowledge) {
 		return err
 	}
-	reference, deliveryErr := s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: route.AccountID, BranchID: route.BranchID, ChannelID: route.ChannelID, Purpose: domain.ContactPurposeNameRequest, Kind: kind, To: value, Body: contactNamePrompt, InReplyTo: reply.MessageID})
+	message := domain.ContactMessage{AccountID: route.AccountID, BranchID: route.BranchID, ChannelID: route.ChannelID, Purpose: domain.ContactPurposeNameRequest, Kind: kind, To: value, Body: contactNamePrompt, InReplyTo: reply.MessageID}
+	switch {
+	case id != nil && acknowledge:
+		message.Body = orderAcknowledgementWithName
+	case acknowledge:
+		message.Purpose, message.Body = domain.ContactPurposeAcknowledgement, orderAcknowledgement
+	}
+	reference, deliveryErr := s.messenger.SendContact(ctx, message)
+	if id == nil {
+		return nil
+	}
 	return s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 		return store.FinishNameRequest(ctx, q, route, *id, reference, deliveryErr == nil)
 	})

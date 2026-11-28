@@ -179,7 +179,7 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			s.log.WarnContext(ctx, "whatsapp file ignored: media intake is not wired")
 			continue
 		}
-		err := s.ingestOne(ctx, route, message)
+		order, err := s.ingestOne(ctx, route, message)
 		if errors.Is(err, errInboundNoConversation) {
 			continue
 		}
@@ -187,7 +187,7 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			return err
 		}
 		if completer, ok := s.contacts.(inboundContactCompleter); ok {
-			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), domain.ContactReplyContext{}); err != nil {
+			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), domain.ContactReplyContext{ReceivedRFQ: order}); err != nil {
 				return err
 			}
 		}
@@ -195,11 +195,15 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 	return routingErr
 }
 
+// ingestOne stores and routes one message, and returns the order it opened, which is owed the
+// receipt acknowledgement; nil when it joined a conversation, answered the name question or was
+// not an order.
 func (s *WhatsAppInboundService) ingestOne(
 	ctx context.Context, route domain.InboundChannelRoute, message domain.InboundTextMessage,
-) error {
+) (*uuid.UUID, error) {
 	lockKey := "whatsapp-inbound:" + route.ChannelID.String() + ":" + message.ExternalMessageID
-	return s.db.WithAdvisoryLock(ctx, lockKey, func() error {
+	var order *uuid.UUID
+	err := s.db.WithAdvisoryLock(ctx, lockKey, func() error {
 		var reserved *domain.InboundChannelMessage
 		err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 			in := domain.NewInboundChannelMessage{
@@ -276,13 +280,24 @@ func (s *WhatsAppInboundService) ingestOne(
 			return nil
 		}
 		if message.Media != nil {
-			return s.media.CreateMediaOrder(ctx, route, *reserved.RFQID, message)
+			if err := s.media.CreateMediaOrder(ctx, route, *reserved.RFQID, message); err != nil {
+				return err
+			}
+			order = reserved.RFQID
+			return nil
 		}
-		_, err = s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
+		draft, err := s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
 			domain.InboundTextRFQDraftInput{ClientLabel: message.SenderLabel, RawText: message.Body},
 			*reserved.RFQID)
-		return err
+		if err != nil {
+			return err
+		}
+		if draft != nil && draft.NonOrder == nil {
+			order = reserved.RFQID
+		}
+		return nil
 	})
+	return order, err
 }
 
 // joinConversation appends the message to the live quote conversation its sender continues, or

@@ -34,7 +34,11 @@ const (
 	inviteIgnore  = "Si no esperabas esta invitación, ignorá este correo: nadie puede entrar con tu dirección sin este enlace."
 
 	// Decision 79: the same fixed text goes to every unknown sender, so it reveals no profile data.
-	contactNamePrompt = "Gracias por escribirnos. Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
+	contactNamePrompt = "Gracias por escribirnos. " + contactNameAsk
+	contactNameAsk    = "Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
+	// Decision 94: the fixed receipt acknowledgement, once per order; a new sender gets it with the name question.
+	orderAcknowledgement         = "Recibimos tu mensaje, un vendedor te responde a la brevedad."
+	orderAcknowledgementWithName = orderAcknowledgement + " " + contactNameAsk
 
 	contactVerificationSubject = "Confirmá tu correo"
 	contactVerificationHeading = "Confirmá tu correo"

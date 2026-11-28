@@ -31,8 +31,11 @@ type rowInboundRFQs struct {
 func (r *rowInboundRFQs) CreateInboundTextDraftForMessage(ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.count++
-	_, err := r.e.db.CrossAccount().Exec(ctx, `INSERT INTO rfq(id,account_id,branch_id,channel_id,raw_text,status) VALUES($1,$2,$3,$4,$5,'RECEIVED')`, rfqID, route.AccountID, route.BranchID, route.ChannelID, in.RawText)
+	// A retried delivery resumes the order it reserved, as the pipeline does.
+	tag, err := r.e.db.CrossAccount().Exec(ctx, `INSERT INTO rfq(id,account_id,branch_id,channel_id,raw_text,status) VALUES($1,$2,$3,$4,$5,'RECEIVED') ON CONFLICT (id) DO NOTHING`, rfqID, route.AccountID, route.BranchID, route.ChannelID, in.RawText)
+	if err == nil && tag.RowsAffected() == 1 {
+		r.count++
+	}
 	return &domain.TextRFQDraft{}, err
 }
 

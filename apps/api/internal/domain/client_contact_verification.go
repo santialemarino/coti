@@ -60,6 +60,8 @@ const (
 	ContactPurposeVerification     ContactPurpose = "VERIFICATION"
 	ContactPurposeRegistrationLink ContactPurpose = "REGISTRATION_LINK"
 	ContactPurposeRecovery         ContactPurpose = "RECOVERY"
+	// ContactPurposeAcknowledgement tells a client their order arrived (decisions 79 and 94).
+	ContactPurposeAcknowledgement ContactPurpose = "ACKNOWLEDGEMENT"
 )
 
 // ContactMessage is a deterministic onboarding or verification message.
@@ -83,6 +85,8 @@ type ContactReplyContext struct {
 	// Automated marks bulk, list, auto-submitted or no-reply mail, which never gets a prompt.
 	Automated bool
 	MessageID string
+	// ReceivedRFQ is the order this message opened or joined, which earns the receipt acknowledgement.
+	ReceivedRFQ *uuid.UUID
 }
 
 // PendingNameRequest is the earlier message a name reply answers: the order it opened, or none

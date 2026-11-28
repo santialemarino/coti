@@ -275,6 +275,12 @@ precedence. The request continues processing while a fixed backend message (deci
 the full name through the same channel. The text is the same for every unknown sender, so it reveals
 no profile data. AI does not draft, decide or initiate this automatic onboarding request.
 
+Every message that opens an order also gets the fixed receipt acknowledgement (decision 94),
+«Recibimos tu mensaje, un vendedor te responde a la brevedad.», by the same channel. When the name
+question is due too, both go as one message. `rfq.acknowledged_at` is claimed before sending, so a
+retried delivery never repeats it; a reply to a quote, a name reply, a message that is not an order
+and automated mail get none. By email it threads like the name prompt.
+
 By email the prompt answers as the supplier: it goes through the platform mailer (the only address the
 provider lets Coti send as) with the supplier's name as the sender name, the subject "Tu pedido a
 <supplier>", Reply-To set to the branch mailbox, and In-Reply-To/References set to the customer's
