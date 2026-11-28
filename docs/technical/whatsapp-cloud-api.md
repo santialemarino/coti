@@ -121,9 +121,11 @@ contact cards are acknowledged and never become orders.
 ID resolves to expires within minutes, so the webhook stores the order at `RECEIVED` with the file as
 a pending attachment keyed `whatsapp-media:<media id>` and the caption, when there is one, as a text
 attachment, then wakes the attachment sweep. The sweep resolves the ID with the channel's own access
-token, stores the file under the order's key and reads it as any other file: a recording is
-transcribed in Spanish with the account's most-quoted product names as vocabulary, capped at 25 MB;
-a photo or PDF reaches the model as it is. The format is decided by the bytes' media type, so an
+token, stores the file under the order's key and reads it as any other file, within
+`STORAGE_MAX_FILE_SIZE_BYTES` (and 25 MB for a recording, the transcription limit): a recording is
+transcribed in Spanish with the account's most-quoted product names as vocabulary; a photo or PDF
+reaches the model as it is. A file with no stored object yet, or one that never got one, is listed
+on the order without a download link. The format is decided by the bytes' media type, so an
 image sent as a document is read as a photo. A file no format accepts (a video) leaves the order
 `FAILED` with the file on it, so the seller sees it rather than nothing; Meta being unreachable
 leaves the order claimed for the next run instead. A file whose sender has a live quote joins that

@@ -58,6 +58,15 @@ func NewWhatsAppMediaIntake(db tenantTxRunner, rfqs whatsAppMediaRFQs,
 func (m *WhatsAppMediaIntake) CreateMediaOrder(ctx context.Context,
 	route domain.InboundChannelRoute, rfqID uuid.UUID, message domain.InboundTextMessage,
 ) error {
+	// Checked before the caption is uploaded, so a retried delivery leaves no orphan object.
+	if err := m.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
+		_, err := m.rfqs.GetByID(ctx, q, route.AccountID, route.BranchID, rfqID)
+		return err
+	}); err == nil {
+		return nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
 	media := message.Media
 	files := make([]domain.NewRetainedAttachment, 0, 2)
 	file := domain.NewRetainedAttachment{ID: uuid.New(), Type: domain.AttachmentTypeOther,

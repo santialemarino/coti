@@ -83,6 +83,43 @@ func TestWhatsAppInboundService_IngestJoinsAFileToALiveConversation(t *testing.T
 	}
 }
 
+// eagerNameContacts takes every message as the reply to a pending name question.
+type eagerNameContacts struct{ pending uuid.UUID }
+
+func (c eagerNameContacts) RecordInbound(context.Context, repository.Querier,
+	domain.InboundChannelRoute, uuid.UUID, domain.ChannelType, string, string,
+	domain.ClientContactHints) error {
+	return nil
+}
+
+func (c eagerNameContacts) NameReply(context.Context, repository.Querier,
+	domain.InboundChannelRoute, domain.ChannelType, string, string) (*uuid.UUID, string, error) {
+	return &c.pending, "Juan Pérez", nil
+}
+
+// A photo captioned «Juan Pérez» is an order, never the answer to the name question: taking it as
+// the name would drop the photo.
+func TestWhatsAppInboundService_IngestNeverReadsAFileAsANameReply(t *testing.T) {
+	t.Parallel()
+	service, messages, _, _ := inboundTestService(&fakeWhatsAppInboundConversations{})
+	media := &fakeMediaCreator{}
+	pending := uuid.New()
+	service.WithMedia(media).WithContacts(eagerNameContacts{pending: pending})
+	photo := voiceNoteMessage()
+	photo[0].Body, photo[0].Media.Kind = "Juan Pérez", domain.InboundMediaImage
+
+	if err := service.Ingest(context.Background(), photo); err != nil {
+		t.Fatalf("Ingest() = %v", err)
+	}
+	reserved := messages.reserved[0]
+	if *reserved.RFQID == pending || strings.Contains(string(reserved.Payload), "contact_name_reply") {
+		t.Fatalf("reservation = %+v, want a new order, not the pending one's name", reserved)
+	}
+	if len(media.rfqIDs) != 1 || media.rfqIDs[0] != *reserved.RFQID {
+		t.Fatalf("media orders = %v, want the photo opening its own order", media.rfqIDs)
+	}
+}
+
 // Without media intake wired a file is skipped, never turned into an order of its caption.
 func TestWhatsAppInboundService_IngestSkipsAFileWhenMediaIsNotWired(t *testing.T) {
 	t.Parallel()

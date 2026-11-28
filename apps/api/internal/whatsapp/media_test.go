@@ -47,6 +47,31 @@ func TestMetaMediaFetcher_ResolvesTheIDThenDownloadsWithTheSameToken(t *testing.
 	}
 }
 
+// A Meta fault or rate limit leaves the file worth reading later; a refusal does not.
+func TestMetaMediaFetcher_TellsAnOutageFromARefusal(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		status    int
+		transient bool
+	}{
+		{http.StatusInternalServerError, true},
+		{http.StatusTooManyRequests, true},
+		{http.StatusNotFound, false},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			t.Cleanup(server.Close)
+			_, err := newMetaMediaFetcher(server.Client(), server.URL, "v25.0").
+				FetchMedia(context.Background(), "access-token", "media-1", 10)
+			if err == nil || errors.Is(err, domain.ErrMediaUnavailable) != tc.transient {
+				t.Fatalf("FetchMedia() = %v, want unavailable = %v", err, tc.transient)
+			}
+		})
+	}
+}
+
 func TestMetaMediaFetcher_RefusesAFileOverTheLimit(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, declared string }{

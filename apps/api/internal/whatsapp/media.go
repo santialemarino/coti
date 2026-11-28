@@ -60,7 +60,11 @@ func (f *MetaMediaFetcher) FetchMedia(ctx context.Context, accessToken, mediaID 
 	if err := f.get(ctx, described.URL, accessToken, func(body io.Reader) error {
 		var readErr error
 		data, readErr = io.ReadAll(io.LimitReader(body, maxBytes+1))
-		return readErr
+		// A download cut short says nothing about the file, so it is worth reading again.
+		if readErr != nil {
+			return fmt.Errorf("%w: WhatsApp media download: %v", domain.ErrMediaUnavailable, readErr)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}

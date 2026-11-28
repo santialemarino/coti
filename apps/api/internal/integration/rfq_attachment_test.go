@@ -172,6 +172,41 @@ func TestRFQAttachments_UploadPersistsAReferenceThatResolvesToADownload(t *testi
 	}
 }
 
+// A WhatsApp file that was never stored (a video) or that WhatsApp still holds is listed without a
+// link: the order's other files and caption stay visible instead of the whole list failing.
+func TestRFQAttachments_ListsAFileWithNoStoredObjectWithoutALink(t *testing.T) {
+	e := newEnv(t)
+	accountID, branchID := e.seedAccount(t, "Corralón Archivos WhatsApp")
+	user := e.seedUser(t, accountID, "ADMIN")
+	token := e.tokenFor(t, user)
+	rfqID := e.seedRFQ(t, accountID, branchID)
+	for _, row := range []struct{ key, status string }{
+		{"", "FAILED"}, {"whatsapp-media:media-1", "PENDING"},
+	} {
+		if _, err := e.db.CrossAccount().Exec(context.Background(),
+			`INSERT INTO rfq_attachment (account_id, rfq_id, type, file_url, processing_status)
+			 VALUES ($1, $2, 'AUDIO', NULLIF($3, ''), $4::attachment_processing_status)`,
+			accountID, rfqID, row.key, row.status); err != nil {
+			t.Fatalf("seed attachment: %v", err)
+		}
+	}
+
+	listed := e.do(t, request{method: http.MethodGet,
+		path: "/v1/rfqs/" + rfqID.String() + "/attachments", token: token, branch: branchID.String()})
+	if listed.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200; body: %s", listed.Code, listed.Body)
+	}
+	var list struct {
+		Attachments []attachmentBody `json:"attachments"`
+	}
+	if err := json.Unmarshal(listed.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode list %s: %v", listed.Body, err)
+	}
+	if len(list.Attachments) != 2 || list.Attachments[0].URL != "" || list.Attachments[1].URL != "" {
+		t.Fatalf("list = %#v, want both files listed with no link", list.Attachments)
+	}
+}
+
 // AC4: the object key carries the account, and one account's file is not reachable from another.
 func TestRFQAttachments_AnotherAccountReachesNeitherTheRowNorTheFile(t *testing.T) {
 	e := newEnv(t)
