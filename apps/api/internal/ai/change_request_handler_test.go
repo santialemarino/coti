@@ -230,7 +230,7 @@ func TestChangeRequestHandler_Propose_MapsTheCustomerDecision(t *testing.T) {
 		}
 	}
 	decisions := changeRequestSchema()["properties"].(map[string]any)["customer_decision"].(map[string]any)["enum"].([]string)
-	if !slices.Equal(decisions, []string{"CHANGE", "ACCEPT", "REJECT", "QUESTION", "NONE"}) {
+	if !slices.Equal(decisions, []string{"CHANGE", "ACCEPT", "REJECT", "QUESTION", "NONE", "NEW_ORDER"}) {
 		t.Errorf("decision enum = %v, want the closed set", decisions)
 	}
 }

@@ -579,13 +579,16 @@ steps, each tenant transaction taking the quote's row lock before the batch's:
    messages, the context, the **current version's** lines with their opaque IDs, and the promotions
    in force at the quote's branch. Its instructions are a fixed text sent first, so the provider
    caches that prefix; everything variable rides in the input. It first classifies the whole reply
-   as `customer_decision` — `CHANGE`, `ACCEPT`, `REJECT`, `QUESTION` or `NONE` — with
+   as `customer_decision` — `CHANGE`, `ACCEPT`, `REJECT`, `QUESTION`, `NEW_ORDER` or `NONE` — with
    `decision_confidence_percent`, `conditional` (an acceptance tied to something the quote does not
    meet) and `partial_or_alternative`. The backend acts on `ChangeRequestProposal.EffectiveDecision`:
    any operation or goal, and any conditional acceptance, is a `CHANGE` whatever the label says. A
    reply that is not a change keeps the quote as it is and is recorded as a no-match with the reason
-   `CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION` or `NO_REQUEST` on the current
-   version, so the customer's own accept link keeps working. For a change it answers with a `level`:
+   `CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION`, `NEW_ORDER` or `NO_REQUEST` on the
+   current version, so the customer's own accept link keeps working. A `NEW_ORDER` batch from
+   WhatsApp also goes to intake as a message from a sender with no live quote would, for the quote's
+   client, under an order id derived from the batch so a retry resumes the same order; the decision
+   names it (`new_order_rfq_id`). For a change it answers with a `level`:
    - `ATOMIC` — concrete operations: `ADD_ITEM`, `REMOVE_ITEM`, `REPLACE_ITEM`, `UPDATE_QUANTITY`,
      or `ADD_DISCOUNT` naming one of the promotions it was given (never an amount).
    - `COMPLEX` — a goal from a closed set, with no operations: `LOWER_TOTAL_PRICE` or

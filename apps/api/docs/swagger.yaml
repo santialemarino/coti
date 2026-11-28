@@ -1062,6 +1062,7 @@ definitions:
         - CUSTOMER_REJECTS
         - CUSTOMER_QUESTION
         - NO_REQUEST
+        - NEW_ORDER
         type: string
       outcome:
         enum:
@@ -1771,6 +1772,7 @@ definitions:
         - CUSTOMER_REJECTS
         - CUSTOMER_QUESTION
         - NO_REQUEST
+        - NEW_ORDER
         type: string
       outcome:
         enum:

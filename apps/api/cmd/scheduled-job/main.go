@@ -137,7 +137,8 @@ func run() error {
 		repository.NewProductAlternativeRepository(), changeProposer, catalogMatch, services.BatchChangeHandlerConfig{
 			ContextMessages: cfg.Conversation.ContextMessages, MaxOperations: cfg.RFQ.MaxItems}, log).
 		WithReplyAcceptance(services.ReplyAcceptancePolicy(cfg.Conversation), sends,
-			repository.NewClientActionRepository(), quoteRepo, nil)
+			repository.NewClientActionRepository(), quoteRepo, nil).
+		WithNewOrders(rfqService)
 	jobs, err := services.NewJobService(db, repository.NewJobRunRepository(), log,
 		services.NewQuoteCorrectionJob(corrections, providers.Embedder, cfg.QuoteCorrection),
 		services.NewQuoteQualityJob(sends, qualityEvaluator, cfg.QuoteQuality),

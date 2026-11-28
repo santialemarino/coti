@@ -120,6 +120,8 @@ func TestBatchChangeHandler_Propose_ActsOnTheDecisionAndLetsAChangeWin(t *testin
 			false, domain.HandlerNoMatchCustomerQuestion, domain.CustomerDecisionQuestion},
 		{"nothing", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionNone, false, escape,
 			false, domain.HandlerNoMatchNoRequest, domain.CustomerDecisionNone},
+		{"new order", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionNewOrder, false, escape,
+			false, domain.HandlerNoMatchNewOrder, domain.CustomerDecisionNewOrder},
 		{"conditional acceptance", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionAccept,
 			true, escape, true, domain.HandlerNoMatchRequiresSeller, domain.CustomerDecisionChange},
 		{"unmapped change", domain.ChangeRequestLevelNoMatch, domain.CustomerDecisionChange, false,
@@ -179,5 +181,73 @@ func TestRemapChangeRequest_PointsEveryNamedLineAtItsClone(t *testing.T) {
 	}
 	if _, err := remapChangeRequest(resolved, map[uuid.UUID]uuid.UUID{other: cloned}); err != errDraftMoved {
 		t.Errorf("remap with the line missing = %v, want errDraftMoved", err)
+	}
+}
+
+type recordingNewOrders struct {
+	routes []domain.InboundChannelRoute
+	inputs []domain.InboundTextRFQDraftInput
+	ids    []uuid.UUID
+}
+
+func (r *recordingNewOrders) CreateInboundTextDraftForMessage(_ context.Context,
+	route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput, rfqID uuid.UUID,
+) (*domain.TextRFQDraft, error) {
+	r.routes, r.inputs, r.ids = append(r.routes, route), append(r.inputs, in), append(r.ids, rfqID)
+	return &domain.TextRFQDraft{}, nil
+}
+
+func TestBatchChangeHandler_TakeNewOrder_SendsOnlyAWhatsAppNewOrderToIntake(t *testing.T) {
+	channelID, clientID, actionID := uuid.New(), uuid.New(), uuid.New()
+	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New()}
+	batch := domain.MessageBatch{ID: uuid.New()}
+	decided := func(decision domain.CustomerDecision) domain.HandlerProposalRecord {
+		return domain.HandlerProposalRecord{CustomerDecision: &decision}
+	}
+	whatsApp := []domain.QuoteMessage{{ChannelID: &channelID, Body: " necesito cotizar "},
+		{ChannelID: &channelID, Body: "5 bolsas"}}
+	cases := []struct {
+		name     string
+		decision domain.CustomerDecision
+		messages []domain.QuoteMessage
+		want     bool
+	}{
+		{"new order", domain.CustomerDecisionNewOrder, whatsApp, true},
+		{"question", domain.CustomerDecisionQuestion, whatsApp, false},
+		{"portal request", domain.CustomerDecisionNewOrder,
+			[]domain.QuoteMessage{{ChannelID: &channelID, ClientActionID: &actionID, Body: "otro"}}, false},
+		{"no channel", domain.CustomerDecisionNewOrder, []domain.QuoteMessage{{Body: "otro"}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			intake := &recordingNewOrders{}
+			handler := newProposeOnlyHandler(nil, nil).WithNewOrders(intake)
+			record := decided(tc.decision)
+			prepared := preparedBatch{tenant: tenant, clientID: &clientID, messages: tc.messages}
+			if err := handler.takeNewOrder(context.Background(), batch, prepared, &record); err != nil {
+				t.Fatalf("takeNewOrder() = %v", err)
+			}
+			if !tc.want {
+				if len(intake.ids) != 0 || record.NewOrderRFQID != nil {
+					t.Errorf("intake = %v, record = %v, want nothing taken", intake.ids, record.NewOrderRFQID)
+				}
+				return
+			}
+			if len(intake.ids) != 1 || record.NewOrderRFQID == nil || *record.NewOrderRFQID != intake.ids[0] {
+				t.Fatalf("intake = %v, record = %v, want one order named on the record", intake.ids,
+					record.NewOrderRFQID)
+			}
+			route, in := intake.routes[0], intake.inputs[0]
+			if route.AccountID != tenant.AccountID || route.BranchID != tenant.BranchID ||
+				route.ChannelID != channelID || route.ChannelType != domain.ChannelTypeWhatsApp ||
+				in.ClientID == nil || *in.ClientID != clientID || in.RawText != "necesito cotizar\n5 bolsas" {
+				t.Errorf("intake got %+v and %+v, want the batch's tenant, channel, client and text", route, in)
+			}
+			again := decided(tc.decision)
+			_ = handler.takeNewOrder(context.Background(), batch, prepared, &again)
+			if intake.ids[1] != intake.ids[0] {
+				t.Errorf("retry order id = %s, want the first one (%s)", intake.ids[1], intake.ids[0])
+			}
+		})
 	}
 }

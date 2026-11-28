@@ -104,6 +104,53 @@ type BatchChangeHandler struct {
 	log          *slog.Logger
 	// acceptance lets an acceptance read from a reply move the quote; nil records it only.
 	acceptance *replyAcceptance
+	// newOrders takes a batch asking for a separate order to intake; nil records it only.
+	newOrders newOrderIntake
+}
+
+// newOrderIntake turns a customer's text into an order, resuming the one with the same id.
+type newOrderIntake interface {
+	CreateInboundTextDraftForMessage(ctx context.Context, route domain.InboundChannelRoute,
+		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
+}
+
+// newOrderNamespace derives a NEW_ORDER batch's order id from the batch, so a retry resumes it.
+var newOrderNamespace = uuid.MustParse("6f1d7a4e-3c2b-4e8a-9b5d-2a7c1e0f4d63")
+
+// WithNewOrders sends a batch the customer meant as a separate order to normal intake.
+func (h *BatchChangeHandler) WithNewOrders(intake newOrderIntake) *BatchChangeHandler {
+	h.newOrders = intake
+	return h
+}
+
+// takeNewOrder creates the order a NEW_ORDER batch asks for, as a message from a sender with no
+// live quote would, and names it on the record. A portal request is never a new order.
+func (h *BatchChangeHandler) takeNewOrder(ctx context.Context, batch domain.MessageBatch,
+	prepared preparedBatch, record *domain.HandlerProposalRecord,
+) error {
+	if h.newOrders == nil || record.CustomerDecision == nil ||
+		*record.CustomerDecision != domain.CustomerDecisionNewOrder || len(prepared.messages) == 0 {
+		return nil
+	}
+	channelID := prepared.messages[0].ChannelID
+	for _, message := range prepared.messages {
+		if message.ClientActionID != nil {
+			return nil
+		}
+	}
+	if channelID == nil {
+		return nil
+	}
+	rfqID := uuid.NewSHA1(newOrderNamespace, batch.ID[:])
+	route := domain.InboundChannelRoute{AccountID: prepared.tenant.AccountID,
+		BranchID: prepared.tenant.BranchID, ChannelID: *channelID, ChannelType: domain.ChannelTypeWhatsApp}
+	if _, err := h.newOrders.CreateInboundTextDraftForMessage(ctx, route,
+		domain.InboundTextRFQDraftInput{ClientID: prepared.clientID, RawText: clientInput(prepared.messages)},
+		rfqID); err != nil {
+		return err
+	}
+	record.NewOrderRFQID = &rfqID
+	return nil
 }
 
 // NewBatchChangeHandler builds a BatchChangeHandler. A nil proposer means no language model is
@@ -126,6 +173,7 @@ var _ ConversationBatchHandler = (*BatchChangeHandler)(nil)
 
 type preparedBatch struct {
 	tenant       domain.Tenant
+	clientID     *uuid.UUID
 	stateAtClaim domain.QuoteStatus
 	// version is the quote's current version as the model reads it: the sent one, frozen, until a
 	// change clones it.
@@ -162,6 +210,9 @@ func (h *BatchChangeHandler) Handle(ctx context.Context, batch domain.MessageBat
 	}
 	proposal, err := h.propose(ctx, prepared)
 	if err != nil {
+		return err
+	}
+	if err := h.takeNewOrder(ctx, batch, prepared, &proposal.record); err != nil {
 		return err
 	}
 	for {
@@ -229,6 +280,7 @@ func (h *BatchChangeHandler) prepare(ctx context.Context, batch domain.MessageBa
 				return fmt.Errorf("%w: %w", domain.ErrBatchUnprocessable, err)
 			}
 			prepared.tenant = domain.Tenant{AccountID: quote.AccountID, BranchID: quote.BranchID}
+			prepared.clientID = quote.ClientID
 			prepared.stateAtClaim = quote.CurrentStatus
 			account, err := h.accounts.GetByID(ctx, q, quote.AccountID)
 			if err != nil {
