@@ -246,7 +246,8 @@ measured before/after, which is motion's layout animation:
 - **`Pagination`** — the window slides as the page changes, so numbers enter and leave and
   everything left over travels to its new position.
 - **`PendingButton`** — a submit whose label swaps mid-action (`Eliminar` → `Eliminando…`),
-  resizing smoothly both ways and crossfading the two labels.
+  resizing smoothly both ways and crossfading the two labels. The exiting label is hidden from
+  assistive technology immediately, so only the current action names the button.
 
 A box that holds a form cannot use `layout`, which scale-corrects its children and squashes the
 inputs mid-flight. **`AnimatedHeight`** measures its content and animates the height directly, armed
