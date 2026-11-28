@@ -34,6 +34,7 @@ function renderConversation(
   conversation: ConversationResponse,
   onChanged = vi.fn(),
   embedded = true,
+  accepted = false,
 ) {
   return render(
     <NextIntlClientProvider
@@ -47,6 +48,7 @@ function renderConversation(
         branchId={BRANCH_ID}
         onChanged={onChanged}
         embedded={embedded}
+        accepted={accepted}
       />
     </NextIntlClientProvider>,
   );
@@ -208,5 +210,25 @@ describe('RfqConversation', () => {
       fireEvent.click(view.getByRole('button', { name: copy.title }));
     });
     expect(view.getByText('mensaje a')).toBeTruthy();
+  });
+
+  // On an accepted quote no window opens, so an unbatched message came after the acceptance.
+  it('reads messages after an acceptance as such, open on its own card', () => {
+    const view = renderConversation(
+      {
+        batches: [batch('a', {})],
+        pending: [{ author: 'CLIENT', body: '¿cuándo llega?', received_at: BASE_TIME }],
+        seller_messages: [],
+        can_discard_ai_changes: false,
+      },
+      vi.fn(),
+      false,
+      true,
+    );
+
+    expect(view.getByText('¿cuándo llega?')).toBeTruthy();
+    expect(view.getByText(copy.afterAcceptance)).toBeTruthy();
+    expect(view.getByText(copy.afterAcceptanceNote)).toBeTruthy();
+    expect(view.queryByText(copy.pending)).toBeNull();
   });
 });

@@ -27,9 +27,12 @@ import {
   setQuoteArchived,
 } from '@/lib/api/rfqs-client';
 import { useFormatters } from '@/lib/i18n/formatters';
+import { AcceptSentVersionButton } from './accept-sent-version-button';
+import { CustomerReplyCallout } from './customer-reply-callout';
 import { FollowupCallout } from './followup-callout';
 import { InvoiceCard } from './invoice-card';
 import { QuoteDeliveryCard } from './quote-delivery-card';
+import { ReplyAcceptanceCallout } from './reply-acceptance-callout';
 import { RfqChangeRequestCard } from './rfq-change-request-card';
 import { RfqClientCard } from './rfq-client-card';
 import { RfqConversation } from './rfq-conversation';
@@ -117,6 +120,21 @@ export function RfqDetailView({
     detail.rfq.archived_at != null,
   );
   const reference = formatRfqReference(detail.rfq.quote_number) ?? t('list.numberPending');
+  const { acceptanceUnconfirmed = false, customerReply } = mapListItem(detail.rfq);
+  // An acceptance read from a reply can be undone while nothing has closed the sale; the API checks
+  // the send too and answers QUOTE_ACCEPTANCE_NOT_UNDOABLE when it has expired.
+  const replyUndoable =
+    detail.accepted_by_reply === true &&
+    !detail.rfq.paid_at &&
+    !detail.rfq.invoiced &&
+    !detail.rfq.invoice_pending &&
+    !detail.rfq.invoice_waived_at;
+  // The version the customer received: the one before an open draft, or the current one.
+  const sentVersion = detail.version
+    ? detail.version.is_immutable
+      ? detail.version.version_number
+      : detail.version.version_number - 1
+    : 0;
   const statusKey = `${rfqStatus}:${quoteStatus}`;
   const shownStatusKey = useRef(statusKey);
 
@@ -301,11 +319,33 @@ export function RfqDetailView({
         />
       ) : null}
 
+      {rfqStatus === 'SENT' && customerReply && quoteId && !archived ? (
+        <CustomerReplyCallout
+          quoteId={quoteId}
+          branchId={branchId}
+          reference={reference}
+          reply={customerReply}
+          onChanged={refreshDetail}
+        />
+      ) : null}
+
       {rfqStatus === 'ACCEPTED' && (
         <>
-          <Callout tone="success" title={t('detail.callouts.accepted.title')}>
-            {t('detail.callouts.accepted.description')}
-          </Callout>
+          {quoteId && (acceptanceUnconfirmed || replyUndoable) ? (
+            <ReplyAcceptanceCallout
+              quoteId={quoteId}
+              branchId={branchId}
+              reference={reference}
+              unconfirmed={acceptanceUnconfirmed}
+              undoable={replyUndoable}
+              readOnly={archived}
+              onChanged={refreshDetail}
+            />
+          ) : (
+            <Callout tone="success" title={t('detail.callouts.accepted.title')}>
+              {t('detail.callouts.accepted.description')}
+            </Callout>
+          )}
           {quoteId ? (
             <SaleClosureCard
               quoteId={quoteId}
@@ -317,7 +357,7 @@ export function RfqDetailView({
               invoicingEnabled={invoicingEnabled}
               invoiceOnPayment={invoiceOnPayment}
               invoiceWaived={detail.rfq.invoice_waived_at != null}
-              readOnly={archived}
+              readOnly={archived || acceptanceUnconfirmed}
               onChanged={handleClosureChanged}
             />
           ) : null}
@@ -326,7 +366,7 @@ export function RfqDetailView({
               quoteId={quoteId}
               branchId={branchId}
               clientId={clientId}
-              readOnly={archived}
+              readOnly={archived || acceptanceUnconfirmed}
               reference={reference}
               waiver={
                 detail.rfq.invoice_waived_at
@@ -399,10 +439,23 @@ export function RfqDetailView({
               quoteId={quoteId}
               branchId={branchId}
               onChanged={refreshDetail}
+              accepted={rfqStatus === 'ACCEPTED'}
             />
           ) : null}
         </>
       )}
+
+      {rfqStatus === 'CHANGE_REQUESTED' && quoteId && !archived && sentVersion > 0 ? (
+        <div className="flex justify-end">
+          <AcceptSentVersionButton
+            quoteId={quoteId}
+            branchId={branchId}
+            reference={reference}
+            sentVersion={sentVersion}
+            onChanged={refreshDetail}
+          />
+        </div>
+      ) : null}
 
       {rfqStatus === 'SENT' && detail.quote?.expires_at && (
         <Callout tone="info" title={t('detail.callouts.sent.title')}>
