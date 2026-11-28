@@ -258,14 +258,18 @@ func (s *ClientContactVerificationService) addProvedNumber(ctx context.Context, 
 			hasKind = true
 		}
 	}
-	contacts := append(stored, domain.ClientContact{Kind: domain.ChannelTypeWhatsApp, Value: value, Primary: !hasKind})
+	added := domain.ClientContact{Kind: domain.ChannelTypeWhatsApp, Value: value, Primary: !hasKind}
+	contacts := append(stored, added)
 	if err := s.contacts.checkContactLimit(contacts, len(stored)); err != nil {
 		return err
 	}
 	if !access.Proved {
 		return s.contacts.contacts.SaveDeclared(ctx, q, p, clientID, contacts)
 	}
-	return s.contacts.contacts.Save(ctx, q, p.AccountID, clientID, contacts, "CUSTOMER")
+	if err := s.contacts.contacts.Save(ctx, q, p.AccountID, clientID, contacts, "CUSTOMER"); err != nil {
+		return err
+	}
+	return s.contacts.contacts.Declare(ctx, q, p, clientID, []domain.ClientContact{added})
 }
 
 // quoteToken is the delivery token of a portal quote page, empty for any other page.

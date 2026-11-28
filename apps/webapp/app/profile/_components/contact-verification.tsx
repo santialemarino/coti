@@ -30,6 +30,7 @@ import {
   readContactVerification,
   requestContactVerification,
 } from '@/app/profile/actions';
+import { usePortalPath } from '@/components/portal-link';
 import type { WhatsAppProof } from '@/lib/api/customer-profile';
 import type { ContactKind } from '@/lib/api/customer-profile-model';
 
@@ -60,6 +61,8 @@ export function ContactVerification({
 }: ContactVerificationProps) {
   const t = useTranslations('customerProfile');
   const router = useRouter();
+  const portalPath = usePortalPath();
+  const destination = next ? portalPath(next) : '';
   const [sending, setSending] = useState(false);
   const [challenge, setChallenge] = useState<string | null>(initialChallenge ?? null);
   const [proof, setProof] = useState<PendingProof | null>(initialProof ?? null);
@@ -75,7 +78,7 @@ export function ContactVerification({
       if (status === 'VERIFIED') {
         setProof(null);
         toast.success(t('verified'));
-        if (next) router.push(next);
+        if (destination) router.push(destination);
         else router.refresh();
       } else if (status === 'EXPIRED') {
         setProof(null);
@@ -83,7 +86,7 @@ export function ContactVerification({
       }
     }, PROOF_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [proof, next, router, t]);
+  }, [proof, destination, router, t]);
 
   async function request() {
     setSending(true);
