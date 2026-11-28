@@ -595,3 +595,17 @@ client has one or waits for the customer to write. An account with no `public_ho
 like a customer's verification request, answers 503 `PORTAL_NOT_CONFIGURED`.
 
 Quotation publication cannot assign a CUIT; it creates provisional profiles or selects existing ones.
+
+### Internal client notes and activity
+
+Backoffice staff can edit notes on provisional and registered profiles through
+`PUT /v1/clients/{clientId}/notes`. Notes use the existing 512-character profile field. The
+API trims surrounding whitespace, clears the field for an empty string, and accepts line breaks.
+The last saved edit wins when staff edit the same note concurrently. Internal notes are staff-only.
+
+The client profile API returns open quotation count, confirmed accepted quotation count, last
+acceptance, and average confirmed ticket. Activity uses the same account, branch, and seller
+reach as the profile's sales history. Open metrics use unarchived quotes, and purchase metrics
+use confirmed acceptances. PostgreSQL rounds the average to
+two decimal places and the API returns it as a decimal string. The quote workspace displays
+this activity, the profile's tags, and the shared notes editor for an associated client.

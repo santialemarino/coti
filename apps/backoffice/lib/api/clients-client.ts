@@ -112,6 +112,17 @@ export async function updateClientFiscal(
   return mapClientFiscal((await response.json()) as ClientFiscalRaw);
 }
 
+export async function updateClientNotes(clientId: string, notes: string): Promise<Client> {
+  const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/notes`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+    cache: 'no-store',
+  });
+  if (!response.ok) await throwApiError(response);
+  return mapClient((await response.json()) as ClientRaw);
+}
+
 export async function renameClient(clientId: string, name: string): Promise<Client> {
   const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/name`, {
     method: 'PUT',

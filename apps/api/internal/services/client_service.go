@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -14,11 +15,14 @@ import (
 )
 
 const (
-	maxClientNameLength = 255
-	maxClientTagLength  = 128
+	maxClientNameLength  = 255
+	maxClientNotesLength = 512
+	maxClientTagLength   = 128
 )
 
 type clientProfileRepository interface {
+	GetActivity(context.Context, repository.Querier, domain.Tenant, uuid.UUID) (domain.ClientActivity, error)
+	UpdateNotes(context.Context, repository.Querier, uuid.UUID, uuid.UUID, *string) (*domain.Client, error)
 	GetRequestContact(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ClientContactHints, error)
 	FindByTaxID(context.Context, repository.Querier, uuid.UUID, string) ([]domain.Client, error)
 	IsRegistered(context.Context, repository.Querier, uuid.UUID, uuid.UUID) (bool, error)
@@ -183,7 +187,11 @@ func (s *ClientService) GetClient(
 		if err != nil {
 			return err
 		}
-		profile = &domain.ClientProfile{Client: *client, Registered: registered, Tags: nonNilTags(append(byClient[clientID], automatic[clientID].Applied...)),
+		activity, err := s.clients.GetActivity(ctx, q, tenant, clientID)
+		if err != nil {
+			return err
+		}
+		profile = &domain.ClientProfile{Activity: activity, Client: *client, Registered: registered, Tags: nonNilTags(append(byClient[clientID], automatic[clientID].Applied...)),
 			ExcludedTags: nonNilTags(automatic[clientID].Excluded), Sales: sales}
 		return nil
 	})
@@ -359,6 +367,33 @@ func (s *ClientService) ReplaceClientTags(
 		return s.tags.ReplaceClientTags(ctx, q, tenant.AccountID, clientID, tagIDs)
 	})
 	return nonNilTags(selected), err
+}
+
+// UpdateNotes edits internal notes for a live client, including registered profiles.
+func (s *ClientService) UpdateNotes(
+	ctx context.Context, tenant domain.Tenant, clientID uuid.UUID, notes string,
+) (*domain.Client, error) {
+	value, err := normalizeClientNotes(notes)
+	if err != nil {
+		return nil, err
+	}
+	var client *domain.Client
+	err = s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+		var err error
+		client, err = s.clients.UpdateNotes(ctx, q, tenant.AccountID, clientID, value)
+		return err
+	})
+	return client, err
+}
+
+func normalizeClientNotes(notes string) (*string, error) {
+	if !utf8.ValidString(notes) || utf8.RuneCountInString(notes) > maxClientNotesLength {
+		return nil, fmt.Errorf("%w: client notes exceed %d characters or contain invalid UTF-8", domain.ErrInvalidInput, maxClientNotesLength)
+	}
+	if strings.ContainsFunc(notes, func(r rune) bool { return r != '\n' && unicode.IsControl(r) }) {
+		return nil, fmt.Errorf("%w: client notes contain a control character", domain.ErrInvalidInput)
+	}
+	return normalizedOptional(&notes), nil
 }
 
 func normalizeNewClient(client *domain.NewClient) error {

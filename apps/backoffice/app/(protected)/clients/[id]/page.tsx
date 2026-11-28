@@ -27,6 +27,7 @@ import { ClientNameEditor } from '@/app/(protected)/clients/[id]/_components/cli
 import { ClientRegistrationLink } from '@/app/(protected)/clients/[id]/_components/client-registration-link';
 import { ClientTagEditor } from '@/app/(protected)/clients/[id]/_components/client-tag-editor';
 import { BackLink } from '@/components/back-link';
+import { ClientNotesEditor } from '@/components/client-notes-editor';
 import { ROUTES } from '@/config/routes';
 import { getAccount } from '@/lib/api/account';
 import {
@@ -132,6 +133,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 </span>
               </div>
             </div>
+            <ClientNotesEditor clientId={id} name={name} notes={profile.client.notes} />
           </CardContent>
         </Card>
 

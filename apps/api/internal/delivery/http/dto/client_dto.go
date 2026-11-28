@@ -55,10 +55,24 @@ type ClientSaleResponse struct {
 	InvoiceStatus string `json:"invoice_status" enums:"INVOICED,PENDING,WAIVED,UNINVOICED"`
 }
 
+// ClientActivityResponse summarizes visible quotation activity.
+type ClientActivityResponse struct {
+	OpenQuotes     int        `json:"open_quotes"`
+	AcceptedCount  int        `json:"accepted_count"`
+	LastAcceptedAt *time.Time `json:"last_accepted_at"`
+	AverageTicket  *string    `json:"average_ticket"`
+}
+
+// UpdateClientNotesRequest supplies internal notes, or clears them with an empty value.
+type UpdateClientNotesRequest struct {
+	Notes *string `json:"notes" binding:"omitempty,max=512"`
+}
+
 // ClientProfileResponse is returned by GET /v1/clients/:clientId.
 type ClientProfileResponse struct {
-	ExcludedTags []ClientTagResponse `json:"excluded_tags"`
-	Client       ClientResponse      `json:"client"`
+	Activity     ClientActivityResponse `json:"activity"`
+	ExcludedTags []ClientTagResponse    `json:"excluded_tags"`
+	Client       ClientResponse         `json:"client"`
 	// Registered is true when a customer account manages the profile; no seller renames or merges it.
 	Registered bool                 `json:"registered"`
 	Tags       []ClientTagResponse  `json:"tags"`
