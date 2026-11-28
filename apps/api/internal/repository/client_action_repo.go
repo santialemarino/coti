@@ -103,8 +103,15 @@ func (r *ClientActionRepository) GetStandingAcceptance(ctx context.Context, q Qu
 	accountID, versionID uuid.UUID) (*domain.ClientAction, error) {
 	return scanClientAction(q.QueryRow(ctx, `SELECT `+clientActionColumns+`
 		FROM client_action action
+		JOIN quote_version version ON version.account_id = action.account_id
+		  AND version.id = action.version_id
 		WHERE action.account_id = $1 AND action.version_id = $2 AND action.type = 'ACCEPT'
 		  AND action.revoked_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM quote_status_change change
+		    WHERE change.account_id = action.account_id AND change.quote_id = version.quote_id
+		      AND change.previous_status IN ('ACCEPTED', 'REJECTED')
+		      AND change.new_status IN ('QUOTED', 'CHANGE_REQUESTED')
+		      AND change.changed_at > action.created_at)
 		ORDER BY action.created_at DESC, action.id DESC LIMIT 1`, accountID, versionID))
 }
 
