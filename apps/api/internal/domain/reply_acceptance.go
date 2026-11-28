@@ -116,12 +116,21 @@ var acceptancePhrases = []string{
 	"adelante", "mandale", "mandalo", "cerramos", "perfecto", "buenisimo", "me sirve",
 }
 
-// IsPlainAcceptance reports whether text is short, at most maxWords words, and uses one of the
-// fixed acceptance phrases as whole words.
+// negationWords turn an acceptance phrase around («no me sirve»), so a reply carrying one is never
+// plain, whatever the model read.
+var negationWords = map[string]bool{"no": true, "ni": true, "nunca": true, "tampoco": true}
+
+// IsPlainAcceptance reports whether text is short, at most maxWords words, uses one of the fixed
+// acceptance phrases as whole words, and carries no negation.
 func IsPlainAcceptance(text string, maxWords int) bool {
 	words := acceptanceWords(text)
 	if len(words) == 0 || len(words) > maxWords {
 		return false
+	}
+	for _, word := range words {
+		if negationWords[word] {
+			return false
+		}
 	}
 	joined := " " + strings.Join(words, " ") + " "
 	for _, phrase := range acceptancePhrases {

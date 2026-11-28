@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -135,11 +136,24 @@ func TestReplyAcceptance_AnUnsureAcceptanceWaitsForTheSeller(t *testing.T) {
 	if len(notifier.outcomes) != 1 || !notifier.outcomes[0].Unconfirmed {
 		t.Errorf("seller told = %+v, want an acceptance to confirm", notifier.outcomes)
 	}
-	quotes := e.acceptanceQuoteService()
+	quotes := e.acceptanceQuoteService().WithInvoicingSwitch(repository.NewInvoicingRepository())
 	tenant := quote.seed.tenant
 	if _, err := quotes.MarkPaid(context.Background(), tenant, quote.quoteID); domain.CodeOf(err) !=
 		domain.CodeQuoteAcceptanceUnconfirmed {
 		t.Fatalf("MarkPaid() = %v, want QUOTE_ACCEPTANCE_UNCONFIRMED", err)
+	}
+	e.setInvoicing(t, tenant.AccountID, true)
+	if _, err := quotes.WaiveInvoice(context.Background(), tenant, quote.quoteID); domain.CodeOf(err) !=
+		domain.CodeQuoteAcceptanceUnconfirmed {
+		t.Fatalf("WaiveInvoice() = %v, want QUOTE_ACCEPTANCE_UNCONFIRMED", err)
+	}
+	invoices := services.NewInvoiceService(e.db, repository.NewInvoicingRepository(),
+		repository.NewQuoteRepository(), repository.NewQuoteDiscountRepository(), authorizingARCA{number: 1},
+		nil, services.InvoiceSettings{Enabled: true, Environment: domain.ARCAEnvironmentHomologation,
+			IssueTimeout: time.Minute, ReconcileAfter: time.Hour}, nil, nil)
+	if _, err := invoices.Issue(context.Background(), tenant, quote.quoteID,
+		domain.InvoiceExpectation{}); domain.CodeOf(err) != domain.CodeQuoteAcceptanceUnconfirmed {
+		t.Fatalf("Issue() = %v, want QUOTE_ACCEPTANCE_UNCONFIRMED", err)
 	}
 	confirmed, err := quotes.ConfirmAcceptance(context.Background(), tenant, quote.quoteID)
 	if err != nil || confirmed.AcceptanceUnconfirmedAt != nil {
@@ -163,6 +177,32 @@ func TestReplyAcceptance_UndoClearsAPendingConfirmation(t *testing.T) {
 		quote.quoteID)
 	if err != nil || undone.CurrentStatus != domain.QuoteStatusSent || undone.AcceptanceUnconfirmedAt != nil {
 		t.Fatalf("UndoAcceptance() = %+v, %v, want SENT with no pending mark", undone, err)
+	}
+}
+
+// An acceptance answering a send that has expired only raises a signal.
+func TestReplyAcceptance_AnExpiredSendKeepsItSent(t *testing.T) {
+	e := newEnv(t)
+	quote := e.sentHandlerQuote(t, "Reply accepts expired")
+	if _, err := e.db.CrossAccount().Exec(context.Background(),
+		`UPDATE quote_send SET expires_at = now() - interval '1 minute'
+		 WHERE version_id = $1`, quote.sentID); err != nil {
+		t.Fatal(err)
+	}
+	batch := e.claimedBatch(t, quote.seed.tenant.AccountID, quote.quoteID, "dale")
+	if err := e.acceptingHandler(acceptedReply(97), &capturedOutcomes{}).
+		Handle(context.Background(), batch); err != nil {
+		t.Fatalf("Handle() = %v", err)
+	}
+	if state := e.quoteState(t, quote.quoteID); state.status != domain.QuoteStatusSent {
+		t.Errorf("status = %s, want SENT with a signal", state.status)
+	}
+	var holds string
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT d.ai_proposal::jsonb ->> 'acceptance_holds' FROM handler_decision d
+		 WHERE d.message_batch_id = $1`, batch.ID).Scan(&holds); err != nil ||
+		holds != `["SEND_NOT_LIVE"]` {
+		t.Errorf("holds = %q, %v, want SEND_NOT_LIVE", holds, err)
 	}
 }
 
