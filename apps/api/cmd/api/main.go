@@ -231,7 +231,8 @@ func run() error {
 	customerAuthService.WithClientProfiles(contactService)
 	contactMessenger := services.NewClientContactDeliveryService(db, repository.NewClientContactRepository(), accountRepo, mailer, whatsapp.NewMetaSender(&http.Client{Timeout: cfg.WhatsApp.RequestTimeout}, cfg.WhatsApp.GraphAPIVersion), channelSealer, cfg.CustomerAuth)
 	contactService.WithMessaging(contactMessenger, cfg.CustomerAuth.LinkLocalOrigin()).WithPromptLease(cfg.CustomerAuth.ContactPromptLease)
-	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth)
+	contactVerification := services.NewClientContactVerificationService(contactService, repository.NewClientContactRepository(), contactMessenger, cfg.CustomerAuth).
+		WithInboundProofs([]byte(cfg.Auth.JWTSecret))
 	customerAuthService.WithContactRecovery(contactVerification).WithContactProof(contactVerification)
 	publicRFQService := services.NewPublicRFQService(db, repository.NewPublicRFQRepository(),
 		inboundChannelMessageRepo, rfqRepo, rfqAttachmentService, rfqAttachmentRepo, rfqService,
@@ -271,6 +272,7 @@ func run() error {
 	whatsAppInboundService := services.NewWhatsAppInboundService(db, inboundRoutingService,
 		inboundChannelMessageRepo, channelRepo, rfqService, channelSealer, log).
 		WithConversations(conversationService).WithContacts(contactService).
+		WithContactProofs(contactVerification).
 		WithMedia(services.NewWhatsAppMediaIntake(db, rfqRepo, rfqAttachmentRepo,
 			objectStorage.Storage, wakeAttachments))
 	var gmailHandler *handler.GmailHandler
@@ -328,7 +330,10 @@ func run() error {
 		WithDraftDiscounts(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithWhatsAppCredentials(channelSealer).
 		WithCustomerHostnames(repository.NewCustomerAuthRepository(), cfg.CustomerAuth.LinkLocalOrigin()).
-		WithPortalContacts(repository.NewClientContactRepository())
+		WithPortalContacts(repository.NewClientContactRepository()).
+		WithWhatsAppWindow(inboundChannelMessageRepo, domain.QuoteWhatsAppTemplates{
+			Quote: cfg.WhatsApp.QuoteTemplate, Followup: cfg.WhatsApp.FollowupTemplate,
+			Language: cfg.WhatsApp.TemplateLanguage})
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)
@@ -350,14 +355,15 @@ func run() error {
 				RequireVerifiedEmail: cfg.Auth.RequireVerifiedEmail,
 				MailDelivers:         cfg.Mail.Delivers(),
 			}, deliveryhttp.MailAllowance(cfg, rateLimit)),
-			Branch:        handler.NewBranchHandler(branchService),
-			Rfq:           handler.NewRfqHandler(rfqService, highConfidence),
-			Channel:       handler.NewChannelHandler(channelService).WithWhatsAppSignup(signup, signupEnabled, cfg.WhatsApp.SignupAppID, cfg.WhatsApp.SignupConfigID, cfg.WhatsApp.GraphAPIVersion),
-			Product:       handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
-			BranchCatalog: handler.NewBranchCatalogHandler(branchCatalogService),
-			RFQ:           handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
-			RFQAttachment: handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
-			PublicRFQ:     handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
+			Branch:         handler.NewBranchHandler(branchService),
+			Rfq:            handler.NewRfqHandler(rfqService, highConfidence),
+			Channel:        handler.NewChannelHandler(channelService).WithWhatsAppSignup(signup, signupEnabled, cfg.WhatsApp.SignupAppID, cfg.WhatsApp.SignupConfigID, cfg.WhatsApp.GraphAPIVersion),
+			Product:        handler.NewProductHandler(productService, cfg.Storage.MaxFileSize),
+			BranchCatalog:  handler.NewBranchCatalogHandler(branchCatalogService),
+			RFQ:            handler.NewRFQHandler(rfqService, cfg.Storage.MaxFileSize, highConfidence),
+			RFQAttachment:  handler.NewRFQAttachmentHandler(rfqAttachmentService, cfg.Storage.MaxFileSize),
+			InboundMessage: handler.NewInboundMessageHandler(rfqService, highConfidence),
+			PublicRFQ:      handler.NewPublicRFQHandler(publicRFQService, cfg.Storage.MaxFileSize),
 			Quote: handler.NewQuoteHandler(quoteService, quoteDeliveryService,
 				quoteRepresentationService, highConfidence),
 			RecommendationRequest: handler.NewRecommendationRequestHandler(recommendationRequestService),

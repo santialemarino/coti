@@ -106,18 +106,31 @@ it('says only the proofs sign-up really sent are on their way', async () => {
   vi.mocked(getContactVerification).mockImplementation(async (id: string) =>
     id === 'e-1'
       ? { kind: 'EMAIL', value: 'obra@cliente.test', status: 'PENDING', next: '/quotes/tok-1' }
-      : { kind: 'WHATSAPP', value: '+5491155550000', status: 'PENDING', next: '/quotes/tok-1' },
+      : {
+          kind: 'WHATSAPP',
+          value: '',
+          status: 'PENDING',
+          next: '/quotes/tok-1',
+          whatsappProof: {
+            code: '123456',
+            link: 'https://wa.me/5491100000000?text=VERIFICAR%20123456',
+          },
+        },
   );
   const page = await Page({
     searchParams: Promise.resolve({ next: '/quotes/tok-1', email: 'e-1', phone: 'p-1' }),
   });
   const props = rendered(page, PendingVerification);
   expect(props.sentEmail).toBe('obra@cliente.test');
-  expect(props.sentCode).toEqual({ value: '+5491155550000', challenge: 'p-1' });
+  expect(props.sentProof).toEqual({
+    id: 'p-1',
+    code: '123456',
+    link: 'https://wa.me/5491100000000?text=VERIFICAR%20123456',
+  });
 
   vi.mocked(getContactVerification).mockResolvedValue(null);
   const plain = await Page({ searchParams: Promise.resolve({ next: '/quotes/tok-1' }) });
   const none = rendered(plain, PendingVerification);
   expect(none.sentEmail).toBeUndefined();
-  expect(none.sentCode).toBeUndefined();
+  expect(none.sentProof).toBeUndefined();
 });

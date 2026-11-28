@@ -407,6 +407,13 @@
     "verificationSending": "Enviando…",
     "verify": "Verificar",
     "verifyPhone": "Confirmá tu teléfono",
+    "whatsappProof": {
+      "title": "Confirmá tu WhatsApp",
+      "instructions": "Mandá este mensaje desde el WhatsApp que querés confirmar. El botón abre el chat con el mensaje ya escrito.",
+      "waiting": "Cuando llegue tu mensaje, lo confirmamos acá.",
+      "open": "Abrir WhatsApp",
+      "expired": "El código venció. Pedí uno nuevo."
+    },
     "code": "Código recibido por WhatsApp",
     "codeInvalid": "Ingresá el código de 6 dígitos.",
     "verifying": "Verificando…",
@@ -421,14 +428,14 @@
       "email": "Pedí un enlace para confirmar que es tuyo.",
       "emailSent": "Te mandamos un enlace para confirmarlo. Abrilo en este dispositivo o en cualquier otro.",
       "emailSentToast": "Te mandamos un enlace a {email}.",
-      "phone": "Pedí un código por WhatsApp para confirmar que es tuyo.",
-      "phoneSent": "Te mandamos un código por WhatsApp para confirmarlo.",
+      "phone": "Confirmalo mandándonos un mensaje desde tu WhatsApp.",
+      "phoneSent": "Mandanos el código desde tu WhatsApp para confirmarlo.",
       "send": "Enviar enlace",
       "resend": "Reenviar enlace",
       "sending": "Enviando…",
       "earlierProfile": "Tu CUIT/CUIL ya tenía una ficha en {supplier}. Para ver tus pedidos anteriores, verificá un correo o WhatsApp que ya figuraba en esa ficha.",
       "earlierProfileAction": "Ir a Mis datos",
-      "none": "Todavía no cargaste un correo ni un WhatsApp. Agregá uno en Mis datos para confirmarlo.",
+      "whatsappAny": "Tu WhatsApp",
       "profile": "Corregir mis datos"
     },
     "confirm": {

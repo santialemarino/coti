@@ -195,14 +195,36 @@ schema is English.
 
 ## An order that names no material
 
-The extractor reads nothing a supplier sells — the message was a greeting, or a question about
-opening hours. Then **no quote is created and the `rfq` moves to `FAILED`**, and the route answers
+The extractor first says what the message is (`message_kind`: `ORDER`, `GREETING`, `QUESTION` or
+`OTHER`), and a message that is not an `ORDER` has no lines.
+
+**A channel message** (WhatsApp, or the development simulator) that yields no line is not an order.
+In one transaction its `inbound_channel_message` drops the RFQ it was reserved for and takes the
+kind (an `ORDER` with no line is filed as `OTHER`), and that RFQ — still `RECEIVED`, with no quote
+and no file — is deleted. The seller finds it under «Mensajes sin pedido»
+(`GET /v1/inbound-messages/non-orders`, branch-scoped), and either puts it away
+(`POST /v1/inbound-messages/{id}/dismiss`) or opens the order the reading missed
+(`POST /v1/inbound-messages/{id}/order`, the same pipeline on the seller's behalf). The simulator
+answers `200` with `non_order` instead of `201` with a draft. A name sent in answer to the name
+question that followed a greeting is kept already dismissed, since it joins no order. Automated
+mail (auto-replies, newsletters, bounces) is filed as `AUTOMATED` at intake and never read.
+
+**A seller-typed order, a file, or an order the seller opened from a message** that yields no line
+keeps the old rule: **no quote is created and the `rfq` moves to `FAILED`**, and the route answers
 `201` with the order alone: the text was stored, which is the part that matters, and the seller
 works it by hand. A later run would read the same nothing, so there is nothing to wait for.
 
 `GENERATED` means the engine produced materials, so an order that produced none has not reached
 it, and a `quote` with no lines would be indistinguishable from an order for nothing. The response
 carries `quote` and `version` as `null` for exactly this case.
+
+## One conversation, two orders
+
+A client who writes again a few minutes after an order («agregá 10 ladrillos») gets a second order
+today. The order screen shows each such pair: `GET /v1/rfqs/{rfqId}` carries `split_from`, the
+nearest other open (not archived) order the same sender opened on the same channel within
+`RFQ_SPLIT_ORDER_WINDOW_MINUTES` (60 by default), before or after this one. The seller sees «Otro
+pedido de este cliente hace N min», opens the other order, or archives this one from the callout.
 
 ## What a failed match does
 

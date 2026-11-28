@@ -171,6 +171,8 @@ type QuoteDeliveryService struct {
 	customerLocalOrigin string
 	channelOpener       channelConfigOpener
 	portalContacts      quotePortalContactReader
+	recentSenders       quoteRecentSenderReader
+	templates           domain.QuoteWhatsAppTemplates
 	now                 func() time.Time
 	log                 *slog.Logger
 }
@@ -301,6 +303,17 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 
 	commitCtx := context.WithoutCancel(ctx)
 	err = s.db.InTenantTx(commitCtx, tenant, func(q repository.Querier) error {
+		// The client is confirmed before this send's outcomes are stored, so they never read as an
+		// earlier send that forbids changing the client on a first send.
+		if anySuccess {
+			current, err := s.quotes.GetByIDForUpdate(commitCtx, q, tenant.AccountID, tenant.BranchID, quote.ID)
+			if err != nil {
+				return err
+			}
+			if err := s.clients.ConfirmForSend(commitCtx, q, tenant, *current, normalized.ClientAssociation); err != nil {
+				return err
+			}
+		}
 		if len(outcomes) > 0 {
 			if err := s.sends.CompleteBatch(commitCtx, q, tenant.AccountID, outcomes); err != nil {
 				return err
@@ -309,18 +322,11 @@ func (s *QuoteDeliveryService) sendLocked(ctx context.Context, tenant domain.Ten
 		if !anySuccess {
 			return nil
 		}
-		current, err := s.quotes.GetByIDForUpdate(commitCtx, q, tenant.AccountID, tenant.BranchID, quote.ID)
-		if err != nil {
-			return err
-		}
-		if err := s.clients.ConfirmForSend(commitCtx, q, tenant, *current, normalized.ClientAssociation); err != nil {
-			return err
-		}
 		if err := s.quotes.SetExpiry(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID, expiresAt); err != nil {
 			return err
 		}
-		current, err = s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
+		current, err := s.quotes.GetByID(commitCtx, q, tenant.AccountID, tenant.BranchID,
 			quote.ID)
 		if err != nil {
 			return err
@@ -486,6 +492,10 @@ func (s *QuoteDeliveryService) prepare(ctx context.Context, tenant domain.Tenant
 		}
 		selected, err := s.selectedChannels(ctx, q, tenant, in, rfq.ChannelID)
 		if err != nil {
+			return err
+		}
+		if err := s.requireWhatsAppReach(ctx, q, tenant, selected, deliveryPhones(in),
+			in.FollowupMessage != nil); err != nil {
 			return err
 		}
 		news := make([]domain.NewQuoteSend, 0, len(selected))
@@ -831,6 +841,7 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 				message = quoteSendMessage{Body: sellerSendBody, Link: send.PublicURL}
 			}
 			messageBody := strings.ReplaceAll(message.Body, domain.QuotePublicURLPlaceholder, message.Link)
+			refusal := message.Refusal
 			outcome := domain.QuoteSendOutcome{ID: send.ID,
 				Status: domain.SendTrackingStatusFailed}
 			var err error
@@ -843,8 +854,11 @@ func (s *QuoteDeliveryService) dispatch(ctx context.Context, tenant domain.Tenan
 					DeliveryID: send.ID, To: send.Destination,
 					Body:      messageBody,
 					PublicURL: message.Link,
+					Template:  message.Template,
 				}
-				if credentialsErr != nil {
+				if refusal != nil {
+					err = refusal
+				} else if credentialsErr != nil {
 					err = credentialsErr
 				} else if credential, found := credentials[send.ChannelID]; found {
 					message.Credentials = credential

@@ -374,13 +374,29 @@
   },
   {
     "id": "no-materials",
-    "description": "Un mensaje que no es un pedido se guarda sin inventar una cotización",
+    "description": "Una consulta se guarda como mensaje sin pedido, sin abrir un pedido fallido",
     "message": "Hola, me pasas la direccion y el horario de hoy?",
     "expected": {
-      "rfq_status": "FAILED",
-      "quote_status": null,
-      "item_count": 0,
-      "items": []
+      "http_status": 200,
+      "non_order_kind": "QUESTION"
+    }
+  },
+  {
+    "id": "greeting-announces-order",
+    "description": "TC-01: un saludo que anuncia un pedido sin nombrar materiales no es un pedido",
+    "message": "Hola, necesito cotizar materiales para una obra.",
+    "expected": {
+      "http_status": 200,
+      "non_order_kind": "GREETING"
+    }
+  },
+  {
+    "id": "stock-question",
+    "description": "Preguntar por el stock de un material es una consulta, no un pedido",
+    "message": "¿tenés stock de cemento?",
+    "expected": {
+      "http_status": 200,
+      "non_order_kind": "QUESTION"
     }
   }
 ]

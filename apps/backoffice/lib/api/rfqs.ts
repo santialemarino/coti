@@ -190,6 +190,14 @@ export interface RfqDetailResponse {
   conversation?: ConversationResponse;
   // The quote stands accepted on an acceptance read from the customer's reply.
   accepted_by_reply?: boolean;
+  // The other open order the same sender opened shortly before or after this one.
+  split_from?: SplitOrderResponse;
+}
+
+export interface SplitOrderResponse {
+  rfq_id: string;
+  quote_number: number | null;
+  created_at: string;
 }
 
 interface PublicRfqDetailRaw extends RfqDetailResponse {

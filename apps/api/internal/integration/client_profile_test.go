@@ -199,3 +199,68 @@ func TestClientProfile_SendPreservesImmutableCUITAndExistingContacts(t *testing.
 		t.Fatalf("published reassignment: %v, sends %d", err, sender.count())
 	}
 }
+
+// A quote that already has a client can go out to another one on its first send, an existing
+// profile or a new one: the choice is validated before anything goes out, and the send then lands
+// whole (the quote SENT, its sends recorded, the client changed). A choice that fails validation
+// sends nothing.
+func TestClientProfile_FirstSendCanChangeTheClient(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	existing := e.seedSendableQuote(t, "First send other client", false)
+	created := e.seedSendableQuoteIn(t, existing, "First send new client")
+	account := existing.tenant.AccountID
+	other := uuid.New()
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,phone) VALUES($1,$2,'Otro cliente','+5491155550777')`, other, account); err != nil {
+		t.Fatal(err)
+	}
+	sender := &captureWhatsAppSender{}
+	delivery := e.quoteDeliveryService(t, sender, &stagedQuoteEmailSender{}, nil)
+	state := func(seed sendableQuote) (status string, client uuid.UUID, rfqClient uuid.UUID, sent int) {
+		t.Helper()
+		if err := e.db.CrossAccount().QueryRow(ctx, `SELECT q.current_status, q.client_id, r.client_id,
+ (SELECT count(*) FROM quote_send s JOIN quote_version v ON v.id=s.version_id WHERE v.quote_id=q.id AND s.tracking_status='SENT')
+ FROM quote q JOIN rfq r ON r.id=q.rfq_id WHERE q.id=$1`, seed.draft.Quote.ID).Scan(&status, &client, &rfqClient, &sent); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	if _, err := delivery.Send(ctx, existing.tenant, existing.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(),
+		Phone: "+5491155550777", ClientAssociation: &domain.AssociateQuoteClientInput{ClientID: &other}}); err != nil {
+		t.Fatalf("first send to another existing client = %v", err)
+	}
+	if status, client, rfqClient, sent := state(existing); status != "SENT" || client != other || rfqClient != other || sent != 2 {
+		t.Errorf("existing client: status %s, client %v, request %v, %d sends; want SENT to the other client with both sends", status, client, rfqClient, sent)
+	}
+
+	name, phone := "Cliente nuevo", "+5491155550778"
+	if _, err := delivery.Send(ctx, created.tenant, created.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(),
+		Phone: phone, ClientAssociation: &domain.AssociateQuoteClientInput{New: &domain.NewClient{Name: &name, Phone: &phone}}}); err != nil {
+		t.Fatalf("first send to a new client = %v", err)
+	}
+	status, client, _, sent := state(created)
+	var clientName string
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT name FROM client WHERE id=$1`, client).Scan(&clientName); err != nil {
+		t.Fatal(err)
+	}
+	if status != "SENT" || clientName != name || sent != 2 {
+		t.Errorf("new client: status %s, client %q, %d sends; want SENT to the new profile with both sends", status, clientName, sent)
+	}
+
+	refused := e.seedSendableQuote(t, "First send refused client", false)
+	calls := sender.count()
+	missing := uuid.New()
+	_, err := delivery.Send(ctx, refused.tenant, refused.draft.Quote.ID, domain.QuoteDeliveryInput{IdempotencyKey: uuid.New(),
+		Phone: "+5491155550779", ClientAssociation: &domain.AssociateQuoteClientInput{ClientID: &missing}})
+	if err == nil || sender.count() != calls {
+		t.Fatalf("a refused client choice = %v after %d calls, want an error and nothing sent", err, sender.count()-calls)
+	}
+	if status, _, _, sent := state(refused); status != "QUOTED" || sent != 0 {
+		t.Errorf("refused choice left status %s and %d sends, want the quote untouched", status, sent)
+	}
+	var pending int
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT count(*) FROM quote_send s JOIN quote_version v ON v.id=s.version_id WHERE v.quote_id=$1`, refused.draft.Quote.ID).Scan(&pending); err != nil || pending != 0 {
+		t.Errorf("refused choice created %d sends (%v)", pending, err)
+	}
+}

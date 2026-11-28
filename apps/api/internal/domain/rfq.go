@@ -166,11 +166,23 @@ type ExtractedRFQLine struct {
 // RFQExtraction is one reproducible model answer and the metadata needed to compare it with
 // later prompt or model revisions.
 type RFQExtraction struct {
+	// Kind is what the message is; anything but ORDER with no lines is never an order.
+	Kind          RFQMessageKind
 	Lines         []ExtractedRFQLine
 	Usage         GenerationUsage
 	PromptVersion string
 	SchemaVersion string
 }
+
+// RFQMessageKind is what the extractor read a message as, before any line is matched.
+type RFQMessageKind string
+
+const (
+	RFQMessageOrder    RFQMessageKind = "ORDER"
+	RFQMessageGreeting RFQMessageKind = "GREETING"
+	RFQMessageQuestion RFQMessageKind = "QUESTION"
+	RFQMessageOther    RFQMessageKind = "OTHER"
+)
 
 // RFQExtractor turns informal RFQ text into the lines a quote draft is built from. It is a
 // feature port: its adapter owns the prompt and the schema and reaches the model through
@@ -237,6 +249,16 @@ type TextRFQDraft struct {
 	Items   []QuoteItem
 	// Alternatives are the candidates each flagged line was decided from, keyed by line id.
 	Alternatives map[uuid.UUID][]QuoteItemAlternative
+	// NonOrder is set, and RFQ is empty, when a channel message turned out not to be an order.
+	NonOrder *InboundChannelMessage
+}
+
+// SplitOrder is another order one sender's conversation became, shown so the seller can tell two
+// orders apart from one order split in two.
+type SplitOrder struct {
+	RFQID       uuid.UUID
+	QuoteNumber *int64
+	CreatedAt   time.Time
 }
 
 // RfqDetail is the full detail view projection of one RFQ plus its associated
@@ -244,6 +266,8 @@ type TextRFQDraft struct {
 type RfqDetail struct {
 	Rfq           RfqListItem
 	PublicContact *PublicRFQContact
+	// SplitFrom is the nearest other open order the same sender opened shortly before or after this one.
+	SplitFrom *SplitOrder
 	// OriginalText is the order exactly as it arrived, on every channel.
 	OriginalText      *string
 	PublicAttachments []AttachmentLink

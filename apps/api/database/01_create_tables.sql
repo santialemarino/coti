@@ -617,7 +617,9 @@ CREATE TABLE rfq (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- Who the order is for when there is no client record: on manual entry the seller notes a
   -- loose name and client_id stays NULL. It describes this order, not a person to match.
-  client_label VARCHAR(255)
+  client_label VARCHAR(255),
+  -- When the client was told the order arrived; claimed once, so it is never sent twice.
+  acknowledged_at TIMESTAMPTZ
 );
 
 -- The original input is persisted before it is processed: a quote must always be
@@ -1912,7 +1914,8 @@ CREATE POLICY contact_challenge_account_isolation ON client_contact_challenge US
 CREATE TABLE client_contact_challenge_failure (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
  account_id UUID NOT NULL REFERENCES account(id),
- challenge_id UUID NOT NULL REFERENCES client_contact_challenge(id) ON DELETE CASCADE,
+ -- Empty for a wrong code a customer sent by WhatsApp, which names only the sender's number.
+ challenge_id UUID REFERENCES client_contact_challenge(id) ON DELETE CASCADE,
  kind channel_type NOT NULL CHECK(kind IN ('WHATSAPP','EMAIL')),
  value VARCHAR(255) NOT NULL,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now()

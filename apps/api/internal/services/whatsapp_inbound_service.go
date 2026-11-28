@@ -59,6 +59,10 @@ type whatsAppInboundRFQCreator interface {
 		in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error)
 }
 
+type whatsAppInboundProver interface {
+	ProveByMessage(ctx context.Context, route domain.InboundChannelRoute, sender, code string) error
+}
+
 type whatsAppInboundMediaCreator interface {
 	CreateMediaOrder(ctx context.Context, route domain.InboundChannelRoute, rfqID uuid.UUID,
 		message domain.InboundTextMessage) error
@@ -75,6 +79,7 @@ type WhatsAppInboundService struct {
 	rfqs          whatsAppInboundRFQCreator
 	conversations whatsAppInboundConversations
 	media         whatsAppInboundMediaCreator
+	proofs        whatsAppInboundProver
 	opener        channelConfigOpener
 	now           func() time.Time
 	log           *slog.Logger
@@ -97,6 +102,13 @@ func (s *WhatsAppInboundService) WithConversations(
 	conversations whatsAppInboundConversations,
 ) *WhatsAppInboundService {
 	s.conversations = conversations
+	return s
+}
+
+// WithContactProofs answers a «VERIFICAR 123456» message as a customer proving their number, before
+// it can become an order, a conversation reply or a non-order.
+func (s *WhatsAppInboundService) WithContactProofs(proofs whatsAppInboundProver) *WhatsAppInboundService {
+	s.proofs = proofs
 	return s
 }
 
@@ -175,11 +187,25 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			}
 			continue
 		}
+		if code, proof := InboundProofCode(message.Body); proof && s.proofs != nil && message.Media == nil {
+			err := s.db.WithAdvisoryLock(ctx, "whatsapp-inbound:"+route.ChannelID.String()+":"+
+				message.ExternalMessageID, func() error {
+				return s.proofs.ProveByMessage(ctx, route, message.SenderID, code)
+			})
+			if errors.Is(err, ErrProofReplyUndelivered) {
+				s.log.WarnContext(ctx, "whatsapp proof answered nothing", slog.Any("error", err))
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		if message.Media != nil && s.media == nil {
 			s.log.WarnContext(ctx, "whatsapp file ignored: media intake is not wired")
 			continue
 		}
-		err := s.ingestOne(ctx, route, message)
+		order, err := s.ingestOne(ctx, route, message)
 		if errors.Is(err, errInboundNoConversation) {
 			continue
 		}
@@ -187,7 +213,7 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 			return err
 		}
 		if completer, ok := s.contacts.(inboundContactCompleter); ok {
-			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), domain.ContactReplyContext{}); err != nil {
+			if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeWhatsApp, "+"+strings.TrimPrefix(message.SenderID, "+"), domain.ContactReplyContext{ReceivedRFQ: order}); err != nil {
 				return err
 			}
 		}
@@ -195,11 +221,15 @@ func (s *WhatsAppInboundService) Ingest(ctx context.Context, messages []domain.I
 	return routingErr
 }
 
+// ingestOne stores and routes one message, and returns the order it opened, which is owed the
+// receipt acknowledgement; nil when it joined a conversation, answered the name question or was
+// not an order.
 func (s *WhatsAppInboundService) ingestOne(
 	ctx context.Context, route domain.InboundChannelRoute, message domain.InboundTextMessage,
-) error {
+) (*uuid.UUID, error) {
 	lockKey := "whatsapp-inbound:" + route.ChannelID.String() + ":" + message.ExternalMessageID
-	return s.db.WithAdvisoryLock(ctx, lockKey, func() error {
+	var order *uuid.UUID
+	err := s.db.WithAdvisoryLock(ctx, lockKey, func() error {
 		var reserved *domain.InboundChannelMessage
 		err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 			in := domain.NewInboundChannelMessage{
@@ -220,7 +250,7 @@ func (s *WhatsAppInboundService) ingestOne(
 			if joined == nil && message.ConversationOnly {
 				return errInboundNoConversation
 			}
-			var pending *uuid.UUID
+			var pending *domain.PendingNameRequest
 			var name string
 			if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && joined == nil &&
 				message.Media == nil {
@@ -234,7 +264,13 @@ func (s *WhatsAppInboundService) ingestOne(
 				in.QuoteMessageID = &joined.ID
 			case pending != nil:
 				hints.Name = &name
-				in.RFQID = pending
+				in.RFQID = pending.RFQID
+				// A name that answers a greeting joins no order, and the seller has nothing to read in it.
+				if pending.RFQID == nil {
+					kind := domain.InboundMessageOther
+					in.Kind = &kind
+					in.Dismissed = true
+				}
 				var payload map[string]any
 				if err := json.Unmarshal(in.Payload, &payload); err != nil {
 					return err
@@ -270,13 +306,24 @@ func (s *WhatsAppInboundService) ingestOne(
 			return nil
 		}
 		if message.Media != nil {
-			return s.media.CreateMediaOrder(ctx, route, *reserved.RFQID, message)
+			if err := s.media.CreateMediaOrder(ctx, route, *reserved.RFQID, message); err != nil {
+				return err
+			}
+			order = reserved.RFQID
+			return nil
 		}
-		_, err = s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
+		draft, err := s.rfqs.CreateInboundTextDraftForMessage(ctx, route,
 			domain.InboundTextRFQDraftInput{ClientLabel: message.SenderLabel, RawText: message.Body},
 			*reserved.RFQID)
-		return err
+		if err != nil {
+			return err
+		}
+		if draft != nil && draft.NonOrder == nil {
+			order = reserved.RFQID
+		}
+		return nil
 	})
+	return order, err
 }
 
 // joinConversation appends the message to the live quote conversation its sender continues, or

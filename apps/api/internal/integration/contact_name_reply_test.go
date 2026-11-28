@@ -31,8 +31,11 @@ type rowInboundRFQs struct {
 func (r *rowInboundRFQs) CreateInboundTextDraftForMessage(ctx context.Context, route domain.InboundChannelRoute, in domain.InboundTextRFQDraftInput, rfqID uuid.UUID) (*domain.TextRFQDraft, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.count++
-	_, err := r.e.db.CrossAccount().Exec(ctx, `INSERT INTO rfq(id,account_id,branch_id,channel_id,raw_text,status) VALUES($1,$2,$3,$4,$5,'RECEIVED')`, rfqID, route.AccountID, route.BranchID, route.ChannelID, in.RawText)
+	// A retried delivery resumes the order it reserved, as the pipeline does.
+	tag, err := r.e.db.CrossAccount().Exec(ctx, `INSERT INTO rfq(id,account_id,branch_id,channel_id,raw_text,status) VALUES($1,$2,$3,$4,$5,'RECEIVED') ON CONFLICT (id) DO NOTHING`, rfqID, route.AccountID, route.BranchID, route.ChannelID, in.RawText)
+	if err == nil && tag.RowsAffected() == 1 {
+		r.count++
+	}
 	return &domain.TextRFQDraft{}, err
 }
 
@@ -287,6 +290,16 @@ func TestContactNameReply_AutomatedMailNeverGetsTheQuestion(t *testing.T) {
 	}
 	if len(messenger.messages) != 0 {
 		t.Fatalf("automated mail got %d name prompts", len(messenger.messages))
+	}
+	var rfqs, automated int
+	if err := e.db.CrossAccount().QueryRow(context.Background(),
+		`SELECT (SELECT count(*) FROM rfq WHERE account_id=$1),
+		        (SELECT count(*) FROM inbound_channel_message WHERE account_id=$1 AND kind='AUTOMATED' AND rfq_id IS NULL)`,
+		account).Scan(&rfqs, &automated); err != nil {
+		t.Fatal(err)
+	}
+	if rfqs != 0 || automated != 3 {
+		t.Fatalf("automated mail opened %d orders and kept %d messages, want 0 and 3", rfqs, automated)
 	}
 }
 

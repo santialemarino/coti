@@ -100,6 +100,9 @@ func (m *SMTPMailer) compose(msg domain.EmailMessage) ([]byte, error) {
 		headers = append(headers,
 			"Reply-To: "+(&netmail.Address{Name: msg.ReplyToName, Address: msg.ReplyTo}).String())
 	}
+	if msg.AutoReplied {
+		headers = append(headers, "Auto-Submitted: auto-replied")
+	}
 	// The ID comes from inbound mail, so anything that could fold or end the header is refused.
 	if msg.InReplyTo != "" && !strings.ContainsAny(msg.InReplyTo, "\r\n") {
 		headers = append(headers, "In-Reply-To: "+msg.InReplyTo, "References: "+msg.InReplyTo)

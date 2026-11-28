@@ -44,7 +44,13 @@ func (s *ClientContactService) WithPromptLease(lease time.Duration) *ClientConta
 	return s
 }
 
-// CompleteInbound associates retained requests and dispatches an unknown sender's pending name prompt.
+type orderAcknowledgementStore interface {
+	ClaimOrderAcknowledgement(context.Context, repository.Querier, domain.InboundChannelRoute, uuid.UUID) (bool, error)
+}
+
+// CompleteInbound associates retained requests and sends the sender's fixed replies: the receipt
+// acknowledgement of a new order and an unknown sender's name question, as one message when both
+// are due.
 func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain.InboundChannelRoute, kind domain.ChannelType, value string, reply domain.ContactReplyContext) error {
 	store, ok := s.contacts.(contactOnboardingStore)
 	if !ok {
@@ -55,6 +61,7 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 		return nil
 	}
 	var id *uuid.UUID
+	acknowledge := false
 	err = s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 		if err := store.AssociateObservedRequests(ctx, q, route.AccountID, kind, value); err != nil {
 			return err
@@ -63,31 +70,46 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 			return nil
 		}
 		var err error
-		id, err = store.ClaimNameRequest(ctx, q, route, kind, value, s.prompts.lease)
+		if id, err = store.ClaimNameRequest(ctx, q, route, kind, value, s.prompts.lease); err != nil {
+			return err
+		}
+		if acknowledgements, ok := s.contacts.(orderAcknowledgementStore); ok && reply.ReceivedRFQ != nil {
+			acknowledge, err = acknowledgements.ClaimOrderAcknowledgement(ctx, q, route, *reply.ReceivedRFQ)
+		}
 		return err
 	})
-	if err != nil || id == nil {
+	if err != nil || (id == nil && !acknowledge) {
 		return err
 	}
-	reference, deliveryErr := s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: route.AccountID, BranchID: route.BranchID, ChannelID: route.ChannelID, Purpose: domain.ContactPurposeNameRequest, Kind: kind, To: value, Body: contactNamePrompt, InReplyTo: reply.MessageID})
+	message := domain.ContactMessage{AccountID: route.AccountID, BranchID: route.BranchID, ChannelID: route.ChannelID, Purpose: domain.ContactPurposeNameRequest, Kind: kind, To: value, Body: contactNamePrompt, InReplyTo: reply.MessageID}
+	switch {
+	case id != nil && acknowledge:
+		message.Body = orderAcknowledgementWithName
+	case acknowledge:
+		message.Purpose, message.Body = domain.ContactPurposeAcknowledgement, orderAcknowledgement
+	}
+	reference, deliveryErr := s.messenger.SendContact(ctx, message)
+	if id == nil {
+		return nil
+	}
 	return s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 		return store.FinishNameRequest(ctx, q, route, *id, reference, deliveryErr == nil)
 	})
 }
 
 type inboundNameReplyResolver interface {
-	NameReply(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, string) (*uuid.UUID, string, error)
+	NameReply(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, string) (*domain.PendingNameRequest, string, error)
 }
 
 type pendingNameStore interface {
 	MentionsCatalog(context.Context, repository.Querier, uuid.UUID, string) (bool, error)
-	PendingNameRFQ(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, []string, time.Duration) (*uuid.UUID, error)
+	PendingNameRequest(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, []string, time.Duration) (*domain.PendingNameRequest, error)
 }
 
 // NameReply returns the request a message answers with the sender's name, and that name, or nil when
 // the message is not a name reply: no prompt is answerable, the text fails the reply rule, or it
 // names something in the supplier's catalog.
-func (s *ClientContactService) NameReply(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw, text string) (*uuid.UUID, string, error) {
+func (s *ClientContactService) NameReply(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw, text string) (*domain.PendingNameRequest, string, error) {
 	store, ok := s.contacts.(pendingNameStore)
 	if !ok {
 		return nil, "", nil
@@ -106,7 +128,7 @@ func (s *ClientContactService) NameReply(ctx context.Context, q repository.Queri
 			return nil, "", nil
 		}
 	}
-	pending, err := store.PendingNameRFQ(ctx, q, route, kind, value, destinations, nameReplyWindow)
+	pending, err := store.PendingNameRequest(ctx, q, route, kind, value, destinations, whatsAppServiceWindow)
 	if err != nil || pending == nil {
 		return nil, "", err
 	}

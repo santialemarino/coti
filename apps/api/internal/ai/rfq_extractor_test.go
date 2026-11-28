@@ -294,6 +294,30 @@ func TestRFQExtractionSchema_ForcesTheClosedSourceEnum(t *testing.T) {
 	}
 }
 
+func TestRFQExtractionSchema_ForcesTheMessageKind(t *testing.T) {
+	schema := rfqExtractionSchema()
+	if required, _ := schema["required"].([]string); !slices.Contains(required, "message_kind") {
+		t.Fatalf("required %v, want message_kind: an omitted kind decodes as a silent empty value", required)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	kind, _ := properties["message_kind"].(map[string]any)
+	want := []string{"ORDER", "GREETING", "QUESTION", "OTHER"}
+	if got, _ := kind["enum"].([]string); !reflect.DeepEqual(got, want) {
+		t.Errorf("message_kind enum %v, want %v", got, want)
+	}
+}
+
+func TestRFQExtractor_Extract_CarriesTheMessageKind(t *testing.T) {
+	generator := &fakeGenerator{answer: `{"message_kind":"GREETING","items":[]}`}
+	extraction, err := NewRFQExtractor(generator, 50).Extract(context.Background(), "Hola")
+	if err != nil {
+		t.Fatalf("Extract returned %v", err)
+	}
+	if extraction.Kind != domain.RFQMessageGreeting || len(extraction.Lines) != 0 {
+		t.Errorf("extraction = %+v, want a GREETING with no lines", extraction)
+	}
+}
+
 func TestRFQExtractionSchema_MatchesTheStructItDecodesInto(t *testing.T) {
 	item := itemSchema(t, rfqExtractionSchema())
 	properties, ok := item["properties"].(map[string]any)

@@ -36,6 +36,7 @@ func (failingCorrectionEmbedder) Embed(context.Context, []string) ([]pgvector.Ve
 // stagedExtractor answers with lines the test wrote, so the pipeline can be driven without a
 // provider while everything below it stays real.
 type stagedExtractor struct {
+	kind  domain.RFQMessageKind
 	lines []domain.ExtractedRFQLine
 }
 
@@ -43,6 +44,7 @@ func (s stagedExtractor) Extract(
 	_ context.Context, _ string,
 ) (*domain.RFQExtraction, error) {
 	return &domain.RFQExtraction{
+		Kind:  s.kind,
 		Lines: s.lines,
 		Usage: domain.GenerationUsage{
 			Provider: "integration-provider", Model: "integration-model",

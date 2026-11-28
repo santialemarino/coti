@@ -796,6 +796,7 @@ func (h *RFQHandler) CreateFileDraft(c *gin.Context) {
 //	@Security		BearerAuth
 //	@Param			X-Branch-Id	header		string									true	"Active branch"
 //	@Param			body		body		dto.CreateWhatsAppMockRFQDraftRequest	true	"Inbound WhatsApp message"
+//	@Success		200			{object}	dto.NonOrderOutcomeResponse	"The message is not an order"
 //	@Success		201			{object}	dto.TextRFQDraftResponse
 //	@Failure		400			{object}	dto.ErrorResponse
 //	@Failure		401			{object}	dto.ErrorResponse
@@ -823,6 +824,10 @@ func (h *RFQHandler) CreateWhatsAppMockDraft(c *gin.Context) {
 		})
 	if err != nil {
 		Respond(c, err)
+		return
+	}
+	if draft.NonOrder != nil {
+		c.JSON(http.StatusOK, dto.NonOrderOutcomeResponse{NonOrder: toNonOrderMessageResponse(*draft.NonOrder)})
 		return
 	}
 	c.JSON(http.StatusCreated, toTextRFQDraftResponse(*draft, h.highConfidence))
@@ -879,6 +884,10 @@ func toRfqDetailResponse(
 		QuoteHistory:         toQuoteStatusChangeResponses(detail.QuoteStatusChanges),
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
 		AcceptedByReply:      detail.AcceptedByReply(),
+	}
+	if split := detail.SplitFrom; split != nil {
+		resp.SplitFrom = &dto.SplitOrderResponse{RFQID: split.RFQID, QuoteNumber: split.QuoteNumber,
+			CreatedAt: split.CreatedAt}
 	}
 	if contact := detail.PublicContact; contact != nil {
 		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)

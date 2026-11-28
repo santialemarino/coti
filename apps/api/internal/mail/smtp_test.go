@@ -303,6 +303,27 @@ func TestSMTPMailer_Send_AddsReplyToOnlyWhenOneIsGiven(t *testing.T) {
 	}
 }
 
+// A fixed reply to the client's mail says it is automatic, so the client's own responder never answers it.
+func TestSMTPMailer_Send_MarksAnAutomaticReply(t *testing.T) {
+	t.Parallel()
+	for _, autoReplied := range []bool{true, false} {
+		server := startFakeSMTP(t, nil)
+		if err := NewSMTPMailer(smtpConfig(t, server.addr, false)).Send(context.Background(),
+			domain.EmailMessage{To: testTo, Subject: smtpSubject, TextBody: smtpText,
+				AutoReplied: autoReplied}); err != nil {
+			t.Fatalf("Send() = %v, want no error", err)
+		}
+		msg, err := netmail.ReadMessage(strings.NewReader(server.delivered(t).data))
+		if err != nil {
+			t.Fatalf("the adapter wrote no parseable message: %v", err)
+		}
+		want := map[bool]string{true: "auto-replied", false: ""}[autoReplied]
+		if got := msg.Header.Get("Auto-Submitted"); got != want {
+			t.Fatalf("Auto-Submitted = %q, want %q", got, want)
+		}
+	}
+}
+
 // A name prompt answers the customer's own mail, so it carries the supplier's name and threads
 // under that mail, while the sending address stays the platform's.
 func TestSMTPMailer_Send_ActsForTheSupplierInTheCustomersThread(t *testing.T) {

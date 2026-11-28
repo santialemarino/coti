@@ -233,6 +233,11 @@ type WhatsAppConfig struct {
 	GraphAPIVersion   string
 	RequestTimeout    time.Duration
 	WebhookMaxBytes   int64
+	// QuoteTemplate and FollowupTemplate are approved utility templates sent outside the
+	// customer-service window; empty refuses those sends instead.
+	QuoteTemplate    string
+	FollowupTemplate string
+	TemplateLanguage string
 }
 
 // SignupEnabled reports whether the app-wide Embedded Signup configuration is present.
@@ -634,6 +639,8 @@ type RFQConfig struct {
 	 * cut the sweep short for a limit that does not apply to it.
 	 */
 	InlinePipelineTimeout time.Duration
+	// SplitOrderWindow is how close two orders from one sender must be for each to show the other.
+	SplitOrderWindow time.Duration
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -1025,6 +1032,7 @@ func Load() (*Config, error) {
 			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 165*time.Second, &problems),
 			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
 				75*time.Second, &problems),
+			SplitOrderWindow: getDuration("RFQ_SPLIT_ORDER_WINDOW_MINUTES", 60*time.Minute, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
@@ -1098,6 +1106,9 @@ func Load() (*Config, error) {
 			GraphAPIVersion:   getString("WHATSAPP_GRAPH_API_VERSION", "v25.0"),
 			RequestTimeout:    getDuration("WHATSAPP_REQUEST_TIMEOUT_SECONDS", 10*time.Second, &problems),
 			WebhookMaxBytes:   int64(getInt("WHATSAPP_WEBHOOK_MAX_BYTES", 1*1024*1024, &problems)),
+			QuoteTemplate:     getString("WHATSAPP_QUOTE_TEMPLATE", ""),
+			FollowupTemplate:  getString("WHATSAPP_FOLLOWUP_TEMPLATE", ""),
+			TemplateLanguage:  getString("WHATSAPP_QUOTE_TEMPLATE_LANGUAGE", "es_AR"),
 		},
 		Gmail: GmailConfig{
 			ClientID:       getString("GMAIL_OAUTH_CLIENT_ID", ""),
@@ -1286,6 +1297,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if cfg.RFQ.SplitOrderWindow <= 0 {
+		problems = append(problems, "RFQ_SPLIT_ORDER_WINDOW_MINUTES must be greater than zero")
 	}
 	if cfg.RFQ.InlinePipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS must be greater than zero")

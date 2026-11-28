@@ -24,3 +24,13 @@ func TestCustomerNextPath_KeepsOnlyPortalPages(t *testing.T) {
 		}
 	}
 }
+
+func TestWhatsAppVerificationLink(t *testing.T) {
+	t.Parallel()
+	if got := WhatsAppVerificationLink("+54 9 11 4000-0291", "012345"); got != "https://wa.me/5491140000291?text=VERIFICAR%20012345" {
+		t.Errorf("link = %q", got)
+	}
+	if got := WhatsAppVerificationLink("", "012345"); got != "" {
+		t.Errorf("a channel without a number got a link: %q", got)
+	}
+}

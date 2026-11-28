@@ -34,7 +34,16 @@ const (
 	inviteIgnore  = "Si no esperabas esta invitación, ignorá este correo: nadie puede entrar con tu dirección sin este enlace."
 
 	// Decision 79: the same fixed text goes to every unknown sender, so it reveals no profile data.
-	contactNamePrompt = "Gracias por escribirnos. Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
+	contactNamePrompt = "Gracias por escribirnos. " + contactNameAsk
+	contactNameAsk    = "Para registrar tus pedidos a tu nombre, respondé solo con tu nombre y apellido."
+	// Decision 94: the fixed receipt acknowledgement, once per order; a new sender gets it with the name question.
+	orderAcknowledgement         = "Recibimos tu mensaje, un vendedor te responde a la brevedad."
+	orderAcknowledgementWithName = orderAcknowledgement + " " + contactNameAsk
+
+	// The fixed answers to a «VERIFICAR» message; none reveals whose account the code belongs to.
+	whatsAppProofVerified = "Listo, verificamos este número. Ya podés volver al portal."
+	whatsAppProofInvalid  = "Este código no es válido o ya venció. Pedí uno nuevo desde el portal."
+	whatsAppProofTaken    = "Este número ya está verificado en otra cuenta, así que no lo agregamos. Si es un error, avisale al corralón."
 
 	contactVerificationSubject = "Confirmá tu correo"
 	contactVerificationHeading = "Confirmá tu correo"

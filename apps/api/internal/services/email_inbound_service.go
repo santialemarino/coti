@@ -96,6 +96,8 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		return uuid.Nil, fmt.Errorf("%w: email ID and original message are required", domain.ErrInvalidInput)
 	}
 	var rfqID uuid.UUID
+	// opened is the order this mail started, which is owed the receipt acknowledgement.
+	var opened *uuid.UUID
 	lock := "email-inbound:" + route.ChannelID.String() + ":" + message.ExternalMessageID
 	err = s.db.WithAdvisoryLock(ctx, lock, func() error {
 		var findErr error
@@ -121,17 +123,20 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		}); err != nil {
 			return err
 		}
-		if rfqID != uuid.Nil {
+		if findErr == nil {
 			return nil
 		}
-		var nameReply *string
-		// An out-of-office answer to the prompt is short too; automated mail never counts as the reply.
+		// An auto-reply or a newsletter is kept for the seller but never opens an order.
 		human := !message.Automated && !automatedEmailSender(message.SenderID)
-		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 && human {
+		if !human {
+			return s.storeAutomated(ctx, route, message)
+		}
+		var nameReply *string
+		if resolver, ok := s.contacts.(inboundNameReplyResolver); ok && len(message.Attachments) == 0 {
 			if err := s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
 				pending, name, err := resolver.NameReply(ctx, q, route, domain.ChannelTypeEmail, message.SenderID, emailReplyText(message.Body))
-				if err == nil && pending != nil {
-					rfqID = *pending
+				if err == nil && pending != nil && pending.RFQID != nil {
+					rfqID = *pending.RFQID
 					nameReply = &name
 				}
 				return err
@@ -141,6 +146,7 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		}
 		if nameReply == nil {
 			rfqID = uuid.New()
+			opened = &rfqID
 		}
 		if err := s.storeOne(ctx, route, rfqID, message, nameReply); err != nil {
 			return err
@@ -155,7 +161,7 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 	}
 	if completer, ok := s.contacts.(inboundContactCompleter); ok {
 		reply := domain.ContactReplyContext{Automated: message.Automated || automatedEmailSender(message.SenderID),
-			MessageID: message.InternetMessageID}
+			MessageID: message.InternetMessageID, ReceivedRFQ: opened}
 		if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeEmail, message.SenderID, reply); err != nil {
 			return uuid.Nil, err
 		}
@@ -193,15 +199,11 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 		domain.AttachmentProcessingDone, message.Original); err != nil {
 		return err
 	}
-	body := safeEmailText(strings.TrimSpace(message.Body))
-	subject := safeEmailText(strings.TrimSpace(message.Subject))
-	text := body
-	if subject != "" {
-		text = subject
-		if body != "" {
-			text += "\n\n" + body
-		}
+	record, err := s.inboundRecord(message)
+	if err != nil {
+		return err
 	}
+	text := record.Body
 	if text != "" && !reuse {
 		if err := addFile("email.txt", "text/plain", "txt", domain.AttachmentTypeText,
 			domain.AttachmentProcessingPending, []byte(text)); err != nil {
@@ -230,27 +232,6 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			return err
 		}
 	}
-	sender := strings.TrimSpace(message.SenderID)
-	if parsed, err := mail.ParseAddress(sender); err != nil || parsed.Address != sender ||
-		len(sender) > maxInboundProviderIdentifierLength {
-		sender = ""
-	}
-	label := safeEmailText(strings.TrimSpace(message.SenderLabel))
-	if utf8.RuneCountInString(label) > 255 {
-		label = string([]rune(label)[:255])
-	}
-	var senderLabel *string
-	if label != "" {
-		senderLabel = &label
-	}
-	receivedAt := message.ProviderReceivedAt
-	if receivedAt.IsZero() {
-		receivedAt = s.now().UTC()
-	}
-	payload, err := json.Marshal(map[string]string{"provider": "gmail", "subject": subject})
-	if err != nil {
-		return err
-	}
 	status := domain.RFQStatusFailed
 	for _, file := range files {
 		if file.Status == domain.AttachmentProcessingPending {
@@ -271,15 +252,14 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 		if !reuse {
 			if _, err := s.rfqs.Create(ctx, q, route.AccountID, domain.NewRFQ{
 				ID: &rfqID, BranchID: route.BranchID, ChannelID: route.ChannelID,
-				RawText: &text, ClientLabel: senderLabel, Status: status,
+				RawText: &text, ClientLabel: record.SenderLabel, Status: status,
 			}); err != nil {
 				return err
 			}
 		}
+		record.RFQID = &rfqID
 		reserved, err := s.messages.Reserve(ctx, q, route.AccountID, route.BranchID, route.ChannelID,
-			domain.NewInboundChannelMessage{ID: uuid.New(), RFQID: &rfqID,
-				ExternalMessageID: message.ExternalMessageID, SenderID: sender, SenderLabel: senderLabel,
-				Body: text, Payload: payload, ProviderReceivedAt: receivedAt})
+			record)
 		if err != nil {
 			return err
 		}
@@ -291,12 +271,68 @@ func (s *EmailInboundService) storeOne(ctx context.Context, route domain.Inbound
 			if nameReply != nil {
 				hints.Name = nameReply
 			}
-			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, sender, text, hints); err != nil {
+			if err := s.contacts.RecordInbound(ctx, q, route, reserved.ID, domain.ChannelTypeEmail, record.SenderID, text, hints); err != nil {
 				return err
 			}
 		}
 		return s.attachments.CreateInboundBatch(ctx, q, route.AccountID, route.BranchID, rfqID, files)
 	})
+}
+
+// storeAutomated retains an automated mail as a non-order, with no order, file or contact record.
+func (s *EmailInboundService) storeAutomated(ctx context.Context, route domain.InboundChannelRoute,
+	message domain.InboundEmailMessage,
+) error {
+	record, err := s.inboundRecord(message)
+	if err != nil {
+		return err
+	}
+	kind := domain.InboundMessageAutomated
+	record.Kind = &kind
+	return s.db.InTenantTx(ctx, route.Tenant(), func(q repository.Querier) error {
+		_, err := s.messages.Reserve(ctx, q, route.AccountID, route.BranchID, route.ChannelID, record)
+		return err
+	})
+}
+
+// inboundRecord is the message as retained: subject and body as one text, and a sender that is a
+// bare address or nothing.
+func (s *EmailInboundService) inboundRecord(
+	message domain.InboundEmailMessage,
+) (domain.NewInboundChannelMessage, error) {
+	body := safeEmailText(strings.TrimSpace(message.Body))
+	subject := safeEmailText(strings.TrimSpace(message.Subject))
+	text := body
+	if subject != "" {
+		text = subject
+		if body != "" {
+			text += "\n\n" + body
+		}
+	}
+	sender := strings.TrimSpace(message.SenderID)
+	if parsed, err := mail.ParseAddress(sender); err != nil || parsed.Address != sender ||
+		len(sender) > maxInboundProviderIdentifierLength {
+		sender = ""
+	}
+	label := safeEmailText(strings.TrimSpace(message.SenderLabel))
+	if utf8.RuneCountInString(label) > 255 {
+		label = string([]rune(label)[:255])
+	}
+	var senderLabel *string
+	if label != "" {
+		senderLabel = &label
+	}
+	receivedAt := message.ProviderReceivedAt
+	if receivedAt.IsZero() {
+		receivedAt = s.now().UTC()
+	}
+	payload, err := json.Marshal(map[string]string{"provider": "gmail", "subject": subject})
+	if err != nil {
+		return domain.NewInboundChannelMessage{}, err
+	}
+	return domain.NewInboundChannelMessage{ID: uuid.New(), ExternalMessageID: message.ExternalMessageID,
+		SenderID: sender, SenderLabel: senderLabel, Body: text, Payload: payload,
+		ProviderReceivedAt: receivedAt}, nil
 }
 
 func matchesEmailChannel(channel *domain.Channel, destination string) bool {

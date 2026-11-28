@@ -3919,6 +3919,12 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
+                    "200": {
+                        "description": "The message is not an order",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NonOrderOutcomeResponse"
+                        }
+                    },
                     "201": {
                         "description": "Created",
                         "schema": {
@@ -4100,6 +4106,169 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/inbound-messages/non-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Greetings, questions and automated mail the active branch received and no seller has put away, newest first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inbound-messages"
+                ],
+                "summary": "List messages that are not orders",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.NonOrderMessageListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/inbound-messages/{messageId}/dismiss": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "inbound-messages"
+                ],
+                "summary": "Dismiss a message that is not an order",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID",
+                        "name": "messageId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/inbound-messages/{messageId}/order": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reads the message through the order pipeline on the seller's behalf; one that still names no material becomes a failed order to load by hand.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inbound-messages"
+                ],
+                "summary": "Open an order from a message that is not one",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Active branch",
+                        "name": "X-Branch-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message ID",
+                        "name": "messageId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TextRFQDraftResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/dto.RateLimitResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/dto.ErrorResponse"
                         }
@@ -13123,8 +13292,7 @@ const docTemplate = `{
         "dto.ContactVerificationRequest": {
             "type": "object",
             "required": [
-                "kind",
-                "value"
+                "kind"
             ],
             "properties": {
                 "kind": {
@@ -13140,6 +13308,7 @@ const docTemplate = `{
                     "maxLength": 255
                 },
                 "value": {
+                    "description": "Value is the email to verify; a WhatsApp number is proved by the customer writing from it.",
                     "type": "string",
                     "maxLength": 255
                 }
@@ -13148,10 +13317,17 @@ const docTemplate = `{
         "dto.ContactVerificationResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code and WhatsAppLink are the message a WhatsApp proof asks the customer to send, and the chat.",
+                    "type": "string"
+                },
                 "expires_at": {
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "whatsapp_link": {
                     "type": "string"
                 }
             }
@@ -13159,6 +13335,10 @@ const docTemplate = `{
         "dto.ContactVerificationStatusResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "description": "Code and WhatsAppLink stay set while a WhatsApp proof the customer sends is pending.",
+                    "type": "string"
+                },
                 "kind": {
                     "type": "string"
                 },
@@ -13174,6 +13354,9 @@ const docTemplate = `{
                     ]
                 },
                 "value": {
+                    "type": "string"
+                },
+                "whatsapp_link": {
                     "type": "string"
                 }
             }
@@ -14706,6 +14889,57 @@ const docTemplate = `{
             "properties": {
                 "source_client_id": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.NonOrderMessageListResponse": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.NonOrderMessageResponse"
+                    }
+                }
+            }
+        },
+        "dto.NonOrderMessageResponse": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "channel_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "GREETING",
+                        "QUESTION",
+                        "OTHER",
+                        "AUTOMATED"
+                    ]
+                },
+                "received_at": {
+                    "type": "string"
+                },
+                "sender_id": {
+                    "type": "string"
+                },
+                "sender_label": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.NonOrderOutcomeResponse": {
+            "type": "object",
+            "properties": {
+                "non_order": {
+                    "$ref": "#/definitions/dto.NonOrderMessageResponse"
                 }
             }
         },
@@ -16529,6 +16763,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.RFQStatusChangeResponse"
                     }
                 },
+                "split_from": {
+                    "$ref": "#/definitions/dto.SplitOrderResponse"
+                },
                 "version": {
                     "$ref": "#/definitions/dto.QuoteVersionResponse"
                 }
@@ -17333,6 +17570,20 @@ const docTemplate = `{
                 },
                 "tokens": {
                     "$ref": "#/definitions/dto.TokenResponse"
+                }
+            }
+        },
+        "dto.SplitOrderResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
                 }
             }
         },
