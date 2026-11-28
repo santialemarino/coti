@@ -88,7 +88,7 @@ func (r *SellerReportRenderer) Render(report domain.SellerReport, generatedAt ti
 		r.newContentPage(doc, report, generatedAt)
 		y = reportPageTop
 	}
-	y = r.drawRankings(doc, report, y)
+	r.drawRankings(doc, report, y)
 	r.newContentPage(doc, report, generatedAt)
 	y = doc.GetY() - reportSectionGap
 	y = r.drawAIMatch(doc, report, y+reportSectionGap)
