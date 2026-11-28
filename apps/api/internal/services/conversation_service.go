@@ -75,13 +75,14 @@ func (s *ConversationService) Route(ctx context.Context, q repository.Querier,
 	if err != nil {
 		return nil, err
 	}
-	// A quote the customer names leaves no doubt about which one they mean.
+	// A quote the customer names picks the quote, but the others stay counted: a number read from
+	// ordinary text («paso a la 1») must not lift the hold on accepting among several quotes.
 	if references := domain.QuoteReferences(body); len(references) > 0 {
 		for _, candidate := range candidates {
 			if !slices.Contains(references, candidate.QuoteNumber) {
 				continue
 			}
-			match, err := s.claim(ctx, q, route, candidate, 0)
+			match, err := s.claim(ctx, q, route, candidate, len(candidates)-1)
 			if err != nil || match != nil {
 				return match, err
 			}

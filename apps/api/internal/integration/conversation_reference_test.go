@@ -57,8 +57,8 @@ func TestConversationRouting_AQuoteReferenceWinsOverTheNewestSend(t *testing.T) 
 		Scan(&referenced, &unknown); err != nil {
 		t.Fatalf("read hints: %v", err)
 	}
-	if referenced != 0 || unknown != 1 {
-		t.Errorf("other_live_quotes = %d on the named quote and %d on the newest, want 0 and 1",
+	if referenced != 1 || unknown != 1 {
+		t.Errorf("other_live_quotes = %d on the named quote and %d on the newest, want 1 on both",
 			referenced, unknown)
 	}
 }

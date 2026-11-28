@@ -169,16 +169,16 @@ type Conversation struct {
 }
 
 // quoteReferencePatterns read the ways a customer names a quote: «COT-000027», «#27»,
-// «cotización 27», «la 27».
+// «cotización 27», «la 27». A number followed by «de» is a date or a street («la 9 de julio»).
 var quoteReferencePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\bcot[-\s]?0*(\d{1,9})\b`),
-	regexp.MustCompile(`#\s?0*(\d{1,9})\b`),
-	regexp.MustCompile(`\bcotizaci[oó]n\s+(?:n(?:ro|°|º|\.)?\s*)?#?0*(\d{1,9})\b`),
-	regexp.MustCompile(`\bla\s+0*(\d{1,9})\b`),
+	regexp.MustCompile(`\bcot[-\s]?0*(\d{1,9})\b(\s+de\b)?`),
+	regexp.MustCompile(`#\s?0*(\d{1,9})\b(\s+de\b)?`),
+	regexp.MustCompile(`\bcotizaci[oó]n\s+(?:n(?:ro|°|º|\.)?\s*)?#?0*(\d{1,9})\b(\s+de\b)?`),
+	regexp.MustCompile(`\bla\s+0*(\d{1,9})\b(\s+de\b)?`),
 }
 
-// QuoteReferences returns the quote numbers a message names explicitly, in the order it names
-// them. A number only routes when it is one of the sender's live quotes.
+// QuoteReferences returns the quote numbers a message names explicitly. A number only routes
+// when it is one of the sender's live quotes.
 func QuoteReferences(text string) []int64 {
 	lower := strings.ToLower(text)
 	seen := map[int64]bool{}
@@ -186,7 +186,7 @@ func QuoteReferences(text string) []int64 {
 	for _, pattern := range quoteReferencePatterns {
 		for _, match := range pattern.FindAllStringSubmatch(lower, -1) {
 			number, err := strconv.ParseInt(match[1], 10, 64)
-			if err != nil || number <= 0 || seen[number] {
+			if err != nil || number <= 0 || seen[number] || match[2] != "" {
 				continue
 			}
 			seen[number] = true
