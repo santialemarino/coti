@@ -31,7 +31,8 @@ func VerifySignature(appSecret string, body []byte, signature string) bool {
 	return hmac.Equal(decoded, mac.Sum(nil))
 }
 
-// ParseWebhook extracts inbound text messages and reactions from a verified WhatsApp Cloud API payload.
+// ParseWebhook extracts inbound text messages, files and reactions from a verified WhatsApp Cloud
+// API payload. A file arrives as a reference with its caption as the body, which may be empty.
 func ParseWebhook(body []byte) ([]domain.InboundTextMessage, error) {
 	var payload metaWebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -57,14 +58,24 @@ func ParseWebhook(body []byte) ([]domain.InboundTextMessage, error) {
 			}
 			for _, incoming := range change.Value.Messages {
 				body, reaction := incoming.Text.Body, false
+				var media *domain.InboundMedia
 				switch incoming.Type {
 				case "text":
 				case "reaction":
 					body, reaction = incoming.Reaction.Emoji, true
 				default:
-					continue
+					file, kind, known := incoming.file()
+					if !known {
+						continue
+					}
+					if strings.TrimSpace(file.ID) == "" {
+						return nil, fmt.Errorf("WhatsApp webhook %s message has no media ID", incoming.Type)
+					}
+					body = file.Caption
+					media = &domain.InboundMedia{ProviderID: file.ID, MediaType: file.MimeType,
+						Filename: file.Filename, Kind: kind}
 				}
-				if strings.TrimSpace(body) == "" {
+				if media == nil && strings.TrimSpace(body) == "" {
 					continue
 				}
 				if strings.TrimSpace(incoming.ID) == "" || strings.TrimSpace(incoming.From) == "" {
@@ -89,6 +100,7 @@ func ParseWebhook(body []byte) ([]domain.InboundTextMessage, error) {
 					SenderLabel:           senderLabel,
 					Body:                  body,
 					ConversationOnly:      reaction,
+					Media:                 media,
 					ProviderReceivedAt:    metaWebhookTime(incoming.Timestamp),
 					Payload:               messagePayload,
 				})
@@ -211,4 +223,38 @@ type metaWebhookMessage struct {
 		MessageID string `json:"message_id"`
 		Emoji     string `json:"emoji"`
 	} `json:"reaction"`
+	Image    *metaWebhookFile `json:"image,omitempty"`
+	Audio    *metaWebhookFile `json:"audio,omitempty"`
+	Document *metaWebhookFile `json:"document,omitempty"`
+	Video    *metaWebhookFile `json:"video,omitempty"`
+}
+
+type metaWebhookFile struct {
+	ID       string `json:"id"`
+	MimeType string `json:"mime_type"`
+	Caption  string `json:"caption,omitempty"`
+	Filename string `json:"filename,omitempty"`
+}
+
+// file returns the media a message carries and how it was sent, or false for a type that is never
+// an order: a sticker, a location, a contact card.
+func (m metaWebhookMessage) file() (metaWebhookFile, domain.InboundMediaKind, bool) {
+	var file *metaWebhookFile
+	var kind domain.InboundMediaKind
+	switch m.Type {
+	case "image":
+		file, kind = m.Image, domain.InboundMediaImage
+	case "audio":
+		file, kind = m.Audio, domain.InboundMediaAudio
+	case "document":
+		file, kind = m.Document, domain.InboundMediaDocument
+	case "video":
+		file, kind = m.Video, domain.InboundMediaVideo
+	default:
+		return metaWebhookFile{}, "", false
+	}
+	if file == nil {
+		return metaWebhookFile{}, kind, true
+	}
+	return *file, kind, true
 }
