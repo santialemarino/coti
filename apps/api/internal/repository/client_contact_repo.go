@@ -390,11 +390,10 @@ func (r *ClientContactRepository) UpdateCustomerName(ctx context.Context, q Quer
 	return err
 }
 
-// Decide retains the seller and outcome without deleting the original observation. Dismissing a case
-// also dismisses the other pending cases between the same two surviving profiles, which the list
-// shows as that one case.
+// Decide records the outcome and dismisses duplicate cases within the caller's branch scope.
 func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant domain.Tenant, id uuid.UUID, status string) error {
-	result, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5)) AND (status='PENDING' OR status=$3)`, tenant.AccountID, id, status, tenant.UserID, tenant.BranchFilter())
+	branches := tenant.BranchFilter()
+	result, err := q.Exec(ctx, `UPDATE client_contact_observation SET status=$3,decided_by=$4,decided_at=now() WHERE account_id=$1 AND id=$2 AND ($5::uuid[] IS NULL OR branch_id=ANY($5)) AND (status='PENDING' OR status=$3)`, tenant.AccountID, id, status, tenant.UserID, branches)
 	if err == nil && result.RowsAffected() != 1 {
 		return domain.ErrConflict
 	}
@@ -410,10 +409,11 @@ func (r *ClientContactRepository) Decide(ctx context.Context, q Querier, tenant 
  UPDATE client_contact_observation o SET status=$3,decided_by=$4,decided_at=now()
  FROM decided,client s,client c
  WHERE o.account_id=$1 AND o.id<>$2 AND o.status='PENDING' AND s.account_id=$1 AND c.account_id=$1
+   AND ($5::uuid[] IS NULL OR o.branch_id=ANY($5))
    AND s.id=o.source_client_id AND c.id=o.candidate_client_id
    AND LEAST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=LEAST(decided.a,decided.b)
    AND GREATEST(COALESCE(s.merged_into,s.id),COALESCE(c.merged_into,c.id))=GREATEST(decided.a,decided.b)`,
-		tenant.AccountID, id, status, tenant.UserID)
+		tenant.AccountID, id, status, tenant.UserID, branches)
 	return err
 }
 
