@@ -25,7 +25,7 @@ func TestVerifySignature_AcceptsOnlyTheExpectedHMAC(t *testing.T) {
 	}
 }
 
-func TestParseWebhook_ExtractsOnlyInboundTextMessages(t *testing.T) {
+func TestParseWebhook_ExtractsTextMessages(t *testing.T) {
 	t.Parallel()
 	payload := []byte(`{
 		"object":"whatsapp_business_account",
@@ -34,7 +34,7 @@ func TestParseWebhook_ExtractsOnlyInboundTextMessages(t *testing.T) {
 			"contacts":[{"wa_id":"5491112345678","profile":{"name":"Obra Norte"}}],
 			"messages":[
 				{"from":"5491112345678","id":"wamid.inbound","timestamp":"1760000000","type":"text","text":{"body":"10 bolsas de cemento"}},
-				{"from":"5491112345678","id":"wamid.image","timestamp":"1760000001","type":"image"}
+				{"from":"5491112345678","id":"wamid.location","timestamp":"1760000001","type":"location"}
 			]
 		}}]}]
 	}`)
@@ -103,5 +103,60 @@ func TestParseStatuses_KeepsDeliveredReadAndFailedWithTheWindowRefusal(t *testin
 	if statuses[2].Status != domain.SendTrackingStatusFailed || statuses[2].ErrorCode != "131047" ||
 		!statuses[2].OutsideWindow {
 		t.Errorf("failed status = %#v, want the 24 h window refusal", statuses[2])
+	}
+}
+
+// A file arrives as Meta's reference to it, with its caption as the body: a voice note has none,
+// and an image sent as a document keeps the filename the client gave it.
+func TestParseWebhook_ExtractsFilesAsReferencesWithTheirCaption(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{
+		"object":"whatsapp_business_account",
+		"entry":[{"changes":[{"field":"messages","value":{
+			"metadata":{"phone_number_id":"phone-id"},
+			"messages":[
+				{"from":"5491112345678","id":"wamid.photo","timestamp":"1760000000","type":"image",
+				 "image":{"id":"media-photo","mime_type":"image/jpeg","caption":"esto para el lunes"}},
+				{"from":"5491112345678","id":"wamid.voice","timestamp":"1760000001","type":"audio",
+				 "audio":{"id":"media-voice","mime_type":"audio/ogg; codecs=opus","voice":true}},
+				{"from":"5491112345678","id":"wamid.doc","timestamp":"1760000002","type":"document",
+				 "document":{"id":"media-doc","mime_type":"image/png","filename":"pedido.png"}}
+			]
+		}}]}]
+	}`)
+
+	messages, err := ParseWebhook(payload)
+	if err != nil {
+		t.Fatalf("ParseWebhook() = %v, want no error", err)
+	}
+	want := []struct {
+		body  string
+		media domain.InboundMedia
+	}{
+		{"esto para el lunes", domain.InboundMedia{ProviderID: "media-photo", MediaType: "image/jpeg",
+			Kind: domain.InboundMediaImage}},
+		{"", domain.InboundMedia{ProviderID: "media-voice", MediaType: "audio/ogg; codecs=opus",
+			Kind: domain.InboundMediaAudio}},
+		{"", domain.InboundMedia{ProviderID: "media-doc", MediaType: "image/png",
+			Filename: "pedido.png", Kind: domain.InboundMediaDocument}},
+	}
+	if len(messages) != len(want) {
+		t.Fatalf("messages = %d, want %d", len(messages), len(want))
+	}
+	for i, w := range want {
+		if messages[i].Body != w.body || messages[i].Media == nil || *messages[i].Media != w.media {
+			t.Errorf("message %d = body %q media %+v, want %q %+v", i, messages[i].Body,
+				messages[i].Media, w.body, w.media)
+		}
+	}
+}
+
+func TestParseWebhook_RefusesAFileWithNoMediaID(t *testing.T) {
+	t.Parallel()
+	payload := []byte(`{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages",
+		"value":{"metadata":{"phone_number_id":"phone-id"},"messages":[
+		{"from":"5491112345678","id":"wamid.photo","timestamp":"1760000000","type":"image"}]}}]}]}`)
+	if _, err := ParseWebhook(payload); err == nil {
+		t.Fatal("ParseWebhook() = nil, want a file with no media ID refused")
 	}
 }

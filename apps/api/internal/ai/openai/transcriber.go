@@ -118,6 +118,14 @@ func (t *Transcriber) multipartBody(audio domain.Audio) (*bytes.Reader, string, 
 	if err := form.WriteField("response_format", "json"); err != nil {
 		return nil, "", fmt.Errorf("compose transcription request: %w", err)
 	}
+	for field, value := range map[string]string{"language": audio.Language, "prompt": audio.Vocabulary} {
+		if value == "" {
+			continue
+		}
+		if err := form.WriteField(field, value); err != nil {
+			return nil, "", fmt.Errorf("compose transcription request: %w", err)
+		}
+	}
 
 	header := textproto.MIMEHeader{}
 	header.Set("Content-Disposition",
