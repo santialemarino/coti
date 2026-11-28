@@ -163,3 +163,56 @@ func TestSellerMerge_SuggestionsOnePerPair(t *testing.T) {
 		t.Fatal("a case whose two sides already share a survivor is offered as a merge of a profile with itself")
 	}
 }
+
+func TestSellerMerge_SeparateOnlyDismissesCasesInSellerBranches(t *testing.T) {
+	e := newEnv(t)
+	m := e.sellerMerge(t)
+	ctx := context.Background()
+	seller := e.seedUser(t, m.account, domain.UserRoleSeller)
+	source := m.profile(t, "Source", "branch-scope-source@example.test", nil)
+	candidate := m.profile(t, "Candidate", "branch-scope-candidate@example.test", nil)
+
+	tx, err := e.db.AdminTx(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+
+	otherBranch := uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO branch(id,account_id,name) VALUES($1,$2,$3)`, otherBranch, m.account, "Other branch"); err != nil {
+		t.Fatal(err)
+	}
+	observe := func(branch, source, candidate uuid.UUID, value string) uuid.UUID {
+		t.Helper()
+		var id uuid.UUID
+		if err := tx.QueryRow(ctx, `INSERT INTO client_contact_observation(account_id,branch_id,source_client_id,candidate_client_id,kind,value,original_text,status) VALUES($1,$2,$3,$4,'EMAIL',$5::varchar,$5::text,'PENDING') RETURNING id`, m.account, branch, source, candidate, value).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	visible := observe(m.branch, source, candidate, "visible@example.test")
+	duplicate := observe(m.branch, candidate, source, "duplicate@example.test")
+	outOfScope := observe(otherBranch, source, candidate, "other-branch@example.test")
+	tenant := domain.Tenant{AccountID: m.account, UserID: seller.ID, Role: domain.UserRoleSeller, AllowedBranchIDs: []uuid.UUID{m.branch}}
+	if err := repository.NewClientContactRepository().Decide(ctx, tx, tenant, visible, string(domain.ContactReviewSeparate)); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, observation := range []struct {
+		name string
+		id   uuid.UUID
+		want string
+	}{
+		{"selected case", visible, "SEPARATE"},
+		{"duplicate in the seller's branch", duplicate, "SEPARATE"},
+		{"duplicate in another branch", outOfScope, "PENDING"},
+	} {
+		var status string
+		if err := tx.QueryRow(ctx, `SELECT status::text FROM client_contact_observation WHERE account_id=$1 AND id=$2`, m.account, observation.id).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status != observation.want {
+			t.Errorf("%s: got %s, want %s", observation.name, status, observation.want)
+		}
+	}
+}

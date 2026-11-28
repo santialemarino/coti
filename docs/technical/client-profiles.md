@@ -186,7 +186,7 @@ its customer.
   whose two sides a merge already made one. `PUT /v1/client-contact-suggestions/{id}` takes
   `MERGE`, which runs the same merge into the candidate (or into the source when `keep_client_id`
   names it; any other id is **422**), or `SEPARATE`, which dismisses the case and every other pending
-  case between the same two survivors; either marks the observation decided with the seller and
+  case between the same two survivors within the caller's branch scope. Either action records the seller and
   time. A join copies the provisional profile's contacts unverified, except the proved case contact. A side merged since the case was raised is settled on
   the profile it ended up in, and a case whose two sides already share one survivor is just marked
   merged. With a customer account on one side, `MERGE` joins the other, provisional profile into the
