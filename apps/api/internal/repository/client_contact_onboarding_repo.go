@@ -79,6 +79,16 @@ func (r *ClientContactRepository) ClaimNameRequest(ctx context.Context, q Querie
 	return &id, err
 }
 
+// ClaimOrderAcknowledgement marks an order of the branch as acknowledged and reports whether this
+// call was the one that did, so the acknowledgement goes out at most once.
+func (r *ClientContactRepository) ClaimOrderAcknowledgement(ctx context.Context, q Querier, route domain.InboundChannelRoute, rfqID uuid.UUID) (bool, error) {
+	tag, err := q.Exec(ctx, `UPDATE rfq SET acknowledged_at=now() WHERE account_id=$1 AND branch_id=$2 AND id=$3 AND acknowledged_at IS NULL`, route.AccountID, route.BranchID, rfqID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // FinishNameRequest retains the acknowledged delivery or leaves a failed prompt retryable.
 func (r *ClientContactRepository) FinishNameRequest(ctx context.Context, q Querier, route domain.InboundChannelRoute, id uuid.UUID, reference string, success bool) error {
 	status := "FAILED"

@@ -15,7 +15,9 @@ type EmailMessage struct {
 	// FromName replaces the platform's display name; the sending address never changes.
 	FromName string
 	// InReplyTo is a validated Message-ID the message threads under, blank otherwise.
-	InReplyTo   string
+	InReplyTo string
+	// AutoReplied marks a fixed reply to the client's own mail (RFC 3834), so their responder never answers it.
+	AutoReplied bool
 	Attachments []EmailAttachment
 }
 

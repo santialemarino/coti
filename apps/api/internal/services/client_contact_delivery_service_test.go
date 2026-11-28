@@ -10,6 +10,7 @@ import (
 
 	"github.com/santialemarino/coti/apps/api/internal/config"
 	"github.com/santialemarino/coti/apps/api/internal/domain"
+	"github.com/santialemarino/coti/apps/api/internal/repository"
 )
 
 // Every contact mail but the name prompt is a branded message from the supplier: a heading, its
@@ -88,5 +89,38 @@ func TestClientContactDeliveryService_SendContact_RefusesAMailWithNothingToActOn
 		if !errors.Is(err, domain.ErrInvalidInput) || len(transport.sent) != 0 {
 			t.Errorf("purpose %q: err = %v, sent %d, want ErrInvalidInput and nothing sent", purpose, err, len(transport.sent))
 		}
+	}
+}
+
+type fakeContactChannels struct{}
+
+func (fakeContactChannels) GetContactMailbox(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID) (*domain.ContactMailbox, error) {
+	return &domain.ContactMailbox{Address: "ventas@moron.test", SupplierName: "Corralón San Martín", BranchName: "Morón"}, nil
+}
+
+func (fakeContactChannels) GetMessagingConfiguration(context.Context, repository.Querier, uuid.UUID, uuid.UUID, uuid.UUID, domain.ChannelType) (*domain.ChannelConfiguration, error) {
+	return nil, domain.ErrNotConfigured
+}
+
+func TestClientContactDelivery_AcknowledgementThreadsAsAnAutomaticReply(t *testing.T) {
+	mailer := &mailTestTransport{}
+	service := NewClientContactDeliveryService(mailTestDB{}, fakeContactChannels{}, nil, mailer, nil, nil,
+		config.CustomerAuthConfig{})
+
+	_, err := service.SendContact(context.Background(), domain.ContactMessage{
+		AccountID: testAccountID, BranchID: testBranchID, ChannelID: testChannelID,
+		Purpose: domain.ContactPurposeAcknowledgement, Kind: domain.ChannelTypeEmail,
+		To: "compras@obra.test", Body: orderAcknowledgement, InReplyTo: "<order@mail.test>",
+	})
+	if err != nil {
+		t.Fatalf("SendContact() = %v", err)
+	}
+	if len(mailer.sent) != 1 {
+		t.Fatalf("sent %d mails, want one", len(mailer.sent))
+	}
+	mail := mailer.sent[0]
+	if !mail.AutoReplied || mail.InReplyTo != "<order@mail.test>" || mail.ReplyTo != "ventas@moron.test" ||
+		mail.TextBody != orderAcknowledgement {
+		t.Errorf("mail = %+v, want the acknowledgement as an automatic reply in the client's thread", mail)
 	}
 }

@@ -71,14 +71,16 @@ func (s *ClientContactDeliveryService) SendContact(ctx context.Context, message 
 	return receipt.ProviderReference, nil
 }
 
-// sendEmail answers a name prompt as the supplier's branch mailbox, in plain text inside the
-// customer's thread; every other contact mail goes out in the supplier's name and brand.
+// sendEmail answers a name prompt or a receipt acknowledgement as the supplier's branch mailbox, in
+// plain text inside the customer's thread; every other contact mail goes out in the supplier's name
+// and brand.
 func (s *ClientContactDeliveryService) sendEmail(ctx context.Context, message domain.ContactMessage) error {
 	if s.mail == nil {
 		return domain.ErrNotConfigured
 	}
-	if message.Purpose == domain.ContactPurposeNameRequest {
-		return s.sendNamePrompt(ctx, message)
+	if message.Purpose == domain.ContactPurposeNameRequest ||
+		message.Purpose == domain.ContactPurposeAcknowledgement {
+		return s.sendMailboxReply(ctx, message)
 	}
 	if message.Purpose != domain.ContactPurposeVerification && message.Purpose != domain.ContactPurposeRecovery &&
 		message.Purpose != domain.ContactPurposeRegistrationLink {
@@ -104,7 +106,7 @@ func (s *ClientContactDeliveryService) sendEmail(ctx context.Context, message do
 	return s.mail.Send(ctx, email)
 }
 
-func (s *ClientContactDeliveryService) sendNamePrompt(ctx context.Context, message domain.ContactMessage) error {
+func (s *ClientContactDeliveryService) sendMailboxReply(ctx context.Context, message domain.ContactMessage) error {
 	var mailbox *domain.ContactMailbox
 	err := s.db.InTenantTx(ctx, domain.Tenant{AccountID: message.AccountID}, func(q repository.Querier) error {
 		var err error
@@ -122,6 +124,7 @@ func (s *ClientContactDeliveryService) sendNamePrompt(ctx context.Context, messa
 		ReplyTo:     mailbox.Address,
 		ReplyToName: mailbox.SupplierName + " — " + mailbox.BranchName,
 		InReplyTo:   message.InReplyTo,
+		AutoReplied: true,
 	})
 }
 

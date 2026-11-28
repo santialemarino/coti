@@ -96,6 +96,8 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		return uuid.Nil, fmt.Errorf("%w: email ID and original message are required", domain.ErrInvalidInput)
 	}
 	var rfqID uuid.UUID
+	// opened is the order this mail started, which is owed the receipt acknowledgement.
+	var opened *uuid.UUID
 	lock := "email-inbound:" + route.ChannelID.String() + ":" + message.ExternalMessageID
 	err = s.db.WithAdvisoryLock(ctx, lock, func() error {
 		var findErr error
@@ -144,6 +146,7 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 		}
 		if nameReply == nil {
 			rfqID = uuid.New()
+			opened = &rfqID
 		}
 		if err := s.storeOne(ctx, route, rfqID, message, nameReply); err != nil {
 			return err
@@ -158,7 +161,7 @@ func (s *EmailInboundService) Ingest(ctx context.Context, route domain.InboundCh
 	}
 	if completer, ok := s.contacts.(inboundContactCompleter); ok {
 		reply := domain.ContactReplyContext{Automated: message.Automated || automatedEmailSender(message.SenderID),
-			MessageID: message.InternetMessageID}
+			MessageID: message.InternetMessageID, ReceivedRFQ: opened}
 		if err := completer.CompleteInbound(ctx, route, domain.ChannelTypeEmail, message.SenderID, reply); err != nil {
 			return uuid.Nil, err
 		}
