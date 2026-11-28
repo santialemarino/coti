@@ -180,10 +180,10 @@ func (s *QuoteService) AcceptSentVersion(ctx context.Context, tenant domain.Tena
 		if err != nil {
 			return err
 		}
-		sent := current
 		if !current.IsImmutable {
-			if sent, err = s.acceptance.store.GetPreviousVersion(ctx, q, tenant.AccountID,
-				quote.BranchID, quote.ID, current.VersionNumber); err != nil {
+			sent, err := s.acceptance.store.GetPreviousVersion(ctx, q, tenant.AccountID,
+				quote.BranchID, quote.ID, current.VersionNumber)
+			if err != nil {
 				return err
 			}
 			if err := s.discardDraft(ctx, q, tenant, *quote, *current, *sent); err != nil {
