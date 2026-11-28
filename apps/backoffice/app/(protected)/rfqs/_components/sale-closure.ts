@@ -16,11 +16,20 @@ type ClosureFacts = Pick<
   | 'invoiced'
   | 'invoicePending'
   | 'saleComplete'
+  | 'acceptanceUnconfirmed'
 >;
 
-// An accepted sale the seller can still act on: not archived, and with a quote to write to.
+/*
+ * An accepted sale the seller can still act on: not archived, with a quote to write to, and not an
+ * acceptance read from a reply that still waits for confirmation, which the API refuses to close.
+ */
 function closable(record: ClosureFacts): boolean {
-  return record.status === 'ACCEPTED' && !record.archived && record.quoteId !== null;
+  return (
+    record.status === 'ACCEPTED' &&
+    !record.archived &&
+    !record.acceptanceUnconfirmed &&
+    record.quoteId !== null
+  );
 }
 
 // The sale still waits for an invoice nobody has issued, asked ARCA for, or waived.
