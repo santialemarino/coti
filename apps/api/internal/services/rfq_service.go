@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/mail"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -110,9 +111,15 @@ type rfqChannelReader interface {
 	GetActiveByID(ctx context.Context, q repository.Querier, accountID, branchID, channelID uuid.UUID) (*domain.Channel, error)
 }
 
-// catalogMatcher is the matching surface the RFQ flow needs.
+// catalogMatcher is the matching surface the change handlers need.
 type catalogMatcher interface {
 	Match(ctx context.Context, tenant domain.Tenant, descriptions []string) ([]domain.LineMatch, error)
+}
+
+// rfqLineMatcher is the matching surface the RFQ flow needs: it searches on the extractor's
+// cleaned text and keeps seller corrections keyed on the client's words.
+type rfqLineMatcher interface {
+	MatchQueries(ctx context.Context, tenant domain.Tenant, queries []domain.MatchQuery) ([]domain.LineMatch, error)
 }
 
 // productAlternativeReader supplies the configured replacement products for a batch of matched lines.
@@ -173,7 +180,7 @@ type RFQService struct {
 	channels            rfqChannelReader
 	sellers             sellerReach
 	extractor           domain.RFQExtractor
-	matcher             catalogMatcher
+	matcher             rfqLineMatcher
 	priceSelector       rfqPriceSelector
 	productAlternatives productAlternativeReader
 	combos              comboSuggestionReader
@@ -313,7 +320,7 @@ func NewRFQService(
 	db tenantTxRunner, rfqs rfqRepository, quotes quoteDraftRepository,
 	sends quoteSendTracker, generations quoteAIGenerationRepository,
 	channels rfqChannelReader, sellers sellerReach,
-	extractor domain.RFQExtractor, matcher catalogMatcher,
+	extractor domain.RFQExtractor, matcher rfqLineMatcher,
 	log *slog.Logger, cfg config.RFQConfig,
 ) *RFQService {
 	if log == nil {
@@ -1532,30 +1539,35 @@ func (s *RFQService) quoteItemsFromExtraction(
 		return nil, nil, nil, fmt.Errorf("%w: the order lists more than %d materials, which is a "+
 			"catalog rather than a message", domain.ErrInvalidInput, s.cfg.MaxItems)
 	}
-	items, err := newQuoteItemsFromRFQLines(extraction.Lines)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	lines, demoted := sanitizeRFQLines(extraction.Lines)
+	extraction.Lines = lines
+	items := newQuoteItemsFromRFQLines(lines)
 	if len(items) == 0 {
 		return extraction, nil, nil, nil
 	}
-	return extraction, items, s.applyMatches(ctx, tenant, items, extraction.Lines), nil
+	return extraction, items, s.applyMatches(ctx, tenant, items, lines, demoted), nil
 }
 
+// applyMatches searches the catalog on each line's cleaned text, keeping seller corrections keyed
+// on the client's words, and leaves for the seller any line the model's reading was repaired on or
+// whose unit the matched product is not sold in.
 func (s *RFQService) applyMatches(
-	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem, lines []domain.ExtractedRFQLine,
+	ctx context.Context, tenant domain.Tenant, items []domain.NewQuoteItem,
+	lines []domain.ExtractedRFQLine, demoted []bool,
 ) []domain.NewQuoteItemAlternative {
 	if s.matcher == nil {
 		return nil
 	}
-	descriptions := make([]string, len(items))
+	queries := make([]domain.MatchQuery, len(items))
 	for i, item := range items {
-		descriptions[i] = item.RequestedDescription
-		if search := strings.TrimSpace(lines[i].SearchDescription); search != "" && pricePreferenceWording[lines[i].SelectionPreference] != nil {
-			descriptions[i] = search
+		queries[i] = domain.MatchQuery{Text: item.RequestedDescription, Original: item.RequestedDescription}
+		if search := lines[i].SearchDescription; search != "" &&
+			(pricePreferenceWording[lines[i].SelectionPreference] != nil ||
+				searchKeepsConstraints(item.RequestedDescription, search)) {
+			queries[i].Text = search
 		}
 	}
-	matches, err := s.matcher.Match(ctx, tenant, descriptions)
+	matches, err := s.matcher.MatchQueries(ctx, tenant, queries)
 	if err != nil {
 		s.log.WarnContext(ctx, "catalog matching did not run; every line stays flagged",
 			slog.Any("error", err), slog.Int("lines", len(items)))
@@ -1578,12 +1590,44 @@ func (s *RFQService) applyMatches(
 		}
 	}
 	for i, match := range matches {
+		if match.MatchStatus == domain.ItemMatchStatusMatched &&
+			(demoted[i] || domain.UnitsConflict(items[i].Unit, leaderUnit(match))) {
+			match.MatchStatus = domain.ItemMatchStatusAmbiguous
+		}
 		items[i].ProductID = match.ProductID
 		items[i].MatchStatus = match.MatchStatus
 		items[i].ConfidenceScore = decimal.NewNullDecimal(match.Confidence)
 		alternatives = append(alternatives, alternativesFromMatch(items[i].ID, match)...)
 	}
 	return alternatives
+}
+
+// searchKeepsConstraints reports whether the extractor's search text can stand in for the client's
+// words: it names nothing the client did not and keeps every size and measure the client wrote.
+// Dropped filler and purpose words are the point of it ("arena para revocar" searches "arena");
+// a dropped "50 kg" would search a different product.
+func searchKeepsConstraints(original, search string) bool {
+	asked := slices.DeleteFunc(lineTokens(accentFolder.Replace(strings.ToLower(original))),
+		func(t matchToken) bool { return t.packaging })
+	query := slices.DeleteFunc(lineTokens(search), func(t matchToken) bool { return t.packaging })
+	if len(query) == 0 || !priceConstraintsCovered(query, asked) {
+		return false
+	}
+	figures := slices.DeleteFunc(slices.Clone(asked), func(t matchToken) bool { return t.kind == tokenWord })
+	return len(figures) == 0 || priceConstraintsCovered(figures, query)
+}
+
+// leaderUnit is the unit the product a line was matched to is sold in, or nil when unknown.
+func leaderUnit(match domain.LineMatch) *string {
+	if match.ProductID == nil {
+		return nil
+	}
+	for _, candidate := range match.Candidates {
+		if candidate.ProductID == *match.ProductID {
+			return candidate.Unit
+		}
+	}
+	return nil
 }
 
 func (s *RFQService) persistReceivedRFQ(
@@ -1791,7 +1835,7 @@ func newQuoteAIGenerationItems(
 		snapshots = append(snapshots, domain.NewQuoteAIGenerationItem{
 			Position: i, SourceQuoteItemID: item.ID, ProductID: item.ProductID,
 			RequestedDescription: item.RequestedDescription, Quantity: item.Quantity, Unit: item.Unit,
-			QuantitySource: lines[i].Source, QuantityRationale: *item.QuantityRationale,
+			QuantitySource: lines[i].Source, QuantityRationale: lines[i].QuantityRationale,
 			MatchStatus: item.MatchStatus, ConfidenceScore: item.ConfidenceScore,
 		})
 	}
@@ -2041,48 +2085,71 @@ func (s *RFQService) requiredRFQText(raw string) (string, error) {
 	return text, nil
 }
 
-func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) ([]domain.NewQuoteItem, error) {
-	items := make([]domain.NewQuoteItem, 0, len(lines))
-	for i, line := range lines {
-		field := fmt.Sprintf("items[%d]", i)
-		if err := validateRFQSelection(line, field); err != nil {
-			return nil, err
+// sanitizeRFQLines repairs what the model got wrong on a line instead of refusing the whole order:
+// the repaired line is kept and marked demoted, so it reaches the seller flagged rather than
+// decided. Only a line with no words at all is dropped, since there is nothing to show of it.
+func sanitizeRFQLines(lines []domain.ExtractedRFQLine) ([]domain.ExtractedRFQLine, []bool) {
+	kept := make([]domain.ExtractedRFQLine, 0, len(lines))
+	demoted := make([]bool, 0, len(lines))
+	for _, line := range lines {
+		repaired := false
+		line.RequestedDescription = strings.TrimSpace(line.RequestedDescription)
+		line.SearchDescription = strings.TrimSpace(line.SearchDescription)
+		if line.RequestedDescription == "" {
+			if line.SearchDescription == "" {
+				continue
+			}
+			line.RequestedDescription, repaired = line.SearchDescription, true
 		}
-		description, err := requiredText(line.RequestedDescription, field+".requested_description")
-		if err != nil {
-			return nil, err
+		if truncated, cut := truncateRunes(line.RequestedDescription, 512); cut {
+			line.RequestedDescription, repaired = truncated, true
 		}
-		if err := requireMaxRunes(description, field+".requested_description", 512); err != nil {
-			return nil, err
+		line.SearchDescription, _ = truncateRunes(line.SearchDescription, 512)
+		// A preference whose search text lost a constraint the client stated would price the wrong
+		// product, so both go and the line is searched on the client's own words.
+		if validateRFQSelection(line, "item") != nil {
+			line.SelectionPreference, line.SearchDescription, repaired = domain.RFQSelectionNone, "", true
 		}
-		if err := validateQuantitySource(line, field); err != nil {
-			return nil, err
+		if validateQuantitySource(line, "item") != nil ||
+			validateAmount(line.Quantity, "item.quantity") != nil {
+			line.Source, line.Quantity, repaired = domain.QuantitySourceUnresolved, decimal.Zero, true
+			// The model's rationale explains the number just discarded.
+			line.QuantityRationale = ""
 		}
-		if err := validateAmount(line.Quantity, field+".quantity"); err != nil {
-			return nil, err
+		if unit := optionalText(line.Unit); unit != nil && utf8.RuneCountInString(*unit) > 64 {
+			line.Unit, repaired = nil, true
+		} else {
+			line.Unit = unit
 		}
-		unit, err := optionalLimitedText(line.Unit, field+".unit", 64)
-		if err != nil {
-			return nil, err
-		}
-		rationale, err := requiredText(line.QuantityRationale, field+".quantity_rationale")
-		if err != nil {
-			return nil, err
-		}
-		if err := requireMaxRunes(rationale, field+".quantity_rationale", 512); err != nil {
-			return nil, err
-		}
+		line.QuantityRationale, _ = truncateRunes(strings.TrimSpace(line.QuantityRationale), 512)
+		kept = append(kept, line)
+		demoted = append(demoted, repaired)
+	}
+	return kept, demoted
+}
 
+// newQuoteItemsFromRFQLines turns sanitized lines into unmatched draft items, one per line.
+func newQuoteItemsFromRFQLines(lines []domain.ExtractedRFQLine) []domain.NewQuoteItem {
+	items := make([]domain.NewQuoteItem, 0, len(lines))
+	for _, line := range lines {
 		items = append(items, domain.NewQuoteItem{
 			ID:                   uuid.New(),
-			RequestedDescription: description,
+			RequestedDescription: line.RequestedDescription,
 			Quantity:             line.Quantity,
-			Unit:                 unit,
+			Unit:                 line.Unit,
 			MatchStatus:          domain.ItemMatchStatusNoMatch,
-			QuantityRationale:    &rationale,
+			QuantityRationale:    optionalText(&line.QuantityRationale),
 		})
 	}
-	return items, nil
+	return items
+}
+
+// truncateRunes cuts value to at most max characters and reports whether it had to.
+func truncateRunes(value string, max int) (string, bool) {
+	if utf8.RuneCountInString(value) <= max {
+		return value, false
+	}
+	return strings.TrimSpace(string([]rune(value)[:max])), true
 }
 
 func alternativesFromMatch(

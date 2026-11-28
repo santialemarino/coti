@@ -252,7 +252,7 @@ func TestRFQService_CreateTextDraft_PriceSelectionUnavailableStaysFlagged(t *tes
 	}
 }
 
-func TestRFQSelection_ValidatesExplicitPreferencesAndRetainsProductConstraints(t *testing.T) {
+func TestRFQSelection_KeepsExplicitPreferencesOnlyWhenTheyRetainProductConstraints(t *testing.T) {
 	cases := []struct {
 		original, search string
 		valid            bool
@@ -275,9 +275,13 @@ func TestRFQSelection_ValidatesExplicitPreferencesAndRetainsProductConstraints(t
 	}
 	for _, tc := range cases {
 		t.Run(tc.original+"/"+tc.search, func(t *testing.T) {
-			_, err := newQuoteItemsFromRFQLines([]domain.ExtractedRFQLine{lowestPriceLine(tc.original, tc.search)})
-			if (err == nil) != tc.valid {
-				t.Fatalf("validation error = %v, want valid = %v", err, tc.valid)
+			lines, demoted := sanitizeRFQLines([]domain.ExtractedRFQLine{lowestPriceLine(tc.original, tc.search)})
+			if len(lines) != 1 {
+				t.Fatalf("lines = %d, want the line kept", len(lines))
+			}
+			kept := lines[0].SelectionPreference == domain.RFQSelectionLowestPrice
+			if kept != tc.valid || demoted[0] == tc.valid {
+				t.Fatalf("preference kept = %v, demoted = %v, want kept = %v", kept, demoted[0], tc.valid)
 			}
 		})
 	}
@@ -286,12 +290,13 @@ func TestRFQSelection_ValidatesExplicitPreferencesAndRetainsProductConstraints(t
 func TestRFQSelection_ValidatesHighestPriceSynonyms(t *testing.T) {
 	line := lowestPriceLine("cemento más costoso", "cemento")
 	line.SelectionPreference = domain.RFQSelectionHighestPrice
-	if _, err := newQuoteItemsFromRFQLines([]domain.ExtractedRFQLine{line}); err != nil {
-		t.Fatal(err)
+	if lines, demoted := sanitizeRFQLines([]domain.ExtractedRFQLine{line}); demoted[0] ||
+		lines[0].SelectionPreference != domain.RFQSelectionHighestPrice {
+		t.Fatalf("line = %+v, want the highest-price preference kept", lines[0])
 	}
 }
 
-func TestRFQService_CreateTextDraft_PreservesOrdinaryMatchingDescriptions(t *testing.T) {
+func TestRFQService_CreateTextDraft_SearchesTheClientsWordsWhenTheSearchTextDropsASize(t *testing.T) {
 	line := explicitLine("cemento Loma Negra de 50 kg", "5", "bolsa", "Five bags.")
 	line.SearchDescription = "cemento"
 	line.SelectionPreference = domain.RFQSelectionNone
@@ -303,5 +308,43 @@ func TestRFQService_CreateTextDraft_PreservesOrdinaryMatchingDescriptions(t *tes
 	}
 	if !slices.Equal(h.matcher.descriptions, []string{line.RequestedDescription}) {
 		t.Fatalf("search descriptions = %v, want original product constraints", h.matcher.descriptions)
+	}
+}
+
+func TestRFQService_CreateTextDraft_SearchesTheCleanedTextAndRemembersTheClientsWords(t *testing.T) {
+	line := explicitLine("arena para revocar", "2", "m3", "Two cubic metres.")
+	line.SearchDescription = "arena"
+	h := newRFQHarness([]domain.ExtractedRFQLine{line})
+	if _, err := h.service.CreateTextDraft(context.Background(), rfqTenant(), domain.TextRFQDraftInput{
+		ChannelID: testChannelID, RawText: "2 m3 de arena para revocar",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(h.matcher.descriptions, []string{"arena"}) ||
+		!slices.Equal(h.matcher.originals, []string{"arena para revocar"}) {
+		t.Fatalf("search = %v, originals = %v, want the cleaned text searched and the client's words remembered",
+			h.matcher.descriptions, h.matcher.originals)
+	}
+}
+
+func TestSearchKeepsConstraints(t *testing.T) {
+	cases := []struct {
+		original, search string
+		want             bool
+	}{
+		{"arena para revocar", "arena", true},
+		{"una bolsita de cal", "cal", true},
+		{"semento portland", "cemento portland", true},
+		{"cemento Loma Negra de 50 kg", "cemento", false},
+		{"hierro del 8", "hierro 8 mm", true},
+		{"arena", "arena fina", false},
+		{"arena", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.original+"/"+tc.search, func(t *testing.T) {
+			if got := searchKeepsConstraints(tc.original, tc.search); got != tc.want {
+				t.Fatalf("searchKeepsConstraints() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

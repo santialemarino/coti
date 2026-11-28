@@ -1,6 +1,7 @@
 package services
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -93,29 +94,48 @@ func (s *CatalogMatchService) WithReviewer(
 func (s *CatalogMatchService) Match(
 	ctx context.Context, tenant domain.Tenant, descriptions []string,
 ) ([]domain.LineMatch, error) {
-	if len(descriptions) == 0 {
+	queries := make([]domain.MatchQuery, len(descriptions))
+	for i, description := range descriptions {
+		queries[i] = domain.MatchQuery{Text: description, Original: description}
+	}
+	return s.MatchQueries(ctx, tenant, queries)
+}
+
+// MatchQueries is Match for lines whose search text differs from the client's words: the catalog
+// is searched and scored on each Text, and seller corrections are looked up by each Original.
+func (s *CatalogMatchService) MatchQueries(
+	ctx context.Context, tenant domain.Tenant, queries []domain.MatchQuery,
+) ([]domain.LineMatch, error) {
+	if len(queries) == 0 {
 		return nil, nil
+	}
+	texts := make([]string, len(queries))
+	originals := make([]string, len(queries))
+	for i, query := range queries {
+		texts[i] = query.Text
+		originals[i] = cmp.Or(strings.TrimSpace(query.Original), query.Text)
 	}
 	ctx = domain.WithAIAccount(ctx, tenant)
 	// One search for the whole set: it embeds every line in a single provider call and reads the
 	// catalog in one transaction, neither of which survives being called per line.
 	results, err := s.search.Search(ctx, tenant,
-		domain.CatalogSearch{Texts: descriptions, Limit: s.pool})
+		domain.CatalogSearch{Texts: texts, MemoryTexts: originals, Limit: s.pool})
 	if err != nil {
 		return nil, err
 	}
 	// Pairing a line with another line's candidates is a wrong match nothing downstream could
 	// notice, so a broken alignment is refused rather than indexed into.
-	if len(results) != len(descriptions) {
+	if len(results) != len(texts) {
 		return nil, fmt.Errorf("catalog search returned %d results for %d lines",
-			len(results), len(descriptions))
+			len(results), len(texts))
 	}
 
 	matches := make([]domain.LineMatch, len(results))
 	for i, result := range results {
-		matches[i] = s.decide(lineTokens(descriptions[i]), result.Candidates)
+		matches[i] = s.decide(scoringTokens(texts[i], originals[i], result.Candidates),
+			result.Candidates)
 	}
-	s.review(ctx, descriptions, matches)
+	s.review(ctx, originals, matches)
 	return matches, nil
 }
 
@@ -181,8 +201,8 @@ func (s *CatalogMatchService) contested(ranked []rankedCandidate) bool {
 	return false
 }
 
-// contradicted reports whether a seller-taught leader needs confirming: another taught answer, or a
-// product answering the whole line the taught one does not, which is what a substitution leaves.
+// contradicted reports whether a seller-taught leader needs confirming: another taught answer, or,
+// until the seller confirms it, a product answering the whole line at least as fully.
 func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 	leader := ranked[0]
 	for _, rival := range ranked[1:] {
@@ -193,12 +213,45 @@ func (s *CatalogMatchService) contradicted(ranked []rankedCandidate) bool {
 		if leader.LearnedConfirmed || rival.Confidence.LessThan(s.minConfidence) {
 			continue
 		}
+		// Answering the whole line as fully is enough: "ladrillos" taught once as the common brick
+		// still names the hollow one too, until the seller confirms the choice.
 		if rival.coverage >= 1-coverageTieTolerance &&
-			rival.coverage-leader.coverage > coverageTieTolerance {
+			rival.coverage >= leader.coverage-coverageTieTolerance {
 			return true
 		}
 	}
 	return false
+}
+
+// scoringTokens is the line a candidate is scored against: the search text, unless it dropped a
+// word of the client's that some candidate carries. A dropped "para revocar" names no product and
+// is filler; a dropped "Avellaneda" tells two cements apart, and scoring without it would rank the
+// wrong brand as confidently as the right one.
+func scoringTokens(text, original string, candidates []domain.CatalogCandidate) []matchToken {
+	search := lineTokens(text)
+	if text == original {
+		return search
+	}
+	asked := lineTokens(original)
+	for _, word := range asked {
+		if word.kind != tokenWord || word.packaging || covered(word, search) {
+			continue
+		}
+		for _, candidate := range candidates {
+			if covered(word, candidateTokens(candidate)) {
+				return asked
+			}
+		}
+	}
+	return search
+}
+
+// covered reports whether some token of document answers word at least as well as a one-letter
+// slip would.
+func covered(word matchToken, document []matchToken) bool {
+	return slices.ContainsFunc(document, func(d matchToken) bool {
+		return tokenCredit(word, d) >= editDistanceCredit
+	})
 }
 
 // rankedCandidate carries the coverage and unasked-spec share behind a score, for contested.

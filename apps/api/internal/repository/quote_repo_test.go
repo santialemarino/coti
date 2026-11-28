@@ -918,6 +918,60 @@ func TestQuoteRepository_ListItemsWithProduct_RoundTripsCatalogIdentity(t *testi
 	}
 }
 
+// A line reads as taught when a seller resolved its exact wording, as the correction memory
+// normalises it, to the very product the line carries; a teaching for another product is not one.
+func TestQuoteRepository_ListItemsWithProduct_MarksALineASellerTaught(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	accountID := seedAccount(t, db, "Taught line")
+	branchID := branchOf(t, db, accountID)
+	productID := seedProduct(t, db, accountID, "Ladrillo común")
+	otherID := seedProduct(t, db, accountID, "Ladrillo hueco")
+	priceCleanup(t, db, productID)
+	priceCleanup(t, db, otherID)
+	_, versionID, itemID := seedQuoteChain(t, db, accountID, branchID, productID)
+	if _, err := db.CrossAccount().Exec(ctx,
+		`UPDATE quote_item SET requested_description = '  Ladrillos   ' WHERE id = $1`, itemID); err != nil {
+		t.Fatalf("reword the line: %v", err)
+	}
+	read := func() bool {
+		t.Helper()
+		var items []domain.QuoteItem
+		if err := db.InTenantTx(ctx, domain.Tenant{AccountID: accountID, Role: domain.UserRoleAdmin},
+			func(q Querier) error {
+				var readErr error
+				items, readErr = NewQuoteRepository().ListItemsWithProduct(ctx, q, accountID, versionID)
+				return readErr
+			}); err != nil || len(items) != 1 {
+			t.Fatalf("ListItemsWithProduct = %d items, %v", len(items), err)
+		}
+		return items[0].TaughtBySeller
+	}
+	teach := func(product uuid.UUID) {
+		t.Helper()
+		if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO quote_correction_memory
+		  (account_id, kind, source_text, normalized_source, embedding, status, product_id,
+		   support_count)
+		 VALUES ($1, 'CATALOG', 'ladrillos', 'ladrillos', $3, 'READY', $2, 1)`,
+			accountID, product, queryVector()); err != nil {
+			t.Fatalf("seed correction memory: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		mustCleanup(t, db.CrossAccount(),
+			`DELETE FROM quote_correction_memory WHERE account_id = $1`, accountID)
+	})
+
+	teach(otherID)
+	if read() {
+		t.Fatal("taught = true, want a teaching for another product ignored")
+	}
+	teach(productID)
+	if !read() {
+		t.Fatal("taught = false, want the line's own wording taught to its product")
+	}
+}
+
 // CreateSingleItem appends a line to a mutable version. Its SELECT-form insert targets the product
 // and quantity parameters into a CASE, so they must carry explicit casts — without them the planner
 // cannot infer $3's data type and answers 42P08. This keeps that from regressing.
