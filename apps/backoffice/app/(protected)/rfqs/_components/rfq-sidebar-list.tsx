@@ -78,7 +78,7 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
     return (
       <>
         <EmptyState icon={InboxIcon} title={t('list.empty.title')} />
-        {nonOrders ? <div className="px-3 pb-3 max-lg:px-6">{nonOrders}</div> : null}
+        {nonOrders ? <div className="px-3 pb-3 empty:hidden max-lg:px-6">{nonOrders}</div> : null}
       </>
     );
   }

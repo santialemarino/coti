@@ -120,8 +120,12 @@ export function NonOrderMessages({ branchId, refreshKey, onOrderCreated }: NonOr
             id={listId}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={reduced ? { duration: 0 } : SPRING.collapse}
+            exit={{
+              opacity: 0,
+              height: 0,
+              transition: reduced ? { duration: 0 } : SPRING.collapse,
+            }}
+            transition={reduced ? { duration: 0 } : SPRING.expand}
             className="flex flex-col gap-y-1.5 overflow-hidden"
           >
             {messages.map((item) => (
