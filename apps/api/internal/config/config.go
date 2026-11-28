@@ -1065,7 +1065,7 @@ func Load() (*Config, error) {
 				&problems),
 			SweepBatchSize: getInt("CONVERSATION_SWEEP_BATCH_SIZE", 100, &problems),
 			AutoAcceptMinConfidencePercent: getInt("CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT",
-				90, &problems),
+				85, &problems),
 			AcceptReviewMinConfidencePercent: getInt("CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT",
 				60, &problems),
 			AutoAcceptMaxWords: getInt("CONVERSATION_AUTO_ACCEPT_MAX_WORDS", 8, &problems),

@@ -1770,7 +1770,7 @@ func TestLoad_ConversationDefaults(t *testing.T) {
 	want := ConversationConfig{WindowReset: 120 * time.Second, WindowMax: 600 * time.Second,
 		ContextMessages: 10, TickerInterval: 30 * time.Second, MaxAttempts: 3,
 		ProcessingTimeout: 600 * time.Second, SweepBatchSize: 100,
-		AutoAcceptMinConfidencePercent: 90, AcceptReviewMinConfidencePercent: 60, AutoAcceptMaxWords: 8}
+		AutoAcceptMinConfidencePercent: 85, AcceptReviewMinConfidencePercent: 60, AutoAcceptMaxWords: 8}
 	if cfg.Conversation != want {
 		t.Errorf("Conversation = %+v, want %+v", cfg.Conversation, want)
 	}

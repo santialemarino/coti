@@ -63,7 +63,7 @@ services:
     envs:
       - key: CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT
         scope: RUN_TIME
-        value: '90'
+        value: '85'
       - key: CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT
         scope: RUN_TIME
         value: '60'
@@ -529,7 +529,7 @@ jobs:
     envs:
       - key: CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT
         scope: RUN_TIME
-        value: '90'
+        value: '85'
       - key: CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT
         scope: RUN_TIME
         value: '60'
