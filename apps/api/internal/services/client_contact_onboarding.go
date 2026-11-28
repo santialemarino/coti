@@ -76,18 +76,18 @@ func (s *ClientContactService) CompleteInbound(ctx context.Context, route domain
 }
 
 type inboundNameReplyResolver interface {
-	NameReply(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, string) (*uuid.UUID, string, error)
+	NameReply(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, string) (*domain.PendingNameRequest, string, error)
 }
 
 type pendingNameStore interface {
 	MentionsCatalog(context.Context, repository.Querier, uuid.UUID, string) (bool, error)
-	PendingNameRFQ(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, []string, time.Duration) (*uuid.UUID, error)
+	PendingNameRequest(context.Context, repository.Querier, domain.InboundChannelRoute, domain.ChannelType, string, []string, time.Duration) (*domain.PendingNameRequest, error)
 }
 
 // NameReply returns the request a message answers with the sender's name, and that name, or nil when
 // the message is not a name reply: no prompt is answerable, the text fails the reply rule, or it
 // names something in the supplier's catalog.
-func (s *ClientContactService) NameReply(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw, text string) (*uuid.UUID, string, error) {
+func (s *ClientContactService) NameReply(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute, kind domain.ChannelType, raw, text string) (*domain.PendingNameRequest, string, error) {
 	store, ok := s.contacts.(pendingNameStore)
 	if !ok {
 		return nil, "", nil
@@ -106,7 +106,7 @@ func (s *ClientContactService) NameReply(ctx context.Context, q repository.Queri
 			return nil, "", nil
 		}
 	}
-	pending, err := store.PendingNameRFQ(ctx, q, route, kind, value, destinations, whatsAppServiceWindow)
+	pending, err := store.PendingNameRequest(ctx, q, route, kind, value, destinations, whatsAppServiceWindow)
 	if err != nil || pending == nil {
 		return nil, "", err
 	}

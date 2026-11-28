@@ -47,6 +47,7 @@ type Handlers struct {
 	BranchCatalog         *handler.BranchCatalogHandler
 	RFQ                   *handler.RFQHandler
 	RFQAttachment         *handler.RFQAttachmentHandler
+	InboundMessage        *handler.InboundMessageHandler
 	PublicRFQ             *handler.PublicRFQHandler
 	Quote                 *handler.QuoteHandler
 	RecommendationRequest *handler.RecommendationRequestHandler
@@ -239,6 +240,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, h Handlers, auth Auth, rl R
 	rfqs.PUT("/:rfqId/archive", h.Rfq.SetFailedArchived)
 	rfqs.GET("/:rfqId/attachments", h.RFQAttachment.List)
 	rfqs.POST("/:rfqId/attachments", h.RFQAttachment.Upload)
+	inbound := verified.Group("/inbound-messages")
+	inbound.GET("/non-orders", h.InboundMessage.ListNonOrders)
+	inbound.POST("/:messageId/order", ai, h.InboundMessage.CreateOrder)
+	inbound.POST("/:messageId/dismiss", h.InboundMessage.Dismiss)
 
 	// Reading is not admin-only: a text draft has to name the channel its order arrived through,
 	// so any seller needs the list. Configuring one, credentials included, is admin-only.

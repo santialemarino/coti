@@ -462,6 +462,7 @@ func (f *fakeRFQDB) InTenantTx(
 }
 
 type fakeRFQExtractor struct {
+	kind            domain.RFQMessageKind
 	lines           []domain.ExtractedRFQLine
 	err             error
 	calls           int
@@ -485,6 +486,7 @@ func (f *fakeRFQExtractor) Extract(
 		return nil, f.err
 	}
 	return &domain.RFQExtraction{
+		Kind:  f.kind,
 		Lines: f.lines,
 		Usage: domain.GenerationUsage{
 			Provider: "test-provider", Model: "test-model", InputTokens: 21, OutputTokens: 13,

@@ -59,8 +59,10 @@ confirms the authorization completed, not that later synchronization is healthy.
 expires or is revoked, reconnect the same branch mailbox. Its last durable cursor is retained so
 synchronization can resume without reprocessing already recorded messages.
 
-Every new inbox message is treated as a separate request, including unrelated mail and replies to
-an existing conversation. Threading and request classification are not implemented; use a
+Automated mail — `Auto-Submitted`, `Precedence` bulk/list/junk or mailing-list headers, or a
+no-reply/bounce sender — is kept as a non-order of kind `AUTOMATED` with no RFQ and no stored file.
+Every other new inbox message is treated as a separate request, including unrelated mail and
+replies to an existing conversation. Threading and request classification are not implemented; use a
 dedicated intake mailbox and have a seller review its requests.
 
 `GMAIL_REQUEST_TIMEOUT_SECONDS` limits each provider request. `GMAIL_MAX_RAW_BYTES`,

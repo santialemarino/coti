@@ -85,6 +85,12 @@ type ContactReplyContext struct {
 	MessageID string
 }
 
+// PendingNameRequest is the earlier message a name reply answers: the order it opened, or none
+// when that message was not an order.
+type PendingNameRequest struct {
+	RFQID *uuid.UUID
+}
+
 // ContactMailbox is the supplier identity a branch mailbox answers a contact with.
 type ContactMailbox struct {
 	Address      string

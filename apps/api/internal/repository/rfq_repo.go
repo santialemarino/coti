@@ -69,6 +69,27 @@ func (r *RFQRepository) UpdateStatus(
 		accountID, id, status))
 }
 
+// DeleteUnworked removes an RFQ nothing was built on yet: still RECEIVED, with no quote and no
+// file. It reports whether the row was removed.
+func (r *RFQRepository) DeleteUnworked(
+	ctx context.Context, q Querier, accountID, branchID, rfqID uuid.UUID,
+) (bool, error) {
+	const unworked = `account_id = $1 AND branch_id = $2 AND id = $3 AND status = 'RECEIVED'
+		AND NOT EXISTS (SELECT 1 FROM quote WHERE account_id = $1 AND rfq_id = $3)
+		AND NOT EXISTS (SELECT 1 FROM rfq_attachment WHERE account_id = $1 AND rfq_id = $3)`
+	for _, child := range []string{"rfq_status_change", "client_merge_rfq"} {
+		if _, err := q.Exec(ctx, `DELETE FROM `+child+` WHERE account_id = $1 AND rfq_id = $3
+			AND EXISTS (SELECT 1 FROM rfq WHERE `+unworked+`)`, accountID, branchID, rfqID); err != nil {
+			return false, err
+		}
+	}
+	tag, err := q.Exec(ctx, `DELETE FROM rfq WHERE `+unworked, accountID, branchID, rfqID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // SetClient attaches an account-scoped client to the quote's source RFQ.
 func (r *RFQRepository) SetClient(
 	ctx context.Context, q Querier, accountID, branchID, rfqID, clientID uuid.UUID,

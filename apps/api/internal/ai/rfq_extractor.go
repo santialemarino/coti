@@ -16,8 +16,8 @@ var (
 )
 
 const (
-	rfqExtractionPromptVersion = "rfq-extraction-prompt-v7"
-	rfqExtractionSchemaVersion = "rfq-extraction-schema-v3"
+	rfqExtractionPromptVersion = "rfq-extraction-prompt-v8"
+	rfqExtractionSchemaVersion = "rfq-extraction-schema-v4"
 )
 
 // RFQExtractor reads the materials out of an informal order. It is provider-agnostic: the prompt
@@ -106,6 +106,7 @@ func (e *RFQExtractor) extract(ctx context.Context,
 		})
 	}
 	return &domain.RFQExtraction{
+		Kind:          domain.RFQMessageKind(answer.MessageKind),
 		Lines:         lines,
 		Usage:         *usage,
 		PromptVersion: rfqExtractionPromptVersion,
@@ -117,6 +118,13 @@ func (e *RFQExtractor) extract(ctx context.Context,
 // price only for the order that follows it.
 func (e *RFQExtractor) instructions() string {
 	return fmt.Sprintf(`You read the informal orders that clients send a building-materials supplier in Argentina, and you list the materials they asked for.
+
+Say first what the message is, in message_kind:
+- ORDER: it names at least one material the client wants, even with no quantity.
+- GREETING: a greeting or an announcement that an order will follow, naming no material ("Hola, necesito cotizar materiales para una obra").
+- QUESTION: a question about the supplier rather than a request for materials: address, hours, delivery, payment, stock or the price of something without asking for it ("¿tenés stock de cemento?").
+- OTHER: anything else that asks for no material, such as a thank-you or a message meant for someone else.
+A message that is not an ORDER has no items.
 
 Return one item per material, in the order the client mentions them, at most %d of them.
 
@@ -143,7 +151,8 @@ Do not price, discount, match anything against a catalog, or write to the client
 // rfqExtractionAnswer is the shape rfqExtractionSchema forces. It carries every property the
 // schema declares, because the decoder refuses an answer with a field it does not know.
 type rfqExtractionAnswer struct {
-	Items []rfqExtractedItem `json:"items"`
+	MessageKind string             `json:"message_kind"`
+	Items       []rfqExtractedItem `json:"items"`
 }
 
 type rfqExtractedItem struct {
@@ -162,8 +171,16 @@ func rfqExtractionSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"items"},
+		"required":             []string{"message_kind", "items"},
 		"properties": map[string]any{
+			"message_kind": map[string]any{
+				"type": "string",
+				"enum": []string{
+					string(domain.RFQMessageOrder), string(domain.RFQMessageGreeting),
+					string(domain.RFQMessageQuestion), string(domain.RFQMessageOther),
+				},
+				"description": "ORDER when the message names at least one material; otherwise what it is.",
+			},
 			"items": map[string]any{
 				"type": "array",
 				"items": map[string]any{
