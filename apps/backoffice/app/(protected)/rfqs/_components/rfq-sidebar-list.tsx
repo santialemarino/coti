@@ -6,6 +6,7 @@ import { LayoutGroup } from 'motion/react';
 import { useTranslations } from 'next-intl';
 
 import { EmptyState } from '@repo/ui/components';
+import { NonOrderMessages } from '@/app/(protected)/rfqs/_components/non-order-messages';
 import { useRfqList } from '@/app/(protected)/rfqs/_components/rfq-list-context';
 import { RfqQueueGroup } from '@/app/(protected)/rfqs/_components/rfq-queue-group';
 import {
@@ -35,7 +36,7 @@ interface RfqSidebarListProps {
  */
 export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
   const t = useTranslations('rfqs');
-  const { reload, requestArchived } = useRfqList();
+  const { reload, requestArchived, activeBranchId } = useRfqList();
   useEffect(() => {
     requestArchived();
   }, [requestArchived]);
@@ -69,8 +70,17 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
     });
   }
 
+  const nonOrders = activeBranchId ? (
+    <NonOrderMessages branchId={activeBranchId} refreshKey={records} onOrderCreated={reload} />
+  ) : null;
+
   if (groups.length === 0) {
-    return <EmptyState icon={InboxIcon} title={t('list.empty.title')} />;
+    return (
+      <>
+        <EmptyState icon={InboxIcon} title={t('list.empty.title')} />
+        {nonOrders ? <div className="px-3 pb-3 empty:hidden max-lg:px-6">{nonOrders}</div> : null}
+      </>
+    );
   }
 
   return (
@@ -79,6 +89,7 @@ export function RfqSidebarList({ records, activeRfqId }: RfqSidebarListProps) {
       className="flex flex-col px-3 pb-3 gap-y-4 max-lg:px-6 max-lg:pb-10"
       aria-label={t('list.title')}
     >
+      {nonOrders}
       <LayoutGroup>
         {groups.map((group) => (
           <RfqQueueGroup
