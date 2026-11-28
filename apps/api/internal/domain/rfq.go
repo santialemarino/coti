@@ -271,14 +271,27 @@ type RfqDetail struct {
 	Conversation *Conversation
 }
 
-// AcceptedByReply reports whether the quote stands ACCEPTED on an acceptance read from a reply.
+// AcceptedByReply reports whether the quote stands ACCEPTED on an acceptance read from a reply of
+// its current cycle: one a reactivation reopened no longer counts.
 func (d RfqDetail) AcceptedByReply() bool {
 	if d.Quote == nil || d.Quote.CurrentStatus != QuoteStatusAccepted || d.Quote.CurrentVersionID == nil {
 		return false
 	}
 	for _, action := range d.ClientActions {
 		if action.Type == ClientActionAccept && action.VersionID == *d.Quote.CurrentVersionID &&
-			action.MessageBatchID != nil && action.RevokedAt == nil {
+			action.MessageBatchID != nil && action.RevokedAt == nil && !d.reopenedAfter(action.CreatedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// reopenedAfter reports whether a reactivation moved the quote off an answer after at.
+func (d RfqDetail) reopenedAfter(at time.Time) bool {
+	for _, change := range d.QuoteStatusChanges {
+		if change.PreviousStatus != nil && change.ChangedAt.After(at) &&
+			(*change.PreviousStatus == QuoteStatusAccepted || *change.PreviousStatus == QuoteStatusRejected) &&
+			(change.NewStatus == QuoteStatusQuoted || change.NewStatus == QuoteStatusChangeRequested) {
 			return true
 		}
 	}

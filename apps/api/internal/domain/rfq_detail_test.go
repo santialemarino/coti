@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -34,5 +35,27 @@ func TestRfqDetail_AcceptedByReply(t *testing.T) {
 				t.Errorf("AcceptedByReply() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRfqDetail_AcceptedByReply_IgnoresAReopenedCycle(t *testing.T) {
+	current, batch := uuid.New(), uuid.New()
+	accepted, quoted := QuoteStatusAccepted, QuoteStatusQuoted
+	start := time.Now()
+	reply := ClientAction{Type: ClientActionAccept, VersionID: current, MessageBatchID: &batch,
+		CreatedAt: start}
+	reopened := QuoteStatusChange{PreviousStatus: &accepted, NewStatus: quoted,
+		ChangedAt: start.Add(time.Minute)}
+	click := ClientAction{Type: ClientActionAccept, VersionID: current, CreatedAt: start.Add(time.Hour)}
+	quote := &Quote{CurrentStatus: QuoteStatusAccepted, CurrentVersionID: &current}
+	for name, detail := range map[string]RfqDetail{
+		"the seller accepted after a reactivation": {Quote: quote, ClientActions: []ClientAction{reply},
+			QuoteStatusChanges: []QuoteStatusChange{reopened}},
+		"the customer clicked in the new cycle": {Quote: quote, ClientActions: []ClientAction{reply, click},
+			QuoteStatusChanges: []QuoteStatusChange{reopened}},
+	} {
+		if detail.AcceptedByReply() {
+			t.Errorf("%s: AcceptedByReply() = true, want the old reply acceptance ignored", name)
+		}
 	}
 }
