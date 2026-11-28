@@ -694,10 +694,16 @@ export async function acceptSentVersion(quoteId: string, branchId: string): Prom
 }
 
 // Dismiss a sent quote's replies that changed nothing until the customer writes again.
-export async function readCustomerReply(quoteId: string, branchId: string): Promise<void> {
+// seenUntil is the newest reply the seller saw; one recorded after it stays unread.
+export async function readCustomerReply(
+  quoteId: string,
+  branchId: string,
+  seenUntil: string,
+): Promise<void> {
   const response = await fetch(`/api/quotes/${quoteId}/customer-reply/read`, {
     method: 'POST',
-    headers: branchHeaders(branchId),
+    headers: branchHeaders(branchId, true),
+    body: JSON.stringify({ seen_until: seenUntil }),
     cache: 'no-store',
   });
 

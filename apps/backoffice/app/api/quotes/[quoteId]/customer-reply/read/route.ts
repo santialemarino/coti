@@ -5,5 +5,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ quo
   return forwardToApi(request, {
     path: `/v1/quotes/${quoteId}/customer-reply/read`,
     method: 'POST',
+    body: await request.text(),
   });
 }

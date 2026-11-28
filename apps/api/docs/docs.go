@@ -7970,7 +7970,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Settles the pending replies that left a sent quote unchanged, until the customer writes again.",
+                "description": "Settles the pending replies that left a sent quote unchanged up to seen_until, the newest one the seller saw; a later one stays unread.",
                 "tags": [
                     "quotes"
                 ],
@@ -7989,11 +7989,26 @@ const docTemplate = `{
                         "name": "quoteId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "The newest reply seen",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReadCustomerReplyRequest"
+                        }
                     }
                 ],
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ErrorResponse"
+                        }
                     },
                     "401": {
                         "description": "Unauthorized",
@@ -16276,6 +16291,17 @@ const docTemplate = `{
                         "RESEND",
                         "EDIT"
                     ]
+                }
+            }
+        },
+        "dto.ReadCustomerReplyRequest": {
+            "type": "object",
+            "required": [
+                "seen_until"
+            ],
+            "properties": {
+                "seen_until": {
+                    "type": "string"
                 }
             }
         },

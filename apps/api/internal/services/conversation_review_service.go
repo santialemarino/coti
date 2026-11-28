@@ -45,7 +45,7 @@ type conversationReviewBatches interface {
 type conversationReviewDecisions interface {
 	handlerDecisionSettleStore
 	ReadCustomerReplies(ctx context.Context, q repository.Querier, accountID, versionID,
-		userID uuid.UUID) (int, error)
+		userID uuid.UUID, seenUntil time.Time) (int, error)
 }
 
 // ConversationReviewService holds the seller's actions on the conversation handler's work: undoing
@@ -199,10 +199,11 @@ func (s *ConversationReviewService) RetryBatch(ctx context.Context, tenant domai
 	return requeued, nil
 }
 
-// ReadCustomerReply settles a SENT quote's pending replies that changed nothing, so the order
-// leaves «El cliente escribió» until the customer writes again; with none pending it does nothing.
+// ReadCustomerReply settles a SENT quote's pending replies that changed nothing, up to the newest
+// one the seller saw, so the order leaves «El cliente escribió» until the customer writes again; a
+// reply recorded after the seller's screen loaded stays unread.
 func (s *ConversationReviewService) ReadCustomerReply(ctx context.Context, tenant domain.Tenant,
-	quoteID uuid.UUID,
+	quoteID uuid.UUID, seenUntil time.Time,
 ) error {
 	if err := requireBranch(tenant, "reading a customer's reply"); err != nil {
 		return err
@@ -216,7 +217,7 @@ func (s *ConversationReviewService) ReadCustomerReply(ctx context.Context, tenan
 			return domain.WithCode(domain.CodeQuoteNotSent, domain.ErrConflict)
 		}
 		_, err = s.decisions.ReadCustomerReplies(ctx, q, tenant.AccountID, *quote.CurrentVersionID,
-			tenant.UserID)
+			tenant.UserID, seenUntil)
 		return err
 	})
 }

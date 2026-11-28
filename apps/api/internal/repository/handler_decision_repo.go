@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -233,16 +234,17 @@ func (r *HandlerDecisionRepository) Decide(ctx context.Context, q Querier, accou
 }
 
 // ReadCustomerReplies settles the runs still pending on a version that changed nothing — an
-// acceptance, rejection, question or plain reply — as MANUAL_OVERRIDE by userID. Returns how many.
+// acceptance, rejection, question or plain reply — recorded up to seenUntil, as MANUAL_OVERRIDE by
+// userID. Returns how many.
 func (r *HandlerDecisionRepository) ReadCustomerReplies(ctx context.Context, q Querier, accountID,
-	versionID, userID uuid.UUID,
+	versionID, userID uuid.UUID, seenUntil time.Time,
 ) (int, error) {
 	tag, err := q.Exec(ctx,
 		`UPDATE handler_decision
 		 SET seller_decision = 'MANUAL_OVERRIDE', user_id = $3, decided_at = now()
 		 WHERE account_id = $1 AND quote_version_id = $2 AND seller_decision IS NULL
-		   AND ai_proposal::jsonb ->> 'no_match_reason' = ANY($4::text[])`,
-		accountID, versionID, userID, domain.CustomerReplyReasons())
+		   AND ai_proposal::jsonb ->> 'no_match_reason' = ANY($4::text[]) AND created_at <= $5`,
+		accountID, versionID, userID, domain.CustomerReplyReasons(), seenUntil)
 	if err != nil {
 		return 0, err
 	}

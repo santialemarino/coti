@@ -98,6 +98,11 @@ type CustomerReplyResponse struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+// ReadCustomerReplyRequest names the newest reply the seller saw: later ones stay unread.
+type ReadCustomerReplyRequest struct {
+	SeenUntil *time.Time `json:"seen_until" binding:"required"`
+}
+
 // CreateTextRFQDraftRequest is the body for POST /v1/rfqs/text-drafts.
 type CreateTextRFQDraftRequest struct {
 	ChannelID   uuid.UUID  `json:"channel_id" binding:"required"`

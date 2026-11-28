@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -90,11 +91,12 @@ func (e *env) listed(t *testing.T, desk replyDesk) dto.RfqListItemResponse {
 	return *row
 }
 
-func (e *env) readReply(t *testing.T, desk replyDesk) (int, string) {
+func (e *env) readReply(t *testing.T, desk replyDesk, seenUntil time.Time) (int, string) {
 	t.Helper()
 	rec := e.do(t, request{method: http.MethodPost,
 		path:  "/v1/quotes/" + desk.quoteID.String() + "/customer-reply/read",
-		token: desk.token, branch: desk.seed.tenant.BranchID.String()})
+		token: desk.token, branch: desk.seed.tenant.BranchID.String(),
+		body: dto.ReadCustomerReplyRequest{SeenUntil: &seenUntil}})
 	if rec.Code == http.StatusNoContent {
 		return rec.Code, ""
 	}
@@ -151,7 +153,7 @@ func TestCustomerReply_ReadingDismissesItUntilTheCustomerWritesAgain(t *testing.
 	e.reply(t, desk, repliedWith(domain.CustomerDecisionQuestion), "¿tienen stock?")
 	e.reply(t, desk, repliedWith(domain.CustomerDecisionNone), "ok")
 
-	if code, errCode := e.readReply(t, desk); code != http.StatusNoContent {
+	if code, errCode := e.readReply(t, desk, e.listed(t, desk).CustomerReply.CreatedAt); code != http.StatusNoContent {
 		t.Fatalf("read = %d %s, want 204", code, errCode)
 	}
 	if got := e.listed(t, desk); got.CustomerReply != nil {
@@ -164,7 +166,7 @@ func TestCustomerReply_ReadingDismissesItUntilTheCustomerWritesAgain(t *testing.
 		desk.sentID).Scan(&settled); err != nil || settled != 2 {
 		t.Errorf("settled = %d, %v, want both replies settled by the seller", settled, err)
 	}
-	if code, errCode := e.readReply(t, desk); code != http.StatusNoContent {
+	if code, errCode := e.readReply(t, desk, time.Now()); code != http.StatusNoContent {
 		t.Errorf("a second read = %d %s, want 204 with nothing to settle", code, errCode)
 	}
 
@@ -184,7 +186,7 @@ func TestCustomerReply_AnUndoneAcceptanceLeavesItsReplyBehind(t *testing.T) {
 	if row.Status != "ACCEPTED" || !row.AcceptanceUnconfirmed || row.CustomerReply != nil {
 		t.Fatalf("row = %+v, want ACCEPTED pending confirmation, with no reply to read", row)
 	}
-	if code, errCode := e.readReply(t, desk); code != http.StatusConflict || errCode != "QUOTE_NOT_SENT" {
+	if code, errCode := e.readReply(t, desk, time.Now()); code != http.StatusConflict || errCode != "QUOTE_NOT_SENT" {
 		t.Errorf("read on an accepted quote = %d %s, want 409 QUOTE_NOT_SENT", code, errCode)
 	}
 	if _, err := e.acceptanceQuoteService().UndoAcceptance(context.Background(), desk.seed.tenant,
@@ -194,5 +196,21 @@ func TestCustomerReply_AnUndoneAcceptanceLeavesItsReplyBehind(t *testing.T) {
 	row = e.listed(t, desk)
 	if row.Status != "SENT" || row.AcceptanceUnconfirmed || row.CustomerReply != nil {
 		t.Errorf("after the undo = %+v, want SENT with the old reply behind it", row)
+	}
+}
+
+// A reply recorded after the seller's screen loaded stays unread when they mark the older one read.
+func TestCustomerReply_ReadingLeavesALaterReplyUnread(t *testing.T) {
+	e := newEnv(t)
+	desk := e.replyDesk(t, "Reply read race")
+	e.reply(t, desk, repliedWith(domain.CustomerDecisionQuestion), "¿tienen stock?")
+	seen := e.listed(t, desk).CustomerReply.CreatedAt
+	e.reply(t, desk, acceptedReply(40), "dale, lo quiero")
+
+	if code, errCode := e.readReply(t, desk, seen); code != http.StatusNoContent {
+		t.Fatalf("read = %d %s, want 204", code, errCode)
+	}
+	if got := replyReason(e.listed(t, desk)); got != "CUSTOMER_ACCEPTS" {
+		t.Errorf("after reading the question = %q, want the later acceptance still unread", got)
 	}
 }

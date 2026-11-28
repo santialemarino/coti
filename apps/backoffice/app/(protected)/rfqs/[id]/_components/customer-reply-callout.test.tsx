@@ -15,6 +15,8 @@ const QUOTE_ID = '20000000-0000-4000-8000-000000000002';
 const BRANCH_ID = 'b0000000-0000-4000-8000-000000000001';
 const copy = messages.rfqs.detail.callouts.customerReply;
 
+const REPLIED_AT = '2026-11-27T21:04:05.123456Z';
+
 function renderCallout(
   reply: Pick<CustomerReply, 'reason' | 'replyAcceptance'>,
   onChanged = vi.fn().mockResolvedValue(undefined),
@@ -25,7 +27,7 @@ function renderCallout(
         quoteId={QUOTE_ID}
         branchId={BRANCH_ID}
         reference="#07"
-        reply={reply}
+        reply={{ ...reply, createdAt: REPLIED_AT }}
         onChanged={onChanged}
       />
     </NextIntlClientProvider>,
@@ -80,7 +82,9 @@ describe('CustomerReplyCallout', () => {
     expect(view.getAllByRole('button')).toHaveLength(1);
     fireEvent.click(view.getByRole('button', { name: copy.read }));
 
-    await waitFor(() => expect(readCustomerReply).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID));
+    await waitFor(() =>
+      expect(readCustomerReply).toHaveBeenCalledWith(QUOTE_ID, BRANCH_ID, REPLIED_AT),
+    );
     expect(onChanged).toHaveBeenCalled();
     expect(transitionQuote).not.toHaveBeenCalled();
   });

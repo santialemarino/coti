@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,9 +17,10 @@ import (
 )
 
 type fakeConversationReview struct {
-	tenant  domain.Tenant
-	quoteID uuid.UUID
-	err     error
+	tenant    domain.Tenant
+	quoteID   uuid.UUID
+	seenUntil time.Time
+	err       error
 }
 
 func (f *fakeConversationReview) DiscardAIChanges(context.Context, domain.Tenant,
@@ -31,17 +34,25 @@ func (f *fakeConversationReview) RetryBatch(context.Context, domain.Tenant, uuid
 }
 
 func (f *fakeConversationReview) ReadCustomerReply(_ context.Context, tenant domain.Tenant,
-	quoteID uuid.UUID) error {
-	f.tenant, f.quoteID = tenant, quoteID
+	quoteID uuid.UUID, seenUntil time.Time) error {
+	f.tenant, f.quoteID, f.seenUntil = tenant, quoteID, seenUntil
 	return f.err
 }
 
+const seenUntil = "2026-11-27T21:04:05.123456Z"
+
 func readCustomerReply(t *testing.T, fake *fakeConversationReview, quoteID string,
+) *httptest.ResponseRecorder {
+	return readCustomerReplyWith(t, fake, quoteID, `{"seen_until":"`+seenUntil+`"}`)
+}
+
+func readCustomerReplyWith(t *testing.T, fake *fakeConversationReview, quoteID, body string,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "quoteId", Value: quoteID}}
 	middleware.SetTenant(c, domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New()})
 	NewConversationHandler(fake).ReadCustomerReply(c)
@@ -56,10 +67,22 @@ func TestConversationHandler_ReadCustomerReply_AnswersNoContent(t *testing.T) {
 
 	recorder := readCustomerReply(t, fake, quoteID.String())
 
+	want, _ := time.Parse(time.RFC3339Nano, seenUntil)
 	if recorder.Code != http.StatusNoContent || fake.quoteID != quoteID ||
-		fake.tenant.AccountID == uuid.Nil {
-		t.Fatalf("status = %d, quote = %s, tenant = %+v; want 204 for the path's quote",
-			recorder.Code, fake.quoteID, fake.tenant)
+		fake.tenant.AccountID == uuid.Nil || !fake.seenUntil.Equal(want) {
+		t.Fatalf("status = %d, quote = %s, tenant = %+v, seen until %s; want 204 for the path's "+
+			"quote up to the reply seen", recorder.Code, fake.quoteID, fake.tenant, fake.seenUntil)
+	}
+}
+
+func TestConversationHandler_ReadCustomerReply_NeedsTheReplySeen(t *testing.T) {
+	fake := &fakeConversationReview{}
+
+	recorder := readCustomerReplyWith(t, fake, uuid.NewString(), `{}`)
+
+	if recorder.Code != http.StatusBadRequest || fake.quoteID != uuid.Nil {
+		t.Fatalf("status = %d, service called with %s; want 400 before the service", recorder.Code,
+			fake.quoteID)
 	}
 }
 

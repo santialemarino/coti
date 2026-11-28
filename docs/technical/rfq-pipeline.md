@@ -654,8 +654,10 @@ The order list (`GET /v1/rfqs`, and the detail's `rfq`) carries `acceptance_unco
 recorded after the quote last became `SENT`, with its `reply_acceptance`. The detail adds
 `accepted_by_reply` for a quote standing `ACCEPTED` on an acceptance read from a batch.
 `POST /v1/quotes/{id}/customer-reply/read` settles those runs `MANUAL_OVERRIDE` by the seller, so the
-order leaves «El cliente escribió» until the customer's next reply records a new run; a quote that is
-not `SENT` answers `409 QUOTE_NOT_SENT`.
+order leaves «El cliente escribió» until the customer's next reply records a new run. It takes
+`seen_until`, the time of the reply the seller's screen showed, and settles only runs recorded up to
+it, so a reply that arrived while the screen was open stays unread; a quote that is not `SENT` answers
+`409 QUOTE_NOT_SENT`.
 
 A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
 line with a product:

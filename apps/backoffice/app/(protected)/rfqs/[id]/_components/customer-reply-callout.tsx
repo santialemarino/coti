@@ -26,7 +26,7 @@ interface CustomerReplyCalloutProps {
   quoteId: string;
   branchId: string;
   reference: string;
-  reply: Pick<CustomerReply, 'reason' | 'replyAcceptance'>;
+  reply: Pick<CustomerReply, 'reason' | 'replyAcceptance' | 'createdAt'>;
   onChanged: () => Promise<void>;
 }
 
@@ -79,7 +79,10 @@ export function CustomerReplyCallout({
             pendingLabel={t('reading')}
             onClick={() =>
               startRead(
-                run(() => readCustomerReply(quoteId, branchId), t('readSuccess', { reference })),
+                run(
+                  () => readCustomerReply(quoteId, branchId, reply.createdAt),
+                  t('readSuccess', { reference }),
+                ),
               )
             }
           >
