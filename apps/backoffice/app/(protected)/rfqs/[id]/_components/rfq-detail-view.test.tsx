@@ -281,6 +281,7 @@ it('shows rejection feedback from its customer action, preserving prior versions
       type: 'REJECT',
       comment: 'Compré en otro proveedor.',
       created_at: BASE_TIME,
+      reopened_at: BASE_TIME,
     },
     {
       id: 'answer-2',
@@ -289,12 +290,15 @@ it('shows rejection feedback from its customer action, preserving prior versions
       type: 'REJECT',
       comment: null,
       created_at: BASE_TIME,
+      reopened_at: null,
     },
   ];
   const view = renderView(detail);
   expect(view.getByText('Compré en otro proveedor.')).toBeTruthy();
   expect(view.getAllByText(copy.detail.callouts.rejected.noReason).length).toBeGreaterThan(0);
   expect(view.queryByText('Internal seller note')).toBeNull();
+  // The seller reactivated the quote after the first answer: it reads as reopened, the second does not.
+  expect(view.getAllByText(/reabierta el/)).toHaveLength(1);
 });
 
 function viewTree(
@@ -434,6 +438,7 @@ describe('RfqDetailView send flow', () => {
         type: 'REQUEST_CHANGE',
         comment: 'Precio alto',
         created_at: BASE_TIME,
+        reopened_at: null,
       },
     ];
 

@@ -61,12 +61,17 @@ func (r *ClientActionRepository) GetBySend(ctx context.Context, q Querier, accou
 		accountID, sendID))
 }
 
-// ListByQuote loads every standing customer response on a branch-scoped quote across its versions,
-// oldest first. The version number comes from the version the action pinned, not from the current
-// one.
+// ListByQuote loads every customer response the seller did not undo on a branch-scoped quote,
+// oldest first, each with when a reactivation reopened it. The version number comes from the
+// version the action pinned, not from the current one.
 func (r *ClientActionRepository) ListByQuote(ctx context.Context, q Querier, accountID, branchID,
 	quoteID uuid.UUID) ([]domain.ClientAction, error) {
-	rows, err := q.Query(ctx, `SELECT `+clientActionColumns+`, version.version_number
+	rows, err := q.Query(ctx, `SELECT `+clientActionColumns+`, version.version_number,
+		  (SELECT min(change.changed_at) FROM quote_status_change change
+		   WHERE change.account_id = action.account_id AND change.quote_id = quote.id
+		     AND change.previous_status IN ('ACCEPTED', 'REJECTED')
+		     AND change.new_status IN ('QUOTED', 'CHANGE_REQUESTED')
+		     AND change.changed_at > action.created_at)
 		FROM client_action action
 		JOIN quote_version version ON version.account_id = action.account_id
 		  AND version.id = action.version_id
@@ -84,7 +89,7 @@ func (r *ClientActionRepository) ListByQuote(ctx context.Context, q Querier, acc
 		// The version number trails the row's own columns; only this list join answers it.
 		err := rows.Scan(&action.ID, &action.AccountID, &action.VersionID, &action.QuoteSendID,
 			&action.QuoteItemID, &action.Type, &action.Comment, &action.CreatedAt,
-			&action.MessageBatchID, &action.RevokedAt, &action.VersionNumber)
+			&action.MessageBatchID, &action.RevokedAt, &action.VersionNumber, &action.ReopenedAt)
 		if err != nil {
 			return nil, err
 		}

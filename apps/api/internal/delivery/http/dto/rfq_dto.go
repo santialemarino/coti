@@ -187,6 +187,8 @@ type ClientActionResponse struct {
 	Type          string    `json:"type"`
 	Comment       *string   `json:"comment"`
 	CreatedAt     time.Time `json:"created_at"`
+	// ReopenedAt is when the seller reactivated the quote after this answer; null while it stands.
+	ReopenedAt *time.Time `json:"reopened_at"`
 }
 
 // RFQStatusChangeResponse is one recorded transition on the RFQ status cache.

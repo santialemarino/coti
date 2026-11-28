@@ -40,6 +40,9 @@ type ClientAction struct {
 	// MessageBatchID is the conversation batch an acceptance was read from; nil for a click.
 	MessageBatchID *uuid.UUID
 	RevokedAt      *time.Time
+	// ReopenedAt is when the seller reactivated the quote after this answer, filled when listed
+	// through a quote; a reopened answer no longer stands.
+	ReopenedAt *time.Time
 }
 
 // NewClientAction is a validated customer response ready for its insert.
