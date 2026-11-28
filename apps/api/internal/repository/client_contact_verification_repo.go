@@ -253,3 +253,10 @@ func (r *ClientContactRepository) GetVerificationNumber(ctx context.Context, q Q
 	}
 	return number, err
 }
+
+// CreateSenderFailure records a wrong WhatsApp proof against the number that sent it, which no
+// challenge names, so guesses from one number count toward its lockout.
+func (r *ClientContactRepository) CreateSenderFailure(ctx context.Context, q Querier, accountID uuid.UUID, kind domain.ChannelType, value string) error {
+	_, err := q.Exec(ctx, `INSERT INTO client_contact_challenge_failure(account_id,kind,value) VALUES($1,$2,$3)`, accountID, kind, value)
+	return err
+}

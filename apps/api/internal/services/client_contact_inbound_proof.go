@@ -25,6 +25,9 @@ const inboundCodeAttempts = 5
 // errProofTaken rolls back a proof whose number another account already verified.
 var errProofTaken = errors.New("number verified on another account")
 
+// errProofRefused rolls back a proof the customer's profile can no longer take.
+var errProofRefused = errors.New("proof refused by the profile")
+
 // ErrProofReplyUndelivered is a proof that committed but whose fixed answer did not go out.
 var ErrProofReplyUndelivered = errors.New("WhatsApp proof answer undelivered")
 
@@ -33,6 +36,7 @@ type inboundProofStore interface {
 	HasPendingInboundCode(context.Context, repository.Querier, uuid.UUID, string) (bool, error)
 	LockInboundChallenge(context.Context, repository.Querier, uuid.UUID, string) (*domain.ContactChallenge, error)
 	ProveInboundChallenge(context.Context, repository.Querier, domain.CustomerPrincipal, uuid.UUID, string) error
+	CreateSenderFailure(context.Context, repository.Querier, uuid.UUID, domain.ChannelType, string) error
 	GetVerificationNumber(context.Context, repository.Querier, uuid.UUID, string) (string, error)
 }
 
@@ -151,9 +155,20 @@ func (s *ClientContactVerificationService) ProveByMessage(ctx context.Context, r
 		if err := s.store.LockDestination(ctx, q, domain.ChannelTypeWhatsApp, value); err != nil {
 			return err
 		}
+		// A sender past the failure cap is answered with silence, so guessing costs the supplier nothing.
+		if err := s.checkDestination(ctx, q, route.AccountID, domain.ChannelTypeWhatsApp, value, false); err != nil {
+			if errors.Is(err, domain.ErrLocked) {
+				reply = ""
+				return nil
+			}
+			return err
+		}
+		failed := func() error {
+			return store.CreateSenderFailure(ctx, q, route.AccountID, domain.ChannelTypeWhatsApp, value)
+		}
 		c, err := store.LockInboundChallenge(ctx, q, route.AccountID, inboundCodeHash(route.AccountID, code))
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil
+			return failed()
 		}
 		if err != nil {
 			return err
@@ -162,32 +177,36 @@ func (s *ClientContactVerificationService) ProveByMessage(ctx context.Context, r
 			// A redelivered message gets the same answer; another number with a spent code does not.
 			if c.Value == value {
 				reply = whatsAppProofVerified
-			}
-			return nil
-		}
-		if c.ConsumedAt != nil || !c.ExpiresAt.After(s.now()) {
-			return nil
-		}
-		if err := s.checkDestination(ctx, q, route.AccountID, domain.ChannelTypeWhatsApp, value, false); err != nil {
-			if errors.Is(err, domain.ErrLocked) {
 				return nil
 			}
-			return err
+			return failed()
+		}
+		if c.ConsumedAt != nil || !c.ExpiresAt.After(s.now()) {
+			return failed()
 		}
 		profile, err := s.contacts.profiles.GetByID(ctx, q, route.AccountID, c.ClientID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
 		if profile.TaxID == nil {
-			return domain.ErrForbidden
+			return nil
 		}
 		p := domain.CustomerPrincipal{AccountID: route.AccountID, CustomerID: c.CustomerID, TaxID: *profile.TaxID}
 		if err := s.addProvedNumber(ctx, q, p, c.ClientID, value); err != nil {
+			if errors.Is(err, domain.ErrInvalidInput) {
+				return errProofRefused
+			}
 			return err
 		}
 		if err := s.applyProof(ctx, q, p, c.ClientID, domain.ChannelTypeWhatsApp, value); err != nil {
-			if errors.Is(err, domain.ErrConflict) {
+			switch {
+			case errors.Is(err, domain.ErrConflict):
 				return errProofTaken
+			case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrForbidden):
+				return errProofRefused
 			}
 			return err
 		}
@@ -197,13 +216,16 @@ func (s *ClientContactVerificationService) ProveByMessage(ctx context.Context, r
 		reply = whatsAppProofVerified
 		return nil
 	})
-	if errors.Is(err, errProofTaken) {
+	switch {
+	case errors.Is(err, errProofTaken):
 		reply, err = whatsAppProofTaken, nil
+	case errors.Is(err, errProofRefused):
+		reply, err = whatsAppProofInvalid, nil
 	}
 	if err != nil {
 		return err
 	}
-	if s.messenger == nil {
+	if reply == "" || s.messenger == nil {
 		return nil
 	}
 	if _, err := s.messenger.SendContact(ctx, domain.ContactMessage{AccountID: route.AccountID,
@@ -214,18 +236,21 @@ func (s *ClientContactVerificationService) ProveByMessage(ctx context.Context, r
 	return nil
 }
 
-// addProvedNumber puts the sender's number on the customer's profile when it is not there yet: the
-// customer never types it.
+// addProvedNumber puts the sender's number on the customer's profile when it is not there yet, by
+// the rules a profile edit follows: the customer never types it.
 func (s *ClientContactVerificationService) addProvedNumber(ctx context.Context, q repository.Querier,
 	p domain.CustomerPrincipal, clientID uuid.UUID, value string,
 ) error {
-	collections, err := s.contacts.contacts.List(ctx, q, p.AccountID, []uuid.UUID{clientID})
+	access, err := s.contacts.contacts.GetProfileAccess(ctx, q, p, clientID)
 	if err != nil {
 		return err
 	}
-	contacts := collections[clientID]
+	stored, err := s.contacts.contacts.ListForCustomer(ctx, q, p, clientID, access.Proved)
+	if err != nil {
+		return err
+	}
 	hasKind := false
-	for _, contact := range contacts {
+	for _, contact := range stored {
 		if contact.Kind == domain.ChannelTypeWhatsApp {
 			if contact.Value == value {
 				return nil
@@ -233,11 +258,14 @@ func (s *ClientContactVerificationService) addProvedNumber(ctx context.Context, 
 			hasKind = true
 		}
 	}
-	added := domain.ClientContact{Kind: domain.ChannelTypeWhatsApp, Value: value, Primary: !hasKind}
-	if err := s.contacts.contacts.Save(ctx, q, p.AccountID, clientID, append(contacts, added), "CUSTOMER"); err != nil {
+	contacts := append(stored, domain.ClientContact{Kind: domain.ChannelTypeWhatsApp, Value: value, Primary: !hasKind})
+	if err := s.contacts.checkContactLimit(contacts, len(stored)); err != nil {
 		return err
 	}
-	return s.contacts.contacts.Declare(ctx, q, p, clientID, []domain.ClientContact{added})
+	if !access.Proved {
+		return s.contacts.contacts.SaveDeclared(ctx, q, p, clientID, contacts)
+	}
+	return s.contacts.contacts.Save(ctx, q, p.AccountID, clientID, contacts, "CUSTOMER")
 }
 
 // quoteToken is the delivery token of a portal quote page, empty for any other page.

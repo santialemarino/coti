@@ -55,7 +55,7 @@ func (s *ClientContactVerificationService) Request(ctx context.Context, p domain
 	if p.CustomerID == uuid.Nil || s.messenger == nil {
 		return nil, domain.ErrUnauthenticated
 	}
-	// Decision 94: the customer proves a WhatsApp number by writing from it, so none is typed.
+	// A WhatsApp number is proved by the customer writing from it, so none is typed.
 	if store, ok := s.inboundProofs(); ok && kind == domain.ChannelTypeWhatsApp {
 		return s.requestByMessage(ctx, store, p, next)
 	}

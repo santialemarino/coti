@@ -221,3 +221,109 @@ func TestWhatsAppProof_RefusesANumberVerifiedOnAnotherAccount(t *testing.T) {
 		t.Errorf("the refused number joined the profile %d times", held)
 	}
 }
+
+// Guessing has a cost: every wrong, expired or spent code counts against the number that sent it,
+// and past the supplier's failure cap that number gets no answer and proves nothing, even with the
+// right code.
+func TestWhatsAppProof_LocksOutANumberThatGuesses(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	f := e.seedProofFixture(t, "Inbound proof guesses")
+	account := f.invited.tenant.AccountID
+	e.registerCustomer(t, account, "20123456786")
+	p := e.customerPrincipal(t, account, "20123456786")
+	messenger := &captureContactMessenger{}
+	contacts := services.NewClientContactService(e.db, repository.NewClientRepository(), repository.NewClientContactRepository())
+	cfg := sharedDestinationCaps(config.CustomerAuthConfig{ContactVerificationTTL: 15 * time.Minute,
+		ContactVerificationCooldown: time.Minute, ContactVerificationAttempts: 3})
+	cfg.ContactFailureMax = 3
+	verifier := services.NewClientContactVerificationService(contacts, repository.NewClientContactRepository(), messenger, cfg).
+		WithInboundProofs([]byte("integration-inbound-proof-secret-0123456789"))
+	inbound := e.inboundService(t, &recordingInboundRFQs{}).WithContactProofs(verifier)
+	send := func(sender, body string) {
+		t.Helper()
+		if err := inbound.Ingest(ctx, []domain.InboundTextMessage{whatsAppReply(f.channel, "wamid."+uuid.NewString(), sender, body)}); err != nil {
+			t.Fatalf("Ingest(%q) = %v", body, err)
+		}
+	}
+
+	expired, err := verifier.Request(ctx, p, domain.ChannelTypeWhatsApp, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.CrossAccount().Exec(ctx, `UPDATE client_contact_challenge SET expires_at=now()-interval '1 minute' WHERE id=$1`, expired.ID); err != nil {
+		t.Fatal(err)
+	}
+	send("5491155550291", "VERIFICAR "+expired.InboundCode)
+	if view, err := verifier.Describe(ctx, p, expired.ID); err != nil || view.Status == domain.ContactChallengeVerified {
+		t.Fatalf("an expired code proved the number: %+v, %v", view, err)
+	}
+
+	proof, err := verifier.Request(ctx, p, domain.ChannelTypeWhatsApp, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attacker := "5491155550777"
+	wrong := "000000"
+	if wrong == proof.InboundCode {
+		wrong = "000001"
+	}
+	for range 3 {
+		send(attacker, "VERIFICAR "+wrong)
+	}
+	answered := len(messenger.messages)
+	send(attacker, "VERIFICAR "+proof.InboundCode)
+	if view, err := verifier.Describe(ctx, p, proof.ID); err != nil || view.Status != domain.ContactChallengePending {
+		t.Errorf("a number past the failure cap proved itself: %+v, %v", view, err)
+	}
+	if len(messenger.messages) != answered {
+		t.Errorf("a locked-out number still got %d answers", len(messenger.messages)-answered)
+	}
+	if answered != 4 || !strings.Contains(messenger.messages[0].Body, "no es válido") {
+		t.Errorf("answers before the lockout = %d, want the expired code and three guesses refused", answered)
+	}
+}
+
+// A CUIT that already had a profile the seller made proves it owns it by writing from the WhatsApp
+// that profile held, the way a typed code for that contact does, without seeing it first.
+func TestWhatsAppProof_AnEarlierProfilesNumberProvesOwnership(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	f := e.seedProofFixture(t, "Inbound proof adoption")
+	account := f.invited.tenant.AccountID
+	const tax = "27234567891"
+	if _, err := e.db.CrossAccount().Exec(ctx, `INSERT INTO client(id,account_id,name,tax_id,phone,email) VALUES($1,$2,'Dueño SA',$3,'+5491155557777','owner@example.test')`, uuid.New(), account, tax); err != nil {
+		t.Fatal(err)
+	}
+	host, session := e.registerCustomer(t, account, tax)
+	p := e.customerPrincipal(t, account, tax)
+	ownership := func() bool {
+		t.Helper()
+		response := e.do(t, request{method: http.MethodGet, path: "/v1/customer/sites/" + host + "/profile", token: session})
+		return strings.Contains(response.Body.String(), `"ownership_unproved":true`)
+	}
+	if !ownership() {
+		t.Fatal("the earlier profile was not waiting for an ownership proof")
+	}
+	messenger := &captureContactMessenger{}
+	verifier := inboundVerifier(e, messenger)
+	inbound := e.inboundService(t, &recordingInboundRFQs{}).WithContactProofs(verifier)
+	proof, err := verifier.Request(ctx, p, domain.ChannelTypeWhatsApp, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbound.Ingest(ctx, []domain.InboundTextMessage{whatsAppReply(f.channel, "wamid."+uuid.NewString(), "5491155557777", "VERIFICAR "+proof.InboundCode)}); err != nil {
+		t.Fatalf("Ingest() = %v", err)
+	}
+	if ownership() || len(messenger.messages) != 1 || !strings.Contains(messenger.messages[0].Body, "verificamos") {
+		t.Errorf("ownership still unproved=%v after answers %+v, want the earlier profile adopted", ownership(), messenger.messages)
+	}
+	var kept int
+	if err := e.db.CrossAccount().QueryRow(ctx, `SELECT count(*) FROM client_contact cc JOIN client c ON c.account_id=cc.account_id AND c.id=cc.client_id
+ WHERE cc.account_id=$1 AND c.tax_id=$2 AND cc.value='owner@example.test' AND cc.retired_at IS NULL`, account, tax).Scan(&kept); err != nil {
+		t.Fatal(err)
+	}
+	if kept != 1 {
+		t.Errorf("the seller's contacts on the earlier profile were replaced: owner email kept %d times", kept)
+	}
+}

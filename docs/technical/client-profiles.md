@@ -93,6 +93,11 @@ joins the customer's profile if missing and goes through the same proof as a con
 `value` and `proved_at`. The sender gets one fixed reply through the same channel: verified; code
 invalid, expired or spent by another number; or the number already verified on another account
 (the proof stays pending). A redelivered message gets the same answer and changes nothing.
+Every wrong, expired or spent code is a failure against the sending number
+(`client_contact_challenge_failure` with no challenge, migration 00093), so it counts toward the
+same per-supplier lockout as a wrong typed code; a number past it gets no answer and proves
+nothing, even with the right code. Rotating `AUTH_JWT_SECRET` voids the pending WhatsApp proofs,
+which the customer simply requests again.
 
 A request may carry `next`, the portal page to return to (`/quotes/{token}`, `/orders/{id}`,
 `/orders`, `/new-request`, `/profile`; anything else is dropped). It is stored with the challenge
