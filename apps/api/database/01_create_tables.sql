@@ -94,6 +94,8 @@ CREATE TYPE auth_token_type AS ENUM ('PASSWORD_RESET', 'EMAIL_VERIFICATION', 'IN
 CREATE TYPE message_author_type AS ENUM ('CLIENT', 'SELLER', 'SYSTEM');
 CREATE TYPE message_batch_status AS ENUM ('OPEN', 'CLOSED', 'PROCESSING', 'PROCESSED', 'FAILED');
 CREATE TYPE message_batch_failure_reason AS ENUM ('UNPROCESSABLE', 'ATTEMPTS_EXHAUSTED');
+-- What an inbound message that opened no order was read as.
+CREATE TYPE inbound_message_kind AS ENUM ('GREETING', 'QUESTION', 'OTHER', 'AUTOMATED');
 -- Which recipe a «bajame el precio» runs first when the customer did not say.
 CREATE TYPE lower_price_strategy AS ENUM ('FIND_CHEAPER_ALTERNATIVES', 'ADAPT_TO_REACH_DISCOUNT');
 
@@ -543,9 +545,10 @@ CREATE TABLE channel (
   CONSTRAINT uq_channel_account_branch UNIQUE(account_id,branch_id,id)
 );
 
--- One provider event reserves either the RFQ it starts or the quote_message that continues a sent
--- quote's conversation, before anything else runs. The external identifier is unique per channel,
--- so a retried webhook resumes the same outcome rather than creating another.
+-- One provider event reserves the RFQ it starts, the quote_message that continues a sent quote's
+-- conversation, or — for a message that is not an order — neither, carrying the kind it was read
+-- as. The external identifier is unique per channel, so a retried webhook resumes the same outcome
+-- rather than creating another.
 CREATE TABLE inbound_channel_message (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id           UUID NOT NULL,
@@ -560,9 +563,16 @@ CREATE TABLE inbound_channel_message (
   payload              JSONB NOT NULL,
   provider_received_at TIMESTAMPTZ NOT NULL,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind                 inbound_message_kind,
+  -- Set when the seller puts a message that is not an order away.
+  dismissed_at         TIMESTAMPTZ,
   CONSTRAINT uq_inbound_channel_message_external UNIQUE (channel_id, external_message_id),
-  CONSTRAINT ck_inbound_channel_message_target
-    CHECK ((rfq_id IS NULL) <> (quote_message_id IS NULL))
+  CONSTRAINT ck_inbound_channel_message_target CHECK (
+    (rfq_id IS NOT NULL AND quote_message_id IS NULL AND kind IS NULL)
+    OR (rfq_id IS NULL AND quote_message_id IS NOT NULL AND kind IS NULL)
+    OR (rfq_id IS NULL AND quote_message_id IS NULL AND kind IS NOT NULL)),
+  CONSTRAINT ck_inbound_channel_message_dismissed
+    CHECK (dismissed_at IS NULL OR kind IS NOT NULL)
 );
 
 CREATE TABLE gmail_mailbox (
@@ -1399,6 +1409,7 @@ CREATE INDEX idx_client_account ON client(account_id);
 CREATE UNIQUE INDEX uq_client_account_tax_id ON client(account_id, tax_id) WHERE tax_id IS NOT NULL;
 CREATE INDEX idx_inbound_channel_message_rfq ON inbound_channel_message(rfq_id);
 CREATE UNIQUE INDEX uq_inbound_channel_message_quote_message ON inbound_channel_message(quote_message_id) WHERE quote_message_id IS NOT NULL;
+CREATE INDEX idx_inbound_channel_message_open_non_order ON inbound_channel_message(account_id, branch_id, provider_received_at DESC) WHERE kind IS NOT NULL AND dismissed_at IS NULL;
 CREATE INDEX idx_rfq_branch_status ON rfq(branch_id, status);
 CREATE INDEX idx_rfq_account_branch_received ON rfq(account_id, branch_id, received_at);
 CREATE INDEX idx_rfq_attachment_pending ON rfq_attachment(processing_status) WHERE processing_status IN ('PENDING', 'PROCESSING');
