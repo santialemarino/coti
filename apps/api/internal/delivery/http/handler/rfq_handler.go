@@ -885,6 +885,10 @@ func toRfqDetailResponse(
 		Deliveries:           toQuoteSendTrackingResponses(detail.Deliveries),
 		AcceptedByReply:      detail.AcceptedByReply(),
 	}
+	if split := detail.SplitFrom; split != nil {
+		resp.SplitFrom = &dto.SplitOrderResponse{RFQID: split.RFQID, QuoteNumber: split.QuoteNumber,
+			CreatedAt: split.CreatedAt}
+	}
 	if contact := detail.PublicContact; contact != nil {
 		resp.PublicAttachments = toAttachmentResponses(detail.PublicAttachments)
 		resp.PublicContact = &dto.PublicRFQContactResponse{TaxID: contact.TaxID, Name: contact.Name,

@@ -112,6 +112,12 @@ type rfqUnworkedDeleter interface {
 		rfqID uuid.UUID) (bool, error)
 }
 
+// rfqSplitOrderFinder finds the other order a sender's conversation became.
+type rfqSplitOrderFinder interface {
+	FindSplitOrder(ctx context.Context, q repository.Querier, accountID, branchID, rfqID uuid.UUID,
+		window time.Duration) (*domain.SplitOrder, error)
+}
+
 // errRFQAlreadyWorked rolls back filing a non-order whose RFQ something was already built on.
 var errRFQAlreadyWorked = errors.New("rfq already worked on")
 
@@ -425,6 +431,14 @@ func (s *RFQService) GetDetail(ctx context.Context, tenant domain.Tenant, rfqID 
 				return senderErr
 			}
 			detail.InboundEmail = inboundEmailAddress(senderID)
+		}
+		if finder, ok := s.inboundMessages.(rfqSplitOrderFinder); ok && s.cfg.SplitOrderWindow > 0 {
+			split, splitErr := finder.FindSplitOrder(ctx, q, tenant.AccountID, rfq.BranchID, rfqID,
+				s.cfg.SplitOrderWindow)
+			if splitErr != nil {
+				return splitErr
+			}
+			detail.SplitFrom = split
 		}
 
 		rfqChanges, rfqChangesErr := s.rfqs.ListStatusChanges(ctx, q, tenant.AccountID,

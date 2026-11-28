@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -132,6 +133,39 @@ func (r *InboundChannelMessageRepository) Dismiss(ctx context.Context, q Querier
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+// FindSplitOrder returns the open order nearest in time that the same sender opened on the same
+// channel within window of rfqID, or nil when there is none.
+func (r *InboundChannelMessageRepository) FindSplitOrder(ctx context.Context, q Querier,
+	accountID, branchID, rfqID uuid.UUID, window time.Duration,
+) (*domain.SplitOrder, error) {
+	var split domain.SplitOrder
+	err := q.QueryRow(ctx,
+		`SELECT other.id, other_quote.number, other.created_at
+		 FROM inbound_channel_message message
+		 JOIN rfq this ON this.account_id = message.account_id AND this.id = message.rfq_id
+		 JOIN inbound_channel_message sibling ON sibling.account_id = message.account_id
+		  AND sibling.branch_id = message.branch_id AND sibling.channel_id = message.channel_id
+		  AND sibling.sender_id = message.sender_id AND sibling.rfq_id <> message.rfq_id
+		 JOIN rfq other ON other.account_id = sibling.account_id AND other.branch_id = sibling.branch_id
+		  AND other.id = sibling.rfq_id
+		 LEFT JOIN quote other_quote ON other_quote.account_id = other.account_id
+		  AND other_quote.rfq_id = other.id
+		 WHERE message.account_id = $1 AND message.branch_id = $2 AND message.rfq_id = $3
+		   AND message.sender_id <> '' AND other.archived_at IS NULL AND other_quote.archived_at IS NULL
+		   AND abs(extract(epoch FROM other.created_at - this.created_at)) <= $4::double precision
+		 ORDER BY abs(extract(epoch FROM other.created_at - this.created_at)), other.id
+		 LIMIT 1`,
+		accountID, branchID, rfqID, window.Seconds(),
+	).Scan(&split.RFQID, &split.QuoteNumber, &split.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &split, nil
 }
 
 // FindSenderIDByRFQID returns the provider sender identifier retained for an inbound RFQ.

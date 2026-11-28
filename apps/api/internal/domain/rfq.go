@@ -253,11 +253,21 @@ type TextRFQDraft struct {
 	NonOrder *InboundChannelMessage
 }
 
+// SplitOrder is another order one sender's conversation became, shown so the seller can tell two
+// orders apart from one order split in two.
+type SplitOrder struct {
+	RFQID       uuid.UUID
+	QuoteNumber *int64
+	CreatedAt   time.Time
+}
+
 // RfqDetail is the full detail view projection of one RFQ plus its associated
 // quote data, items, and alternatives. This is what the detail endpoint returns.
 type RfqDetail struct {
 	Rfq           RfqListItem
 	PublicContact *PublicRFQContact
+	// SplitFrom is the nearest other open order the same sender opened shortly before or after this one.
+	SplitFrom *SplitOrder
 	// OriginalText is the order exactly as it arrived, on every channel.
 	OriginalText      *string
 	PublicAttachments []AttachmentLink
