@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,6 +109,7 @@ type ConversationSweep struct {
 // ConversationCandidate is a quote whose latest live send went to an inbound sender's address.
 type ConversationCandidate struct {
 	QuoteID     uuid.UUID
+	QuoteNumber int64
 	QuoteSendID uuid.UUID
 	SentAt      time.Time
 }
@@ -163,4 +166,32 @@ type Conversation struct {
 	// CanDiscardAIChanges is a change-requested draft carrying AI changes the seller has not
 	// decided on.
 	CanDiscardAIChanges bool
+}
+
+// quoteReferencePatterns read the ways a customer names a quote: «COT-000027», «#27»,
+// «cotización 27», «la 27».
+var quoteReferencePatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\bcot[-\s]?0*(\d{1,9})\b`),
+	regexp.MustCompile(`#\s?0*(\d{1,9})\b`),
+	regexp.MustCompile(`\bcotizaci[oó]n\s+(?:n(?:ro|°|º|\.)?\s*)?#?0*(\d{1,9})\b`),
+	regexp.MustCompile(`\bla\s+0*(\d{1,9})\b`),
+}
+
+// QuoteReferences returns the quote numbers a message names explicitly, in the order it names
+// them. A number only routes when it is one of the sender's live quotes.
+func QuoteReferences(text string) []int64 {
+	lower := strings.ToLower(text)
+	seen := map[int64]bool{}
+	numbers := make([]int64, 0)
+	for _, pattern := range quoteReferencePatterns {
+		for _, match := range pattern.FindAllStringSubmatch(lower, -1) {
+			number, err := strconv.ParseInt(match[1], 10, 64)
+			if err != nil || number <= 0 || seen[number] {
+				continue
+			}
+			seen[number] = true
+			numbers = append(numbers, number)
+		}
+	}
+	return numbers
 }

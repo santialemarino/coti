@@ -164,9 +164,13 @@ send's destination is the address the quote actually reached.
 - **The sender's forms.** Meta's `wa_id` is digits only, and an Argentine mobile is written both
   with and without the 9 after `54`; `domain.InboundSenderDestinations` returns `+<wa_id>` plus the
   other Argentine form, and either matches a destination.
-- **The newest send wins.** Several live quotes for one sender route to the one sent last; the
-  stored `quote_message.other_live_quotes` counts the rest, so the seller can be told the message
-  may belong to another quote.
+- **A named quote wins.** A message naming one of the sender's live quotes by number (`COT-000027`,
+  `#27`, «cotización 27», «la 27»; `domain.QuoteReferences`) joins that quote, with no hint of
+  others. A number that is not one of them is ignored.
+- **Otherwise the newest send wins.** Several live quotes for one sender route to the one sent last;
+  the stored `quote_message.other_live_quotes` counts the rest, so the seller can be told the message
+  may belong to another quote. A batch the model reads as a separate order (`NEW_ORDER`) goes on to
+  intake (see the RFQ pipeline's conversation handler).
 - **Locks.** The candidate read is unlocked, so each candidate is locked (`SELECT … FOR UPDATE`, the
   same row lock the edit paths take first) and re-checked in recency order; one a seller accepted or
   archived meanwhile is skipped.

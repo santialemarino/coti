@@ -42,7 +42,7 @@ type whatsAppInboundConfigReader interface {
 
 type whatsAppInboundConversations interface {
 	Route(ctx context.Context, q repository.Querier, route domain.InboundChannelRoute,
-		senderID string) (*domain.ConversationRoute, error)
+		senderID, body string) (*domain.ConversationRoute, error)
 	AppendMessage(ctx context.Context, q repository.Querier, tenant domain.Tenant,
 		in domain.NewQuoteMessage) (*domain.QuoteMessage, error)
 }
@@ -287,7 +287,7 @@ func (s *WhatsAppInboundService) joinConversation(ctx context.Context, q reposit
 	if s.conversations == nil {
 		return nil, nil
 	}
-	match, err := s.conversations.Route(ctx, q, route, message.SenderID)
+	match, err := s.conversations.Route(ctx, q, route, message.SenderID, message.Body)
 	if err != nil || match == nil {
 		return nil, err
 	}
