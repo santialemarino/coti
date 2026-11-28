@@ -128,7 +128,7 @@ func (s *ClientContactService) NameReply(ctx context.Context, q repository.Queri
 			return nil, "", nil
 		}
 	}
-	pending, err := store.PendingNameRequest(ctx, q, route, kind, value, destinations, nameReplyWindow)
+	pending, err := store.PendingNameRequest(ctx, q, route, kind, value, destinations, whatsAppServiceWindow)
 	if err != nil || pending == nil {
 		return nil, "", err
 	}
