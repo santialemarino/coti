@@ -245,11 +245,61 @@ func (s *QuoteRepresentationService) ensureLocked(
 	if existing != nil {
 		return s.decorate(ctx, *existing, true)
 	}
+	return s.renderAndStore(ctx, tenant, quoteID, *source, selectionPricing)
+}
 
+// EnsureAccepted returns the representation of a version a customer's answer froze, creating it
+// on first use. Nothing is frozen here: the version must already be immutable.
+func (s *QuoteRepresentationService) EnsureAccepted(
+	ctx context.Context, tenant domain.Tenant, quoteID, versionID uuid.UUID,
+) (*domain.QuoteRepresentationResult, error) {
+	if s.storage == nil || s.renderer == nil {
+		return nil, domain.ErrNotConfigured
+	}
+	var result *domain.QuoteRepresentationResult
+	err := s.db.WithAdvisoryLock(ctx, fmt.Sprintf("quote-representation:%s:%s",
+		tenant.AccountID, quoteID), func() error {
+		var source *domain.QuoteRepresentationSource
+		var existing *domain.QuoteRepresentation
+		err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
+			var err error
+			existing, err = s.representations.GetByVersion(ctx, q, tenant.AccountID, tenant.BranchID,
+				quoteID, versionID)
+			if err == nil || !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			source, err = s.representations.LoadSource(ctx, q, tenant.AccountID, tenant.BranchID,
+				quoteID, versionID)
+			if err != nil {
+				return err
+			}
+			if !source.Version.IsImmutable {
+				return invalidRepresentation("an accepted version must be frozen")
+			}
+			return validateRepresentationSource(*source)
+		})
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			result, err = s.decorate(ctx, *existing, true)
+			return err
+		}
+		result, err = s.renderAndStore(ctx, tenant, quoteID, *source, nil)
+		return err
+	})
+	return result, err
+}
+
+// renderAndStore renders a frozen version's PDF, uploads it and records the representation.
+func (s *QuoteRepresentationService) renderAndStore(
+	ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID,
+	source domain.QuoteRepresentationSource, selectionPricing *domain.QuoteSelectionPricingSnapshot,
+) (*domain.QuoteRepresentationResult, error) {
 	if source.Version.FrozenAt == nil {
 		return nil, invalidRepresentation("frozen version has no approval timestamp")
 	}
-	payload := buildRepresentationPayload(*source, *source.Version.FrozenAt)
+	payload := buildRepresentationPayload(source, *source.Version.FrozenAt)
 	message := buildQuoteMessage(payload)
 	logo, fallback := s.loadLogo(ctx, source.Account.BrandLogoURL, quoteID)
 	pdfBytes, err := s.renderer.Render(payload, logo)

@@ -342,6 +342,7 @@ func (h *QuoteHandler) ResolvePublic(c *gin.Context) {
 	}
 	response.Message = result.Message
 	response.PDFURL = result.PDFURL
+	response.AcceptedVersion = result.AcceptedVersion
 	if result.CustomerStatus != nil {
 		status := string(*result.CustomerStatus)
 		response.CustomerStatus = &status

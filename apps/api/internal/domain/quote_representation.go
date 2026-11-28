@@ -203,6 +203,8 @@ type PublicQuoteRepresentation struct {
 	// CustomerStatus is the answer this send already received, absent while the customer
 	// has not responded through the token.
 	CustomerStatus *ClientActionType
+	// AcceptedVersion says the payload is the version the customer's choices froze, not the sent one.
+	AcceptedVersion bool
 }
 
 // PublicQuoteSelectionPreview is the client-safe price result for a tentative alternative choice.

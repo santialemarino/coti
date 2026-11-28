@@ -19,8 +19,10 @@ vi.mock('next-intl/server', async () => import('@/lib/i18n/server-intl.mock'));
  * how the view composes: greeting, block order and the expiry answer for a non-ACTIVE send.
  */
 vi.mock('@/app/quotes/[token]/_components/quote-header', () => ({
-  QuoteHeader: ({ reference }: { reference: string }) => (
-    <p data-testid="quote-header">{reference}</p>
+  QuoteHeader: ({ reference, versionNumber }: { reference: string; versionNumber?: number }) => (
+    <p data-testid="quote-header" data-version={versionNumber ?? 'none'}>
+      {reference}
+    </p>
   ),
 }));
 vi.mock('@/app/quotes/[token]/_components/quote-items', () => ({
@@ -48,6 +50,18 @@ vi.mock('@/components/brand', () => ({
 }));
 
 describe('PublicQuoteView', () => {
+  // TC-12: once the customer accepted with alternatives, the view is that accepted version, and the
+  // seller's version number means nothing to them.
+  it('drops the seller version stamp on the version the customer accepted', async () => {
+    const sent = render(await PublicQuoteView({ send: makePublicQuoteSend() }));
+    expect(sent.getByTestId('quote-header').dataset.version).not.toBe('none');
+    sent.unmount();
+    const accepted = render(
+      await PublicQuoteView({ send: { ...makePublicQuoteSend(), acceptedVersion: true } }),
+    );
+    expect(accepted.getByTestId('quote-header').dataset.version).toBe('none');
+  });
+
   it('renders the quote blocks and the greeting of an active send', async () => {
     const view = render(await PublicQuoteView({ send: makePublicQuoteSend() }));
 

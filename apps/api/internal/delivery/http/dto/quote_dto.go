@@ -181,6 +181,8 @@ type PublicQuoteSendResponse struct {
 	// CustomerStatus is the answer this token already received, present only when the
 	// customer responded through the link.
 	CustomerStatus *string `json:"customer_status,omitempty"`
+	// AcceptedVersion marks a quote shown as the customer accepted it, with their chosen alternatives.
+	AcceptedVersion bool `json:"accepted_version,omitempty"`
 }
 
 // PublicQuoteActionRequest is the customer's response to the frozen quote.

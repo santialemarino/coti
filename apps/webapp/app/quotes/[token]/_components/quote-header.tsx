@@ -9,7 +9,8 @@ interface QuoteHeaderProps {
   supplier: Supplier;
   branch: Branch;
   reference: string;
-  versionNumber: number;
+  /* The seller's version stamp; left out where it would mean nothing to the customer. */
+  versionNumber?: number;
   approvedAt: string;
 }
 
@@ -66,7 +67,7 @@ export async function QuoteHeader({
           <p className="text-heading-5 text-foreground">{t('reference', { reference })}</p>
           <MetaList
             items={[
-              t('version', { number: versionNumber }),
+              versionNumber === undefined ? '' : t('version', { number: versionNumber }),
               t('issuedOn', { date: fmt.date(approvedAt) }),
             ]}
           />
