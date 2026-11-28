@@ -79,7 +79,7 @@ export async function PublicQuoteView({ send, token, selectionPreviews }: Public
             total={quote.total}
             currency={quote.currency}
             token={token}
-            disabled={send.customerStatus !== undefined}
+            disabled={send.customerStatus !== undefined || send.inReview === true}
             selectionPreviews={selectionPreviews}
           />
 
@@ -92,6 +92,7 @@ export async function PublicQuoteView({ send, token, selectionPreviews }: Public
           <QuoteActions
             token={token}
             customerStatus={send.customerStatus}
+            inReview={send.inReview}
             currency={quote.currency}
           />
         </QuoteSelectionProvider>

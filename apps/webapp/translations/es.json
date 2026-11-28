@@ -207,7 +207,9 @@
       "respondedTitle": "Ya respondiste esta cotización",
       "respondedAccept": "Aceptaste esta cotización.",
       "respondedRequestChange": "Enviaste una solicitud de cambios sobre esta cotización.",
-      "respondedReject": "Rechazaste esta cotización."
+      "respondedReject": "Rechazaste esta cotización.",
+      "inReviewTitle": "En revisión",
+      "inReviewDescription": "Recibimos tu aceptación por mensaje. El corralón la está confirmando."
     }
   },
   "notFound": {
