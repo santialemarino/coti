@@ -60,7 +60,7 @@ func (s *ClientContactService) SendRegistrationLink(ctx context.Context, tenant 
 			for _, form := range forms {
 				senders = append(senders, form, strings.TrimPrefix(form, "+"))
 			}
-			open, err := store.HasRecentWhatsAppMessage(ctx, q, tenant.AccountID, tenant.BranchID, senders, nameReplyWindow)
+			open, err := store.HasRecentWhatsAppMessage(ctx, q, tenant.AccountID, tenant.BranchID, senders, whatsAppServiceWindow)
 			if err != nil {
 				return err
 			}
