@@ -63,17 +63,18 @@ func conversationRoute() domain.InboundChannelRoute {
 		ChannelID: uuid.New(), ChannelType: domain.ChannelTypeWhatsApp}
 }
 
-// The candidate read is unlocked, so a quote accepted in between is skipped for the next one.
+// The candidate read is unlocked, so a quote archived in between is skipped for the next one.
 func TestConversationService_RouteRechecksEachCandidateUnderItsLock(t *testing.T) {
 	t.Parallel()
-	accepted, live, older := uuid.New(), uuid.New(), uuid.New()
+	archived, live, older := uuid.New(), uuid.New(), uuid.New()
+	archivedAt := time.Now()
 	quotes := &fakeConversationQuotes{quotes: map[uuid.UUID]domain.Quote{
-		accepted: {ID: accepted, CurrentStatus: domain.QuoteStatusAccepted},
+		archived: {ID: archived, CurrentStatus: domain.QuoteStatusSent, ArchivedAt: &archivedAt},
 		live:     {ID: live, CurrentStatus: domain.QuoteStatusChangeRequested},
 		older:    {ID: older, CurrentStatus: domain.QuoteStatusSent},
 	}}
 	sends := &fakeConversationSends{candidates: []domain.ConversationCandidate{
-		{QuoteID: accepted}, {QuoteID: live, QuoteSendID: uuid.New()}, {QuoteID: older},
+		{QuoteID: archived}, {QuoteID: live, QuoteSendID: uuid.New()}, {QuoteID: older},
 	}}
 	service := NewConversationService(quotes, sends, nil, nil, config.ConversationConfig{})
 
@@ -82,7 +83,7 @@ func TestConversationService_RouteRechecksEachCandidateUnderItsLock(t *testing.T
 		t.Fatalf("Route() = %v, want no error", err)
 	}
 	if match == nil || match.QuoteID != live || match.QuoteSendID != sends.candidates[1].QuoteSendID ||
-		match.OtherLiveQuotes != 1 {
+		match.OtherLiveQuotes != 1 || match.Accepted {
 		t.Fatalf("Route() = %+v, want the live quote with one other candidate", match)
 	}
 	if len(sends.destinations) != 2 {
@@ -110,19 +111,23 @@ func TestConversationService_AppendMessageMovesTheWindowOnlyForTheClient(t *test
 	t.Parallel()
 	tenant := domain.Tenant{AccountID: uuid.New(), BranchID: uuid.New()}
 	for _, test := range []struct {
-		author     domain.MessageAuthorType
-		wantWindow bool
+		name         string
+		author       domain.MessageAuthorType
+		recordedOnly bool
+		wantWindow   bool
 	}{
-		{domain.MessageAuthorClient, true},
-		{domain.MessageAuthorSeller, false},
-		{domain.MessageAuthorSystem, false},
+		{"client", domain.MessageAuthorClient, false, true},
+		{"seller", domain.MessageAuthorSeller, false, false},
+		{"system", domain.MessageAuthorSystem, false, false},
+		{"client on an accepted quote", domain.MessageAuthorClient, true, false},
 	} {
-		t.Run(string(test.author), func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			messages, windows := &fakeConversationMessages{}, &fakeConversationWindows{}
 			service := NewConversationService(nil, nil, messages, windows, config.ConversationConfig{})
 			_, err := service.AppendMessage(context.Background(), nil, tenant, domain.NewQuoteMessage{
-				QuoteID: uuid.New(), AuthorType: test.author, Body: "hola"})
+				QuoteID: uuid.New(), AuthorType: test.author, Body: "hola",
+				RecordedOnly: test.recordedOnly})
 			if err != nil {
 				t.Fatalf("AppendMessage() = %v, want no error", err)
 			}
@@ -133,6 +138,21 @@ func TestConversationService_AppendMessageMovesTheWindowOnlyForTheClient(t *test
 				t.Errorf("window moved = %t, want %t", got, test.wantWindow)
 			}
 		})
+	}
+}
+
+// A message after the customer accepted joins that quote's conversation, flagged as recorded only.
+func TestConversationService_RouteKeepsAnAcceptedQuoteAsARecordedConversation(t *testing.T) {
+	t.Parallel()
+	accepted := uuid.New()
+	quotes := &fakeConversationQuotes{quotes: map[uuid.UUID]domain.Quote{
+		accepted: {ID: accepted, CurrentStatus: domain.QuoteStatusAccepted}}}
+	sends := &fakeConversationSends{candidates: []domain.ConversationCandidate{{QuoteID: accepted}}}
+	service := NewConversationService(quotes, sends, nil, nil, config.ConversationConfig{})
+
+	match, err := service.Route(context.Background(), nil, conversationRoute(), "5491112345678")
+	if err != nil || match == nil || match.QuoteID != accepted || !match.Accepted {
+		t.Fatalf("Route() = %+v, %v, want the accepted quote flagged as recorded only", match, err)
 	}
 }
 

@@ -155,6 +155,18 @@ func emailVerificationValidity(hours int) string {
 // quoteOutcomeCopy words what a customer decided, for the seller who sent the quote. The reference
 // carries the subject because a seller with several quotes out reads the list, not the mail.
 func quoteOutcomeCopy(outcome domain.ClientQuoteOutcome) (subject, heading, body string) {
+	switch {
+	case outcome.Action == domain.ClientActionAccept && outcome.Unconfirmed:
+		return fmt.Sprintf("%s: el cliente parece aceptar la cotización", outcome.Reference),
+			"Confirmá la aceptación",
+			fmt.Sprintf("Por WhatsApp, el cliente aceptó %s. Confirmala en el backoffice antes de "+
+				"cobrar o facturar.", outcome.Reference)
+	case outcome.Action == domain.ClientActionAccept && outcome.ByReply:
+		return fmt.Sprintf("%s: el cliente aceptó la cotización", outcome.Reference),
+			"Te aceptaron la cotización",
+			fmt.Sprintf("El cliente aceptó %s por WhatsApp. Si no fue así, deshacelo desde el "+
+				"backoffice mientras no esté cobrada ni facturada.", outcome.Reference)
+	}
 	if outcome.Action == domain.ClientActionAccept {
 		return fmt.Sprintf("%s: el cliente aceptó la cotización", outcome.Reference),
 			"Te aceptaron la cotización",

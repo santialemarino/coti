@@ -685,6 +685,13 @@ type ConversationConfig struct {
 	ProcessingTimeout time.Duration
 	// SweepBatchSize bounds each close and reclaim statement, and the claims one pass makes.
 	SweepBatchSize int
+	// AutoAcceptMinConfidencePercent is how sure the model must be for an acceptance to go
+	// through without the seller; below it, down to AcceptReviewMinConfidencePercent, the quote is
+	// accepted pending confirmation, and lower still it stays SENT with a signal.
+	AutoAcceptMinConfidencePercent   int
+	AcceptReviewMinConfidencePercent int
+	// AutoAcceptMaxWords caps how long a reply accepted without the seller may be.
+	AutoAcceptMaxWords int
 }
 
 // AttachmentConfig bounds the sweep that reads the files an order arrived with. The reclaim
@@ -1057,6 +1064,11 @@ func Load() (*Config, error) {
 			ProcessingTimeout: getDuration("CONVERSATION_PROCESSING_TIMEOUT_SECONDS", 600*time.Second,
 				&problems),
 			SweepBatchSize: getInt("CONVERSATION_SWEEP_BATCH_SIZE", 100, &problems),
+			AutoAcceptMinConfidencePercent: getInt("CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT",
+				85, &problems),
+			AcceptReviewMinConfidencePercent: getInt("CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT",
+				60, &problems),
+			AutoAcceptMaxWords: getInt("CONVERSATION_AUTO_ACCEPT_MAX_WORDS", 8, &problems),
 		},
 		Attachment: AttachmentConfig{
 			ExtractionRFQBatchSize: getInt("ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE", 5, &problems),
@@ -1368,6 +1380,18 @@ func Load() (*Config, error) {
 	}
 	if cfg.Conversation.SweepBatchSize < 1 {
 		problems = append(problems, "CONVERSATION_SWEEP_BATCH_SIZE must be greater than zero")
+	}
+	if auto := cfg.Conversation.AutoAcceptMinConfidencePercent; auto < 0 || auto > 100 {
+		problems = append(problems,
+			"CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT must be between 0 and 100")
+	}
+	if review := cfg.Conversation.AcceptReviewMinConfidencePercent; review < 0 ||
+		review > cfg.Conversation.AutoAcceptMinConfidencePercent {
+		problems = append(problems, "CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT must be "+
+			"between 0 and CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT")
+	}
+	if cfg.Conversation.AutoAcceptMaxWords < 1 {
+		problems = append(problems, "CONVERSATION_AUTO_ACCEPT_MAX_WORDS must be greater than zero")
 	}
 	if cfg.Attachment.ExtractionRFQBatchSize < 1 {
 		problems = append(problems, "ATTACHMENT_EXTRACTION_RFQ_BATCH_SIZE must be greater than zero")

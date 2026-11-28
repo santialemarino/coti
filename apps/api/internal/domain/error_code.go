@@ -108,6 +108,12 @@ const (
 	CodeQuoteAlreadyPaid ErrorCode = "QUOTE_ALREADY_PAID"
 	// Closing a sale (paid, no invoice needed) applies only to an accepted quote.
 	CodeQuoteNotAccepted ErrorCode = "QUOTE_NOT_ACCEPTED"
+	// An acceptance read from a customer's reply waits for the seller before the sale is closed.
+	CodeQuoteAcceptanceUnconfirmed ErrorCode = "QUOTE_ACCEPTANCE_UNCONFIRMED"
+	// Only an acceptance read from a reply, unpaid, uninvoiced and with its send live, can be undone.
+	CodeQuoteAcceptanceNotUndoable ErrorCode = "QUOTE_ACCEPTANCE_NOT_UNDOABLE"
+	// Accepting the sent version applies only to a quote whose customer asked for changes.
+	CodeQuoteNotChangeRequested ErrorCode = "QUOTE_NOT_CHANGE_REQUESTED"
 	// An earlier profile with the customer's CUIT stays the seller's until the customer verifies a
 	// contact it already had.
 	CodeProfileOwnershipUnproved ErrorCode = "PROFILE_OWNERSHIP_UNPROVED"

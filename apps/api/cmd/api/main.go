@@ -296,7 +296,9 @@ func run() error {
 		WithDiscountEngine(quoteDiscountRepo, promotionRepo, quoteRepo).
 		WithInvoicingSwitch(invoicingRepo).
 		WithCatalogRecommendations(productAlternativeRepo).
-		WithRecommendationProducts(productRepo)
+		WithRecommendationProducts(productRepo).
+		WithReplyAcceptance(quoteRepo, clientActionRepo, quoteSendRepo, quoteDiscountRepo,
+			handlerDecisionRepo)
 	rfqService.WithAutomaticQuoting(quoteService)
 	recommendationRequestService := services.NewRecommendationRequestService(db, quoteRepo,
 		productAlternativeRepo, productPriceRepo)
@@ -329,6 +331,8 @@ func run() error {
 	clientService := services.NewClientService(db, clientRepo, tagRepo, quoteRepo, rfqRepo,
 		quoteSendRepo).WithInvoicingEnvironment(arcaEnvironment).WithContactDirectory(repository.NewClientContactRepository())
 	quoteDeliveryService.WithClientAssociations(clientService)
+	batchChangeHandler.WithReplyAcceptance(services.ReplyAcceptancePolicy(cfg.Conversation),
+		quoteSendRepo, clientActionRepo, quoteRepo, quoteDeliveryService)
 	// What a MATCHED line clears to read as HIGH, on the 0..1 scale the item carries its score on.
 	highConfidence := decimal.NewFromInt(int64(cfg.Catalog.MatchHighConfidencePercent)).
 		Div(decimal.NewFromInt(100))

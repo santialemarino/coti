@@ -124,13 +124,13 @@ func (e *env) dropDraft(t *testing.T, rfqID uuid.UUID) {
 			rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_message WHERE quote_id IN (
 		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
-		e.mustCleanup(t, `DELETE FROM message_batch WHERE quote_id IN (
-		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
-		// A customer's answer points at both the version and the send it came back through, so it
-		// goes before either of them.
+		// A customer's answer points at the version, the send it came back through and the batch it
+		// was read from, so it goes before any of them.
 		e.mustCleanup(t, `DELETE FROM client_action WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)
+		e.mustCleanup(t, `DELETE FROM message_batch WHERE quote_id IN (
+		  SELECT id FROM quote WHERE rfq_id = $1)`, rfqID)
 		e.mustCleanup(t, `DELETE FROM quote_send WHERE version_id IN (
 		  SELECT v.id FROM quote_version v JOIN quote c ON c.id = v.quote_id WHERE c.rfq_id = $1)`,
 			rfqID)

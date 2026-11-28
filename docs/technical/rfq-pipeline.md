@@ -614,6 +614,40 @@ A batch that fails for good — out of attempts or unprocessable — is handed b
 (`HandleFailed`): a `SENT` quote moves to `CHANGE_REQUESTED` with its draft open, since nobody read
 what the customer asked.
 
+### Acceptance read from a reply
+
+A reply the model reads as an acceptance is weighed in the apply transaction, under the quote's
+lock, by `domain.ReplyAcceptancePolicy`. Any **hard hold** keeps the quote `SENT` with a signal for
+the seller: the quote is no longer `SENT`, the batch carries the portal's «Pedir cambios», the
+sender could have meant another live quote, the current version is not the one the latest
+successful send carried or that send has expired, or the confidence is under
+`CONVERSATION_ACCEPT_REVIEW_MIN_CONFIDENCE_PERCENT`. Otherwise any **soft hold** accepts it pending
+the seller's confirmation (`quote.acceptance_unconfirmed_at`): confidence under
+`CONVERSATION_AUTO_ACCEPT_MIN_CONFIDENCE_PERCENT`, a partial acceptance or one picking an
+alternative, a sent version with alternatives to choose, a reply longer than
+`CONVERSATION_AUTO_ACCEPT_MAX_WORDS` or without one of the fixed acceptance phrases, or the
+account's `whatsapp_auto_accept` off. With no hold it is accepted on its own. The decision record
+keeps `reply_acceptance` (`AUTOMATIC`, `UNCONFIRMED` or `SIGNAL`) and the holds.
+
+An acceptance is written as the customer's portal click would be: `SENT` → `ACCEPTED` with no user
+on the status change, a `client_action` `ACCEPT` on the latest live send tied to the batch
+(`message_batch_id`), and a mail to the seller once the transaction commits. The seller then:
+
+- **Confirms** it (`POST /v1/quotes/{id}/acceptance/confirm`), which clears the pending mark.
+  Marking the sale paid, waiving its invoice and issuing one are refused with
+  `QUOTE_ACCEPTANCE_UNCONFIRMED` until then.
+- **Undoes** it (`POST /v1/quotes/{id}/acceptance/undo`) back to `SENT`, only for an acceptance read
+  from a batch, unpaid, uninvoiced, not waived, with its send still live. The customer action is
+  revoked (`client_action.revoked_at`), so the portal takes an answer again; every read of a
+  customer's answer and every report skips revoked actions and undone acceptances.
+- **Accepts the sent version** of a `CHANGE_REQUESTED` quote
+  (`POST /v1/quotes/{id}/accept-sent-version`): the quote points back at the version the customer
+  received, the open draft and its preview are removed, and the runs recorded on it are settled
+  and moved to the sent version.
+
+A message the customer writes after accepting joins that quote's conversation as a recorded message
+and opens no window, so no handler reads it.
+
 A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
 line with a product:
 
