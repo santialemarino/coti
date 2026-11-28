@@ -218,6 +218,14 @@ works it by hand. A later run would read the same nothing, so there is nothing t
 it, and a `quote` with no lines would be indistinguishable from an order for nothing. The response
 carries `quote` and `version` as `null` for exactly this case.
 
+## One conversation, two orders
+
+A client who writes again a few minutes after an order («agregá 10 ladrillos») gets a second order
+today. The order screen shows each such pair: `GET /v1/rfqs/{rfqId}` carries `split_from`, the
+nearest other open (not archived) order the same sender opened on the same channel within
+`RFQ_SPLIT_ORDER_WINDOW_MINUTES` (60 by default), before or after this one. The seller sees «Otro
+pedido de este cliente hace N min», opens the other order, or archives this one from the callout.
+
 ## What a failed match does
 
 Matching is asked for a decision per line and may not be able to give one — the embedding provider

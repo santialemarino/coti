@@ -41,6 +41,7 @@ import { RfqItemsTable } from './rfq-items-table';
 import { RfqOriginalRequest } from './rfq-original-request';
 import { RfqStatusTimeline } from './rfq-status-timeline';
 import { SaleClosureCard } from './sale-closure-card';
+import { SplitOrderCallout } from './split-order-callout';
 
 interface RfqDetailViewProps {
   detail: RfqDetailResponse;
@@ -83,6 +84,7 @@ export function RfqDetailView({
   const [shownInitial, setShownInitial] = useState(initialDetail);
   const [generating, startGenerate] = useTransition();
   const [unarchiving, startUnarchive] = useTransition();
+  const [archiving, startArchive] = useTransition();
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   // Bumped when closing the sale may have issued its invoice, so the invoice card reads it again.
@@ -201,22 +203,29 @@ export function RfqDetailView({
   }
 
   function handleUnarchive() {
-    startUnarchive(async () => {
-      try {
-        if (quoteId) await setQuoteArchived(quoteId, false, branchId);
-        else await setFailedRfqArchived(detail.rfq.id, false, branchId);
-        setDetail((prev) => ({
-          ...prev,
-          rfq: { ...prev.rfq, archived_at: null },
-          quote: prev.quote ? { ...prev.quote, archived_at: null } : prev.quote,
-        }));
-        updateRecord(detail.rfq.id, { archived: false });
-        toast.success(t('list.toast.unarchived', { id: reference }));
-        router.refresh();
-      } catch (error) {
-        toast.error(message(errorCodeOf(error)));
-      }
-    });
+    startUnarchive(() => setArchived(false));
+  }
+
+  function handleArchive() {
+    startArchive(() => setArchived(true));
+  }
+
+  async function setArchived(next: boolean) {
+    try {
+      if (quoteId) await setQuoteArchived(quoteId, next, branchId);
+      else await setFailedRfqArchived(detail.rfq.id, next, branchId);
+      const archivedAt = next ? new Date().toISOString() : null;
+      setDetail((prev) => ({
+        ...prev,
+        rfq: { ...prev.rfq, archived_at: archivedAt },
+        quote: prev.quote ? { ...prev.quote, archived_at: archivedAt } : prev.quote,
+      }));
+      updateRecord(detail.rfq.id, { archived: next });
+      toast.success(t(next ? 'list.toast.archived' : 'list.toast.unarchived', { id: reference }));
+      router.refresh();
+    } catch (error) {
+      toast.error(message(errorCodeOf(error)));
+    }
   }
 
   async function handleDiscard() {
@@ -294,6 +303,15 @@ export function RfqDetailView({
         >
           {t('detail.callouts.archived.description')}
         </Callout>
+      ) : null}
+
+      {detail.split_from && !archived && (quoteId || rfqStatus === 'FAILED') ? (
+        <SplitOrderCallout
+          split={detail.split_from}
+          createdAt={detail.rfq.created_at}
+          archiving={archiving}
+          onArchive={handleArchive}
+        />
       ) : null}
 
       <RfqStatusTimeline detail={detail} />

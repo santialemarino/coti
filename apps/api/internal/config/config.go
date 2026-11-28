@@ -639,6 +639,8 @@ type RFQConfig struct {
 	 * cut the sweep short for a limit that does not apply to it.
 	 */
 	InlinePipelineTimeout time.Duration
+	// SplitOrderWindow is how close two orders from one sender must be for each to show the other.
+	SplitOrderWindow time.Duration
 }
 
 // QuoteCorrectionConfig bounds account-local correction learning.
@@ -1030,6 +1032,7 @@ func Load() (*Config, error) {
 			PipelineTimeout:    getDuration("RFQ_PIPELINE_TIMEOUT_SECONDS", 165*time.Second, &problems),
 			InlinePipelineTimeout: getDuration("RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS",
 				75*time.Second, &problems),
+			SplitOrderWindow: getDuration("RFQ_SPLIT_ORDER_WINDOW_MINUTES", 60*time.Minute, &problems),
 		},
 		QuoteCorrection: QuoteCorrectionConfig{
 			SimilarityPercent:         getInt("QUOTE_CORRECTION_SIMILARITY_PERCENT", 80, &problems),
@@ -1294,6 +1297,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.RFQ.PipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_PIPELINE_TIMEOUT_SECONDS must be greater than zero")
+	}
+	if cfg.RFQ.SplitOrderWindow <= 0 {
+		problems = append(problems, "RFQ_SPLIT_ORDER_WINDOW_MINUTES must be greater than zero")
 	}
 	if cfg.RFQ.InlinePipelineTimeout <= 0 {
 		problems = append(problems, "RFQ_INLINE_PIPELINE_TIMEOUT_SECONDS must be greater than zero")

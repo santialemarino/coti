@@ -171,10 +171,18 @@ type RFQAttachmentListResponse struct {
 	Attachments []RFQAttachmentResponse `json:"attachments"`
 }
 
+// SplitOrderResponse is the other open order the same sender opened shortly before or after.
+type SplitOrderResponse struct {
+	RFQID       uuid.UUID `json:"rfq_id"`
+	QuoteNumber *int64    `json:"quote_number"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 // RfqDetailResponse is returned by GET /v1/rfqs/{rfqId}. It includes the RFQ
 // list item projection plus the full quote, version, items, alternatives, discounts,
 // the change-request diff when one applies, and the customer responses the versions received.
 type RfqDetailResponse struct {
+	SplitFrom            *SplitOrderResponse                       `json:"split_from,omitempty"`
 	PublicContact        *PublicRFQContactResponse                 `json:"public_contact,omitempty"`
 	OriginalText         *string                                   `json:"original_text,omitempty"`
 	PublicAttachments    []RFQAttachmentResponse                   `json:"public_attachments,omitempty"`

@@ -16749,6 +16749,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.RFQStatusChangeResponse"
                     }
                 },
+                "split_from": {
+                    "$ref": "#/definitions/dto.SplitOrderResponse"
+                },
                 "version": {
                     "$ref": "#/definitions/dto.QuoteVersionResponse"
                 }
@@ -17553,6 +17556,20 @@ const docTemplate = `{
                 },
                 "tokens": {
                     "$ref": "#/definitions/dto.TokenResponse"
+                }
+            }
+        },
+        "dto.SplitOrderResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "quote_number": {
+                    "type": "integer"
+                },
+                "rfq_id": {
+                    "type": "string"
                 }
             }
         },

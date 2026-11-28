@@ -3362,6 +3362,8 @@ definitions:
         items:
           $ref: '#/definitions/dto.RFQStatusChangeResponse'
         type: array
+      split_from:
+        $ref: '#/definitions/dto.SplitOrderResponse'
       version:
         $ref: '#/definitions/dto.QuoteVersionResponse'
     type: object
@@ -3912,6 +3914,15 @@ definitions:
         $ref: '#/definitions/dto.BranchResponse'
       tokens:
         $ref: '#/definitions/dto.TokenResponse'
+    type: object
+  dto.SplitOrderResponse:
+    properties:
+      created_at:
+        type: string
+      quote_number:
+        type: integer
+      rfq_id:
+        type: string
     type: object
   dto.SuccessResponse:
     properties:
