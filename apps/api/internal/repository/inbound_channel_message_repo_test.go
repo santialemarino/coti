@@ -149,6 +149,18 @@ func TestInboundChannelMessage_KeepsANonOrderMessageWithItsKindOnly(t *testing.T
 		"ck_inbound_channel_message_dismissed") {
 		t.Errorf("dismissed order = %v, want ck_inbound_channel_message_dismissed", err)
 	}
+	if err := insert("wamid.nothing", nil, nil, false); !isCheckViolation(err,
+		"ck_inbound_channel_message_target") {
+		t.Errorf("no target and no kind = %v, want ck_inbound_channel_message_target", err)
+	}
+	if _, err := db.CrossAccount().Exec(ctx, `INSERT INTO inbound_channel_message
+	  (account_id, branch_id, channel_id, quote_message_id, external_message_id, sender_id, body,
+	   payload, provider_received_at, kind)
+	 VALUES ($1, $2, $3, $4, 'wamid.kind-and-message', '5491112345678', 'hola', '{}', now(),
+	         'GREETING')`, accountID, branchID, channelID, uuid.New()); !isCheckViolation(err,
+		"ck_inbound_channel_message_target") {
+		t.Errorf("kind beside a conversation message = %v, want ck_inbound_channel_message_target", err)
+	}
 }
 
 func isCheckViolation(err error, name string) bool {

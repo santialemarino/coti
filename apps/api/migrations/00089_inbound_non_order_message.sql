@@ -22,6 +22,8 @@ CREATE INDEX idx_inbound_channel_message_open_non_order
 
 -- +goose Down
 DROP INDEX idx_inbound_channel_message_open_non_order;
+DELETE FROM client_contact_observation
+ WHERE message_id IN (SELECT id FROM inbound_channel_message WHERE kind IS NOT NULL);
 DELETE FROM inbound_channel_message WHERE kind IS NOT NULL;
 ALTER TABLE inbound_channel_message
   DROP CONSTRAINT ck_inbound_channel_message_dismissed,
