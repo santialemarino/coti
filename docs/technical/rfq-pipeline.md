@@ -648,6 +648,15 @@ on the status change, a `client_action` `ACCEPT` on the latest live send tied to
 A message the customer writes after accepting joins that quote's conversation as a recorded message
 and opens no window, so no handler reads it.
 
+The order list (`GET /v1/rfqs`, and the detail's `rfq`) carries `acceptance_unconfirmed` and, on a
+`SENT` quote, `customer_reply`: the newest run on the current version whose reason is
+`CUSTOMER_ACCEPTS`, `CUSTOMER_REJECTS`, `CUSTOMER_QUESTION` or `NO_REQUEST`, still undecided and
+recorded after the quote last became `SENT`, with its `reply_acceptance`. The detail adds
+`accepted_by_reply` for a quote standing `ACCEPTED` on an acceptance read from a batch.
+`POST /v1/quotes/{id}/customer-reply/read` settles those runs `MANUAL_OVERRIDE` by the seller, so the
+order leaves «El cliente escribió» until the customer's next reply records a new run; a quote that is
+not `SENT` answers `409 QUOTE_NOT_SENT`.
+
 A `COMPLEX` goal runs deterministic recipes in the apply transaction, over the named lines or every
 line with a product:
 

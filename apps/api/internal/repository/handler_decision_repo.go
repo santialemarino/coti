@@ -231,3 +231,20 @@ func (r *HandlerDecisionRepository) Decide(ctx context.Context, q Querier, accou
 	}
 	return int(tag.RowsAffected()), nil
 }
+
+// ReadCustomerReplies settles the runs still pending on a version that changed nothing — an
+// acceptance, rejection, question or plain reply — as MANUAL_OVERRIDE by userID. Returns how many.
+func (r *HandlerDecisionRepository) ReadCustomerReplies(ctx context.Context, q Querier, accountID,
+	versionID, userID uuid.UUID,
+) (int, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE handler_decision
+		 SET seller_decision = 'MANUAL_OVERRIDE', user_id = $3, decided_at = now()
+		 WHERE account_id = $1 AND quote_version_id = $2 AND seller_decision IS NULL
+		   AND ai_proposal::jsonb ->> 'no_match_reason' = ANY($4::text[])`,
+		accountID, versionID, userID, domain.CustomerReplyReasons())
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}

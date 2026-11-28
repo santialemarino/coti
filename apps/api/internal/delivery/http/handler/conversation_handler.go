@@ -16,6 +16,7 @@ type ConversationReviewService interface {
 		quoteID uuid.UUID) (*domain.QuoteVersion, error)
 	RetryBatch(ctx context.Context, tenant domain.Tenant, quoteID,
 		batchID uuid.UUID) (*domain.MessageBatch, error)
+	ReadCustomerReply(ctx context.Context, tenant domain.Tenant, quoteID uuid.UUID) error
 }
 
 // ConversationHandler serves the seller's actions on a quote's conversation.
@@ -97,4 +98,35 @@ func (h *ConversationHandler) RetryBatch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toConversationBatchResponse(*batch))
+}
+
+// ReadCustomerReply marks a SENT quote's replies that changed nothing as read.
+//
+//	@Summary		Mark a customer's reply as read
+//	@Description	Settles the pending replies that left a sent quote unchanged, until the customer writes again.
+//	@Tags			quotes
+//	@Security		BearerAuth
+//	@Param			X-Branch-Id	header	string	true	"Active branch"
+//	@Param			quoteId		path	string	true	"Quote id"
+//	@Success		204
+//	@Failure		401	{object}	dto.ErrorResponse
+//	@Failure		404	{object}	dto.ErrorResponse	"No such quote in the selected branch"
+//	@Failure		409	{object}	dto.ErrorResponse	"QUOTE_NOT_SENT"
+//	@Failure		422	{object}	dto.ErrorResponse	"No active branch"
+//	@Router			/v1/quotes/{quoteId}/customer-reply/read [post]
+func (h *ConversationHandler) ReadCustomerReply(c *gin.Context) {
+	tenant, ok := tenantOf(c)
+	if !ok {
+		return
+	}
+	quoteID, ok := pathUUID(c, "quoteId")
+	if !ok {
+		return
+	}
+
+	if err := h.reviews.ReadCustomerReply(c.Request.Context(), tenant, quoteID); err != nil {
+		Respond(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
