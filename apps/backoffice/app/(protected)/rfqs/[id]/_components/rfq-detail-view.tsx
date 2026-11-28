@@ -355,10 +355,18 @@ export function RfqDetailView({
           <Callout
             key={action.id}
             tone="info"
-            title={t('detail.callouts.rejected.history', {
-              version: action.version_number,
-              date: fmt.timestamp(action.created_at),
-            })}
+            title={
+              action.reopened_at
+                ? t('detail.callouts.rejected.historyReopened', {
+                    version: action.version_number,
+                    date: fmt.timestamp(action.created_at),
+                    reopened: fmt.timestamp(action.reopened_at),
+                  })
+                : t('detail.callouts.rejected.history', {
+                    version: action.version_number,
+                    date: fmt.timestamp(action.created_at),
+                  })
+            }
           >
             <p className="whitespace-pre-wrap break-words">
               {action.comment || t('detail.callouts.rejected.noReason')}

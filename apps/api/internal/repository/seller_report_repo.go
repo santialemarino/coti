@@ -38,13 +38,12 @@ const scopedRfqsCTE = `scoped_rfqs AS (
 		         AND ct.tag_id = ANY($10::uuid[])))
 		 )`
 
-// standingAcceptance keeps an ACCEPTED status change the seller did not undo; an undo is the only
-// move from ACCEPTED back to SENT.
+// standingAcceptance keeps an ACCEPTED status change the quote never left afterwards: an undo
+// (back to SENT) or a reactivation (to QUOTED or CHANGE_REQUESTED) takes the acceptance back.
 func standingAcceptance(change string) string {
 	return ` AND NOT EXISTS (SELECT 1 FROM quote_status_change undone
 		WHERE undone.account_id = ` + change + `.account_id AND undone.quote_id = ` + change + `.quote_id
-		  AND undone.previous_status = 'ACCEPTED' AND undone.new_status = 'SENT'
-		  AND undone.changed_at >= ` + change + `.changed_at)`
+		  AND undone.previous_status = 'ACCEPTED' AND undone.changed_at >= ` + change + `.changed_at)`
 }
 
 // firstSentCTE keeps cohort conversion set-based across all events, including later acceptances.

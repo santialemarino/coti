@@ -12283,6 +12283,10 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "reopened_at": {
+                    "description": "ReopenedAt is when the seller reactivated the quote after this answer; null while it stands.",
+                    "type": "string"
+                },
                 "type": {
                     "type": "string"
                 },

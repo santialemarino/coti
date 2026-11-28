@@ -969,7 +969,7 @@ func toConversationMessageResponses(messages []domain.QuoteMessage) []dto.Conver
 func toClientActionResponse(action domain.ClientAction) dto.ClientActionResponse {
 	return dto.ClientActionResponse{ID: action.ID, VersionID: action.VersionID,
 		VersionNumber: action.VersionNumber, Type: string(action.Type), Comment: action.Comment,
-		CreatedAt: action.CreatedAt}
+		CreatedAt: action.CreatedAt, ReopenedAt: action.ReopenedAt}
 }
 
 func toChangeRequestDiffResponse(diff domain.ChangeRequestDiff) dto.ChangeRequestDiffResponse {

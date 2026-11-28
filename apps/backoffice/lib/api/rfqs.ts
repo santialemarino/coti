@@ -326,6 +326,8 @@ export interface ClientActionResponse {
   type: ClientActionType;
   comment: string | null;
   created_at: string;
+  // When the seller reactivated the quote after this answer; null while it stands.
+  reopened_at: string | null;
 }
 
 /*

@@ -1611,7 +1611,8 @@
           "description": "La cotización quedó rechazada.",
           "withReason": "La cotización quedó rechazada: {reason}",
           "noReason": "Sin motivo informado",
-          "history": "Rechazo de la versión {version} · {date}"
+          "history": "Rechazo de la versión {version} · {date}",
+          "historyReopened": "Rechazo de la versión {version} · {date} · reabierta el {reopened}"
         },
         "changeRequested": {
           "title": "Cambio solicitado",
