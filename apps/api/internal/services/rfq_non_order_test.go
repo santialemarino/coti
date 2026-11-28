@@ -168,6 +168,8 @@ func TestRFQService_CreateWhatsAppMockDraft_RetainsTheMessageLikeADelivery(t *te
 func TestRFQService_CreateDraftFromNonOrder_OpensTheOrderTheSellerAskedFor(t *testing.T) {
 	h, messages, rfqs := newNonOrderHarness(domain.RFQMessageGreeting)
 	messages.body = "Hola, necesito cotizar materiales para una obra."
+	h.rfqs.rfqRow = &domain.RFQ{ID: uuid.New(), AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, Status: domain.RFQStatusReceived}
 	tenant := rfqTenant()
 
 	draft, err := h.service.CreateDraftFromNonOrder(context.Background(), tenant, uuid.New())
@@ -175,7 +177,7 @@ func TestRFQService_CreateDraftFromNonOrder_OpensTheOrderTheSellerAskedFor(t *te
 		t.Fatalf("CreateDraftFromNonOrder() = %v", err)
 	}
 	if len(messages.claimed) != 1 || len(h.rfqs.created) != 1 || *h.rfqs.created[0].ID != messages.claimed[0] {
-		t.Fatalf("claimed %v / created %+v, want the message pointed at the new RFQ",
+		t.Fatalf("claimed %v / created %+v, want the message pointed at the order created with it",
 			messages.claimed, h.rfqs.created)
 	}
 	if draft.RFQ.Status != domain.RFQStatusFailed || len(rfqs.deleted) != 0 {
@@ -192,5 +194,34 @@ func TestRFQService_NonOrders_NeedAnActiveBranch(t *testing.T) {
 	}
 	if err := h.service.DismissNonOrder(context.Background(), tenant, uuid.New()); !errors.Is(err, domain.ErrInvalidInput) {
 		t.Errorf("DismissNonOrder() = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestRFQService_CreateDraftFromNonOrder_RefusesAMessageWithNoTextBeforeOpeningAnything(t *testing.T) {
+	h, messages, _ := newNonOrderHarness(domain.RFQMessageGreeting)
+
+	_, err := h.service.CreateDraftFromNonOrder(context.Background(), rfqTenant(), uuid.New())
+	if !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("CreateDraftFromNonOrder() = %v, want ErrInvalidInput", err)
+	}
+	if len(h.rfqs.created) != 0 || h.extractor.calls != 0 || len(messages.claimed) != 1 {
+		t.Errorf("created %d RFQs / read %d times, want the claim refused in its transaction",
+			len(h.rfqs.created), h.extractor.calls)
+	}
+}
+
+func TestRFQService_CreateInboundTextDraftForMessage_AWebLinkRequestStaysAnOrder(t *testing.T) {
+	h, messages, rfqs := newNonOrderHarness(domain.RFQMessageQuestion)
+	route := domain.InboundChannelRoute{AccountID: testAccountID, BranchID: testBranchID,
+		ChannelID: testChannelID, ChannelType: domain.ChannelTypeWebApp}
+
+	draft, err := h.service.CreateInboundTextDraftForMessage(context.Background(), route,
+		domain.InboundTextRFQDraftInput{RawText: "Hola, ¿hacen envíos a Pilar? Llamame."}, uuid.New())
+	if err != nil {
+		t.Fatalf("CreateInboundTextDraftForMessage() = %v", err)
+	}
+	if draft.NonOrder != nil || draft.RFQ.Status != domain.RFQStatusFailed ||
+		len(messages.detached) != 0 || len(rfqs.deleted) != 0 {
+		t.Errorf("draft = %+v, want the customer's request kept as a failed order", draft)
 	}
 }

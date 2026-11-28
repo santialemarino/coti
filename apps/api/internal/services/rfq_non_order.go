@@ -61,22 +61,33 @@ func (s *RFQService) CreateDraftFromNonOrder(
 		return nil, err
 	}
 	rfqID := uuid.New()
-	var message *domain.InboundChannelMessage
+	var in domain.TextRFQDraftInput
+	// The claim and the order it points at commit together, so a message never points at nothing.
 	if err := s.db.InTenantTx(ctx, tenant, func(q repository.Querier) error {
-		var err error
-		message, err = inbox.ClaimNonOrder(ctx, q, tenant.AccountID, tenant.BranchID, id, rfqID)
+		message, err := inbox.ClaimNonOrder(ctx, q, tenant.AccountID, tenant.BranchID, id, rfqID)
+		if err != nil {
+			return err
+		}
+		raw, err := s.requiredRFQText(message.Body)
+		if err != nil {
+			return err
+		}
+		in = domain.TextRFQDraftInput{ChannelID: message.ChannelID, ClientLabel: message.SenderLabel,
+			RawText: raw}
+		if _, err := s.channels.GetActiveByID(ctx, q, tenant.AccountID, tenant.BranchID,
+			in.ChannelID); err != nil {
+			return err
+		}
+		_, err = s.rfqs.Create(ctx, q, tenant.AccountID, domain.NewRFQ{
+			ID: &rfqID, BranchID: tenant.BranchID, ChannelID: in.ChannelID, RawText: &in.RawText,
+			Status: domain.RFQStatusReceived, ClientLabel: in.ClientLabel,
+		})
 		return err
 	}); err != nil {
 		return nil, err
 	}
-	raw, err := s.requiredRFQText(message.Body)
-	if err != nil {
-		return nil, err
-	}
 	sellerID := tenant.UserID
-	return s.createTextDraft(ctx, tenant, domain.TextRFQDraftInput{
-		ChannelID: message.ChannelID, ClientLabel: message.SenderLabel, RawText: raw,
-	}, &sellerID, &rfqID)
+	return s.createTextDraft(ctx, tenant, in, &sellerID, &rfqID, false)
 }
 
 func (s *RFQService) nonOrderInbox(tenant domain.Tenant, what string) (nonOrderInbox, error) {

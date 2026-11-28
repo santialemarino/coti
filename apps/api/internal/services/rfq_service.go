@@ -1320,7 +1320,9 @@ func (s *RFQService) createInboundTextDraft(
 	if err != nil {
 		return nil, err
 	}
-	return s.createTextDraft(ctx, tenant, normalized, nil, rfqID)
+	// Only WhatsApp keeps a greeting as a non-order; a web-link request stays the customer's order.
+	return s.createTextDraft(ctx, tenant, normalized, nil, rfqID,
+		route.ChannelType == domain.ChannelTypeWhatsApp)
 }
 
 // CreateTextDraft turns plain RFQ text into a quote DRAFT for seller review.
@@ -1335,7 +1337,7 @@ func (s *RFQService) CreateTextDraft(
 		return nil, err
 	}
 	sellerID := tenant.UserID
-	return s.createTextDraft(ctx, tenant, normalized, &sellerID, nil)
+	return s.createTextDraft(ctx, tenant, normalized, &sellerID, nil, false)
 }
 
 // CreateFileDraft turns an order that arrived as a file into a quote DRAFT for seller review.
@@ -1468,7 +1470,7 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	draftIn := domain.TextRFQDraftInput{ChannelID: channel.ID, ClientLabel: &clientLabel, RawText: raw}
 	store, ok := s.inboundMessages.(rfqNonOrderStore)
 	if !ok {
-		return s.createTextDraft(ctx, tenant, draftIn, nil, nil)
+		return s.createTextDraft(ctx, tenant, draftIn, nil, nil, false)
 	}
 	// The message is retained the way a real delivery is, so a greeting files as a non-order here too.
 	rfqID := uuid.New()
@@ -1487,12 +1489,14 @@ func (s *RFQService) CreateWhatsAppMockDraft(
 	}); err != nil {
 		return nil, err
 	}
-	return s.createTextDraft(ctx, tenant, draftIn, nil, &rfqID)
+	return s.createTextDraft(ctx, tenant, draftIn, nil, &rfqID, true)
 }
 
+// createTextDraft runs the text pipeline. With nonOrders, a reserved channel message that names no
+// material is filed as a non-order instead of a failed order.
 func (s *RFQService) createTextDraft(
 	ctx context.Context, tenant domain.Tenant, in domain.TextRFQDraftInput, sellerID *uuid.UUID,
-	rfqID *uuid.UUID,
+	rfqID *uuid.UUID, nonOrders bool,
 ) (*domain.TextRFQDraft, error) {
 	if s.extractor == nil || s.channels == nil {
 		return nil, fmt.Errorf("%w: the RFQ pipeline is not fully wired", domain.ErrInvalidInput)
@@ -1513,9 +1517,8 @@ func (s *RFQService) createTextDraft(
 		return nil, err
 	}
 	if len(items) == 0 {
-		// A channel message that names no material is a greeting or a question, not a failed order;
-		// a seller who opened the order anyway gets the failed order they asked for.
-		if rfqID != nil && sellerID == nil {
+		// A channel message that names no material is a greeting or a question, not a failed order.
+		if nonOrders && rfqID != nil {
 			message, fileErr := s.fileNonOrder(ctx, tenant, rfq.ID, extraction.Kind)
 			if fileErr != nil {
 				return nil, fileErr
